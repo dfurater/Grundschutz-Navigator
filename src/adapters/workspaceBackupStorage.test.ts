@@ -41,7 +41,7 @@ beforeEach(async () => {
   imported = await document('Selected');
   one = value(await store.addDocument(a.verbundId, imported));
   other = value(await store.addDocument(b.verbundId, await document('OTHER_DOCUMENT_SENTINEL')));
-  value(await store.autosaveDraft(one.localId, one.savedAt, { incomplete: true }));
+  value(await store.autosaveDraft(one.localId, one.savedAt, null, { incomplete: true }));
   value(await store.setBinding({ fromLocalId: one.localId, pointer: '/catalog/metadata/title', href: 'Selected', target: { kind: 'class-1', artifactKey: 'catalog-gspp' } }));
   db = new Dexie(WORKSPACE_DATABASE_NAME); await db.open();
 });
@@ -101,10 +101,10 @@ it('rejects crossed formats, invalid sources, newer schemas and oversized bytes 
 });
 
 it('keeps each verbund restorable when the aggregate workspace exceeds the byte cap', async () => {
-  for (const row of [one, other]) value(await store.autosaveDraft(row.localId, value(await store.getDocument(row.localId))!.savedAt, { text: 'x'.repeat(9 * 1024 * 1024) }));
+  for (const row of [one, other]) value(await store.autosaveDraft(row.localId, value(await store.getDocument(row.localId))!.savedAt, value(await store.getDraft(row.localId))?.savedAt ?? null, { text: 'x'.repeat(9 * 1024 * 1024) }));
   for (const row of [one, other]) {
     const added = value(await store.addDocument(row.verbundId, imported));
-    value(await store.autosaveDraft(added.localId, added.savedAt, { text: 'x'.repeat(9 * 1024 * 1024) }));
+    value(await store.autosaveDraft(added.localId, added.savedAt, null, { text: 'x'.repeat(9 * 1024 * 1024) }));
   }
   expect(await store.exportBackup()).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_BACKUP_LIMIT_EXCEEDED' } });
   for (const verbund of [a, b]) {

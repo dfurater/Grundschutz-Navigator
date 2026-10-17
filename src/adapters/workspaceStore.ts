@@ -178,7 +178,7 @@ export class WorkspaceStore {
     return this.saveDocument(localId, expectedSavedAt, input);
   }
 
-  async autosaveDraft(localId: LocalId, expectedSavedAt: string, source: unknown): Promise<WorkspaceResult<WorkspaceDraft>> {
+  async autosaveDraft(localId: LocalId, expectedSavedAt: string, expectedDraftSavedAt: string | null, source: unknown): Promise<WorkspaceResult<WorkspaceDraft>> {
     try {
       if (enforceClass2ObjectGraphInvariants(source)) reject('WORKSPACE_DRAFT_INVALID');
       if (new TextEncoder().encode(serializeWorkspaceJson(source)).byteLength > CLASS_2_IMPORT_LIMITS.maxBytes) reject('WORKSPACE_DRAFT_INVALID');
@@ -186,6 +186,7 @@ export class WorkspaceStore {
       return this.write(async () => {
         await this.current(localId, expectedSavedAt);
         const previous = await this.drafts.get(localId);
+        if ((previous?.savedAt ?? null) !== expectedDraftSavedAt) reject('WORKSPACE_SAVE_CONFLICT'); // null: no stored draft expected
         const draft = { localId, source: snapshot, savedAt: timestamp(previous?.savedAt) };
         await this.drafts.put(draft);
         return draft;

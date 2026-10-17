@@ -1,13 +1,16 @@
 import { serializeWorkspaceJson } from '@/domain/workspaceJson';
 import { CLASS_2_IMPORT_LIMITS } from '@/domain/class2ImportLimits.mjs';
-import { importClass2OscalDocument } from '@/adapters/oscalImportGate';
+import { processClass2OscalBytes } from '@/domain/oscalClass2Import';
 import { parseWorkspaceBackupInput } from '@/domain/oscalImportProcessing';
 import { enforceClass2ObjectGraphInvariants, enforceWorkspaceBackupGraphInvariants } from '@/domain/oscalObjectGraph';
 import { validWorkspaceBackupStructure, validVerbundBackupStructure } from '@/adapters/workspaceBackupStructure';
 import { rejectWorkspaceBackup } from '@/adapters/workspaceBackupContract';
 import { type WorkspaceBackup, type WorkspaceVerbundBackup, type WorkspaceResult } from '@/domain/workspaceModel';
 
-/** Closed restore format; all persisted document sources traverse the actual class-2 worker gate. */
+/**
+ * Closed restore format. Runs inside the backup module worker; every persisted document source traverses the
+ * class-2 chain of the import worker in this worker, so compiled schema cells serve all documents of one bundle.
+ */
 async function processBackupBytes<T extends WorkspaceBackup | WorkspaceVerbundBackup>(bytes: Uint8Array, validStructure: (value: unknown) => value is T): Promise<WorkspaceResult<T>> {
   try {
     const parsed = parseWorkspaceBackupInput(bytes);
@@ -22,7 +25,7 @@ async function processBackupBytes<T extends WorkspaceBackup | WorkspaceVerbundBa
       }
     }
     for (const envelope of parsed.source.documents) {
-      const imported = await importClass2OscalDocument(new TextEncoder().encode(serializeWorkspaceJson(envelope.source)), { trustClass: 'class-2-local-user' });
+      const imported = await processClass2OscalBytes(new TextEncoder().encode(serializeWorkspaceJson(envelope.source)), { trustClass: 'class-2-local-user' });
       if (!imported.ok || imported.document.rootType !== envelope.rootType || imported.document.oscalVersion !== envelope.oscalVersion) return rejectWorkspaceBackup('WORKSPACE_BACKUP_DOCUMENT_REJECTED');
     }
     return { ok: true, value: parsed.source };

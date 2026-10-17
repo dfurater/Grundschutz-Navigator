@@ -12,7 +12,7 @@ test('Verbund-Backup ersetzt oder ergänzt nur den gewählten Verbund in je eine
   const one = value(await store.addDocument(a.verbundId, await document('SELECTED')));
   const two = value(await store.addDocument(a.verbundId, await document('TARGET')));
   const other = value(await store.addDocument(b.verbundId, await document('OTHER_DOCUMENT_SENTINEL')));
-  value(await store.autosaveDraft(one.localId, one.savedAt, { incomplete: 'Selected draft' }));
+  value(await store.autosaveDraft(one.localId, one.savedAt, null, { incomplete: 'Selected draft' }));
   value(await store.setBinding({ fromLocalId: one.localId, pointer: '/catalog/metadata/title', href: 'SELECTED', target: { kind: 'local', localId: two.localId } }));
   const untouched = value(await store.exportVerbundBackup(b.verbundId));
   transaction.mockClear();
@@ -63,7 +63,7 @@ test('ein übergroßer Gesamtbestand bleibt verbundweise verlustfrei sicherbar',
   for (const verbund of verbuende) {
     for (let index = 0; index < 2; index++) {
       const envelope = value(await store.addDocument(verbund.verbundId, imported));
-      value(await store.autosaveDraft(envelope.localId, envelope.savedAt, { text: 'x'.repeat(9 * 1024 * 1024) }));
+      value(await store.autosaveDraft(envelope.localId, envelope.savedAt, null, { text: 'x'.repeat(9 * 1024 * 1024) }));
     }
   }
   expect(await store.exportBackup()).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_BACKUP_LIMIT_EXCEEDED' } });
