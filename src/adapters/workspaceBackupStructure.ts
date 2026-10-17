@@ -1,8 +1,7 @@
-import { SOURCE_REGISTRY } from '@/domain/sourceRegistry';
+import { hasRegistryKeyGrammar } from '@/domain/sourceRegistry';
 import { STORAGE_SCHEMA_VERSION, type WorkspaceBackup } from '@/domain/workspaceModel';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const supported = new Set(SOURCE_REGISTRY.filter(entry => entry.lifecycle === 'supported').map(entry => entry.artifactKey));
 function record(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
@@ -28,7 +27,7 @@ function collectVerbuende(rows: WorkspaceBackup['verbuende'], ids: Set<string>):
 function validDerivedFrom(value: unknown): boolean {
   if (value === undefined) return true;
   return fields(value, ['artifactKey', 'contentSha256', 'snapshotCommit'])
-    && supported.has(value.artifactKey as string) && typeof value.contentSha256 === 'string'
+    && hasRegistryKeyGrammar(value.artifactKey) && typeof value.contentSha256 === 'string'
     && /^[a-f0-9]{64}$/.test(value.contentSha256) && typeof value.snapshotCommit === 'string'
     && /^[a-f0-9]{40}$/.test(value.snapshotCommit);
 }
@@ -75,7 +74,7 @@ function validBindingTarget(target: Record<string, unknown>, fromLocalId: string
     return fields(target, ['kind', 'localId']) && uuid(target.localId) && documents.has(target.localId)
       && documents.get(fromLocalId) === documents.get(target.localId);
   }
-  return target.kind === 'class-1' && fields(target, ['kind', 'artifactKey']) && supported.has(target.artifactKey as string);
+  return target.kind === 'class-1' && fields(target, ['kind', 'artifactKey']) && hasRegistryKeyGrammar(target.artifactKey);
 }
 
 function validBindings(rows: WorkspaceBackup['bindings'], documents: Map<string, string>): boolean {

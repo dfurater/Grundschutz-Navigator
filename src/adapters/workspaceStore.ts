@@ -7,7 +7,7 @@ import type { Class2OscalImportedDocument } from '@/domain/oscalClass2Import';
 import {
   STORAGE_SCHEMA_VERSION,
   type DocumentState, type LocalId, type VerbundId, type WorkspaceBinding,
-  type WorkspaceDraft, type WorkspaceEnvelope, type WorkspaceMeta,
+  type WorkspaceDraft, type WorkspaceEnvelope, type WorkspaceMeta, type WorkspaceDocumentSummary,
   type WorkspaceResult, type WorkspaceVerbund,
 } from '@/domain/workspaceModel';
 import { parseWorkspaceBackup } from '@/adapters/workspaceBackup';
@@ -34,10 +34,20 @@ class StorageFailure extends Error {
 }
 
 function reject(code: string): never { throw new StorageFailure(code); }
+function isQuotaError(error: unknown): boolean {
+  const seen = new Set<unknown>();
+  let current = error;
+  while (current && typeof current === 'object' && !seen.has(current)) {
+    seen.add(current);
+    if ('name' in current && current.name === 'QuotaExceededError') return true;
+    current = 'inner' in current ? current.inner : undefined;
+  }
+  return false;
+}
 function failure(error: unknown): WorkspaceResult<never> {
   let code = 'WORKSPACE_STORAGE_FAILED';
   if (error instanceof StorageFailure) code = error.code;
-  else if (error instanceof Error && error.name === 'QuotaExceededError') code = 'WORKSPACE_QUOTA_EXCEEDED';
+  else if (isQuotaError(error)) code = 'WORKSPACE_QUOTA_EXCEEDED';
   return { ok: false, diagnostic: createOscalDiagnostic({ code, stage: 'domain', validator: { name: 'gspp-workspace', version: '1' }, path: '/' }) };
 }
 
@@ -135,8 +145,17 @@ export class WorkspaceStore {
   }
 
   listVerbuende(): Promise<WorkspaceResult<WorkspaceVerbund[]>> { return this.read([this.verbuende], () => this.verbuende.toArray()); }
-  listDocuments(verbundId?: VerbundId): Promise<WorkspaceResult<WorkspaceEnvelope[]>> {
-    return this.read([this.documents], () => verbundId === undefined ? this.documents.toArray() : this.documents.where('verbundId').equals(verbundId).toArray());
+  listDocuments(verbundId?: VerbundId): Promise<WorkspaceResult<WorkspaceDocumentSummary[]>> {
+    return this.read([this.documents], async () => {
+      const summaries: WorkspaceDocumentSummary[] = [];
+      const collection = verbundId === undefined ? this.documents.toCollection() : this.documents.where('verbundId').equals(verbundId);
+      await collection.each(row => {
+        const summary = { ...row };
+        delete summary.source;
+        summaries.push(summary);
+      });
+      return summaries;
+    });
   }
   getDocument(localId: LocalId): Promise<WorkspaceResult<WorkspaceEnvelope | undefined>> { return this.read([this.documents], () => this.documents.get(localId)); }
   getDraft(localId: LocalId): Promise<WorkspaceResult<WorkspaceDraft | undefined>> { return this.read([this.drafts], () => this.drafts.get(localId)); }
@@ -250,14 +269,31 @@ export class WorkspaceStore {
   }
 
   async setBinding(binding: WorkspaceBinding): Promise<WorkspaceResult<void>> {
-    try { const snapshot = structuredClone(binding); return this.write(() => this.putBinding(snapshot)); }
+    try {
+      const snapshot = structuredClone(binding);
+      return this.write(async () => { await this.putBinding(snapshot); await this.touchDocument(snapshot.fromLocalId); });
+    }
     catch (error) { return failure(error); }
   }
   removeBinding(fromLocalId: LocalId, pointer: string): Promise<WorkspaceResult<void>> {
-    return this.write(async () => { await this.current(fromLocalId); await this.bindings.delete([fromLocalId, pointer]); });
+    return this.write(async () => {
+      await this.current(fromLocalId);
+      if (!await this.bindings.get([fromLocalId, pointer])) return;
+      await this.bindings.delete([fromLocalId, pointer]);
+      await this.touchDocument(fromLocalId);
+    });
+  }
+
+  private async touchDocument(localId: LocalId): Promise<void> {
+    const document = await this.current(localId);
+    await this.documents.put({ ...document, savedAt: timestamp(document.savedAt) });
   }
 
   private async removeDocument(localId: LocalId): Promise<void> {
+    const incoming = await this.bindings.where('target.localId').equals(localId).toArray();
+    for (const sourceId of new Set(incoming.map(binding => binding.fromLocalId))) {
+      if (sourceId !== localId) await this.touchDocument(sourceId);
+    }
     await this.bindings.where('target.localId').equals(localId).delete();
     await this.bindings.filter(binding => binding.fromLocalId === localId).delete();
     await this.drafts.delete(localId);

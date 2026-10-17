@@ -160,52 +160,31 @@ class DuplicateMemberScanner {
 
     let value = '';
     while (this.position < this.text.length) {
-      const character = this.text[this.position]!;
-      this.position += 1;
-      if (character === '"') return value;
-      if ((character.codePointAt(0) ?? 0) < 0x20) return null;
-
-      if (character !== '\\') {
-        if (capture) value += character;
-        continue;
-      }
-
-      const escape = this.text[this.position];
-      this.position += 1;
-      switch (escape) {
-        case '"':
-        case '\\':
-        case '/':
-          if (capture) value += escape;
-          break;
-        case 'b':
-          if (capture) value += '\b';
-          break;
-        case 'f':
-          if (capture) value += '\f';
-          break;
-        case 'n':
-          if (capture) value += '\n';
-          break;
-        case 'r':
-          if (capture) value += '\r';
-          break;
-        case 't':
-          if (capture) value += '\t';
-          break;
-        case 'u': {
-          const hexadecimal = this.text.slice(this.position, this.position + 4);
-          if (!/^[0-9a-fA-F]{4}$/.test(hexadecimal)) return null;
-          if (capture) value += String.fromCodePoint(Number.parseInt(hexadecimal, 16));
-          this.position += 4;
-          break;
-        }
-        default:
-          return null;
-      }
+      if (this.consume('"')) return value;
+      const character = this.readStringCharacter();
+      if (character === null) return null;
+      if (capture) value += character;
     }
 
     return null;
+  }
+
+  private readStringCharacter(): string | null {
+    const character = this.text[this.position++]!;
+    if ((character.codePointAt(0) ?? 0) < 0x20) return null;
+    return character === '\\' ? this.readEscape() : character;
+  }
+
+  private readEscape(): string | null {
+    const escape = this.text[this.position++];
+    if (escape === 'u') {
+      const hexadecimal = this.text.slice(this.position, this.position + 4);
+      if (!/^[0-9a-fA-F]{4}$/.test(hexadecimal)) return null;
+      this.position += 4;
+      return String.fromCodePoint(Number.parseInt(hexadecimal, 16));
+    }
+    const escapes: Record<string, string> = { '"': '"', '\\': '\\', '/': '/', b: '\b', f: '\f', n: '\n', r: '\r', t: '\t' };
+    return escape !== undefined && Object.hasOwn(escapes, escape) ? escapes[escape] : null;
   }
 
   private readLiteral(literal: string): JsonScanResult {

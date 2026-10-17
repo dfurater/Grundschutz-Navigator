@@ -159,8 +159,8 @@ describe('aggregate backup export bounds', () => {
     value(await store.autosaveDraft(envelope.localId, envelope.savedAt, Array(600_000).fill(null)));
     value(await store.autosaveDraft(other.localId, other.savedAt, Array(600_000).fill(null)));
     rejected(await store.exportBackup(), 'WORKSPACE_BACKUP_LIMIT_EXCEEDED');
-    expect((value(await store.getDraft(envelope.localId))?.source as unknown[]).length).toBe(600_000);
-    expect((value(await store.getDraft(other.localId))?.source as unknown[]).length).toBe(600_000);
+    expect(value(await store.getDraft(envelope.localId))?.source as unknown[]).toHaveLength(600_000);
+    expect(value(await store.getDraft(other.localId))?.source as unknown[]).toHaveLength(600_000);
   });
 });
 it('redacts uncloneable binding inputs before touching persisted rows', async () => {
@@ -173,6 +173,6 @@ it('rejects a generated local ID equal to the imported document root UUID', asyn
   const generate = vi.spyOn(crypto, 'randomUUID').mockReturnValue(rootUuid);
   try {
     rejected(await store.addDocument(verbund.verbundId, document), 'WORKSPACE_DOCUMENT_INVALID');
-    expect(value(await store.listDocuments())).toEqual([envelope]);
+    expect(value(await store.listDocuments())).toMatchObject([{ localId: envelope.localId }]);
   } finally { generate.mockRestore(); }
 });

@@ -28,6 +28,8 @@ export interface WorkspaceEnvelope {
   readonly source: unknown;
 }
 
+export type WorkspaceDocumentSummary = Omit<WorkspaceEnvelope, 'source'>;
+
 export type BindingTarget =
   | { readonly kind: 'local'; readonly localId: LocalId }
   | { readonly kind: 'class-1'; readonly artifactKey: string };

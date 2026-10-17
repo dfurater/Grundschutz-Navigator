@@ -28,4 +28,3 @@ export async function processWorkspaceBackupBytes(bytes: Uint8Array): Promise<Wo
     return { ok: true, value: parsed.source };
   } catch { return rejectWorkspaceBackup('WORKSPACE_BACKUP_INPUT_REJECTED'); }
 }
-
