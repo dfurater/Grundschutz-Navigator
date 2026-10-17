@@ -58,7 +58,7 @@ afterEach(async () => {
   await Promise.all(names.splice(0).map(name => Dexie.delete(name)));
 });
 
-test.each(['request-error', 'synchronous-error'] as const)('rollt nach einem späteren Cursor-Schreibfehler vollständig zurück: %s', async kind => {
+test.each(['request-error', 'synchronous-error', 'continue-error'] as const)('rollt nach einem späteren Cursorfehler vollständig zurück: %s', async kind => {
   const data = fixture();
   const name = await seed(data);
   const before = new Dexie(name);
@@ -66,8 +66,15 @@ test.each(['request-error', 'synchronous-error'] as const)('rollt nach einem sp�
   await before.open();
   const snapshot = await rows(before);
   before.close();
+  const advance = IDBCursor.prototype.continue;
   const update = IDBCursor.prototype.update;
   let writes = 0;
+  vi.spyOn(IDBCursor.prototype, 'continue').mockImplementation(function (this: IDBCursor, key?: IDBValidKey) {
+    if (kind === 'continue-error' && this.source instanceof IDBObjectStore && this.source.name === 'documents' && writes === 1) {
+      throw new Error('PRIVATE_INVALID_VALUE');
+    }
+    return advance.call(this, key);
+  });
   const spy = vi.spyOn(IDBCursor.prototype, 'update').mockImplementation(function (this: IDBCursor, value: unknown) {
     if (this.source instanceof IDBObjectStore && this.source.name === 'documents' && ++writes === 2) {
       if (kind === 'synchronous-error') throw new Error('PRIVATE_INVALID_VALUE');
@@ -78,7 +85,7 @@ test.each(['request-error', 'synchronous-error'] as const)('rollt nach einem sp�
   });
   const db = upgrade(name);
   await expect(db.open()).rejects.toMatchObject({ message: 'WORKSPACE_MIGRATION_INVALID' });
-  expect(writes).toBe(2);
+  expect(writes).toBe(kind === 'continue-error' ? 1 : 2);
   spy.mockRestore();
   db.close();
   const reopened = new Dexie(name);
