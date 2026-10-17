@@ -36,7 +36,7 @@ test('speichert source unverändert und lehnt eine andere Vertrauensklasse ab', 
   const verbund = value(await store.createVerbund('Test'));
   const imported = await document();
   const envelope = value(await store.addDocument(verbund.verbundId, imported));
-  const saved = value(await store.saveDocument(envelope.localId, envelope.savedAt, imported));
+  const saved = value(await store.saveDocument(envelope.localId, envelope.savedAt, null, imported));
   expect(saved.savedAt).not.toBe(envelope.savedAt);
   const valueSource = value(await store.getDocument(envelope.localId))?.source;
   expect(valueSource).toEqual(imported.source);
@@ -64,11 +64,11 @@ test('Save und Ersetzen lehnen Root-UUID gleich localId ab und erhalten den Vorz
   const replacement = await document();
   (replacement.source as { catalog: { uuid: string } }).catalog.uuid = envelope.localId;
   for (const operation of [store.saveDocument.bind(store), store.replaceDocument.bind(store)]) {
-    expect(await operation(envelope.localId, envelope.savedAt, replacement)).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_DOCUMENT_INVALID' } });
+    expect(await operation(envelope.localId, envelope.savedAt, null, replacement)).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_DOCUMENT_INVALID' } });
     expect(value(await store.getDocument(envelope.localId))).toEqual(envelope);
   }
   delete (replacement.source as { catalog: { uuid?: string } }).catalog.uuid;
-  expect(await store.saveDocument(envelope.localId, envelope.savedAt, replacement)).toMatchObject({ ok: false });
+  expect(await store.saveDocument(envelope.localId, envelope.savedAt, null, replacement)).toMatchObject({ ok: false });
   expect(value(await store.getDocument(envelope.localId))).toEqual(envelope);
 });
 
@@ -108,8 +108,8 @@ test('CAS hält den ersten Stand bei konkurrierenden Verbindungen', async () => 
   const second = await open();
   const verbund = value(await first.createVerbund('Test'));
   const envelope = value(await first.addDocument(verbund.verbundId, await document()));
-  const current = value(await first.saveDocument(envelope.localId, envelope.savedAt, await document('FIRST')));
-  expect(await second.saveDocument(envelope.localId, envelope.savedAt, await document('SECOND'))).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_SAVE_CONFLICT' } });
+  const current = value(await first.saveDocument(envelope.localId, envelope.savedAt, null, await document('FIRST')));
+  expect(await second.saveDocument(envelope.localId, envelope.savedAt, null, await document('SECOND'))).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_SAVE_CONFLICT' } });
   expect(value(await second.getDocument(envelope.localId))).toEqual(current);
 });
 
@@ -131,6 +131,23 @@ test('Entwurfs-CAS hält den ersten Autosave bei konkurrierenden Verbindungen', 
   expect(value(await second.getDraft(fresh.localId))).toBeUndefined();
 });
 
+test('Save und Ersetzen verwerfen keinen Entwurf einer anderen Verbindung', async () => {
+  const first = await open();
+  const second = await open();
+  const verbund = value(await first.createVerbund('Draft save'));
+  const imported = await document();
+  const envelope = value(await first.addDocument(verbund.verbundId, imported));
+  const foreign = value(await second.autosaveDraft(envelope.localId, envelope.savedAt, null, { text: 'SECOND' }));
+  // Fehlschlag, wenn der Save ohne Kenntnis des fremden Entwurfs diesen löscht.
+  for (const operation of [first.saveDocument.bind(first), first.replaceDocument.bind(first)]) {
+    expect(await operation(envelope.localId, envelope.savedAt, null, imported)).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_SAVE_CONFLICT' } });
+    expect(value(await first.getDraft(envelope.localId))).toEqual(foreign);
+    expect(value(await first.getDocument(envelope.localId))).toEqual(envelope);
+  }
+  value(await first.saveDocument(envelope.localId, envelope.savedAt, foreign.savedAt, imported));
+  expect(value(await first.getDraft(envelope.localId))).toBeUndefined();
+});
+
 test('Bindungsänderungen schützen ihren Stand vor einem veralteten Save', async () => {
   const first = await open();
   const second = await open();
@@ -139,11 +156,11 @@ test('Bindungsänderungen schützen ihren Stand vor einem veralteten Save', asyn
   const envelope = value(await first.addDocument(verbund.verbundId, imported));
   const binding = { fromLocalId: envelope.localId, pointer: '/catalog/metadata/title', href: 'DOCUMENT_SENTINEL', target: { kind: 'class-1' as const, artifactKey: 'catalog-gspp' } };
   value(await second.setBinding(binding));
-  expect(await first.saveDocument(envelope.localId, envelope.savedAt, imported, [])).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_SAVE_CONFLICT' } });
+  expect(await first.saveDocument(envelope.localId, envelope.savedAt, null, imported, [])).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_SAVE_CONFLICT' } });
   expect(value(await first.listBindings())).toEqual([binding]);
   const loaded = value(await first.getDocument(envelope.localId))!;
   value(await second.removeBinding(envelope.localId, binding.pointer));
-  expect(await first.saveDocument(envelope.localId, loaded.savedAt, imported, [binding])).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_SAVE_CONFLICT' } });
+  expect(await first.saveDocument(envelope.localId, loaded.savedAt, null, imported, [binding])).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_SAVE_CONFLICT' } });
   expect(value(await first.listBindings())).toEqual([]);
 });
 
@@ -211,7 +228,7 @@ test('Quota beim nativen Transaktionsabbruch wird redigiert erkannt und rollt zu
     });
     return request;
   });
-  const rejected = await store.saveDocument(envelope.localId, envelope.savedAt, imported);
+  const rejected = await store.saveDocument(envelope.localId, envelope.savedAt, null, imported);
   put.mockRestore();
   expect(rejected).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_QUOTA_EXCEEDED' } });
   expect(JSON.stringify(rejected)).not.toContain('PRIVATE_QUOTA');
@@ -226,7 +243,7 @@ test('ersetzt Dokumente mit stabiler Identität und erhält beide Bindungsrichtu
   const binding = { fromLocalId: a.localId, pointer: '/catalog/metadata/title', href: 'A', target: { kind: 'local' as const, localId: b.localId } };
   value(await store.setBinding(binding));
   value(await store.setBinding({ fromLocalId: b.localId, pointer: '/catalog/metadata/title', href: 'B', target: { kind: 'local', localId: a.localId } }));
-  const replacement = value(await store.replaceDocument(a.localId, value(await store.getDocument(a.localId))!.savedAt, await document('REPLACED')));
+  const replacement = value(await store.replaceDocument(a.localId, value(await store.getDocument(a.localId))!.savedAt, null, await document('REPLACED')));
   expect(replacement).toMatchObject({ localId: a.localId, verbundId: a.verbundId, source: (await document('REPLACED')).source });
   expect(value(await store.listBindings())).toHaveLength(2);
   const other = value(await store.createVerbund('Other'));
