@@ -65,6 +65,11 @@ export interface WorkspaceBackup {
   readonly workspaceMeta: WorkspaceMeta[];
 }
 
+export type WorkspaceVerbundBackup = Omit<WorkspaceBackup, 'format' | 'workspaceMeta' | 'verbuende'> & {
+  readonly format: 'gspp-workspace-verbund';
+  readonly verbuende: [WorkspaceVerbund];
+};
+
 export type WorkspaceResult<T> =
   | { readonly ok: true; readonly value: T }
   | { readonly ok: false; readonly diagnostic: OscalDiagnostic };

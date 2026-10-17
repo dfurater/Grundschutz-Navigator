@@ -1,5 +1,5 @@
 import { hasRegistryKeyGrammar } from '@/domain/sourceRegistry';
-import { STORAGE_SCHEMA_VERSION, type WorkspaceBackup } from '@/domain/workspaceModel';
+import { STORAGE_SCHEMA_VERSION, type WorkspaceBackup, type WorkspaceVerbundBackup } from '@/domain/workspaceModel';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 function record(value: unknown): value is Record<string, unknown> {
@@ -94,13 +94,23 @@ function validWorkspaceMeta(rows: WorkspaceBackup['workspaceMeta']): boolean {
     && row.id === 'workspace' && row.storageSchemaVersion === STORAGE_SCHEMA_VERSION && times(row));
 }
 
-export function validWorkspaceBackupStructure(value: unknown): value is WorkspaceBackup {
-  if (!fields(value, ['format', 'storageSchemaVersion', 'verbuende', 'documents', 'drafts', 'bindings', 'workspaceMeta'])
-    || value.format !== 'gspp-workspace' || value.storageSchemaVersion !== STORAGE_SCHEMA_VERSION
-    || ![value.verbuende, value.documents, value.drafts, value.bindings, value.workspaceMeta].every(Array.isArray)) return false;
+function validBackupStructure(value: unknown, format: 'gspp-workspace' | 'gspp-workspace-verbund'): boolean {
+  const required = ['format', 'storageSchemaVersion', 'verbuende', 'documents', 'drafts', 'bindings'];
+  if (format === 'gspp-workspace') required.push('workspaceMeta');
+  if (!fields(value, required) || value.format !== format || value.storageSchemaVersion !== STORAGE_SCHEMA_VERSION
+    || ![value.verbuende, value.documents, value.drafts, value.bindings].every(Array.isArray)) return false;
   const backup = value as unknown as WorkspaceBackup;
+  if (format === 'gspp-workspace' && (!Array.isArray(backup.workspaceMeta) || !validWorkspaceMeta(backup.workspaceMeta))) return false;
+  if (format === 'gspp-workspace-verbund' && backup.verbuende.length !== 1) return false;
   const verbuende = new Set<string>();
   const documents = new Map<string, string>();
   return collectVerbuende(backup.verbuende, verbuende) && collectDocuments(backup.documents, verbuende, documents)
-    && validDrafts(backup.drafts, documents) && validBindings(backup.bindings, documents) && validWorkspaceMeta(backup.workspaceMeta);
+    && validDrafts(backup.drafts, documents) && validBindings(backup.bindings, documents);
+}
+
+export function validWorkspaceBackupStructure(value: unknown): value is WorkspaceBackup {
+  return validBackupStructure(value, 'gspp-workspace');
+}
+export function validVerbundBackupStructure(value: unknown): value is WorkspaceVerbundBackup {
+  return validBackupStructure(value, 'gspp-workspace-verbund');
 }

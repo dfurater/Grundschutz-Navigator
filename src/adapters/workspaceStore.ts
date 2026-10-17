@@ -9,10 +9,10 @@ import {
   type WorkspaceResult, type WorkspaceVerbund,
 } from '@/domain/workspaceModel';
 import { snapshotDocument, assertState, pointerValue } from '@/adapters/workspaceDocumentAdmission';
-import { parseWorkspaceBackup } from '@/adapters/workspaceBackup';
+import { parseWorkspaceBackup, parseVerbundBackup } from '@/adapters/workspaceBackup';
 import { CLASS_2_IMPORT_LIMITS } from '@/domain/oscalImportContract';
 import { serializeWorkspaceJson } from '@/domain/workspaceJson';
-import { exportWorkspaceBackupSnapshot, restoreWorkspaceBackupSnapshot } from '@/adapters/workspaceBackupStorage';
+import { exportWorkspaceBackupSnapshot, restoreWorkspaceBackupSnapshot, exportVerbundBackupSnapshot, restoreVerbundBackupSnapshot } from '@/adapters/workspaceBackupStorage';
 import { StorageFailure, failure, reject, timestamp } from '@/adapters/workspaceStorageFailure';
 
 export const WORKSPACE_DATABASE_NAME = 'gspp-workspace';
@@ -253,8 +253,9 @@ export class WorkspaceStore {
     });
   }
 
-  exportBackup(): Promise<WorkspaceResult<string>> {
-    return this.read(this.db.tables, () => exportWorkspaceBackupSnapshot(this.db));
+  exportBackup(): Promise<WorkspaceResult<string>> { return this.read(this.db.tables, () => exportWorkspaceBackupSnapshot(this.db)); }
+  exportVerbundBackup(verbundId: VerbundId): Promise<WorkspaceResult<string>> {
+    return this.read(this.db.tables, () => exportVerbundBackupSnapshot(this.db, verbundId));
   }
 
   async restoreBackup(bytes: Uint8Array, confirmation: 'replace-workspace'): Promise<WorkspaceResult<void>> {
@@ -262,6 +263,12 @@ export class WorkspaceStore {
     const parsed = await parseWorkspaceBackup(bytes);
     if (!parsed.ok) return parsed;
     return this.write(() => restoreWorkspaceBackupSnapshot(this.db, parsed.value), false);
+  }
+  async restoreVerbundBackup(bytes: Uint8Array, confirmation: 'replace-verbund'): Promise<WorkspaceResult<void>> {
+    if (confirmation !== 'replace-verbund') return failure(new StorageFailure('WORKSPACE_CONFIRMATION_REQUIRED'));
+    const parsed = await parseVerbundBackup(bytes);
+    if (!parsed.ok) return parsed;
+    return this.write(() => restoreVerbundBackupSnapshot(this.db, parsed.value));
   }
 
   async estimate(): Promise<WorkspaceResult<StorageEstimate | undefined>> {

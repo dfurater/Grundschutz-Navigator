@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { afterEach, expect, it, vi } from 'vitest';
-import { parseWorkspaceBackup } from './workspaceBackup';
+import { parseWorkspaceBackup, parseVerbundBackup } from './workspaceBackup';
 import { WORKSPACE_BACKUP_WORKER_TIMEOUT_MS } from './workspaceBackupContract';
 import { WORKSPACE_BACKUP_MAX_BYTES } from '@/domain/class2ImportLimits.mjs';
 const fixture = { format: 'gspp-workspace', storageSchemaVersion: 1, verbuende: [], documents: [], drafts: [], bindings: [], workspaceMeta: [{ id: 'workspace', storageSchemaVersion: 1, createdAt: '2026-10-16T12:00:00.000Z', savedAt: '2026-10-16T12:00:00.000Z' }] };
@@ -59,4 +59,22 @@ it('rejects oversized input before creating a worker and unavailable workers', a
   vi.stubGlobal('Worker', undefined);
   expect(await parseWorkspaceBackup(new Uint8Array(WORKSPACE_BACKUP_MAX_BYTES + 1))).toMatchObject({ ok: false });
   expect(await parseWorkspaceBackup(new Uint8Array())).toMatchObject({ ok: false });
+});
+it('tags verbund requests and rejects workspace frames on that restore path', async () => {
+  vi.stubGlobal('Worker', FakeWorker);
+  vi.stubGlobal('location', { origin: 'https://example.invalid' });
+  const result = parseVerbundBackup(new Uint8Array([123, 125]));
+  const worker = FakeWorker.instances.at(-1)!;
+  expect(worker.postMessage).toHaveBeenCalledWith({ scope: 'verbund', buffer: expect.any(ArrayBuffer) }, [expect.any(ArrayBuffer)]);
+  worker.onmessage!({ data: { ok: true, value: fixture }, origin: '' });
+  expect(await result).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_BACKUP_WORKER_FAILURE' } });
+});
+it('adopts only the closed verbund form from the dedicated worker', async () => {
+  vi.stubGlobal('Worker', FakeWorker);
+  vi.stubGlobal('location', { origin: 'https://example.invalid' });
+  const now = '2026-10-17T12:00:00.000Z';
+  const backup = { format: 'gspp-workspace-verbund', storageSchemaVersion: 1, verbuende: [{ verbundId: crypto.randomUUID(), name: 'Synthetic', createdAt: now, savedAt: now }], documents: [], drafts: [], bindings: [] };
+  const result = parseVerbundBackup(new Uint8Array([123, 125]));
+  FakeWorker.instances.at(-1)!.onmessage!({ data: { ok: true, value: backup }, origin: '' });
+  expect(await result).toEqual({ ok: true, value: backup });
 });
