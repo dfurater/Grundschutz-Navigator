@@ -24,6 +24,7 @@ import {
 import { createRequire } from 'node:module';
 import { assertChecksumsManifest, parseChecksumsManifest } from './scripts/deployChecksums.mjs';
 import { LAZY_ROUTE_MODULES } from './src/app/lazyRouteModules.mjs';
+import { HOME_OG_TITLE } from './src/app/pageTitles';
 
 // jsdom ist als Dev-Dependency vorhanden (Vitest-jsdom-Umgebung), bringt aber
 // keine Typen mit. Der Laufzeit-Import über createRequire hält die
@@ -326,14 +327,14 @@ describe('writeStaticRouteEntries', () => {
     expect(existsSync(join(distDir, 'mehr/index.html'))).toBe(false);
   });
 
-  it('keeps unknown targets on the neutral 404 fallback and supports a normalized BUILD_BASE', () => {
+  it('keeps unknown targets on the 404 fallback and supports a normalized BUILD_BASE', () => {
     const distDir = createTempDistWithIndex();
     process.env.BUILD_BASE = '/preview';
     try {
       writeStaticRouteEntries(distDir, []);
       writeSpaFallbackFile(distDir);
       const fallback = readFileSync(join(distDir, '404.html'), 'utf8');
-      expect(fallback).toContain('property="og:title" content="Grundschutz++ Navigator"');
+      expect(fallback).toContain(`property="og:title" content="${HOME_OG_TITLE}"`);
       expect(fallback).toContain('property="og:url" content="https://dfurater.github.io/preview/"');
       expect(fallback).toBe(readFileSync(join(distDir, 'index.html'), 'utf8'));
       expect(readFileSync(join(distDir, 'suche/index.html'), 'utf8')).toContain('content="https://dfurater.github.io/preview/suche"');
