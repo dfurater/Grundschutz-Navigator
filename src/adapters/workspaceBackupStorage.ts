@@ -18,8 +18,9 @@ function assertCurrentBackup(backup: unknown): void {
   }
 }
 
-/** Date and binary keys get a tagged JSON form; no valid IndexedDB key is a plain object, so the tags stay unambiguous. */
+/** Date, binary and ±Infinity keys get a tagged JSON form; no valid IndexedDB key is a plain object, so the tags stay unambiguous. */
 function jsonKey(key: unknown): unknown {
+  if (key === Infinity || key === -Infinity) return { number: String(key) };
   if (key instanceof Date) return { date: key.toISOString() };
   if (key instanceof ArrayBuffer || ArrayBuffer.isView(key)) {
     const bytes = key instanceof ArrayBuffer ? new Uint8Array(key) : new Uint8Array(key.buffer, key.byteOffset, key.byteLength);
@@ -85,9 +86,14 @@ function serializeBackup(backup: unknown, current = true): string {
 /** Caller owns the single read transaction over all stores. */
 export async function exportWorkspaceBackupSnapshot(db: Dexie): Promise<string> {
   const stores: Record<string, unknown> = {};
-  const meta = await db.table<WorkspaceMeta>('workspaceMeta').get('workspace');
-  if (!meta || !Number.isInteger(meta.storageSchemaVersion) || meta.storageSchemaVersion < 1) reject('WORKSPACE_SCHEMA_INVALID');
-  const current = meta.storageSchemaVersion === STORAGE_SCHEMA_VERSION;
+  // A newer schema may lack `workspaceMeta`; its bundle then carries the database version and stays uninterpreted.
+  let storageSchemaVersion = db.verno;
+  if (db.tables.some(table => table.name === 'workspaceMeta')) {
+    const meta = await db.table<WorkspaceMeta>('workspaceMeta').get('workspace');
+    if (!meta || !Number.isInteger(meta.storageSchemaVersion) || meta.storageSchemaVersion < 1) reject('WORKSPACE_SCHEMA_INVALID');
+    storageSchemaVersion = meta.storageSchemaVersion;
+  } else if (db.verno <= STORAGE_SCHEMA_VERSION) reject('WORKSPACE_SCHEMA_INVALID');
+  const current = storageSchemaVersion === STORAGE_SCHEMA_VERSION;
   const budget: BackupBudget | undefined = current ? { bytes: 0, nodes: frameNodes(db.tables.length) } : undefined;
   const outOfLineKeys: Record<string, unknown[]> = {};
   for (const table of db.tables) {
@@ -98,17 +104,19 @@ export async function exportWorkspaceBackupSnapshot(db: Dexie): Promise<string> 
     stores[table.name] = await readRows(table.toCollection(), budget, keys);
   }
   // Unknown future fields and stores pass through without interpretation.
-  const backup = { format: 'gspp-workspace', storageSchemaVersion: meta.storageSchemaVersion, ...stores, ...(Object.keys(outOfLineKeys).length > 0 && { outOfLineKeys }) };
+  const backup = { format: 'gspp-workspace', storageSchemaVersion, ...stores, ...(Object.keys(outOfLineKeys).length > 0 && { outOfLineKeys }) };
   return serializeBackup(backup, current);
 }
 
 /** Partition only a known schema; unknown future stores remain available through the global export. */
 export async function exportVerbundBackupSnapshot(db: Dexie, verbundId: VerbundId): Promise<string> {
+  // Before the first store access: a newer schema may lack a known store.
+  if (db.verno > STORAGE_SCHEMA_VERSION) reject('WORKSPACE_SCHEMA_NEWER');
   const verbund = await db.table<WorkspaceVerbund>('verbuende').get(verbundId);
   if (!verbund) reject('WORKSPACE_VERBUND_NOT_FOUND');
   const meta = await db.table<WorkspaceMeta>('workspaceMeta').get('workspace');
   if (!meta || !Number.isInteger(meta.storageSchemaVersion) || meta.storageSchemaVersion < 1) reject('WORKSPACE_SCHEMA_INVALID');
-  if (db.verno > STORAGE_SCHEMA_VERSION || meta.storageSchemaVersion > STORAGE_SCHEMA_VERSION) reject('WORKSPACE_SCHEMA_NEWER');
+  if (meta.storageSchemaVersion > STORAGE_SCHEMA_VERSION) reject('WORKSPACE_SCHEMA_NEWER');
   // Frame of this export — root, `format`, `storageSchemaVersion`, four lists — plus the verbund row itself.
   const budget: BackupBudget = {
     bytes: new TextEncoder().encode(serializeWorkspaceJson(verbund)).byteLength,

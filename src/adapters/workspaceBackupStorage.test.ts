@@ -280,17 +280,18 @@ it('exports out-of-line keys of newer stores and rejects stores named like bundl
   next.version(2).stores({ ...WORKSPACE_SCHEMA, futureStore: 'id', outbound: '' }).upgrade(async tx => {
     await tx.table('workspaceMeta').update('workspace', { storageSchemaVersion: 2 });
     await tx.table('futureStore').add({ id: 'inline' });
-    const keys: IndexableTypePart[] = ['key-1', new Date('2026-10-17T00:00:00.000Z'), new Uint8Array([1, 2, 255])];
-    await tx.table('outbound').bulkAdd([{ value: 'TEXT' }, { value: 'DATE' }, { value: 'BINARY' }], keys);
+    const keys: IndexableTypePart[] = ['key-1', new Date('2026-10-17T00:00:00.000Z'), new Uint8Array([1, 2, 255]), Infinity, -Infinity];
+    await tx.table('outbound').bulkAdd([{ value: 'TEXT' }, { value: 'DATE' }, { value: 'BINARY' }, { value: 'MAX' }, { value: 'MIN' }], keys);
     await tx.table('outbound').add({ value: 'ARRAY' }, ['a', new Date(0)]);
+    await tx.table('outbound').add({ value: 'ARRAY_MAX' }, [Infinity]);
   });
   await next.open();
   const parsed = JSON.parse(await next.transaction('r', next.tables, () => exportWorkspaceBackupSnapshot(next)));
   next.close();
-  // IndexedDB orders date before string before binary before array keys.
-  expect(parsed.outbound).toEqual([{ value: 'DATE' }, { value: 'TEXT' }, { value: 'BINARY' }, { value: 'ARRAY' }]);
-  // Fehlschlag, wenn Schlüssel außerhalb der Datensätze fehlen, Datums- oder Binärschlüssel den Export brechen oder ein Store mit Schlüsselpfad Schlüssel erhält.
-  expect(parsed.outOfLineKeys).toEqual({ outbound: [{ date: '2026-10-17T00:00:00.000Z' }, 'key-1', { binary: 'AQL/' }, ['a', { date: '1970-01-01T00:00:00.000Z' }]] });
+  // IndexedDB orders number before date before string before binary before array keys.
+  expect(parsed.outbound).toEqual([{ value: 'MIN' }, { value: 'MAX' }, { value: 'DATE' }, { value: 'TEXT' }, { value: 'BINARY' }, { value: 'ARRAY_MAX' }, { value: 'ARRAY' }]);
+  // Fehlschlag, wenn Schlüssel außerhalb der Datensätze fehlen, Datums-, Binär- oder ±Infinity-Schlüssel den Export brechen oder ein Store mit Schlüsselpfad Schlüssel erhält.
+  expect(parsed.outOfLineKeys).toEqual({ outbound: [{ number: '-Infinity' }, { number: 'Infinity' }, { date: '2026-10-17T00:00:00.000Z' }, 'key-1', { binary: 'AQL/' }, [{ number: 'Infinity' }], ['a', { date: '1970-01-01T00:00:00.000Z' }]] });
   const reserved = new Dexie(WORKSPACE_DATABASE_NAME);
   reserved.version(3).stores({ ...WORKSPACE_SCHEMA, futureStore: 'id', outbound: '', format: 'id' });
   await reserved.open();
