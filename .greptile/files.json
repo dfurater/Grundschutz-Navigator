@@ -73,29 +73,14 @@
       "path": "docs/PROJECT_PROPS.md",
       "description": "Projektsemantik, Namespace-Grenze, Werteräume, Träger und Katalogreferenzpaare",
       "scope": [
-        "src/domain/**",
-        "src/adapters/**",
-        "src/workers/**",
-        "src/state/**",
-        "src/hooks/**",
-        "src/features/**",
-        "src/components/**",
-        "src/app/**"
+        "src/**"
       ]
     },
     {
       "path": "docs/OSCAL_ROUND_TRIP.md",
       "description": "Verlustfreiheit, No-op-Identität, Ausgabeprüfung und Grenzen des Round-trip-Nachweises",
       "scope": [
-        "src/domain/**",
-        "src/adapters/**",
-        "src/workers/**",
-        "src/state/**",
-        "src/hooks/**",
-        "src/features/**",
-        "src/components/**",
-        "src/app/**",
-        "src/test/**"
+        "src/**"
       ]
     }
   ]
