@@ -65,6 +65,17 @@ describe('countObjectGraphNodesCapped — Knotenzählung mit Abbruch am Budget',
     expect(countObjectGraphNodesCapped(children, 3)).toBe(4);
   });
 
+  it('begrenzt den Hilfsstapel am Restbudget und lässt tiefere Ebenen unberührt', () => {
+    const grandchild = Array.from({ length: 500 }, () => null);
+    Object.defineProperty(grandchild, Symbol.iterator, { value: () => { throw new Error('Enkel durchlaufen'); } });
+    const child = [ ...Array.from({ length: 500 }, () => null), grandchild ];
+    const root = [ ...Array.from({ length: 500 }, () => null), child ];
+
+    // Fehlschlag, wenn der Abbruch die schon abgelegten Stapel-Einträge ignoriert:
+    // Dann steigt die Zählung in den Enkel ab und läuft über dessen Werfer.
+    expect(countObjectGraphNodesCapped(root, 1000)).toBe(1001);
+  });
+
   it('zählt genau eine Million Knoten vollständig', () => {
     const source = { values: Array.from({ length: CLASS_2_IMPORT_LIMITS.maxNodes - 2 }, () => null) };
 
