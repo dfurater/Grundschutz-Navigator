@@ -1,6 +1,6 @@
 // @vitest-environment node
 import 'fake-indexeddb/auto';
-import Dexie from 'dexie';
+import Dexie, { type IndexableTypePart } from 'dexie';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 vi.mock('@/adapters/oscalImportGate', async () => {
   const { processClass2OscalBytes } = await import('@/domain/oscalClass2Import');
@@ -159,7 +159,9 @@ it('exports out-of-line keys of newer stores and rejects stores named like bundl
   next.version(2).stores({ ...WORKSPACE_SCHEMA, futureStore: 'id', outbound: '' }).upgrade(async tx => {
     await tx.table('workspaceMeta').update('workspace', { storageSchemaVersion: 2 });
     await tx.table('futureStore').add({ id: 'inline' });
-    await tx.table('outbound').bulkAdd([{ value: 'TEXT' }, { value: 'DATE' }, { value: 'BINARY' }, { value: 'ARRAY' }], ['key-1', new Date('2026-10-17T00:00:00.000Z'), new Uint8Array([1, 2, 255]), ['a', new Date(0)]]);
+    const keys: IndexableTypePart[] = ['key-1', new Date('2026-10-17T00:00:00.000Z'), new Uint8Array([1, 2, 255])];
+    await tx.table('outbound').bulkAdd([{ value: 'TEXT' }, { value: 'DATE' }, { value: 'BINARY' }], keys);
+    await tx.table('outbound').add({ value: 'ARRAY' }, ['a', new Date(0)]);
   });
   await next.open();
   const parsed = JSON.parse(await next.transaction('r', next.tables, () => exportWorkspaceBackupSnapshot(next)));
