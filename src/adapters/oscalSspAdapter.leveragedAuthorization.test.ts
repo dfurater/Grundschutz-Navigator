@@ -9,16 +9,19 @@ import { describe, expect, it } from 'vitest';
 import { deriveSystemSecurityPlan, SSP_ADAPTER_DIAGNOSTIC_CODES } from './oscalSspAdapter';
 import type { SystemSecurityPlan } from './oscalSspAdapter';
 import type { OscalDocumentContext } from '@/domain/models';
-import { makeFullSsp, SSP_FIXTURE_IDS, withSspBody } from '@/test/fixtures/systemSecurityPlans';
+import { makeFullSsp, withSspBody } from '@/test/fixtures/systemSecurityPlans';
 
 const context: OscalDocumentContext = { trustClass: 'class-2-local-user' };
 const authorizationPath = '/system-security-plan/system-implementation/leveraged-authorizations/0';
 
-function deriveWithPartyUuid(partyUuid: string): SystemSecurityPlan {
+function deriveWithPartyUuid(partyUuid: string, additionalParty?: string): SystemSecurityPlan {
   const document = withSspBody(makeFullSsp(), (body) => {
+    if (additionalParty !== undefined) {
+      body.metadata.parties!.push({ uuid: additionalParty, type: 'organization', name: 'Geleaste Organisation' });
+    }
     body['system-implementation']['leveraged-authorizations']![0]['party-uuid'] = partyUuid;
   });
-  return deriveSystemSecurityPlan(document['system-security-plan'], context);
+  return deriveSystemSecurityPlan(document['system-security-plan'], context, undefined);
 }
 
 describe('party-uuid an leveraged-authorizations', () => {
@@ -32,9 +35,11 @@ describe('party-uuid an leveraged-authorizations', () => {
   });
 
   it('löst die party-uuid unabhängig von der Schreibweise auf und behält den gelesenen Wert', () => {
-    const plan = deriveWithPartyUuid(SSP_FIXTURE_IDS.party.toUpperCase());
+    const partyUuid = '0a1b2c3d-4e5f-4a6b-8c7d-0e1f2a3b4c5d';
+    const plan = deriveWithPartyUuid(partyUuid.toUpperCase(), partyUuid);
 
+    expect(partyUuid.toUpperCase()).not.toBe(partyUuid);
     expect(plan.diagnostics).toEqual([]);
-    expect(plan.systemImplementation?.leveragedAuthorizations[0]?.partyUuid).toBe(SSP_FIXTURE_IDS.party.toUpperCase());
+    expect(plan.systemImplementation?.leveragedAuthorizations[0]?.partyUuid).toBe(partyUuid.toUpperCase());
   });
 });
