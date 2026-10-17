@@ -4,8 +4,20 @@ import Dexie from 'dexie';
 import { expect, it } from 'vitest';
 import { migrateWorkspaceStorage } from './workspaceMigration';
 import { WORKSPACE_SCHEMA } from './workspaceStore';
+import { createWorkspaceStructureValidator } from './workspaceBackupStructure';
 
 await import('@/test/browser/workspaceMigration.browser.test');
+
+it('requires exactly one valid metadata row during incremental validation', () => {
+  const validate = createWorkspaceStructureValidator();
+  const metadata = { id: 'workspace' as const, storageSchemaVersion: 1, createdAt: '2026-10-16T12:00:00.000Z', savedAt: '2026-10-16T12:00:00.000Z' };
+  expect(validate.hasWorkspaceMeta).toBe(false);
+  expect(validate.workspaceMeta({ ...metadata, storageSchemaVersion: 9 })).toBe(false);
+  expect(validate.hasWorkspaceMeta).toBe(false);
+  expect(validate.workspaceMeta(metadata)).toBe(true);
+  expect(validate.hasWorkspaceMeta).toBe(true);
+  expect(validate.workspaceMeta(metadata)).toBe(false);
+});
 
 it.each(['added', 'removed', 'renamed'] as const)('rolls back an upgrade with a %s store', async change => {
   const name = `migration-stores-${crypto.randomUUID()}`;

@@ -281,7 +281,8 @@ type RawOscalRootBodyFor<K extends OscalRootKey> =
     : K extends 'component-definition' ? RawOscalComponentDefinition
       : K extends 'profile' ? RawOscalProfile
         : K extends 'mapping-collection' ? RawOscalMappingCollection
-          : RawOscalRootBody;
+          : K extends 'system-security-plan' ? RawOscalSystemSecurityPlan
+            : RawOscalRootBody;
 
 /** Genau ein Root-Key plus die zulässige Schema-Direktive. */
 type RawOscalDocumentFor<K extends OscalRootKey> =
