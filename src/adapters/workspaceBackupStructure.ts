@@ -32,11 +32,16 @@ function validDerivedFrom(value: unknown): boolean {
     && /^[a-f0-9]{40}$/.test(value.snapshotCommit);
 }
 
+/** Ein mitgeführtes `backupSavedAt` — der `savedAt`-Wert eines eingelesenen Bündels — muss ein Zeitstempel sein. */
+function validBackupSavedAt(value: unknown): boolean {
+  return value === undefined || timestamp(value);
+}
+
 function validDocumentFields(row: unknown): row is Record<string, unknown> {
-  return fields(row, ['localId', 'verbundId', 'storageSchemaVersion', 'rootType', 'oscalVersion', 'trustClass', 'documentState', 'createdAt', 'savedAt', 'source'], ['derivedFrom'])
+  return fields(row, ['localId', 'verbundId', 'storageSchemaVersion', 'rootType', 'oscalVersion', 'trustClass', 'documentState', 'createdAt', 'savedAt', 'source'], ['derivedFrom', 'backupSavedAt'])
     && uuid(row.localId) && uuid(row.verbundId) && row.storageSchemaVersion === STORAGE_SCHEMA_VERSION
     && row.trustClass === 'class-2-local-user' && ['imported', 'draft', 'export-ready'].includes(row.documentState as string)
-    && times(row) && validDerivedFrom(row.derivedFrom);
+    && times(row) && validBackupSavedAt(row.backupSavedAt) && validDerivedFrom(row.derivedFrom);
 }
 
 function validDocumentRoot(row: Record<string, unknown>): boolean {
@@ -56,8 +61,8 @@ function collectDocuments(rows: WorkspaceBackup['documents'], verbuende: Set<str
 function validDrafts(rows: WorkspaceBackup['drafts'], documents: Map<string, string>): boolean {
   const drafts = new Set<string>();
   for (const row of rows) {
-    if (!fields(row, ['localId', 'savedAt', 'source']) || !uuid(row.localId) || !documents.has(row.localId)
-      || drafts.has(row.localId) || !timestamp(row.savedAt)) return false;
+    if (!fields(row, ['localId', 'savedAt', 'source'], ['backupSavedAt']) || !uuid(row.localId) || !documents.has(row.localId)
+      || drafts.has(row.localId) || !timestamp(row.savedAt) || !validBackupSavedAt(row.backupSavedAt)) return false;
     drafts.add(row.localId);
   }
   return true;

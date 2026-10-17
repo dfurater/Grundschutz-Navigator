@@ -31,10 +31,12 @@ export interface WorkspaceEnvelope {
   readonly derivedFrom?: { readonly artifactKey: string; readonly contentSha256: string; readonly snapshotCommit: string };
   readonly createdAt: string;
   readonly savedAt: string;
+  /** Der `savedAt`-Wert aus einem wiederhergestellten Bündel; beide Bündel-Exporte geben ihn wieder als `savedAt` aus, ein echter Schreibvorgang führt ihn nicht mit. */
+  readonly backupSavedAt?: string;
   readonly source: unknown;
 }
 
-export type WorkspaceDocumentSummary = Omit<WorkspaceEnvelope, 'source'>;
+export type WorkspaceDocumentSummary = Omit<WorkspaceEnvelope, 'source' | 'backupSavedAt'>;
 
 export type BindingTarget =
   | { readonly kind: 'local'; readonly localId: LocalId }
@@ -50,6 +52,8 @@ export interface WorkspaceBinding {
 export interface WorkspaceDraft {
   readonly localId: LocalId;
   readonly savedAt: string;
+  /** Der `savedAt`-Wert aus einem wiederhergestellten Bündel; beide Bündel-Exporte geben ihn wieder als `savedAt` aus, ein echter Schreibvorgang führt ihn nicht mit. */
+  readonly backupSavedAt?: string;
   readonly source: unknown;
 }
 
