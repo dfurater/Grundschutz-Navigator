@@ -143,20 +143,22 @@ export class WorkspaceStore {
     } catch (error) { return failure(error); }
   }
 
-  private async current(localId: LocalId, expectedSavedAt?: string): Promise<WorkspaceEnvelope> {
+  private async current(localId: LocalId, expectedSavedAt?: string, expectedDraftSavedAt?: string | null): Promise<WorkspaceEnvelope> {
     const current = await this.documents.get(localId);
     if (!current) reject('WORKSPACE_DOCUMENT_NOT_FOUND');
     if (expectedSavedAt !== undefined && current.savedAt !== expectedSavedAt) reject('WORKSPACE_SAVE_CONFLICT');
+    // null: no stored draft expected. Autosave leaves documents.savedAt unchanged, so the draft needs its own check.
+    if (expectedDraftSavedAt !== undefined && ((await this.drafts.get(localId))?.savedAt ?? null) !== expectedDraftSavedAt) reject('WORKSPACE_SAVE_CONFLICT');
     return current;
   }
 
-  async saveDocument(localId: LocalId, expectedSavedAt: string, input: Class2OscalImportedDocument, changedBindings?: readonly WorkspaceBinding[], state?: DocumentState): Promise<WorkspaceResult<WorkspaceEnvelope>> {
+  async saveDocument(localId: LocalId, expectedSavedAt: string, expectedDraftSavedAt: string | null, input: Class2OscalImportedDocument, changedBindings?: readonly WorkspaceBinding[], state?: DocumentState): Promise<WorkspaceResult<WorkspaceEnvelope>> {
     try {
       const bindingSnapshot = changedBindings === undefined ? undefined : structuredClone(changedBindings);
       if (state !== undefined) assertState(state);
       const document = await snapshotDocument(input);
       return this.write(async () => {
-        const current = await this.current(localId, expectedSavedAt);
+        const current = await this.current(localId, expectedSavedAt, expectedDraftSavedAt);
         if ((document.source as Record<string, { uuid?: string }>)[document.rootType]?.uuid === localId) reject('WORKSPACE_DOCUMENT_INVALID');
         const updated: WorkspaceEnvelope = { ...current, source: document.source, rootType: document.rootType, oscalVersion: document.oscalVersion, savedAt: timestamp(current.savedAt), documentState: state ?? current.documentState };
         await this.documents.put(updated);
@@ -174,8 +176,8 @@ export class WorkspaceStore {
     } catch (error) { return failure(error); }
   }
 
-  replaceDocument(localId: LocalId, expectedSavedAt: string, input: Class2OscalImportedDocument): Promise<WorkspaceResult<WorkspaceEnvelope>> {
-    return this.saveDocument(localId, expectedSavedAt, input);
+  replaceDocument(localId: LocalId, expectedSavedAt: string, expectedDraftSavedAt: string | null, input: Class2OscalImportedDocument): Promise<WorkspaceResult<WorkspaceEnvelope>> {
+    return this.saveDocument(localId, expectedSavedAt, expectedDraftSavedAt, input);
   }
 
   async autosaveDraft(localId: LocalId, expectedSavedAt: string, expectedDraftSavedAt: string | null, source: unknown): Promise<WorkspaceResult<WorkspaceDraft>> {
@@ -184,10 +186,8 @@ export class WorkspaceStore {
       if (new TextEncoder().encode(serializeWorkspaceJson(source)).byteLength > CLASS_2_IMPORT_LIMITS.maxBytes) reject('WORKSPACE_DRAFT_INVALID');
       const snapshot = structuredClone(source);
       return this.write(async () => {
-        await this.current(localId, expectedSavedAt);
-        const previous = await this.drafts.get(localId);
-        if ((previous?.savedAt ?? null) !== expectedDraftSavedAt) reject('WORKSPACE_SAVE_CONFLICT'); // null: no stored draft expected
-        const draft = { localId, source: snapshot, savedAt: timestamp(previous?.savedAt) };
+        await this.current(localId, expectedSavedAt, expectedDraftSavedAt);
+        const draft = { localId, source: snapshot, savedAt: timestamp(expectedDraftSavedAt ?? undefined) };
         await this.drafts.put(draft);
         return draft;
       });

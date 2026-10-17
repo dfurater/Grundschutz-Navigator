@@ -77,7 +77,7 @@ describe('storage boundary failures', () => {
   it('reports missing verbund and document references', async () => {
     rejected(await store.renameVerbund('missing' as VerbundId, 'Name'), 'WORKSPACE_VERBUND_NOT_FOUND');
     rejected(await store.addDocument('missing' as VerbundId, document), 'WORKSPACE_VERBUND_NOT_FOUND');
-    rejected(await store.saveDocument('missing' as LocalId, envelope.savedAt, document), 'WORKSPACE_DOCUMENT_NOT_FOUND');
+    rejected(await store.saveDocument('missing' as LocalId, envelope.savedAt, null, document), 'WORKSPACE_DOCUMENT_NOT_FOUND');
     rejected(await store.autosaveDraft('missing' as LocalId, envelope.savedAt, null, {}), 'WORKSPACE_DOCUMENT_NOT_FOUND');
     rejected(await store.removeBinding('missing' as LocalId, '/catalog'), 'WORKSPACE_DOCUMENT_NOT_FOUND');
   });
@@ -113,12 +113,12 @@ describe('document and draft admission', () => {
   });
   it('rejects invalid document states on add and save', async () => {
     rejected(await store.addDocument(verbund.verbundId, document, 'unknown' as DocumentState), 'WORKSPACE_DOCUMENT_INVALID');
-    rejected(await store.saveDocument(envelope.localId, envelope.savedAt, document, undefined, 'unknown' as DocumentState), 'WORKSPACE_DOCUMENT_INVALID');
+    rejected(await store.saveDocument(envelope.localId, envelope.savedAt, null, document, undefined, 'unknown' as DocumentState), 'WORKSPACE_DOCUMENT_INVALID');
   });
   it('rejects sources whose root UUID collides with the local storage key', async () => {
     const source = structuredClone(document.source) as { catalog: { uuid: string } };
     source.catalog.uuid = envelope.localId;
-    rejected(await store.saveDocument(envelope.localId, envelope.savedAt, { ...document, source }), 'WORKSPACE_DOCUMENT_INVALID');
+    rejected(await store.saveDocument(envelope.localId, envelope.savedAt, null, { ...document, source }), 'WORKSPACE_DOCUMENT_INVALID');
   });
   it('rejects autosaves against a stale or absent draft state without replacing the stored draft', async () => {
     rejected(await store.autosaveDraft(envelope.localId, envelope.savedAt, '2026-10-17T00:00:00.000Z', {}), 'WORKSPACE_SAVE_CONFLICT');
@@ -154,7 +154,7 @@ describe('explicit binding admission', () => {
     rejected(await store.setBinding({ ...binding(), target: { kind: 'local', localId: 'missing' as LocalId } }), 'WORKSPACE_DOCUMENT_NOT_FOUND');
   });
   it('rejects outgoing replacements belonging to another document and rolls back save', async () => {
-    rejected(await store.saveDocument(envelope.localId, envelope.savedAt, document, [{ ...binding(), fromLocalId: 'foreign' as LocalId }]), 'WORKSPACE_BINDING_INVALID');
+    rejected(await store.saveDocument(envelope.localId, envelope.savedAt, null, document, [{ ...binding(), fromLocalId: 'foreign' as LocalId }]), 'WORKSPACE_BINDING_INVALID');
     expect(value(await store.getDocument(envelope.localId))).toEqual(envelope);
   });
 });

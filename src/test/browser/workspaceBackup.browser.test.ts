@@ -75,7 +75,7 @@ it.each(['workspace', 'verbund'] as const)('retains a binding after its source h
   const source = makeSchemaValidOscalDocument('catalog', '1.1.3');
   (source.catalog as { metadata: { title: string } }).metadata.title = 'Changed source';
   const imported = valueImported(await importClass2OscalDocument(new TextEncoder().encode(JSON.stringify(source)), { trustClass: 'class-2-local-user' }));
-  value(await store.replaceDocument(envelope.localId, current.savedAt, imported));
+  value(await store.replaceDocument(envelope.localId, current.savedAt, null, imported));
   const backup = value(await (scope === 'workspace' ? store.exportBackup() : store.exportVerbundBackup(verbund.verbundId)));
   value(await (scope === 'workspace' ? store.restoreBackup(new TextEncoder().encode(backup), 'replace-workspace') : store.restoreVerbundBackup(new TextEncoder().encode(backup), 'replace-verbund')));
   expect(value(await store.listBindings())).toEqual([binding]);
