@@ -110,7 +110,7 @@ describe('syncOscalContentOracle', () => {
 
   it.each([
     ['no file pins', () => { manifest.files = []; }, /rev5-catalog\.json/],
-    ['a missing last pin', () => { manifest.files.pop(); }, /privacy-resolved\.json/],
+    ['a missing last pin', () => { manifest.files.pop(); }, /ssp-leveraging-example\.json/],
     ['an additional valid pin', () => { manifest.files.push({ ...manifest.files[0], fileName: 'extra.json' }); }, /extra\.json/],
     ['a duplicate pin', () => { manifest.files.push({ ...manifest.files.at(-1)! }); }, /Manifest/],
   ])('rejects a same-pin manifest with %s before fetching', async (_case, mutate, message) => {
@@ -164,7 +164,7 @@ describe('syncOscalContentOracle', () => {
     const targetDirectory = join(directory, 'new-target');
     const result = await syncOscalContentOracle({ fetchImpl: download(bodies), targetDirectory });
     expect(result.files).toEqual(manifest.files);
-    expect(await readdir(targetDirectory)).toHaveLength(10);
+    expect(await readdir(targetDirectory)).toHaveLength(manifest.files.length + 1);
   });
 
   it('establishes a new manifest for a deliberately changed commit pin', async () => {
