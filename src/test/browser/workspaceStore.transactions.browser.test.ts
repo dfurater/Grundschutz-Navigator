@@ -24,7 +24,7 @@ test('abgebrochener Save rollt documents, Bindungen und Entwurf gemeinsam zurüc
   const verbund = value(await store.createVerbund('Rollback'));
   const imported = await document();
   const envelope = value(await store.addDocument(verbund.verbundId, imported));
-  value(await store.autosaveDraft(envelope.localId, envelope.savedAt, { text: 'DRAFT_SENTINEL' }));
+  value(await store.autosaveDraft(envelope.localId, envelope.savedAt, null, { text: 'DRAFT_SENTINEL' }));
   const binding = { fromLocalId: envelope.localId, pointer: '/catalog/metadata/title', href: 'DOCUMENT_SENTINEL', target: { kind: 'class-1' as const, artifactKey: 'catalog-gspp' } };
   value(await store.setBinding(binding));
   const before = value(await store.exportBackup());
@@ -80,7 +80,7 @@ test('Backup stellt zwei Verbünde mit Dokumenten, Entwürfen und Bindungen verl
   const b = value(await store.createVerbund('Two'));
   const one = value(await store.addDocument(a.verbundId, await document()));
   value(await store.addDocument(b.verbundId, await document('OTHER')));
-  value(await store.autosaveDraft(one.localId, one.savedAt, { incomplete: 'DRAFT' }));
+  value(await store.autosaveDraft(one.localId, one.savedAt, null, { incomplete: 'DRAFT' }));
   value(await store.setBinding({ fromLocalId: one.localId, pointer: '/catalog/metadata/title', href: 'DOCUMENT_SENTINEL', target: { kind: 'class-1', artifactKey: 'catalog-gspp' } }));
   const before = value(await store.exportBackup());
   value(await store.deleteVerbund(a.verbundId));
@@ -118,7 +118,7 @@ test('jede Speicheroperation verwendet genau eine native Transaktion', async () 
   const a = await one(() => store.createVerbund('One'));
   await one(() => store.renameVerbund(a.verbundId, 'Renamed'));
   const doc = await one(() => store.addDocument(a.verbundId, imported));
-  await one(() => store.autosaveDraft(doc.localId, doc.savedAt, { incomplete: true }));
+  await one(() => store.autosaveDraft(doc.localId, doc.savedAt, null, { incomplete: true }));
   const binding = { fromLocalId: doc.localId, pointer: '/catalog/metadata/title', href: 'DOCUMENT_SENTINEL', target: { kind: 'class-1' as const, artifactKey: 'catalog-gspp' } };
   await one(() => store.setBinding(binding));
   await one(() => store.removeBinding(doc.localId, binding.pointer));

@@ -88,7 +88,7 @@ test('Backup-Export lehnt einen übergroßen Gesamtbestand ab und speichert ihn 
   const verbund = value(await store.createVerbund('Capacity'));
   for (let index = 0; index < 4; index++) {
     const envelope = value(await store.addDocument(verbund.verbundId, await document()));
-    value(await store.autosaveDraft(envelope.localId, envelope.savedAt, { text: 'x'.repeat(9 * 1024 * 1024) }));
+    value(await store.autosaveDraft(envelope.localId, envelope.savedAt, null, { text: 'x'.repeat(9 * 1024 * 1024) }));
   }
   expect(await store.exportBackup()).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_BACKUP_LIMIT_EXCEEDED' } });
   expect(value(await store.listDocuments())).toHaveLength(4);
@@ -98,8 +98,8 @@ test('Autosave lehnt nicht als JSON erhaltbare Zahlen ohne Datenverlust ab', asy
   const store = await open();
   const verbund = value(await store.createVerbund('Numbers'));
   const envelope = value(await store.addDocument(verbund.verbundId, await document()));
-  const draft = value(await store.autosaveDraft(envelope.localId, envelope.savedAt, { value: 2 }));
-  expect(await store.autosaveDraft(envelope.localId, envelope.savedAt, { value: Infinity })).toMatchObject({ ok: false });
+  const draft = value(await store.autosaveDraft(envelope.localId, envelope.savedAt, null, { value: 2 }));
+  expect(await store.autosaveDraft(envelope.localId, envelope.savedAt, draft.savedAt, { value: Infinity })).toMatchObject({ ok: false });
   expect(value(await store.getDraft(envelope.localId))).toEqual(draft);
 });
 
@@ -111,6 +111,24 @@ test('CAS hält den ersten Stand bei konkurrierenden Verbindungen', async () => 
   const current = value(await first.saveDocument(envelope.localId, envelope.savedAt, await document('FIRST')));
   expect(await second.saveDocument(envelope.localId, envelope.savedAt, await document('SECOND'))).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_SAVE_CONFLICT' } });
   expect(value(await second.getDocument(envelope.localId))).toEqual(current);
+});
+
+test('Entwurfs-CAS hält den ersten Autosave bei konkurrierenden Verbindungen', async () => {
+  const first = await open();
+  const second = await open();
+  const verbund = value(await first.createVerbund('Drafts'));
+  const envelope = value(await first.addDocument(verbund.verbundId, await document()));
+  const read = value(await first.autosaveDraft(envelope.localId, envelope.savedAt, null, { text: 'READ' }));
+  const kept = value(await first.autosaveDraft(envelope.localId, envelope.savedAt, read.savedAt, { text: 'FIRST' }));
+  // Fehlschlag, wenn der zweite Autosave mit dem veralteten Entwurfsstand den ersten ersetzt.
+  expect(await second.autosaveDraft(envelope.localId, envelope.savedAt, read.savedAt, { text: 'SECOND' })).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_SAVE_CONFLICT' } });
+  expect(await second.autosaveDraft(envelope.localId, envelope.savedAt, null, { text: 'SECOND' })).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_SAVE_CONFLICT' } });
+  expect(value(await second.getDraft(envelope.localId))).toEqual(kept);
+  value(await first.deleteDocument(envelope.localId));
+  const fresh = value(await first.addDocument(verbund.verbundId, await document()));
+  // Fehlschlag, wenn ein erwarteter, aber nicht vorhandener Entwurf als Neuanlage durchgeht.
+  expect(await second.autosaveDraft(fresh.localId, fresh.savedAt, kept.savedAt, { text: 'SECOND' })).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_SAVE_CONFLICT' } });
+  expect(value(await second.getDraft(fresh.localId))).toBeUndefined();
 });
 
 test('Bindungsänderungen schützen ihren Stand vor einem veralteten Save', async () => {
@@ -151,7 +169,7 @@ test('Backup erhält negative Null in einem eigenen Dokument und Entwurf', async
   expect(imported.ok).toBe(true);
   if (!imported.ok) return;
   const envelope = value(await store.addDocument(verbund.verbundId, imported.document));
-  value(await store.autosaveDraft(envelope.localId, envelope.savedAt, { value: -0 }));
+  value(await store.autosaveDraft(envelope.localId, envelope.savedAt, null, { value: -0 }));
   const backup = value(await store.exportBackup());
   expect(backup).toContain('"start":-0');
   value(await store.restoreBackup(new TextEncoder().encode(backup), 'replace-workspace'));
@@ -223,7 +241,7 @@ test('Dokument- und Verbundlöschung entfernen beide Richtungen und Entwürfe', 
   const a = value(await store.addDocument(one.verbundId, await document('DELETE_SENTINEL')));
   const b = value(await store.addDocument(one.verbundId, await document('B')));
   const control = value(await store.addDocument(two.verbundId, await document('CONTROL')));
-  value(await store.autosaveDraft(a.localId, a.savedAt, { text: 'DELETE_SENTINEL' }));
+  value(await store.autosaveDraft(a.localId, a.savedAt, null, { text: 'DELETE_SENTINEL' }));
   value(await store.setBinding({ fromLocalId: b.localId, pointer: '/catalog/metadata/title', href: 'B', target: { kind: 'local', localId: a.localId } }));
   value(await store.setBinding({ fromLocalId: a.localId, pointer: '/catalog/metadata/title', href: 'DELETE_SENTINEL', target: { kind: 'local', localId: b.localId } }));
   value(await store.deleteDocument(a.localId));

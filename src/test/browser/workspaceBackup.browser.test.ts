@@ -45,7 +45,7 @@ it.each(['workspace', 'verbund'] as const)('round-trips a schema-valid profile a
 it.each(['workspace', 'verbund'] as const)('round-trips a draft at the full source-depth boundary (%s)', async scope => {
   let source: unknown = null;
   for (let depth = 1; depth < CLASS_2_IMPORT_LIMITS.maxDepth; depth++) source = { child: source };
-  value(await store.autosaveDraft(envelope.localId, envelope.savedAt, source));
+  value(await store.autosaveDraft(envelope.localId, envelope.savedAt, null, source));
   const backup = value(await (scope === 'workspace' ? store.exportBackup() : store.exportVerbundBackup(verbund.verbundId)));
   value(await (scope === 'workspace' ? store.restoreBackup(new TextEncoder().encode(backup), 'replace-workspace') : store.restoreVerbundBackup(new TextEncoder().encode(backup), 'replace-verbund')));
   expect(value(await store.getDraft(envelope.localId))?.source).toEqual(source);

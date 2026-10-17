@@ -78,7 +78,7 @@ describe('storage boundary failures', () => {
     rejected(await store.renameVerbund('missing' as VerbundId, 'Name'), 'WORKSPACE_VERBUND_NOT_FOUND');
     rejected(await store.addDocument('missing' as VerbundId, document), 'WORKSPACE_VERBUND_NOT_FOUND');
     rejected(await store.saveDocument('missing' as LocalId, envelope.savedAt, document), 'WORKSPACE_DOCUMENT_NOT_FOUND');
-    rejected(await store.autosaveDraft('missing' as LocalId, envelope.savedAt, {}), 'WORKSPACE_DOCUMENT_NOT_FOUND');
+    rejected(await store.autosaveDraft('missing' as LocalId, envelope.savedAt, null, {}), 'WORKSPACE_DOCUMENT_NOT_FOUND');
     rejected(await store.removeBinding('missing' as LocalId, '/catalog'), 'WORKSPACE_DOCUMENT_NOT_FOUND');
   });
   it('rejects deleting unknown IDs without touching workspace metadata', async () => {
@@ -120,8 +120,14 @@ describe('document and draft admission', () => {
     source.catalog.uuid = envelope.localId;
     rejected(await store.saveDocument(envelope.localId, envelope.savedAt, { ...document, source }), 'WORKSPACE_DOCUMENT_INVALID');
   });
+  it('rejects autosaves against a stale or absent draft state without replacing the stored draft', async () => {
+    rejected(await store.autosaveDraft(envelope.localId, envelope.savedAt, '2026-10-17T00:00:00.000Z', {}), 'WORKSPACE_SAVE_CONFLICT');
+    const draft = value(await store.autosaveDraft(envelope.localId, envelope.savedAt, null, { text: 'FIRST' }));
+    rejected(await store.autosaveDraft(envelope.localId, envelope.savedAt, null, { text: 'PRIVATE_SENTINEL' }), 'WORKSPACE_SAVE_CONFLICT');
+    expect(value(await store.getDraft(envelope.localId))).toEqual(draft);
+  });
   it.each([{ value: undefined }, { text: 'x'.repeat(CLASS_2_IMPORT_LIMITS.maxBytes) }])('rejects drafts outside graph or source-size bounds %#', async source => {
-    rejected(await store.autosaveDraft(envelope.localId, envelope.savedAt, source), 'WORKSPACE_DRAFT_INVALID');
+    rejected(await store.autosaveDraft(envelope.localId, envelope.savedAt, null, source), 'WORKSPACE_DRAFT_INVALID');
   });
 });
 describe('explicit binding admission', () => {
@@ -163,8 +169,8 @@ describe('aggregate backup export bounds', () => {
 
   it('rejects aggregate node counts without discarding individually bounded drafts', async () => {
     const other = value(await store.addDocument(verbund.verbundId, document));
-    value(await store.autosaveDraft(envelope.localId, envelope.savedAt, Array(600_000).fill(null)));
-    value(await store.autosaveDraft(other.localId, other.savedAt, Array(600_000).fill(null)));
+    value(await store.autosaveDraft(envelope.localId, envelope.savedAt, null, Array(600_000).fill(null)));
+    value(await store.autosaveDraft(other.localId, other.savedAt, null, Array(600_000).fill(null)));
     rejected(await store.exportBackup(), 'WORKSPACE_BACKUP_LIMIT_EXCEEDED');
     expect(value(await store.getDraft(envelope.localId))?.source as unknown[]).toHaveLength(600_000);
     expect(value(await store.getDraft(other.localId))?.source as unknown[]).toHaveLength(600_000);

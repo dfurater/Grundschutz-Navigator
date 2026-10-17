@@ -1,9 +1,5 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from 'vitest';
-vi.mock('@/adapters/oscalImportGate', async () => {
-  const { processClass2OscalBytes } = await import('@/domain/oscalClass2Import');
-  return { importClass2OscalDocument: processClass2OscalBytes };
-});
 import { processWorkspaceBackupBytes as parseWorkspaceBackup } from './workspaceBackupProcessing';
 import { makeSchemaValidOscalDocument } from '@/test/fixtures/oscalSchemaFixtures';
 import type { LocalId, VerbundId, WorkspaceBackup } from '@/domain/workspaceModel';
@@ -52,6 +48,21 @@ it('rejects an aggregate node limit violation in an incomplete draft', async () 
   const backup = backupFixture();
   backup.drafts[0] = { ...backup.drafts[0], source: Array(1_000_001).fill(null) };
   expect(await parseWorkspaceBackup(encode(backup))).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_BACKUP_RESOURCE_REJECTED' } });
+});
+it('validates every document within the calling worker without spawning nested workers', async () => {
+  // Fehlschlag, wenn die Dokumentprüfung je Dokument einen eigenen Worker startet.
+  const spawn = vi.fn(() => { throw new Error('nested worker'); });
+  vi.stubGlobal('Worker', spawn);
+  try {
+    const backup = backupFixture();
+    const second = '33333333-3333-4333-8333-333333333333' as LocalId;
+    backup.documents.push({ ...backup.documents[0], localId: second, source: makeSchemaValidOscalDocument('catalog', '1.1.3') });
+    expect(await parseWorkspaceBackup(encode(backup))).toEqual({ ok: true, value: backup });
+    // Fehlschlag, wenn das zweite Dokument derselben Schemazelle die Klasse-2-Prüfung umgeht.
+    delete (backup.documents[1].source as { catalog: { metadata?: unknown } }).catalog.metadata;
+    expect(await parseWorkspaceBackup(encode(backup))).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_BACKUP_DOCUMENT_REJECTED' } });
+    expect(spawn).not.toHaveBeenCalled();
+  } finally { vi.unstubAllGlobals(); }
 });
 it('rejects cross-verbund bindings', async () => {
   const backup = backupFixture();
