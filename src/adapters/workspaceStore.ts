@@ -28,20 +28,14 @@ export const WORKSPACE_SCHEMA = Object.freeze({
 /** No singleton, cached sources, search index or document-content event payloads. */
 export class WorkspaceStore {
   private readonly db: Dexie;
-  private readonly documents: Table<WorkspaceEnvelope, LocalId>;
-  private readonly verbuende: Table<WorkspaceVerbund, VerbundId>;
-  private readonly drafts: Table<WorkspaceDraft, LocalId>;
-  private readonly bindings: Table<WorkspaceBinding, [LocalId, string]>;
-  private readonly meta: Table<WorkspaceMeta, string>;
+  // Bound on use: a newer schema without one of these stores still opens for the global export.
+  private get documents(): Table<WorkspaceEnvelope, LocalId> { return this.db.table('documents'); }
+  private get verbuende(): Table<WorkspaceVerbund, VerbundId> { return this.db.table('verbuende'); }
+  private get drafts(): Table<WorkspaceDraft, LocalId> { return this.db.table('drafts'); }
+  private get bindings(): Table<WorkspaceBinding, [LocalId, string]> { return this.db.table('bindings'); }
+  private get meta(): Table<WorkspaceMeta, string> { return this.db.table('workspaceMeta'); }
 
-  private constructor(db: Dexie) {
-    this.db = db;
-    this.documents = db.table('documents');
-    this.verbuende = db.table('verbuende');
-    this.drafts = db.table('drafts');
-    this.bindings = db.table('bindings');
-    this.meta = db.table('workspaceMeta');
-  }
+  private constructor(db: Dexie) { this.db = db; }
 
   static async open(): Promise<WorkspaceResult<WorkspaceStore>> {
     let db = new Dexie(WORKSPACE_DATABASE_NAME);
@@ -67,18 +61,22 @@ export class WorkspaceStore {
 
   close(): void { this.db.close(); }
 
-  private async read<T>(tables: Table[], operation: () => Promise<T>): Promise<WorkspaceResult<T>> {
-    try { return { ok: true, value: await this.db.transaction('r', tables, operation) }; }
-    catch (error) { return failure(error); }
+  private async read<T>(stores: readonly string[], operation: () => Promise<T>): Promise<WorkspaceResult<T>> {
+    try {
+      const present = new Set(this.db.tables.map(table => table.name));
+      if (stores.some(store => !present.has(store))) reject(this.db.verno > STORAGE_SCHEMA_VERSION ? 'WORKSPACE_SCHEMA_NEWER' : 'WORKSPACE_SCHEMA_INVALID');
+      return { ok: true, value: await this.db.transaction('r', [...stores], operation) };
+    } catch (error) { return failure(error); }
   }
 
   /** Every savedAt written in one transaction is its stamp; workspaceMeta.savedAt therefore bounds every issued comparison value. */
   private async write<T>(operation: (stamp: string) => Promise<T>, touchMeta = true): Promise<WorkspaceResult<T>> {
     try {
+      if (this.db.verno > STORAGE_SCHEMA_VERSION) reject('WORKSPACE_SCHEMA_NEWER');
       const value = await this.db.transaction('rw', this.db.tables, async () => {
         const meta = await this.meta.get('workspace');
         if (!meta || !Number.isInteger(meta.storageSchemaVersion) || meta.storageSchemaVersion < 1) reject('WORKSPACE_SCHEMA_INVALID');
-        if (this.db.verno > STORAGE_SCHEMA_VERSION || (meta && meta.storageSchemaVersion > STORAGE_SCHEMA_VERSION)) reject('WORKSPACE_SCHEMA_NEWER');
+        if (meta.storageSchemaVersion > STORAGE_SCHEMA_VERSION) reject('WORKSPACE_SCHEMA_NEWER');
         const stamp = timestamp(meta.savedAt);
         const result = await operation(stamp);
         if (touchMeta) await this.meta.put({ ...meta, savedAt: stamp });
@@ -88,9 +86,9 @@ export class WorkspaceStore {
     } catch (error) { return failure(error); }
   }
 
-  listVerbuende(): Promise<WorkspaceResult<WorkspaceVerbund[]>> { return this.read([this.verbuende], () => this.verbuende.toArray()); }
+  listVerbuende(): Promise<WorkspaceResult<WorkspaceVerbund[]>> { return this.read(['verbuende'], () => this.verbuende.toArray()); }
   listDocuments(verbundId?: VerbundId): Promise<WorkspaceResult<WorkspaceDocumentSummary[]>> {
-    return this.read([this.documents], async () => {
+    return this.read(['documents'], async () => {
       const summaries: WorkspaceDocumentSummary[] = [];
       const collection = verbundId === undefined ? this.documents.toCollection() : this.documents.where('verbundId').equals(verbundId);
       await collection.each(row => {
@@ -101,9 +99,9 @@ export class WorkspaceStore {
       return summaries;
     });
   }
-  getDocument(localId: LocalId): Promise<WorkspaceResult<WorkspaceEnvelope | undefined>> { return this.read([this.documents], () => this.documents.get(localId)); }
-  getDraft(localId: LocalId): Promise<WorkspaceResult<WorkspaceDraft | undefined>> { return this.read([this.drafts], () => this.drafts.get(localId)); }
-  listBindings(): Promise<WorkspaceResult<WorkspaceBinding[]>> { return this.read([this.bindings], () => this.bindings.toArray()); }
+  getDocument(localId: LocalId): Promise<WorkspaceResult<WorkspaceEnvelope | undefined>> { return this.read(['documents'], () => this.documents.get(localId)); }
+  getDraft(localId: LocalId): Promise<WorkspaceResult<WorkspaceDraft | undefined>> { return this.read(['drafts'], () => this.drafts.get(localId)); }
+  listBindings(): Promise<WorkspaceResult<WorkspaceBinding[]>> { return this.read(['bindings'], () => this.bindings.toArray()); }
 
   createVerbund(name: string): Promise<WorkspaceResult<WorkspaceVerbund>> {
     return this.write(async stamp => {
@@ -254,9 +252,9 @@ export class WorkspaceStore {
     });
   }
 
-  exportBackup(): Promise<WorkspaceResult<string>> { return this.read(this.db.tables, () => exportWorkspaceBackupSnapshot(this.db)); }
+  exportBackup(): Promise<WorkspaceResult<string>> { return this.read(this.db.tables.map(table => table.name), () => exportWorkspaceBackupSnapshot(this.db)); }
   exportVerbundBackup(verbundId: VerbundId): Promise<WorkspaceResult<string>> {
-    return this.read(this.db.tables, () => exportVerbundBackupSnapshot(this.db, verbundId));
+    return this.read(this.db.tables.map(table => table.name), () => exportVerbundBackupSnapshot(this.db, verbundId));
   }
 
   async restoreBackup(bytes: Uint8Array, confirmation: 'replace-workspace'): Promise<WorkspaceResult<void>> {
