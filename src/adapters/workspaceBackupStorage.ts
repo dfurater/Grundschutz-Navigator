@@ -50,6 +50,11 @@ interface BackupBudget {
   nodes: number;
 }
 
+/** Frame nodes of a bundle: the root, `format`, `storageSchemaVersion` and one array per store. */
+function frameNodes(storeCount: number): number {
+  return 3 + storeCount;
+}
+
 async function readRows<T>(collection: Collection<T>, budget?: BackupBudget, keys?: unknown[]): Promise<T[]> {
   const rows: T[] = [];
   let exceedsLimit = false;
@@ -83,7 +88,7 @@ export async function exportWorkspaceBackupSnapshot(db: Dexie): Promise<string> 
   const meta = await db.table<WorkspaceMeta>('workspaceMeta').get('workspace');
   if (!meta || !Number.isInteger(meta.storageSchemaVersion) || meta.storageSchemaVersion < 1) reject('WORKSPACE_SCHEMA_INVALID');
   const current = meta.storageSchemaVersion === STORAGE_SCHEMA_VERSION;
-  const budget: BackupBudget | undefined = current ? { bytes: 0, nodes: 0 } : undefined;
+  const budget: BackupBudget | undefined = current ? { bytes: 0, nodes: frameNodes(db.tables.length) } : undefined;
   const outOfLineKeys: Record<string, unknown[]> = {};
   for (const table of db.tables) {
     if (BACKUP_FRAME_MEMBERS.has(table.name)) reject('WORKSPACE_SCHEMA_INVALID');
@@ -104,7 +109,11 @@ export async function exportVerbundBackupSnapshot(db: Dexie, verbundId: VerbundI
   const meta = await db.table<WorkspaceMeta>('workspaceMeta').get('workspace');
   if (!meta || !Number.isInteger(meta.storageSchemaVersion) || meta.storageSchemaVersion < 1) reject('WORKSPACE_SCHEMA_INVALID');
   if (db.verno > STORAGE_SCHEMA_VERSION || meta.storageSchemaVersion > STORAGE_SCHEMA_VERSION) reject('WORKSPACE_SCHEMA_NEWER');
-  const budget: BackupBudget = { bytes: new TextEncoder().encode(serializeWorkspaceJson(verbund)).byteLength, nodes: 0 };
+  // Frame of this export — root, `format`, `storageSchemaVersion`, four lists — plus the verbund row itself.
+  const budget: BackupBudget = {
+    bytes: new TextEncoder().encode(serializeWorkspaceJson(verbund)).byteLength,
+    nodes: frameNodes(4) + countObjectGraphNodesCapped(verbund, CLASS_2_IMPORT_LIMITS.maxNodes),
+  };
   const documents = await readRows(db.table<WorkspaceEnvelope>('documents').where('verbundId').equals(verbundId), budget);
   const ids = new Set(documents.map(row => row.localId));
   const drafts = await readRows(db.table<WorkspaceDraft>('drafts').where('localId').anyOf([...ids]), budget);

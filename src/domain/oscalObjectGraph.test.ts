@@ -57,6 +57,14 @@ describe('countObjectGraphNodesCapped — Knotenzählung mit Abbruch am Budget',
     expect(countObjectGraphNodesCapped(source, 51)).toBe(51);
   });
 
+  it('bricht an der bekannten Kinderzahl ab, ohne die Kinder abzulegen', () => {
+    const children = Array.from({ length: 50 }, () => null);
+    Object.defineProperty(children, Symbol.iterator, { value: () => { throw new Error('Kinder durchlaufen'); } });
+
+    // Fehlschlag, wenn der Abbruch die Kinder erst nach dem Durchlaufen und Ablegen bemerkt.
+    expect(countObjectGraphNodesCapped(children, 3)).toBe(4);
+  });
+
   it('zählt genau eine Million Knoten vollständig', () => {
     const source = { values: Array.from({ length: CLASS_2_IMPORT_LIMITS.maxNodes - 2 }, () => null) };
 

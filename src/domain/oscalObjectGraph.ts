@@ -263,7 +263,9 @@ export function enforceClass2ObjectGraphInvariants(source: unknown): OscalDiagno
 /**
  * Zählt die Knoten eines Graphen in der Zählweise von `walkObjectGraph` — jeder
  * Wert zählt, auch Primitive — und bricht nach `maxNodes` gezählten Knoten ab:
- * Der Rückgabewert ist dann `maxNodes + 1`. Budgets erkennen damit eine
+ * Der Rückgabewert ist dann `maxNodes + 1`. Die bekannte Kinderzahl eines
+ * Containers wird geprüft, bevor seine Kinder auf den Stapel gelegt werden, damit
+ * der Abbruch keinen Hilfsstapel in Kindgröße aufbaut. Budgets erkennen damit eine
  * Überschreitung, ohne den Graphen vollständig zu durchlaufen; die autoritative
  * Prüfung bleibt `enforceWorkspaceBackupGraphInvariants()`.
  */
@@ -275,11 +277,10 @@ export function countObjectGraphNodesCapped(value: unknown, maxNodes: number): n
     count += 1;
     if (count > maxNodes) return count;
     if (current === null || typeof current !== 'object') continue;
-    if (Array.isArray(current)) {
-      for (const element of current) pending.push(element);
-      continue;
-    }
-    for (const child of Object.values(current)) pending.push(child);
+    const children: readonly unknown[] = Array.isArray(current) ? current : Object.values(current);
+    // Jedes Kind zählt mindestens einen Knoten: Die bekannte Kinderzahl bricht ab, bevor der Stapel wächst.
+    if (count + children.length > maxNodes) return maxNodes + 1;
+    for (const child of children) pending.push(child);
   }
   return count;
 }

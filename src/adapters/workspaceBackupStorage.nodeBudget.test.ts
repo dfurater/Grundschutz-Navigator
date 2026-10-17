@@ -83,3 +83,28 @@ it('stops the workspace export at the shared node budget before serializing the 
   // Genau eine der beiden Zeilen erreicht die Serialisierung: Die zweite stoppt vorher am geteilten Knotenbudget.
   expect(serializeCalls.filter(value => isBigRow(value, 'DRAFT_ONE') || isBigRow(value, 'DRAFT_TWO'))).toHaveLength(1);
 }, 30_000);
+
+it('stops the workspace export at the frame nodes before serializing the surplus row', async () => {
+  // Rahmenknoten (Wurzel, `format`, `storageSchemaVersion`, eine Liste je Store) zählen ins frühe Budget:
+  // ein Bündel mit einem Knoten über der Grenze endet an der überzähligen Zeile, bevor sie serialisiert wird.
+  const nodes = (value: unknown): number => value !== null && typeof value === 'object'
+    ? 1 + Object.values(value).reduce<number>((sum, child) => sum + nodes(child), 0)
+    : 1;
+  const current = value(await store.getDocument(other.localId))!;
+  value(await store.autosaveDraft(other.localId, current.savedAt, null, { marker: 'SURPLUS' }));
+  // Knoten aller Zeilen, die vor der überzähligen Entwurfszeile gelesen werden.
+  let before = 0;
+  let surplusSeen = false;
+  for (const table of db.tables) for (const row of await table.toArray()) {
+    if (table.name === 'drafts' && (row as { localId: string }).localId === other.localId) surplusSeen = true;
+    else if (!surplusSeen) before += nodes(row);
+  }
+  const frame = 3 + db.tables.length;
+  const source = { marker: 'SURPLUS', values: Array.from({ length: CLASS_2_IMPORT_LIMITS.maxNodes - frame - before - 5 }, () => null) };
+  const draft = value(await store.getDraft(other.localId))!;
+  value(await store.autosaveDraft(other.localId, current.savedAt, draft.savedAt, source));
+  serializeCalls.length = 0;
+  expect(await store.exportBackup()).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_BACKUP_LIMIT_EXCEEDED' } });
+  // Fehlschlag, wenn die Rahmenknoten fehlen und die überzählige Zeile deshalb noch serialisiert wird.
+  expect(serializeCalls.filter(row => (row as { source?: { marker?: string } }).source?.marker === 'SURPLUS')).toHaveLength(0);
+}, 30_000);

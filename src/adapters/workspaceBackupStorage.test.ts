@@ -136,9 +136,11 @@ it('preserves unknown future data through the global export path', async () => {
 
 it.each(['workspace', 'verbund'] as const)('never reissues a comparison value loaded before a restore (%s)', async scope => {
   // Bündelstand vor der Geräteuhr: Ohne frischen Zeilenstempel gäbe jeder Save nach der Wiederherstellung denselben Wert zurück.
-  const future = new Date(Date.now() + 3_600_000).toISOString();
+  const future = new Date(Date.now() + 3_600_000).toISOString(); const later = new Date(Date.now() + 7_200_000).toISOString();
   const parsed = JSON.parse(value(await (scope === 'workspace' ? store.exportBackup() : store.exportVerbundBackup(a.verbundId))));
   for (const row of [...parsed.documents, ...parsed.drafts]) row.savedAt = future;
+  // Jede Zeile des Bündels zählt: die Verbundzeile trägt hier den höchsten Wert.
+  for (const row of parsed.verbuende) row.savedAt = later;
   const backup = bytes(JSON.stringify(parsed));
   const restore = () => scope === 'workspace' ? store.restoreBackup(backup, 'replace-workspace') : store.restoreVerbundBackup(backup, 'replace-verbund');
   value(await restore());
@@ -148,7 +150,7 @@ it.each(['workspace', 'verbund'] as const)('never reissues a comparison value lo
   const loaded = value(await store.getDocument(one.localId))!;
   const draft = value(await store.getDraft(one.localId))!;
   expect(loaded.savedAt).toBe(draft.savedAt);
-  expect(Date.parse(loaded.savedAt)).toBeGreaterThan(Date.parse(future));
+  expect(Date.parse(loaded.savedAt)).toBeGreaterThan(Date.parse(later));
   const saved = value(await store.saveDocument(one.localId, loaded.savedAt, draft.savedAt, imported));
   expect(Date.parse(saved.savedAt)).toBeGreaterThan(Date.parse(loaded.savedAt));
   // Fehlschlag, wenn der vor der zweiten Wiederherstellung geladene Vergleichswert den späteren Stand überschreibt.
@@ -226,10 +228,13 @@ it.each(['workspace', 'verbund'] as const)('validates the file stamp of restored
   const documentRow = parsed.documents.find((row: { localId: string }) => row.localId === one.localId);
   const draftRow = parsed.drafts.find((row: { localId: string }) => row.localId === one.localId);
   const before = value(await store.exportBackup());
-  documentRow.backupSavedAt = 'not-a-timestamp';
   // Fehlschlag, wenn die Bündelform einen ungültigen Dateistempel durchlässt oder dabei den Bestand ändert.
-  expect(await restore(JSON.stringify(parsed))).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_BACKUP_INVALID' } });
-  expect(value(await store.exportBackup())).toBe(before);
+  for (const row of [documentRow, draftRow]) {
+    row.backupSavedAt = 'not-a-timestamp';
+    expect(await restore(JSON.stringify(parsed))).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_BACKUP_INVALID' } });
+    expect(value(await store.exportBackup())).toBe(before);
+    delete row.backupSavedAt;
+  }
   // Ein mitgeführter Fremdwert wird mit dem Dateistempel überschrieben und fehlt in jedem Export.
   documentRow.backupSavedAt = '2001-01-01T00:00:00.000Z';
   draftRow.backupSavedAt = '2002-02-02T00:00:00.000Z';
@@ -241,6 +246,17 @@ it.each(['workspace', 'verbund'] as const)('validates the file stamp of restored
   expect(exported.drafts.find((row: { localId: string }) => row.localId === one.localId)).not.toHaveProperty('backupSavedAt');
   // Fehlschlag, wenn der Dateiwert nach der Wiederherstellung noch als Vergleichswert passt.
   expect(await store.saveDocument(one.localId, documentRow.savedAt, draftRow.savedAt, imported)).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_SAVE_CONFLICT' } });
+  // Ein echter Schreibvorgang entfernt den Dateistempel; Liste und Re-Export tragen den Schreibstempel.
+  const restored = value(await store.getDocument(one.localId))!;
+  const restoredSummary = value(await store.listDocuments(a.verbundId)).find(row => row.localId === one.localId);
+  expect(restoredSummary).toMatchObject({ savedAt: restored.savedAt });
+  expect(restoredSummary).not.toHaveProperty('backupSavedAt');
+  value(await store.setBinding({ fromLocalId: one.localId, pointer: '/catalog/metadata/title', href: 'Selected', target: { kind: 'class-1', artifactKey: 'catalog-gspp' } }));
+  const touched = value(await store.getDocument(one.localId))!;
+  expect(Date.parse(touched.savedAt)).toBeGreaterThan(Date.parse(restored.savedAt));
+  const writtenDocument = JSON.parse(value(await exportBundle())).documents.find((row: { localId: string }) => row.localId === one.localId);
+  expect(writtenDocument.savedAt).toBe(touched.savedAt);
+  expect(writtenDocument.savedAt).not.toBe(documentRow.savedAt);
 });
 
 it('keeps every stamp within four-digit years and the stored state exportable', async () => {
