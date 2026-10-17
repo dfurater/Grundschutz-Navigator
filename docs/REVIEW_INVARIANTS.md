@@ -26,7 +26,7 @@ Verfasse Zusammenfassung und alle Reviewkommentare auf Deutsch. Fachbegriffe und
 
 ### G2-anwendungskontext
 
-Diese Anwendung ist ein rein clientseitiger Browser für die unterstützten BSI-Kataloge "Stand der Technik" und "WLAN" im OSCAL-Format. Sie wird auf GitHub Pages unter dem Basispfad /Grundschutz-Navigator/ ausgeliefert. Es gibt kein Backend, keine Datenbank, keine Serverlaufzeit, kein Nutzerkonto und keine personenbezogenen Daten außer den Impressumsfeldern. Melde keinen Befund, der eine Serverkomponente, eine Session oder eine Datenbank voraussetzt. Die BSI-Kataloge werden zur Build-Zeit aus einem gepinnten Upstream-Commit geholt; die Dateien unter public/data/ sind gitignored und tauchen in keinem Diff auf. Die einzigen Vertrauensanker sind gepinnter Upstream-Commit, Allowlist beim Abruf, SHA-256-Provenance und SLSA-Attestation.
+Die Anwendung läuft vollständig clientseitig auf GitHub Pages unter /Grundschutz-Navigator/. Öffentliche BSI-Artefakte kommen aus dem Quellregister über den gepinnten Build- und Integritätspfad; public/data/ ist gitignored. Die lokale Arbeitsbereichsinfrastruktur speichert organisationseigene OSCAL-Dokumente und Entwürfe in IndexedDB (gspp-workspace). Diese Inhalte können personenbezogene Daten, Systemdetails, Risiken und Nachweise enthalten und sind unvertraut. Es gibt kein Backend, keine Serverlaufzeit und keine Nutzerkonten. Melde keine Befunde, die einen nicht vorhandenen Server oder eine serverseitige Session voraussetzen; die lokale Datenbank und sensible Nutzerdaten sind ausdrücklich Reviewgegenstand. Klasse-1-Provenienz beruht auf Upstream-Pin, Allowlist, SHA-256 und SLSA-Attestation; diese Aussage gilt nicht für eigene Dokumente. Bewerte bei Ausbauregeln den konkret berührten Datenpfad: Das Fehlen einer optionalen oder noch nicht implementierten Produktfunktion ist für sich kein Befund.
 
 ### G3-nicht-melden
 
@@ -39,10 +39,11 @@ Jeder Befund nennt den konkreten Fehlerfall: welcher Input, welcher Zustand, wel
 ### G5-priorisierung
 
 Priorisiere Befunde in dieser Reihenfolge:
-1. Gebrochene Invarianten — Integritätsprüfung, Quellregister, Versionsmatrix, Upstream-Allowlist. Diese vier tragen die Sicherheitsaussage der Anwendung; ein Bruch hier schlägt jede Stilfrage.
-2. Verlust von Quelldaten beim Parsen.
-3. Undefinierte Fehlerpfade bei Netzwerk- und Parse-Operationen.
-4. Dokumentation, die dem Code widerspricht.
+1. Datenabfluss, gebrochene Verbundgrenzen, aktive Fremdinhalte und falsche Vertrauensaussagen sowie Brüche von Integritätsprüfung, Quellregister, Versionsmatrix oder Upstream-Allowlist.
+2. Irreversibler Datenverlust: verlorene Quellfelder, überschriebene Bearbeitung, Teiltransaktionen und nicht wiederherstellbare Sicherungen.
+3. Fachlich falsche Status-, Prüf-, Risiko- oder Aggregationsaussagen.
+4. Undefinierte Fehlerpfade bei Netzwerk, Parsing, Worker, Speicherung und Export.
+5. Dokumentation, die dem Code widerspricht. Die Einstufung benennt jeweils den konkreten auslösenden Zustand und seine Auswirkung.
 
 ### G6-pruefgrenzen
 
@@ -138,15 +139,15 @@ Die Oberfläche und alle sichtbaren Texte sind deutsch, mit korrekten Umlauten u
 
 ### R15-verlustfreies-dokumentmodell
 
-**Scope:** `src/adapters/**`, `src/domain/**`
+**Scope:** `src/**`
 
-Der Adapter reichert die OSCAL-Quelle an, er wirft nichts weg. Ein Diff, der beim Parsen OSCAL-Felder verliert, zusammenfasst oder normalisiert, ist ein blockierender Befund — auch wenn die Oberfläche davon nichts merkt.
+source trägt den vollständigen geparsten OSCAL-Quellgraphen; view ist eine daraus abgeleitete Projektion und darf die dokumentierten Sichtfilter anwenden. Prüfe Änderungen an Import, Writer und Export: Ein Verlust oder eine unbeauftragte Normalisierung von Quellfeldern, unbekannten Inhalten, fremden Namespaces oder Array-Reihenfolgen ist blockierend. Ein Writer, der das Dokument aus sichtbaren Formularfeldern oder view rekonstruiert und dadurch nicht angezeigte Inhalte verliert, ist ebenfalls blockierend. Ein No-op erhält Quellgraph und Identitätsmetadaten nach docs/OSCAL_ROUND_TRIP.md; Unterschiede allein in der ursprünglichen JSON-Textformatierung sind kein Verlust des geparsten Graphen. Fachliches Schreiben ändert ausschließlich die beauftragten Inhalte und die nach docs/PERSISTENCE.md rootmodellspezifisch fortzuschreibenden Metadaten. Eine pauschale Neuvergabe aller Root-UUIDs oder eine Änderung von localId durch fachliches Schreiben verletzt diesen Vertrag. Verlange für einen berührten Writer den No-op-Nachweis und einen Edit-Fall, der unbekannte Inhalte erhält.
 
 ### R16-fehlerpfade
 
-**Scope:** `src/state/**`, `src/domain/integrity.ts`, `src/adapters/**`, `src/hooks/**`
+**Scope:** `src/**`
 
-Der Katalog wird über das Netz geladen. Jeder neue Netzwerk- oder Parse-Pfad braucht einen definierten Fehlerzustand. Ein Pfad, der im Fehlerfall in einem hängenden Ladezustand endet, ist ein Bug, kein Randfall.
+Jeder neue oder geänderte Netzwerk-, Parse-, Worker-, Speicher- und Exportpfad hat einen definierten terminalen Fehlerzustand. Prüfe insbesondere Worker-Abbruch und Timeout, Quota, konkurrierende Änderungen, fehlgeschlagene Transaktionen und Exportfehler. Ein hängender Ladezustand, ein Erfolgssignal vor erfolgreichem Commit, das Verwerfen ungespeicherter Eingaben nach einem Fehler oder das Verschlucken eines Speicher- oder Konfliktfehlers ist ein blockierender Befund. Fehlerdiagnosen bleiben nach dem Klasse-2-Vertrag redigiert. Ein Negativnachweis löst den betroffenen Fehler aus und prüft Fehlerzustand, erhaltene Eingaben und unveränderten Speicherbestand; ein bloß gemockter Erfolg belegt diesen Pfad nicht.
 
 ### R17-oscal-belegen
 
@@ -168,9 +169,9 @@ Stufe 3 validiert im Modul-Worker mit ajv 8.20.0 gegen die eingecheckten NIST-Sc
 
 ### R20-stufe-5-referenzgraph
 
-**Scope:** `src/domain/referenceGraph*.ts`, `src/domain/referenceResolution.ts`, `scripts/verify-upstream-oscal.mjs`, `scripts/oscal-domain-bridge.mjs`, `tsconfig.app.json`, `tsconfig.node.json`, `docs/OSCAL_VALIDATION.md`, `docs/INTEGRITY.md`
+**Scope:** `src/**`, `scripts/verify-upstream-oscal.mjs`, `scripts/oscal-domain-bridge.mjs`, `tsconfig.app.json`, `tsconfig.node.json`, `docs/OSCAL_VALIDATION.md`, `docs/INTEGRITY.md`
 
-Stufe 5 ist der Referenzgraph in src/domain/referenceGraph*.ts auf Basis von src/domain/referenceResolution.ts. Verbindlich: Die Formentscheidung ueber einen href faellt ausschliesslich in referenceResolution.ts — ein Fragmentvergleich (startsWith('#')), ein Protokollvergleich, eine URL-Normalisierung oder eine Pfadaufloesung ausserhalb dieses Moduls ist ein blockierender Befund. Relative und externe Ziele werden nie aufgeloest, auch nicht ueber Dateinamen, Titelaehnlichkeit oder Fremd-Namespace-props (etwa catalog_uuid); eine solche Heuristik ist ein blockierender Befund. Dokumentuebergreifende Aufloesbarkeit entsteht nur durch eine ausdrueckliche Bindung des Aufrufers; der CI-Lauf uebergibt keine. Ein Knoten traegt immer Dokumentidentitaet plus lokale ID — eine kontextlose ID-Aufloesung oder ein Ausweichen auf einen anderen geladenen Katalog ist ein blockierender Befund, weil control/@id nur lokal eindeutig ist. Die vier Zustaende resolved, unresolvable, not-evaluable und die fachliche Aussage no-relationship bleiben getrennt; ein relatives oder externes Ziel darf nie als Referenzfehler gezaehlt werden, und no-relationship erzeugt nie eine Kante. Alle Befunde entstehen ueber createOscalDiagnostic mit stage 'reference'; ein zweites Diagnosemodell, eine eigene Severity-Skala oder ein href-, ID- oder sonstiger Dokumentwert in einer Diagnose oder CI-Ausgabe ist ein blockierender Befund. Die CI-Politik bleibt fail-closed fuer supported-Artefakte; preview, draft und blocked-by-upstream duerfen sichtbar, aber nicht blockierend sein und nie als abschliessend bewertet erscheinen. Allowlist-Eintraege binden an Diagnosesignatur UND Snapshot-Commit und laufen bei Aenderung von Snapshot oder Pfad aus; eine Aufweichung dieser Bindung ist ein blockierender Befund. erasableSyntaxOnly muss in tsconfig.app.json und tsconfig.node.json gesetzt bleiben und der Aliashook in scripts/oscal-domain-bridge.mjs auf src/ beschraenkt: Ohne beides bricht die CI-Lane oder laedt Code ausserhalb des Quellbaums.
+Stufe 5 ist der Referenzgraph in src/domain/referenceGraph*.ts auf Basis von src/domain/referenceResolution.ts. Verbindlich: Die Formentscheidung ueber einen OSCAL-Referenz-href faellt einschliesslich der aufrufenden Schichten ausschliesslich in referenceResolution.ts — ein Fragmentvergleich (startsWith('#')), ein Protokollvergleich, eine URL-Normalisierung oder eine Pfadaufloesung ausserhalb dieses Moduls ist ein blockierender Befund. Relative und externe Ziele werden nie aufgeloest, auch nicht ueber Dateinamen, Titelaehnlichkeit oder Fremd-Namespace-props (etwa catalog_uuid); eine solche Heuristik ist ein blockierender Befund. Dokumentuebergreifende Aufloesbarkeit entsteht nur durch eine ausdrueckliche Bindung des Aufrufers; der CI-Lauf uebergibt keine. Ein Knoten traegt immer Dokumentidentitaet plus lokale ID — eine kontextlose ID-Aufloesung oder ein Ausweichen auf einen anderen geladenen Katalog ist ein blockierender Befund, weil control/@id nur lokal eindeutig ist. Die vier Zustaende resolved, unresolvable, not-evaluable und die fachliche Aussage no-relationship bleiben getrennt; ein relatives oder externes Ziel darf nie als Referenzfehler gezaehlt werden, und no-relationship erzeugt nie eine Kante. Alle Befunde entstehen ueber createOscalDiagnostic mit stage 'reference'; ein zweites Diagnosemodell, eine eigene Severity-Skala oder ein href-, ID- oder sonstiger Dokumentwert in einer Diagnose oder CI-Ausgabe ist ein blockierender Befund. Die CI-Politik bleibt fail-closed fuer supported-Artefakte; preview, draft und blocked-by-upstream duerfen sichtbar, aber nicht blockierend sein und nie als abschliessend bewertet erscheinen. Allowlist-Eintraege binden an Diagnosesignatur UND Snapshot-Commit und laufen bei Aenderung von Snapshot oder Pfad aus; eine Aufweichung dieser Bindung ist ein blockierender Befund. erasableSyntaxOnly muss in tsconfig.app.json und tsconfig.node.json gesetzt bleiben und der Aliashook in scripts/oscal-domain-bridge.mjs auf src/ beschraenkt: Ohne beides bricht die CI-Lane oder laedt Code ausserhalb des Quellbaums.
 
 ### R21-dokumentierte-versionen
 
@@ -200,7 +201,73 @@ Dokumentation unter docs/** und in README.md beschreibt ausschließlich den Ist-
 
 **Scope:** `src/components/**`, `src/features/**`, `src/app/**`, `src/index.css`
 
-Rohwerte für Farbe, Schriftgröße, Laufweite, Radius, Schatten, Bewegung und Touchziel stehen nur in src/index.css (@theme); die ESLint-Regel design-system/no-off-system-classes prüft die Klassen in UI-Dateien. Prüfe im Review, was die Regel nicht messen kann. Bedeutungsregel: Eine Farbe ohne Datenbedeutung ist Schiefer; eine neue Statusfarbe ohne neue Katalogdimension ist ein Befund. Auswahlregel: Petrol heißt Auswahl, Neutral heißt Bedienung, Dunkel gehört der Kopfzeile; ein aktiver Umschalter ist ein Petrol-Glyph auf Petrol-Lasur, kein gefülltes Primärquadrat. Rechts steht genau ein Panel; Filter und Detail gleichzeitig rechts sind ein Befund. Panelköpfe ab md sind 51px hoch (h-panel-head), damit die Haarlinien über alle Panels durchlaufen. Flächen trennen sich durch 1-px-Haarlinien, nie durch Schatten oder farbige Seitenkanten. Kennungen (Control-IDs, UUIDs, Hashes) stehen in IBM Plex Mono (font-mono), Katalogwerte wie MUSS, normal-SdT oder ORP.1.A3 erscheinen exakt wie veröffentlicht, nie übersetzt, umgeschrieben oder abgekürzt. Jede Zahl, die Umfang beschreibt, steht in tabular-nums. Menüs und Umschalter tragen nur Beschriftung und Daten, keine Erklär- oder Herkunftsprosa. Farbe ist nie das einzige Signal: Status trägt immer Text oder ein zugängliches Label, Links im Fließtext sind unterstrichen. Hover ist Füllung, nie Deckkraft oder Skalierung. Der Fokusring bleibt auf jedem bedienbaren Element sichtbar.
+Rohwerte für Farbe, Schriftgröße, Laufweite, Radius, Schatten, Bewegung und Touchziel stehen nur in src/index.css (@theme); die ESLint-Regel design-system/no-off-system-classes prüft die Klassen in UI-Dateien. Prüfe im Review, was die Regel nicht messen kann. Bedeutungsregel: Eine Farbe ohne Datenbedeutung ist Schiefer; eine neue Statusfarbe ohne dokumentierte Datenbedeutung ist ein Befund. Dokument-, Prüf- und Migrationszustände sind ebenfalls Datenbedeutungen; ihre Farbe ersetzt weder Text noch zugängliche Kennzeichnung. Auswahlregel: Petrol heißt Auswahl, Neutral heißt Bedienung, Dunkel gehört der Kopfzeile; ein aktiver Umschalter ist ein Petrol-Glyph auf Petrol-Lasur, kein gefülltes Primärquadrat. Rechts steht genau ein Panel; Filter und Detail gleichzeitig rechts sind ein Befund. Panelköpfe ab md sind 51px hoch (h-panel-head), damit die Haarlinien über alle Panels durchlaufen. Flächen trennen sich durch 1-px-Haarlinien, nie durch Schatten oder farbige Seitenkanten. Kennungen (Control-IDs, UUIDs, Hashes) stehen in IBM Plex Mono (font-mono), Katalogwerte wie MUSS, normal-SdT oder ORP.1.A3 erscheinen exakt wie veröffentlicht, nie übersetzt, umgeschrieben oder abgekürzt. Jede Zahl, die Umfang beschreibt, steht in tabular-nums. Menüs und Umschalter tragen nur Beschriftung und Daten, keine Erklär- oder Herkunftsprosa. Farbe ist nie das einzige Signal: Status trägt immer Text oder ein zugängliches Label, Links im Fließtext sind unterstrichen. Hover ist Füllung, nie Deckkraft oder Skalierung. Der Fokusring bleibt auf jedem bedienbaren Element sichtbar.
+
+### R26-datenklassen-vertrauen
+
+**Scope:** `src/**`, `docs/INTEGRITY.md`, `docs/PERSISTENCE.md`
+
+Bei Änderungen an Laden, Übernahme, Speicherung oder Vertrauensanzeigen bleiben Klasse 1 und Klasse 2 strukturell getrennt. Klasse-1-Inhalte erhalten im Arbeitsbereich weder Store noch Inhaltsindex oder Backup-Kopie; zulässig ist die artifactKey-Referenz. Eine Übernahme erfolgt ausschließlich nach dem Lifecycle- und Kopiervertrag in docs/PERSISTENCE.md als eigenes Klasse-2-Dokument; derivedFrom dokumentiert Herkunft, verleiht aber keine BSI-Verifikation. Schemavalidität, Herkunft, Ressourcenhash und menschliche Freigabe sind unterschiedliche Aussagen. Blockierend ist ein Pfad, der eigene oder lokal geänderte Dokumente als BSI-verifiziert anzeigt oder sie dem Klasse-1-Manifest-/Hashpfad unterstellt. Negativnachweis: Ein schemavalides, lokal geändertes Dokument bleibt Klasse 2 und unverifiziert; seine Herkunftsangabe bleibt davon getrennt.
+
+### R27-klasse-2-egress
+
+**Scope:** `src/**`, `index.html`, `vite.config.ts`, `docs/PERSISTENCE.md`, `docs/FILTERING.md`
+
+Bei Änderungen an Suche, Filtern, Routing, Diagnosen oder Netzpfaden dürfen Klasse-2-Inhalte das Werkzeug ausschließlich über einen ausdrücklich vom Menschen ausgelösten Export verlassen. Klasse-2-Dokumentwerte, zugehöriger Freitext, Bearbeiternamen und Klasse-2-Suchbegriffe gelangen weder in URL-Pfad/Query/Fragment, Logs, Telemetrie, öffentliche Suchindizes noch in automatische Requests. Ein Request zur eigenen Origin mit solchen Werten verletzt die Grenze ebenfalls. Gemischte Filter serialisieren ausschließlich ausdrücklich freigegebene Klasse-1-Werte; Klasse-2-Suche und ihre Indizes bleiben getrennt und flüchtig im Arbeitsspeicher. Das Laden statischer App-, Schema- und Klasse-1-Daten ohne Nutzerdaten ist kein Egress-Befund. Blockierend ist jeder belegte Abflusspfad. Negativnachweis: Sentinelwerte in Klasse-2-Quelle, Suche und Filtern bleiben bei Navigation, Fehlern und Bereichswechseln aus URL, Logs und ausgehenden Requests fern; der Browsernachweis läuft unter dem Egress-Guard.
+
+### R28-verbund-identitaet
+
+**Scope:** `src/**`, `docs/PERSISTENCE.md`
+
+Bei Änderungen an Referenzauflösung, Speicherung, Auswahl, Suche oder Caches gilt die Dokumentidentität zusammen mit ihrem Verbundkontext. localId ist der stabile, vom Werkzeug vergebene Speicherschlüssel; eine importierte Root-UUID oder gleiche Control-ID darf keine Ersetzung, Zusammenführung oder Bindung begründen. Dokumentübergreifende Referenzen benötigen ausdrückliche Bindungen nach docs/PERSISTENCE.md und R20; lokale Bindungen dürfen den Informationsverbund nicht verlassen. Ein Fallback auf das erste passende Dokument, einen anderen Verbund oder Katalog ist blockierend. Negativnachweis: Zwei Verbünde mit gleichen Control-IDs und kollidierenden importierten UUIDs bleiben bei Lesen, Bearbeiten, Löschen und Restore getrennt; Fremdzuordnungen werden vor dem Schreiben abgewiesen.
+
+### R29-speicherung-wiederherstellung
+
+**Scope:** `src/**`, `docs/PERSISTENCE.md`
+
+Bei Änderungen an Schreiben, Autosave, Backup, Restore oder Speicher-Migration gilt der Transaktions- und Konfliktvertrag in docs/PERSISTENCE.md. Dokument, betroffener Entwurf und geänderte Bindungen werden atomar geschrieben; veraltete Dokument- und Entwurfsvergleichswerte überschreiben keine neuere Arbeit. Quota oder Abbruch hinterlässt den Vorzustand, niemals eine Teilübernahme. Ein regulärer, erfolgreich erzeugter Backup-Export ist mit dem zugesagten Format und seinen Eingangsgrenzen wiederherstellbar; ein für neuere Speicherschemata ausdrücklich als opak dokumentierter Rettungsexport verspricht dagegen keine Wiederherstellung durch die ältere Anwendung. Ein solcher Export darf nicht als regulär wiederherstellbares Backup erscheinen. Speicher-Migrationen ändern weder OSCAL-source, OSCAL-Version noch Dokumentidentität oder localId; eine neuere Speicherversion wird nicht schreibend uminterpretiert. Jeder Bruch ist blockierend. Negativnachweise: Transaktionsabbruch, Quota und konkurrierende Tabs erhalten den gültigen Bestand; Export–Restore–Vergleich prüft auch Entwürfe und Bindungen; ein defekter Migrationsdatensatz rollt die gesamte Migration zurück.
+
+### R30-entwurf-backup-export
+
+**Scope:** `src/**`, `docs/PERSISTENCE.md`, `docs/OSCAL_VALIDATION.md`, `docs/OSCAL_ROUND_TRIP.md`
+
+Bei Änderungen an Dokumentzuständen, Validierung oder Ausgabe bleiben importiertes Dokument, lokaler Entwurf und exportfähiges OSCAL getrennt. Ein unvollständiger Entwurf bleibt nach den Ressourcen- und Objektgraphgrenzen lokal speicherbar und im Workspace-Backup sicherbar; er wird nicht als valides OSCAL ausgegeben. Vor einem regulären OSCAL-Export wird das tatsächlich erzeugte Artefakt über die dafür verbindliche Kette geprüft, nicht lediglich sein Eingabedokument. Nicht verfügbare Constraint- oder Referenzprüfungen erscheinen als solche, niemals als bestanden; aus Schemavalidität folgt keine fachliche Freigabe. Envelope, lokale Bindungen und Werkzeugmetadaten gelangen nicht versehentlich in das OSCAL-Dokument. Blockierend sind Entwurfsverlust, ein Validierungsbypass oder eine falsche Prüfungsaussage. Negativnachweis: Ein unvollständiges Profil übersteht Backup/Restore, scheitert am regulären OSCAL-Export; ein durch den Exporter beschädigtes Artefakt wird trotz gültiger Eingabe abgewiesen.
+
+### R31-fachliche-aussagegrenzen
+
+**Scope:** `src/**`, `docs/PROJECT_PROPS.md`
+
+Bei Änderungen an Zielobjekten, Parametern, Geltungsbereich oder Statusauswertung gelten getrennte Aussagen: außerhalb des Profils, keine Statusaussage, not-applicable für eine Komponente und begründete Abweichung dürfen nicht verschmelzen. Ein by-component-Status ist keine automatische Gesamtaussage über eine Anforderung. Organisationsweite Profilparameter und systembezogene SSP-Parameter behalten ihre unterschiedliche Reichweite; eine eingesetzte Arbeitsfassung ersetzt nicht den Originalwortlaut in source. Schutzbedarf nach dem Projektvertrag bleibt von CIAA-Anforderungsrelevanz getrennt. Automatische Kategorien-Eltern-Erweiterung und Anforderungsdeduplizierung begründen keine automatische Schutzbedarfsvererbung. Freitextkonflikte dürfen nicht still als sicherste Parametereinstellung entschieden werden. Eine solche Umdeutung ist blockierend. Negativnachweis: Dieselbe Anforderung mit widersprechenden Komponentenstatus behält beide Aussagen; widersprechende Parameterwerte bleiben als Konflikt sichtbar; mehrere Zielobjektkategorien verändern keinen manuell gesetzten Schutzbedarf.
+
+### R32-projektsemantik-fremdinhalte
+
+**Scope:** `src/**`, `docs/PROJECT_PROPS.md`
+
+Bei Änderungen an Import, Property-Reader, Writer oder Export ist src/domain/projectProps.ts die einzige Runtime-Quelle der Projektsemantik; docs/PROJECT_PROPS.md definiert den zugehörigen Vertrag. Fremde Namespaces werden nicht nach Namensähnlichkeit interpretiert. Unbekannte Namen im Projektnamespace bleiben erhalten und sperren den betroffenen semantischen Schreibpfad; Lesen, No-op-Export und Backup reichen sie gemäß Vertrag durch. Offene OSCAL-Vokabulare rechtfertigen keine Umdeutung unbekannter Tokens in einen bekannten Standardstatus. Projektpflichten für lokal gesetzte Werte verschärfen nicht rückwirkend die NIST-Schemavalidität eines Fremdimports. Blockierend sind Inhaltsverlust, Namespace-Verwechslung und eine als Schemafehler ausgegebene reine Authoringpflicht. Negativnachweis: Ein schema- und importgültiges Fremddokument mit not-applicable ohne remarks bleibt lesbar, während lokales Setzen die Projekt-Begründungspflicht prüft; ein fremdes gleichnamiges Property erzeugt keine Projektsemantik.
+
+### R33-nachweise-berichte
+
+**Scope:** `src/**`, `index.html`, `docs/PERSISTENCE.md`
+
+Bei Änderungen an Anhängen, Vorschauen, Freitext-Rendering oder Berichten bleiben Inhalte unvertraut. Eingebettetes base64, Markdown, HTML, SVG und Links dürfen weder aktive Fremdinhalte ausführen noch zur Vorschau automatisch Netzressourcen auflösen. Darstellung und Download verwenden sichere Ausgabegrenzen und die gemeinsamen Ressourcenlimits auch vor dem Dekodieren; Hashvergleich einer Ressource verleiht ihrem Inhalt keine Ausführungserlaubnis. Exportumfang und Nachweisbeigaben entsprechen der ausdrücklich gewählten Auswahl und dem aktiven Verbund; CSV-Zellen aus Nutzereingaben dürfen in Tabellenkalkulationen keine Formeln aktivieren. Blockierend sind Inhaltsausführung, ein durch Nachweisinhalte oder Berichtswerte ausgelöster automatischer Request oder ein Export fremder bzw. nicht ausgewählter Inhalte. Negativnachweise: präpariertes HTML/SVG, externe Bildreferenz, Formelpräfix und übergroßer Anhang; keine Skriptausführung, kein Netzbezug und keine Fremdverbunddaten im Ausgabeprodukt.
+
+### R34-katalogwechsel-bewertungen
+
+**Scope:** `src/**`, `docs/PROJECT_PROPS.md`, `docs/PERSISTENCE.md`
+
+Bei Änderungen an Katalogbindung, Delta oder Bewertungsübernahme bleibt der Bezugsstand einer eigenen Bewertung nachvollziehbar. assessed-against-Properties werden nach dem Registry-Vertrag als vollständiges Paar behandelt; historische Bindungen werden nicht still auf den aktuellen Snapshot umgeschrieben. Gleiche ID oder alt-identifier allein beweist keine unveränderte Anforderung. Die Gleichheitsprüfung berücksichtigt die fachlich relevanten Inhalte und Parameter nach dem dokumentierten Migrationsvertrag. Geänderte, entfallene, nicht auflösbare und mehrdeutige Zuordnungen erhalten eigene Aussagen und eine sichtbare Prüfbedürftigkeit; sie werden weder gelöscht noch als aktuell bestätigt ausgegeben. Ein solcher Verlust oder eine stille Neubewertung ist blockierend. Negativnachweis: Gleiche Kennung mit geändertem Wortlaut/Parameter übernimmt keine Bewertung als aktuell bestätigt; eine entfallene Anforderung behält ihre eigene Dokumentation; Mehrdeutigkeit wählt keinen zufälligen Treffer.
+
+### R35-pruefung-risiko-kennzahlen
+
+**Scope:** `src/**`, `docs/PROJECT_PROPS.md`
+
+Bei Änderungen an Prüfung, Risikoentscheidung, Historie oder Kennzahlen bleiben Prüfplan und Prüfergebnis getrennte Dokumente; geplant ist nicht geprüft, umgesetzt ist nicht wirksam nachgewiesen. Eine Risikoannahme oder Freigabe verlangt den ausdrücklichen menschlichen Entscheidungsvorgang mit den dafür vorgesehenen Angaben; Maßnahmenabschluss darf sie nicht automatisch erzeugen. Lokale Rollenansichten schützen vor unbeabsichtigtem Bearbeiten, behaupten aber keine technisch erzwungene Personenautorisierung oder unabhängige Vier-Augen-Prüfung ohne Konten. Lokale Historie belegt keine Manipulationssicherheit. Jede verdichtete Kennzahl nennt im selben Blick Umfang, Zähler/Nenner bzw. Berechnungsregel, fehlende/unbekannte Aussagen und Bezugszeitpunkt; Berichte führen die Regel mit. Eine automatische Compliance-, Reifegrad- oder SoA-Zusage ohne beschlossenen fachlichen Vertrag ist blockierend, ebenso eine falsch behauptete Governancekontrolle. Negativnachweis: Abgeschlossene Maßnahme setzt weder Risikoannahme noch Wirksamkeitsnachweis; fehlende Statuswerte oder ein leerer Nenner erzeugen keine unbegründete Erfüllungsquote. Überfälligkeit wird anhand der dokumentierten Zeit-/Zeitzonenregel berechnet und als Ableitung erkennbar gehalten.
+
+### R36-bearbeitungskontext-loeschung
+
+**Scope:** `src/**`, `docs/PERSISTENCE.md`
+
+Bei Änderungen an Navigation, Mehrfachauswahl, Massenaktionen oder Löschung bleibt der Bearbeitungskontext eindeutig. Vor einer Massenänderung ist ihr tatsächlicher Umfang einschließlich ausgeblendeter ausgewählter Einträge erkennbar; ein Verbundwechsel überträgt weder Auswahl noch Eingabewerte auf fremde Dokumente. Noch ungespeicherte Änderungen bleiben bei Navigation erhalten oder werden ausdrücklich verworfen, niemals still verloren. Löschung folgt dem vollständigen Löschvertrag in docs/PERSISTENCE.md: betroffene Entwürfe, ein- und ausgehende Bindungen, Indizes, Caches, Suchindex und vorhandene Werkzeughistorie werden mitbereinigt; optionale Feldhistorie benötigt eine dokumentierte Aufbewahrungs- und Schwärzungsregel. Die App verspricht weder die Löschung bereits exportierter Dateien noch eine sichere physische Löschung von Datenträgerbytes. Ein Verlust, eine falsche Massenänderung oder eine appinterne Restkopie nach zugesagter Löschung ist blockierend. Negativnachweise: Auswahl unter geändertem Filter und nach Verbundwechsel; Sentinel-Suche nach Löschung über alle appinternen Ablagen bei erhaltenem Kontrolldokument. Tastaturbedienung und sichtbarer Fokus erreichen auch Auswahlumfang, Bestätigung und Verwerfen.
 
 ## Datei-Kontexte
 
@@ -216,3 +283,6 @@ Dokumente, die beim Review der genannten Pfade als Kontext heranzuziehen sind.
 | `docs/FILTERING.md` | Filterlogik und URL-Parameter-Synchronisation | `src/hooks/**`, `src/features/**` |
 | `docs/VOCABULARY.md` | BSI-Vokabulare, Namespaces, Taxonomie-Abdeckung | `src/domain/vocabulary*.ts`, `src/features/vocabular*/**`, `scripts/**` |
 | `README.md` | Projektzweck, Setup, Kommandos | global |
+| `docs/PERSISTENCE.md` | Datenklassen, Verbundidentität, Transaktionen, Konflikte, Entwürfe, Backup, Migration und Löschung | `src/**` |
+| `docs/PROJECT_PROPS.md` | Projektsemantik, Namespace-Grenze, Werteräume, Träger und Katalogreferenzpaare | `src/domain/**`, `src/adapters/**`, `src/workers/**`, `src/state/**`, `src/hooks/**`, `src/features/**`, `src/components/**`, `src/app/**` |
+| `docs/OSCAL_ROUND_TRIP.md` | Verlustfreiheit, No-op-Identität, Ausgabeprüfung und Grenzen des Round-trip-Nachweises | `src/domain/**`, `src/adapters/**`, `src/workers/**`, `src/state/**`, `src/hooks/**`, `src/features/**`, `src/components/**`, `src/app/**`, `src/test/**` |
