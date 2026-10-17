@@ -58,8 +58,7 @@ function collectDocuments(rows: WorkspaceBackup['documents'], verbuende: Set<str
   return true;
 }
 
-function validDrafts(rows: WorkspaceBackup['drafts'], documents: Map<string, string>): boolean {
-  const drafts = new Set<string>();
+function validDrafts(rows: WorkspaceBackup['drafts'], documents: Map<string, string>, drafts = new Set<string>()): boolean {
   for (const row of rows) {
     if (!fields(row, ['localId', 'savedAt', 'source'], ['backupSavedAt']) || !uuid(row.localId) || !documents.has(row.localId)
       || drafts.has(row.localId) || !timestamp(row.savedAt) || !validBackupSavedAt(row.backupSavedAt)) return false;
@@ -82,8 +81,7 @@ function validBindingTarget(target: Record<string, unknown>, fromLocalId: string
   return target.kind === 'class-1' && fields(target, ['kind', 'artifactKey']) && hasRegistryKeyGrammar(target.artifactKey);
 }
 
-function validBindings(rows: WorkspaceBackup['bindings'], documents: Map<string, string>): boolean {
-  const bindings = new Set<string>();
+function validBindings(rows: WorkspaceBackup['bindings'], documents: Map<string, string>, bindings = new Set<string>()): boolean {
   for (const row of rows) {
     if (!validBindingFields(row, documents)) return false;
     const key = JSON.stringify([row.fromLocalId, row.pointer]);
@@ -97,6 +95,27 @@ function validBindings(rows: WorkspaceBackup['bindings'], documents: Map<string,
 function validWorkspaceMeta(rows: WorkspaceBackup['workspaceMeta']): boolean {
   return rows.length === 1 && rows.every(row => fields(row, ['id', 'storageSchemaVersion', 'createdAt', 'savedAt'])
     && row.id === 'workspace' && row.storageSchemaVersion === STORAGE_SCHEMA_VERSION && times(row));
+}
+
+/** Call in store dependency order; retained state contains identifiers, never source graphs. */
+export function createWorkspaceStructureValidator() {
+  const verbuende = new Set<string>();
+  const documents = new Map<string, string>();
+  const drafts = new Set<string>();
+  const bindings = new Set<string>();
+  let metaSeen = false;
+  return {
+    verbuende: (row: WorkspaceBackup['verbuende'][number]) => collectVerbuende([row], verbuende),
+    documents: (row: WorkspaceBackup['documents'][number]) => collectDocuments([row], verbuende, documents),
+    drafts: (row: WorkspaceBackup['drafts'][number]) => validDrafts([row], documents, drafts),
+    bindings: (row: WorkspaceBackup['bindings'][number]) => validBindings([row], documents, bindings),
+    workspaceMeta: (row: WorkspaceBackup['workspaceMeta'][number]) => {
+      if (metaSeen || !validWorkspaceMeta([row])) return false;
+      metaSeen = true;
+      return true;
+    },
+    get hasWorkspaceMeta() { return metaSeen; },
+  };
 }
 
 function validBackupStructure(value: unknown, format: 'gspp-workspace' | 'gspp-workspace-verbund'): boolean {

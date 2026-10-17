@@ -273,6 +273,8 @@ Verändert werden dürfen ausschließlich `storageSchemaVersion` und die Speiche
 
 ### Teilfehler
 
+`src/adapters/workspaceMigration.ts` liest und prüft alle fünf Stores zeilenweise per IndexedDB-Cursor. Der gemeinsame Strukturprüfer aus `src/adapters/workspaceBackupStructure.ts` hält Kennungen, Verbundzuordnungen und Bindungsschlüssel für die Querreferenz- und Duplikatprüfung; `source`-Graphen werden nur je Datensatz verarbeitet. Nach vollständiger Prüfung schreiben Cursor die Speicher-Schemaversionen der Dokumente und Metadaten jeweils einzeln und warten vor dem nächsten Datensatz auf den Schreibabschluss.
+
 Eine Migration läuft in genau einer `versionchange`-Transaktion. Schlägt ein Datensatz fehl, wird die **gesamte** Migration abgebrochen; der Vorzustand bleibt bestehen. Ein nicht deutbarer Datensatz wird **nicht stillschweigend verworfen und nicht geraten**: Er lässt die Migration erklärbar scheitern; der Nutzer erhält eine benannte Diagnose und behält Zugriff auf den Vorzustand einschließlich Export.
 
 ### Unbekannte neuere Speicher-Schemaversion
