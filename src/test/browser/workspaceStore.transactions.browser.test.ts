@@ -158,19 +158,28 @@ test('blockierte Gesamtlöschung meldet nach fester Frist eine ausstehende Lösc
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
   });
+  const exists = vi.spyOn(Dexie, 'exists');
+  const connections = vi.spyOn(Dexie.prototype, 'open');
   try {
-    const started = performance.now();
-    expect(await store.deleteAll('delete-workspace')).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_DELETE_PENDING' } });
-    expect(performance.now() - started).toBeGreaterThanOrEqual(WORKSPACE_DELETE_BLOCKED_TIMEOUT_MS - 30);
-    expect((await indexedDB.databases()).map(database => database.name)).toContain(WORKSPACE_DATABASE_NAME);
-    const opening = performance.now();
-    expect(await WorkspaceStore.open()).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_OPEN_TIMEOUT' } });
-    expect(performance.now() - opening).toBeGreaterThanOrEqual(WORKSPACE_OPEN_TIMEOUT_MS - 30);
-  } finally { blocker.close(); }
-  await expect.poll(async () => (await indexedDB.databases()).map(database => database.name)).not.toContain(WORKSPACE_DATABASE_NAME);
-  // The abandoned open resumes once the deletion completes and must not recreate the database.
-  await new Promise(resolve => setTimeout(resolve, 200));
-  expect((await indexedDB.databases()).map(database => database.name)).not.toContain(WORKSPACE_DATABASE_NAME);
+    let lateCheck: Promise<boolean>;
+    let opened: number;
+    try {
+      const started = performance.now();
+      expect(await store.deleteAll('delete-workspace')).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_DELETE_PENDING' } });
+      expect(performance.now() - started).toBeGreaterThanOrEqual(WORKSPACE_DELETE_BLOCKED_TIMEOUT_MS - 30);
+      expect((await indexedDB.databases()).map(database => database.name)).toContain(WORKSPACE_DATABASE_NAME);
+      const opening = performance.now();
+      expect(await WorkspaceStore.open()).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_OPEN_TIMEOUT' } });
+      expect(performance.now() - opening).toBeGreaterThanOrEqual(WORKSPACE_OPEN_TIMEOUT_MS - 30);
+      expect(exists).toHaveBeenCalledTimes(1);
+      lateCheck = exists.mock.results[0].value as Promise<boolean>;
+      opened = connections.mock.calls.length;
+    } finally { blocker.close(); }
+    // The abandoned open resumes once the deletion completes; its continuation runs before this await returns and must stop before opening a connection.
+    expect(await lateCheck).toBe(false);
+    expect(connections).toHaveBeenCalledTimes(opened);
+    await expect.poll(async () => (await indexedDB.databases()).map(database => database.name)).not.toContain(WORKSPACE_DATABASE_NAME);
+  } finally { exists.mockRestore(); connections.mockRestore(); }
 });
 
 test('jede Speicheroperation verwendet genau eine native Transaktion', async () => {
