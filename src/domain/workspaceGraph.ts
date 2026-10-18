@@ -8,6 +8,7 @@ import { prepareWorkspaceDocument, evaluateWorkspaceDocumentReference, deriveWor
 import { resolveWorkspaceProfiles } from '@/domain/workspaceProfileResolution';
 import { deriveWorkspaceSemanticEdges } from '@/domain/workspaceSemanticEdges';
 import type { WorkspaceBinding } from '@/domain/workspaceModel';
+import { REFERENCE_GRAPH_CODES } from '@/domain/referenceGraphModel';
 import type { OscalDiagnostic } from '@/domain/oscalDiagnostics';
 
 export type * from '@/domain/workspaceGraphModel';
@@ -94,6 +95,8 @@ function prepareGraph(sources: readonly WorkspaceGraphDocument[]): PreparedGraph
     appendSourceNodes(prepared, nodes);
     if (document.rootType === 'catalog') appendCatalogProjectionNodes(document, document.source, nodes, diagnostics);
     for (const diagnostic of prepared.index.diagnostics) {
+      // Catalog statements use the control-scoped workspace projection above.
+      if (document.rootType === 'catalog' && diagnostic.code === REFERENCE_GRAPH_CODES.duplicateNodeId && diagnostic.params.nodeKind === 'statement') continue;
       diagnostics.push(workspaceDiagnostic(diagnostic.code, diagnostic.path));
     }
   }

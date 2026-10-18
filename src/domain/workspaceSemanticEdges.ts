@@ -1,5 +1,5 @@
 import { isJsonObject } from '@/domain/jsonGuards';
-import { buildWorkspaceCatalog, type WorkspaceCatalogResult } from '@/domain/workspaceCatalog';
+import { buildWorkspaceCatalog, type WorkspaceCatalogControl, type WorkspaceCatalogResult } from '@/domain/workspaceCatalog';
 import { createOscalDiagnostic } from '@/domain/oscalDiagnostics';
 import { readWorkspaceDocumentEdges } from '@/domain/workspaceEdges';
 import { workspaceDocumentToken, type WorkspaceGraphDocument, type WorkspaceGraphEdge, type WorkspaceProfileResolution, type WorkspaceNodeId } from '@/domain/workspaceGraphModel';
@@ -35,6 +35,7 @@ function createSemanticLookup(
     if (!resolutionByDocument.has(token)) resolutionByDocument.set(token, resolution);
   }
   const projections = new Map<string, WorkspaceCatalogResult | undefined>();
+  const statements = new Map<WorkspaceCatalogControl, ReadonlySet<string>>();
   const project = (target: WorkspaceGraphDocument | undefined): WorkspaceCatalogResult | undefined => {
     if (!target) return undefined;
     const token = workspaceDocumentToken(target.key);
@@ -44,10 +45,14 @@ function createSemanticLookup(
     if (target.rootType === 'catalog') source = target.source;
     else if (resolution?.status === 'resolved') source = resolution.source;
     const projection = source === undefined ? undefined : buildWorkspaceCatalog(source);
+    if (projection?.status === 'success') {
+      for (const control of projection.catalog.controlsById.values()) statements.set(control, new Set(control.statementIds));
+    }
     projections.set(token, projection);
     return projection;
   };
-  return { outgoing, project };
+  const hasStatement = (control: WorkspaceCatalogControl, id: string) => statements.get(control)?.has(id) === true;
+  return { outgoing, project, hasStatement };
 }
 
 function indexComponents(document: WorkspaceGraphDocument, components: Map<string, WorkspaceNodeId[]>): void {
@@ -55,9 +60,10 @@ function indexComponents(document: WorkspaceGraphDocument, components: Map<strin
   for (const component of list(body.components)) {
     const id = object(component).uuid;
     if (typeof id !== 'string') continue;
-    const matches = components.get(id) ?? [];
+    const key = id.toLowerCase();
+    const matches = components.get(key) ?? [];
     matches.push({ document: document.key, kind: 'component', localId: id });
-    components.set(id, matches);
+    components.set(key, matches);
   }
 }
 
@@ -94,7 +100,7 @@ export function deriveWorkspaceSemanticEdges(
 ): readonly WorkspaceGraphEdge[] {
   const result: WorkspaceGraphEdge[] = [];
   const byKey = new Map(documents.map(document => [workspaceDocumentToken(document.key), document]));
-  const { outgoing, project } = createSemanticLookup(edges, resolutions);
+  const { outgoing, project, hasStatement } = createSemanticLookup(edges, resolutions);
   const artifact = (document: WorkspaceGraphDocument): WorkspaceNodeId => ({ document: document.key, kind: 'artifact', localId: null });
   const emit = (document: WorkspaceGraphDocument, kind: WorkspaceGraphEdge['kind'], path: string, state: WorkspaceGraphEdge['state'], to?: WorkspaceNodeId, code?: string) => {
     result.push({ kind, from: artifact(document), path, state, ...(to ? { to } : {}), ...(code ? { diagnostic: createOscalDiagnostic({ code, path, stage: 'reference', validator: { name: 'workspace-semantic-edges', version: '1' }, artifact: { rootType: document.rootType } }) } : {}) });
@@ -104,6 +110,7 @@ export function deriveWorkspaceSemanticEdges(
     const projection = project(target);
     const diagnose = (id: unknown, controlId: unknown, statement: boolean, referencePath: string) => {
       const kind = semanticRequirementKind(component, statement);
+      if (context?.state === 'error') { emit(document, kind, referencePath, 'error', undefined, 'OSCAL_GRAPH_CONTEXT_INVALID'); return; }
       if (!target || !projection) { emit(document, kind, referencePath, 'not-evaluable'); return; }
       if (projection.status === 'failure') {
         const ambiguous = projection.diagnostics.some(item => item.code.endsWith('_AMBIGUOUS'));
@@ -111,7 +118,7 @@ export function deriveWorkspaceSemanticEdges(
         return;
       }
       const control = typeof controlId === 'string' ? projection.catalog.controlsById.get(controlId) : undefined;
-      const found = control && typeof id === 'string' && (!statement || control.statementIds.includes(id));
+      const found = control && typeof id === 'string' && (!statement || hasStatement(control, id));
       if (!found) { emit(document, kind, referencePath, 'error', undefined, 'OSCAL_GRAPH_TARGET_NOT_FOUND'); return; }
       emit(document, kind, referencePath, 'resolved', { document: target.key, kind: statement ? 'statement' : 'control', localId: id, ...(statement ? { controlId: control.id } : {}) });
     };
@@ -129,7 +136,7 @@ export function deriveWorkspaceSemanticEdges(
     list(body.capabilities).forEach((capability, index) => {
       list(object(capability)['incorporates-components']).forEach((entry, entryIndex) => {
         const id = object(entry)['component-uuid'];
-        const matches = typeof id === 'string' ? components.get(id) ?? [] : [];
+        const matches = typeof id === 'string' ? components.get(id.toLowerCase()) ?? [] : [];
         const path = `/component-definition/capabilities/${index}/incorporates-components/${entryIndex}/component-uuid`;
         if (matches.length > 1) emit(document, 'component-incorporates', path, 'error', undefined, 'OSCAL_GRAPH_TARGET_AMBIGUOUS');
         else if (matches.length === 1) emit(document, 'component-incorporates', path, 'resolved', matches[0]);

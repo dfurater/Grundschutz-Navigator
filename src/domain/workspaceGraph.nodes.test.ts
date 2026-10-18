@@ -73,6 +73,7 @@ describe('workspace graph target nodes', () => {
     expect(graph.edges.filter(edge => edge.kind === 'ssp-statement').map(edge => edge.to?.controlId)).toEqual(['a', 'b']);
     expect(graph.nodes.filter(node => node.kind === 'statement').map(node => [node.localId, node.controlId])).toEqual([['same', 'a'], ['same', 'b']]);
     expectTargetsExist(graph);
+    expect(graph.diagnostics).toEqual([]);
   });
 
   it('emits no partial projection nodes when catalog identity is ambiguous', async () => {
@@ -99,6 +100,30 @@ describe('workspace graph target nodes', () => {
     expect(derived.every(node => node.trustClass === 'class-2-local-user' && node.rootType === 'catalog' && node.oscalVersion === '1.1.3')).toBe(true);
     expect(derived.every(node => node.document.kind === 'class-1' && node.document.artifactKey === 'profile-gspp')).toBe(true);
     expectTargetsExist(graph);
+  });
+
+  it('keeps duplicate statement diagnostics within a control', async () => {
+    const catalog = catalogWithParts();
+    body(catalog).controls = [{ id: 'a', title: 'A', parts: [
+      { name: 'statement', id: 'same', prose: 'First' }, { name: 'statement', id: 'same', prose: 'Second' },
+    ] }];
+    const graph = await buildWorkspaceGraph({ members: [catalog] });
+    expect(graph.diagnostics.some(diagnostic => diagnostic.code === 'OSCAL_WORKSPACE_CATALOG_STATEMENT_AMBIGUOUS')).toBe(true);
+    expect(graph.nodes.some(node => node.kind === 'statement')).toBe(false);
+  });
+
+  it.each(['group', 'resource', 'component'] as const)('keeps legacy %s collision diagnostics', async kind => {
+    const document = member(kind === 'component' ? 'component-definition' : 'catalog', 'collision');
+    if (kind === 'group') body(document).groups = [{ id: 'same', title: 'A' }, { id: 'same', title: 'B' }];
+    if (kind === 'resource') body(document)['back-matter'] = { resources: [
+      { uuid: 'abcdefab-cdef-4abc-8def-abcdefabcdef' }, { uuid: 'abcdefab-cdef-4abc-8def-abcdefabcdef' },
+    ] };
+    if (kind === 'component') {
+      const components = body(document).components as unknown[];
+      components.push(structuredClone(components[0]));
+    }
+    const graph = await buildWorkspaceGraph({ members: [document] });
+    expect(graph.diagnostics.some(diagnostic => diagnostic.code === 'OSCAL_GRAPH_DUPLICATE_NODE_ID')).toBe(true);
   });
 
 });

@@ -1,4 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import * as budgetModule from '@/domain/profileResolutionBudget';
+import * as pipeline from '@/domain/oscalObjectPipeline';
+import { getSchemaPin } from '@/domain/oscalVersionMatrix';
+import { createOscalDiagnostic } from '@/domain/oscalDiagnostics';
 import type { LocalId } from '@/domain/workspaceModel';
 import { resolveWorkspaceProfiles } from '@/domain/workspaceProfileResolution';
 import type { WorkspaceGraphDocument, WorkspaceGraphEdge } from '@/domain/workspaceGraphModel';
@@ -76,4 +80,66 @@ it('redacts engine diagnostics and handles an already marked closing cycle edge'
     code: 'OSCAL_GRAPH_IMPORT_CYCLE', severity: 'error', stage: 'reference', artifact: { key: null, rootType: null, oscalVersion: null },
     path: '/', validator: { name: 'test', version: '1' }, signature: '', messageKey: '', params: {},
   } }])).toMatchObject([{ status: 'error', diagnostic: { code: 'PROFILE_RESOLUTION_CYCLE' } }]);
+});
+
+
+it('accepts only the common $schema root exception without changing source', async () => {
+  const p = profile();
+  const withDirective = { ...p, source: { ...(p.source as object), $schema: getSchemaPin('profile', '1.1.3')!.schemaId } };
+  const before = structuredClone(withDirective);
+  expect(await resolveWorkspaceProfiles([withDirective, catalog()], [edge()])).toMatchObject([{ status: 'resolved' }]);
+  expect(withDirective).toEqual(before);
+  expect(await resolveWorkspaceProfiles([{ ...p, source: { ...(p.source as object), unknown: {} } }, catalog()], [edge()])).toMatchObject([{ status: 'error' }]);
+});
+
+it('compares canonical pinned versions for local documents and preserves class-1 strictness', async () => {
+  const p = document('p', 'profile', { imports: [{ href: './catalog', 'include-all': {} }] }, 'v1.2.2');
+  const c = catalog('c', 'a', '1.2.2');
+  const before = structuredClone([p, c]);
+  expect(await resolveWorkspaceProfiles([p, c], [edge()])).toMatchObject([{ status: 'resolved', source: { catalog: { metadata: { 'oscal-version': '1.2.2' } } } }]);
+  expect([p, c]).toEqual(before);
+  expect(await resolveWorkspaceProfiles([{ ...p, trustClass: 'class-1-verified-public' }, c], [edge()])).toMatchObject([{ status: 'error' }]);
+});
+
+it('propagates reference errors with redacted causes through dependent profiles', async () => {
+  const cause = createOscalDiagnostic({ code: 'OSCAL_GRAPH_ROOT_TYPE_MISMATCH', path: '/profile/imports/0/href', stage: 'reference',
+    validator: { name: 'test', version: '1' }, artifact: { key: 'SECRET-local-key' } });
+  const results = await resolveWorkspaceProfiles([profile('p'), profile('q'), catalog()], [edge('p', 'q'), { ...edge('q'), state: 'error', diagnostic: cause }]);
+  expect(results).toMatchObject([
+    { status: 'error', diagnostic: { code: cause.code, artifact: { key: null } } },
+    { status: 'error', diagnostic: { code: cause.code, artifact: { key: null } } },
+  ]);
+  expect(JSON.stringify(results)).not.toContain('SECRET');
+});
+
+it('builds each intermediate profile once per graph invocation and recomputes on the next invocation', async () => {
+  const spy = vi.spyOn(pipeline, 'processClass2OscalValue');
+  const budgetSpy = vi.spyOn(budgetModule, 'createProfileResolutionBudget');
+  try {
+    const profiles = Array.from({ length: 100 }, (_, index) => profile(`p${index}`));
+    const edges = profiles.map((_, index) => edge(`p${index}`, index === 99 ? 'c' : `p${index + 1}`));
+    const first = await resolveWorkspaceProfiles([...profiles, catalog()], edges);
+    expect(first.every((result) => result.status === 'resolved')).toBe(true);
+    expect(spy).toHaveBeenCalledTimes(100);
+    expect(budgetSpy).toHaveBeenCalledTimes(1);
+    const second = await resolveWorkspaceProfiles([...profiles, catalog('c', 'changed')], edges);
+    expect(second[0]).toMatchObject({ status: 'resolved', source: { catalog: { controls: [{ id: 'changed' }] } } });
+    expect(spy).toHaveBeenCalledTimes(200);
+    expect(budgetSpy).toHaveBeenCalledTimes(2);
+  } finally { spy.mockRestore(); budgetSpy.mockRestore(); }
+});
+
+
+it('leaves a missing-source edge not evaluable without promoting it to a reference error', async () => {
+  expect(await resolveWorkspaceProfiles([profile()], [{ ...edge(), state: 'missing-source' }])).toMatchObject([{ status: 'not-evaluable' }]);
+});
+
+
+it('checks versions before consuming an already cached dependency', async () => {
+  const q = document('q', 'profile', { imports: [{ href: './catalog', 'include-all': {} }] }, '1.2.2');
+  const results = await resolveWorkspaceProfiles([profile(), q, catalog()], [edge(), edge('q')]);
+  expect(results).toMatchObject([
+    { status: 'resolved' },
+    { status: 'error', diagnostic: { code: 'PROFILE_RESOLUTION_VERSION_MISMATCH' } },
+  ]);
 });

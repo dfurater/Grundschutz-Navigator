@@ -6,6 +6,7 @@ import { REFERENCE_GRAPH_CODES } from '@/domain/referenceGraphModel';
 import type { WorkspaceBinding } from '@/domain/workspaceModel';
 import { workspaceDocumentToken, type WorkspaceGraphDocument, type WorkspaceGraphEdge, type WorkspaceNodeId } from '@/domain/workspaceGraphModel';
 import type { WorkspaceDocumentReference } from '@/domain/workspaceEdges';
+import { buildWorkspaceCatalog } from '@/domain/workspaceCatalog';
 
 export interface PreparedWorkspaceDocument {
   readonly document: WorkspaceGraphDocument;
@@ -21,8 +22,13 @@ export function workspaceArtifact(document: WorkspaceGraphDocument): WorkspaceNo
 }
 export function prepareWorkspaceDocument(document: WorkspaceGraphDocument): PreparedWorkspaceDocument {
   const referenceDocument = createReferenceDocument({ source: document.source, context: { trustClass: document.trustClass }, rootType: document.rootType, oscalVersion: document.oscalVersion });
-  return { document, classify: createOscalReferenceClassifier({document:referenceDocument}),
-    index: indexDocumentNodes({artifactKey: workspaceDocumentToken(document.key), lifecycle:'supported', rootType:document.rootType, oscalVersion:document.oscalVersion, source:document.source, view:undefined}) };
+  const index = indexDocumentNodes({artifactKey: workspaceDocumentToken(document.key), lifecycle:'supported', rootType:document.rootType, oscalVersion:document.oscalVersion, source:document.source, view:undefined});
+  const projection = document.rootType === 'catalog' ? buildWorkspaceCatalog(document.source) : undefined;
+  const localControlLookup = projection ? (id: string) => {
+    const state = index.lookup('control', id);
+    return state === 'found' && projection.status !== 'success' ? 'missing' : state;
+  } : undefined;
+  return { document, index, classify: createOscalReferenceClassifier({document:referenceDocument,localControlLookup}) };
 }
 
 /** Classify before consulting a binding: absolute URIs never acquire a workspace target. */
@@ -50,9 +56,29 @@ export function evaluateWorkspaceDocumentReference(
   return {...edge,state:'resolved',to:workspaceArtifact(target.document)};
 }
 
+function internalReferenceEdge(
+  prepared: PreparedWorkspaceDocument,
+  reference: ReturnType<PreparedWorkspaceDocument['classify']>,
+  edge: Pick<WorkspaceGraphEdge, 'kind' | 'from' | 'path'>,
+): WorkspaceGraphEdge {
+  const ambiguous = () => ({...edge,state:'error' as const,diagnostic:workspaceDiagnostic(REFERENCE_GRAPH_CODES.targetAmbiguous,edge.path)});
+  if (reference.kind === 'resource') {
+    if (prepared.index.lookup('resource',reference.resource.uuid) === 'ambiguous') return ambiguous();
+    return {...edge,state:reference.resource.content === 'empty' ? 'resolved-empty' : 'resolved',
+      to:{document:prepared.document.key,kind:'resource',localId:reference.resource.uuid}};
+  }
+  if (reference.kind === 'local-control') {
+    if (reference.state === 'ambiguous') return ambiguous();
+    return {...edge,state:'resolved',to:{document:prepared.document.key,kind:'control',localId:reference.controlId}};
+  }
+  if (reference.kind === 'external' || (reference.kind === 'unresolved' && reference.reason === 'unsafe-protocol')) return {...edge,state:'external'};
+  if (reference.kind === 'unresolved' && reference.reason === 'fragment-not-found') return {...edge,state:'error',diagnostic:workspaceDiagnostic(REFERENCE_GRAPH_CODES.targetNotFound,edge.path)};
+  return {...edge,state:'not-evaluable'};
+}
+
 /** Only known link collections are walked, so diagnostic paths never contain user keys. */
 export function deriveWorkspaceInternalEdges(prepared: PreparedWorkspaceDocument): WorkspaceGraphEdge[] {
-  const {document,index,classify}=prepared;
+  const {document,classify}=prepared;
   const result:WorkspaceGraphEdge[]=[];
   if(!isJsonObject(document.source)) return result;
   const body=document.source[document.rootType];
@@ -65,13 +91,7 @@ export function deriveWorkspaceInternalEdges(prepared: PreparedWorkspaceDocument
       const reference=classify({href,path:edgePath,rel:readString(candidate.rel),resourceFragment:readString(candidate['resource-fragment'])});
       if(reference.kind==='provenance')return;
       const edge={kind:'document-internal' as const,from:workspaceArtifact(document),path:edgePath};
-      if(reference.kind==='resource'){
-        const count=index.lookup('resource',reference.resource.uuid);
-        if(count==='ambiguous') result.push({...edge,state:'error',diagnostic:workspaceDiagnostic(REFERENCE_GRAPH_CODES.targetAmbiguous,edgePath)});
-        else result.push({...edge,state:reference.resource.content==='empty'?'resolved-empty':'resolved',to:{document:document.key,kind:'resource',localId:reference.resource.uuid}});
-      } else if(reference.kind==='external'||(reference.kind==='unresolved'&&reference.reason==='unsafe-protocol'))result.push({...edge,state:'external'});
-      else if(reference.kind==='unresolved'&&reference.reason==='fragment-not-found')result.push({...edge,state:'error',diagnostic:workspaceDiagnostic(REFERENCE_GRAPH_CODES.targetNotFound,edgePath)});
-      else result.push({...edge,state:'not-evaluable'});
+      result.push(internalReferenceEdge(prepared, reference, edge));
     });
   };
   const pending=[{node:body,path:`/${document.rootType}`}];

@@ -13,6 +13,35 @@ function binding(from: WorkspaceGraphDocument, to: WorkspaceGraphDocument, kind:
 const ssp = (id: string) => doc(id, 'system-security-plan', { 'control-implementation': { 'implemented-requirements': [{ 'control-id': 'same', statements: [{ 'statement-id': 'statement' }] }] } });
 
 describe('deriveWorkspaceSemanticEdges', () => {
+  it('matches component UUID casing while retaining original target and source values', () => {
+    const uuid = 'AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA';
+    const component = doc('component', 'component-definition', { components: [{ uuid }], capabilities: [{ 'incorporates-components': [{ 'component-uuid': uuid.toLowerCase() }] }] });
+    const before = structuredClone(component.source);
+    const resolved = deriveWorkspaceSemanticEdges([component], [], []);
+    expect(resolved[0]).toMatchObject({ state: 'resolved', to: { localId: uuid } });
+    expect(component.source).toEqual(before);
+    (component.source as { 'component-definition': { components: { uuid: string }[] } })['component-definition'].components.push({ uuid: uuid.toLowerCase() });
+    expect(deriveWorkspaceSemanticEdges([component], [], [])[0].diagnostic?.code).toBe('OSCAL_GRAPH_TARGET_AMBIGUOUS');
+  });
+  it('indexes statement IDs once per graph instead of rescanning arrays for each reference', () => {
+    const statementIds = ['statement'];
+    const includes = vi.spyOn(statementIds, 'includes');
+    const iterator = vi.spyOn(statementIds, Symbol.iterator);
+    const projection = vi.spyOn(catalogProjection, 'buildWorkspaceCatalog').mockReturnValue({ status: 'success', catalog: { controlsById: new Map([['same', { id: 'same', statementIds }]]) } });
+    try {
+      const catalog = doc('catalog', 'catalog', {});
+      const x = doc('x', 'system-security-plan', { 'control-implementation': { 'implemented-requirements': [{ 'control-id': 'same', statements: Array.from({ length: 100 }, () => ({ 'statement-id': 'statement' })) }] } });
+      const result = deriveWorkspaceSemanticEdges([x, catalog], [binding(x, catalog, 'ssp-import-profile', '/system-security-plan/import-profile/href')], []);
+      expect(result.every(edge => edge.state === 'resolved')).toBe(true);
+      expect(includes).not.toHaveBeenCalled();
+      expect(iterator).toHaveBeenCalledTimes(1);
+    } finally { projection.mockRestore(); iterator.mockRestore(); includes.mockRestore(); }
+  });
+  it('propagates bound context errors to dependent control and statement edges', () => {
+    const x = ssp('x'); const catalog = doc('catalog', 'catalog', {});
+    const context: WorkspaceGraphEdge = { ...binding(x, catalog, 'ssp-import-profile', '/system-security-plan/import-profile/href'), state: 'error' };
+    expect(deriveWorkspaceSemanticEdges([x, catalog], [context], []).map(edge => edge.state)).toEqual(['error', 'error']);
+  });
   it('projects a shared baseline once per invocation and recomputes after source changes', () => {
     const projection = vi.spyOn(catalogProjection, 'buildWorkspaceCatalog');
     try {

@@ -117,7 +117,14 @@ export const PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES = Object.freeze({
  */
 const PROFILE_RESOLUTION_TIMESTAMP = '1970-01-01T00:00:00.000Z';
 
+/** Trusted caller-owned state for one graph invocation; never sourced from OSCAL input. */
+export interface ProfileResolutionExecution {
+  readonly resolvedCatalogs: Map<string, unknown>;
+  readonly budget: ProfileResolutionBudget;
+}
+
 export interface ProfileResolutionRequest {
+  readonly execution?: ProfileResolutionExecution;
   readonly plan: ProfileResolutionPlan;
   readonly edgesByArtifactKey: ReadonlyMap<string, readonly ProfileResolutionEdge[]>;
   /** Geparste Profilprojektionen nach Artefaktschlüssel (nur Profilwurzeln). */
@@ -1195,10 +1202,10 @@ function resolveSingleProfile(input: SingleProfileInput, budget: ProfileResoluti
  * steht vor allen Importeuren und ist deshalb beim Zugriff bereits fertig.
  *
  * BUDGET: Der Lauf besitzt genau eine Budgetinstanz. Sie entsteht hier, wird
- * nach unten gereicht und nie über Läufe hinweg wiederverwendet. Die
- * öffentliche Signatur trägt bewusst KEINEN Grenzwert- und keinen
- * Disable-Parameter — ein gleichnamiger Wert im Steuerdokument bleibt
- * gewöhnlicher Dokumentinhalt und erreicht das Budget nicht.
+ * nach unten gereicht und nie über Verbundläufe hinweg wiederverwendet.
+ * Optionale Execution-Daten kommen ausschließlich vom aufrufenden Domain-Code;
+ * sie teilen Budget und validierte Zwischenergebnisse innerhalb eines Verbundlaufs.
+ * Dokumentinhalt erreicht weder diese Execution-Daten noch Budgetgrenzen.
  *
  * FANGSTELLE: Das `try` hier ist die einzige im ganzen Auflösungsweg. Ein
  * Budgetabbruch verlässt die Tiefe als `ProfileResolutionBudgetExceeded` und
@@ -1212,14 +1219,14 @@ export async function resolveProfile(
   const plan = request.plan;
   if (!plan.ok) return { ok: false, diagnostic: plan.diagnostic };
 
-  const budget = createProfileResolutionBudget();
+  const budget = request.execution?.budget ?? createProfileResolutionBudget();
 
   try {
-    const resolvedByArtifact = new Map<string, unknown>();
+    const resolvedByArtifact = request.execution?.resolvedCatalogs ?? new Map<string, unknown>();
     for (const artifactKey of plan.order) {
       budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE);
       const document = request.profileViews.get(artifactKey);
-      if (document === undefined) continue;
+      if (document === undefined || resolvedByArtifact.has(artifactKey)) continue;
 
       const outcome = resolveSingleProfile({
         artifactKey,

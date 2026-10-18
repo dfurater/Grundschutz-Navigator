@@ -72,6 +72,17 @@ export interface ReferenceResolutionContext {
   readonly documentsByHref?: ReadonlyMap<string, ReferenceDocument>;
 }
 
+export interface LocalControlReference extends ReferenceBase {
+  readonly kind: 'local-control';
+  readonly controlId: string;
+  readonly state: 'found' | 'ambiguous';
+}
+
+export interface ReferenceClassifierContext extends ReferenceResolutionContext {
+  /** Snapshot-local control identity lookup, without a registry or UI catalog claim. */
+  readonly localControlLookup?: (id: string) => 'found' | 'missing' | 'ambiguous';
+}
+
 interface IndexedResource {
   readonly resource: JsonObject;
   readonly index: number;
@@ -533,10 +544,18 @@ export function resolveOscalReference(
 
 /** Classifies a fixed document snapshot with one resource index; rlinks are not evaluated. */
 export function createOscalReferenceClassifier(
-  context: ReferenceResolutionContext,
-): (input: OscalReferenceInput) => ResolvedOscalReference {
+  context: ReferenceClassifierContext,
+): (input: OscalReferenceInput) => ResolvedOscalReference | LocalControlReference {
   const prepared = { ...prepareReferenceResolutionContext(context), resourceClassifications: new WeakMap<JsonObject, ResolvedResource>() };
-  return input => resolveOscalReferenceInternal(input, prepared, false);
+  return input => {
+    const reference = resolveOscalReferenceInternal(input, prepared, false);
+    if (reference.kind !== 'unresolved' || reference.reason !== 'fragment-not-found' || !isLocalFragmentHref(input.href)) return reference;
+    const controlId = input.href.slice(1);
+    const state = context.localControlLookup?.(controlId);
+    return state === 'found' || state === 'ambiguous'
+      ? { ...input, kind: 'local-control', controlId, state }
+      : reference;
+  };
 }
 
 function visitCatalogControls(

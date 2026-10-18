@@ -104,4 +104,24 @@ describe('checkWorkspaceMembership', () => {
     expect(await checkWorkspaceMembership({ document: missingContext, members: [], verbundId })).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_TRUST_CLASS_REJECTED' } });
   });
 
+  it.each([
+    ['profile', '1.2.2'], ['profile', 'v1.2.2'],
+    ['system-security-plan', '1.2.2'], ['system-security-plan', 'v1.2.2'],
+  ] as const)('matches %s root UUID case with declared version %s without rewriting source', async (root, version) => {
+    const uuid = 'abcdefab-cdef-4abc-8def-abcdefabcdef';
+    for (const incomingUppercase of [false, true]) {
+      const source = makeSchemaValidOscalDocument(root, '1.2.2');
+      (source[root] as Record<string, unknown>).uuid = incomingUppercase ? uuid.toUpperCase() : uuid;
+      ((source[root] as Record<string, unknown>).metadata as Record<string, unknown>)['oscal-version'] = version;
+      const result = await processClass2OscalBytes(new TextEncoder().encode(JSON.stringify(source)), context);
+      if (!result.ok) throw new Error(result.diagnostic.code);
+      const existingSource = makeSchemaValidOscalDocument(root, '1.2.2');
+      (existingSource[root] as Record<string, unknown>).uuid = incomingUppercase ? uuid : uuid.toUpperCase();
+      const existing = member(result.document, { source: existingSource });
+      const before = JSON.stringify([result.document, existing]);
+      expect(await checkWorkspaceMembership({ document: result.document, members: [existing], verbundId })).toMatchObject({ ok: false, existingLocalId: localId, action: 'replace', diagnostic: { code: 'WORKSPACE_ROOT_UUID_DUPLICATE' } });
+      expect(JSON.stringify([result.document, existing])).toBe(before);
+    }
+  });
+
 });

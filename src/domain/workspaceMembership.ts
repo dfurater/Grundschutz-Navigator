@@ -42,12 +42,13 @@ export async function checkWorkspaceMembership(input: {
     return { ok: false, diagnostic: diagnostic('WORKSPACE_MEMBERSHIP_ROOT_REJECTED', '/mapping-collection') };
   }
   const source = validated.document.source as Record<string, { uuid: string }>;
-  const uuid = source[document.rootType].uuid;
+  const uuid = source[document.rootType].uuid.toLowerCase();
   const duplicate = members.find(member => {
     if (member.verbundId !== verbundId || member.localId === replacingLocalId) return false;
     if (member.source === null || typeof member.source !== 'object') return false;
     const body = (member.source as Record<string, unknown>)[member.rootType];
-    return body !== null && typeof body === 'object' && (body as Record<string, unknown>).uuid === uuid;
+    const existingUuid = body !== null && typeof body === 'object' ? (body as Record<string, unknown>).uuid : undefined;
+    return typeof existingUuid === 'string' && existingUuid.toLowerCase() === uuid;
   });
   if (duplicate) {
     return { ok: false, diagnostic: diagnostic('WORKSPACE_ROOT_UUID_DUPLICATE', `/${document.rootType}/uuid`), existingLocalId: duplicate.localId, action: 'replace' };
