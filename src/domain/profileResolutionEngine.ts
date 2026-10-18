@@ -119,7 +119,7 @@ const PROFILE_RESOLUTION_TIMESTAMP = '1970-01-01T00:00:00.000Z';
 
 /** Trusted caller-owned state for one graph invocation; never sourced from OSCAL input. */
 export interface ProfileResolutionExecution {
-  readonly resolvedCatalogs: Map<string, unknown>;
+  readonly resolvedCatalogs: Map<string, { readonly tree: DerivedJsonTree; readonly usage: ProfileResolutionBudgetUsage }>;
 }
 
 export interface ProfileResolutionRequest {
@@ -1196,6 +1196,27 @@ function resolveSingleProfile(input: SingleProfileInput, budget: ProfileResoluti
   };
 }
 
+/** Measures only this profile's work; dependencies are charged separately in plan order. */
+function measureOwnBudget(budget: ProfileResolutionBudget): {
+  readonly budget: ProfileResolutionBudget;
+  readonly usage: () => ProfileResolutionBudgetUsage;
+} {
+  const before = budget.usage();
+  let ownDepth = 0;
+  return {
+    budget: { ...budget, admitNode(depth) { budget.admitNode(depth); ownDepth = Math.max(ownDepth, depth); } },
+    usage() {
+      const after = budget.usage();
+      const workUnitsByCategory = { ...after.workUnitsByCategory };
+      for (const category of Object.values(PROFILE_RESOLUTION_WORK_UNITS)) {
+        workUnitsByCategory[category] -= before.workUnitsByCategory[category];
+      }
+      return { workUnits: after.workUnits - before.workUnits, workUnitsByCategory,
+        nodes: after.nodes - before.nodes, decodedBase64Bytes: after.decodedBase64Bytes - before.decodedBase64Bytes, maxDepth: ownDepth };
+    },
+  };
+}
+
 /**
  * Löst den gesamten Postorder-Plan vorwärts auf: Jedes importierte Profil
  * steht vor allen Importeuren und ist deshalb beim Zugriff bereits fertig.
@@ -1222,19 +1243,25 @@ export async function resolveProfile(
   const budget = createProfileResolutionBudget();
 
   try {
-    const resolvedByArtifact = request.execution?.resolvedCatalogs ?? new Map<string, unknown>();
+    const resolvedByArtifact = new Map<string, unknown>();
     for (const artifactKey of plan.order) {
       budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE);
       const document = request.profileViews.get(artifactKey);
-      if (document === undefined || resolvedByArtifact.has(artifactKey)) continue;
-
+      if (document === undefined) continue;
+      const cached = request.execution?.resolvedCatalogs.get(artifactKey);
+      if (cached !== undefined) {
+        budget.replayCachedUsage(cached.usage);
+        resolvedByArtifact.set(artifactKey, cached.tree);
+        continue;
+      }
+      const measured = measureOwnBudget(budget);
       const outcome = resolveSingleProfile({
         artifactKey,
         document,
         plan,
         edgesByArtifactKey: request.edgesByArtifactKey,
         resolvedByArtifact,
-      }, budget);
+      }, measured.budget);
       if (!outcome.ok) return outcome;
       const validated = await processClass2OscalValue(outcome.tree, {
         trustClass: 'class-2-local-user',
@@ -1250,6 +1277,7 @@ export async function resolveProfile(
         };
       }
       resolvedByArtifact.set(artifactKey, outcome.tree);
+      request.execution?.resolvedCatalogs.set(artifactKey, { tree: outcome.tree, usage: measured.usage() });
     }
 
     const topLevel = plan.topProfileArtifactKey;

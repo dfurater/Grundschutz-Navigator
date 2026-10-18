@@ -205,3 +205,64 @@ it('does not let a local missing import mask a bound dependency error', async ()
   ]);
   expect(results[0]).toMatchObject({ status: 'error', diagnostic: { code: cause.code } });
 });
+
+it('charges cached intermediate output identically in either profile input order', async () => {
+  const realFactory = budgetModule.createProfileResolutionBudget;
+  const measured = realFactory();
+  const budgetSpy = vi.spyOn(budgetModule, 'createProfileResolutionBudget').mockReturnValueOnce(measured);
+  try {
+    const x = profile('x'); const p = profile('p'); const c = catalog();
+    expect(await resolveWorkspaceProfiles([x, c], [edge('x')])).toMatchObject([{ status: 'resolved' }]);
+    const independentLimit = measured.usage().nodes;
+    budgetSpy.mockImplementation(() => realFactory({ maxNodes: independentLimit }));
+    const bindings = [edge('p', 'x'), edge('x')];
+    for (const profiles of [[p, x], [x, p]]) {
+      const result = await resolveWorkspaceProfiles([...profiles, c], bindings);
+      expect(result.find((item) => item.document.kind === 'local' && item.document.localId === 'p')).toMatchObject({ status: 'error', diagnostic: { code: 'OSCAL_RESOLUTION_OUTPUT_BUDGET_EXCEEDED' } });
+    }
+    const fullChainBudget = realFactory();
+    budgetSpy.mockReturnValueOnce(fullChainBudget).mockImplementation(() => realFactory());
+    expect((await resolveWorkspaceProfiles([p, x, c], bindings))[0]).toMatchObject({ status: 'resolved' });
+    budgetSpy.mockImplementation(() => realFactory({ maxNodes: fullChainBudget.usage().nodes }));
+    for (const profiles of [[p, x], [x, p]]) {
+      expect((await resolveWorkspaceProfiles([...profiles, c], bindings)).every((item) => item.status === 'resolved')).toBe(true);
+    }
+  } finally { budgetSpy.mockRestore(); }
+});
+
+
+it('charges a shared diamond dependency once per unique planned artifact across cache orders', async () => {
+  const realFactory = budgetModule.createProfileResolutionBudget;
+  const measured = realFactory();
+  const budgetSpy = vi.spyOn(budgetModule, 'createProfileResolutionBudget').mockReturnValueOnce(measured);
+  try {
+    const top = profile('top', ['./left', './right']);
+    const left = profile('left'); const right = profile('right'); const shared = profile('shared'); const c = catalog();
+    const bindings = [edge('top', 'left', 0), edge('top', 'right', 1), edge('left', 'shared'), edge('right', 'shared'), edge('shared')];
+    const first = await resolveWorkspaceProfiles([top, left, right, shared, c], bindings);
+    expect(first[0]).toMatchObject({ status: 'resolved' });
+    const boundary = measured.usage();
+    budgetSpy.mockImplementation(() => realFactory({ maxNodes: boundary.nodes, workUnits: boundary.workUnits }));
+    const second = await resolveWorkspaceProfiles([shared, left, right, top, c], bindings);
+    expect(second.every((result) => result.status === 'resolved')).toBe(true);
+  } finally { budgetSpy.mockRestore(); }
+});
+
+it('charges a real referenced 3 MiB resource across a cached profile chain under the production 4 MiB limit', async () => {
+  const resourceUuid = '22222222-2222-4222-8222-222222222222';
+  const c = document('c', 'catalog', {
+    controls: [{ id: 'a', title: 'Synthetic control', links: [{ href: `#${resourceUuid}`, rel: 'reference' }] }],
+    'back-matter': { resources: [{ uuid: resourceUuid, base64: {
+      'media-type': 'application/octet-stream', value: 'A'.repeat(4 * 1024 * 1024),
+    } }] },
+  });
+  const p = profile('p'); const q = profile('q');
+  const bindings = [edge('p', 'q'), edge('q')];
+  for (const profiles of [[p, q], [q, p]]) {
+    const results = await resolveWorkspaceProfiles([...profiles, c], bindings);
+    const pResult = results.find((result) => result.document.kind === 'local' && result.document.localId === 'p');
+    expect(pResult).toMatchObject({ status: 'error', diagnostic: { code: 'OSCAL_RESOLUTION_OUTPUT_BUDGET_EXCEEDED' } });
+    expect(pResult).not.toHaveProperty('source');
+    expect(results.find((result) => result.document.kind === 'local' && result.document.localId === 'q')).toMatchObject({ status: 'resolved' });
+  }
+});

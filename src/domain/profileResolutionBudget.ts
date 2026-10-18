@@ -155,6 +155,8 @@ export interface ProfileResolutionBudget {
   admitWorkingNode(): void;
   /** Übernimmt einen kodierten base64-Wert in die Ausgabe. Wirft bei Erschöpfung. */
   admitBase64(encoded: string): void;
+  /** Charges a trusted measured cache delta atomically without rebuilding its output. */
+  replayCachedUsage(usage: ProfileResolutionBudgetUsage): void;
   /** Momentaufnahme der Zähler. Rein lesend — es gibt keinen Weg zurück. */
   usage(): ProfileResolutionBudgetUsage;
 }
@@ -186,6 +188,14 @@ function budgetDiagnostic(
   });
 }
 
+function validateCachedUsage(usage: ProfileResolutionBudgetUsage): void {
+  const counts = Object.values(PROFILE_RESOLUTION_WORK_UNITS).map((category) => usage.workUnitsByCategory[category]);
+  const values = [usage.workUnits, usage.nodes, usage.maxDepth, usage.decodedBase64Bytes, ...counts];
+  const work = counts.reduce((sum, count) => sum + count, 0);
+  if (values.some((value) => !Number.isSafeInteger(value) || value < 0) || work !== usage.workUnits) {
+    throw new TypeError('Invalid trusted cached budget usage');
+  }
+}
 /**
  * Eine Budgetinstanz je Auflösungslauf. Kein Modulzustand, kein globaler
  * Zähler, keine Wiederverwendung über Läufe: Der einzige Weg an einen Zähler
@@ -251,6 +261,30 @@ export function createProfileResolutionBudget(
       const total = decodedBase64Bytes + decodedBase64ByteLength(encoded);
       if (total > base64Limit) rejectOutput('base64', base64Limit, total);
       decodedBase64Bytes = total;
+    },
+
+    replayCachedUsage(usage) {
+      validateCachedUsage(usage);
+      let projectedWork = workUnits;
+      for (const category of Object.values(PROFILE_RESOLUTION_WORK_UNITS)) {
+        projectedWork += usage.workUnitsByCategory[category];
+        if (projectedWork > workLimit) {
+          throw new ProfileResolutionBudgetExceeded(budgetDiagnostic(
+            PROFILE_RESOLUTION_BUDGET_DIAGNOSTIC_CODES.WORK_BUDGET_EXCEEDED,
+            WORK_UNIT_PATHS[category], { category, limit: workLimit, observed: projectedWork },
+          ));
+        }
+      }
+      if (nodes + usage.nodes > nodeLimit) rejectOutput('nodes', nodeLimit, nodes + usage.nodes);
+      if (usage.maxDepth > depthLimit) rejectOutput('depth', depthLimit, usage.maxDepth);
+      if (decodedBase64Bytes + usage.decodedBase64Bytes > base64Limit) {
+        rejectOutput('base64', base64Limit, decodedBase64Bytes + usage.decodedBase64Bytes);
+      }
+      workUnits = projectedWork;
+      for (const category of Object.values(PROFILE_RESOLUTION_WORK_UNITS)) workUnitsByCategory[category] += usage.workUnitsByCategory[category];
+      nodes += usage.nodes;
+      maxDepth = Math.max(maxDepth, usage.maxDepth);
+      decodedBase64Bytes += usage.decodedBase64Bytes;
     },
 
     usage() {
