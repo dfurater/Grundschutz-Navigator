@@ -15,6 +15,44 @@ function hasKeys(value: object, keys: string[]): boolean {
   return Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key));
 }
 
+/** Transport state of one restore: the decoder exists between `start` and the end of the transport. */
+interface Receiver { decoder?: OscalSourceDecoder; sequence: number }
+
+/** Keeps only an allowlisted code of a worker rejection and rebuilds every other diagnostic field. */
+function rejectedResult(diagnostic: unknown): WorkspaceResult<never> {
+  const code = diagnostic && typeof diagnostic === 'object' ? (diagnostic as Record<string, unknown>).code : undefined;
+  const allowedCodes: readonly unknown[] = WORKSPACE_BACKUP_DIAGNOSTIC_CODES;
+  return rejectWorkspaceBackup(allowedCodes.includes(code) ? code as string : 'WORKSPACE_BACKUP_WORKER_FAILURE');
+}
+
+/**
+ * Applies one worker frame. Returns the result once the transport ends and `undefined` while fragments follow; a
+ * protocol violation throws.
+ */
+function receiveFrame<T>(data: unknown, receiver: Receiver, validStructure: (value: unknown) => value is T, ack: (sequence: number) => void): WorkspaceResult<T> | undefined {
+  const frame = data as Record<string, unknown> | null;
+  if (!frame || typeof frame !== 'object') throw new Error('Invalid frame');
+  const { decoder } = receiver;
+  if (frame.type === 'start' && hasKeys(frame, ['type']) && !decoder) {
+    receiver.decoder = new OscalSourceDecoder(BACKUP_TRANSPORT_LIMITS);
+    return undefined;
+  }
+  if (frame.type === 'chunk' && hasKeys(frame, ['type', 'sequence', 'operations']) && decoder && frame.sequence === receiver.sequence) {
+    // The acknowledgement is back pressure; `sequence` rules out skipped and repeated fragments.
+    decoder.accept(frame.operations);
+    ack(receiver.sequence++);
+    return undefined;
+  }
+  if (frame.type === 'done' && hasKeys(frame, ['type', 'sequence']) && decoder && frame.sequence === receiver.sequence) {
+    // This locally created worker is the validation authority; check the closed bundle form before adoption.
+    const value = decoder.finish();
+    if (!validStructure(value)) throw new Error('Invalid bundle');
+    return { ok: true, value };
+  }
+  if (frame.type === 'rejected' && hasKeys(frame, ['type', 'diagnostic']) && !decoder) return rejectedResult(frame.diagnostic);
+  throw new Error('Invalid frame');
+}
+
 /**
  * A dedicated worker owns backup decoding and JSON validation. It returns the validated bundle in acknowledged fragments,
  * so the main thread rebuilds it one bounded message at a time.
@@ -24,15 +62,14 @@ function parseBackup<T extends WorkspaceBackup | WorkspaceVerbundBackup>(bytes: 
   return new Promise(resolve => {
     let worker: Worker;
     let timeout: ReturnType<typeof setTimeout> | undefined;
-    let decoder: OscalSourceDecoder | undefined;
-    let sequence = 0;
+    const receiver: Receiver = { sequence: 0 };
     let settled = false;
     const finish = (result: WorkspaceResult<T>) => {
       if (settled) return;
       settled = true;
       clearTimeout(timeout);
-      decoder?.dispose();
-      decoder = undefined;
+      receiver.decoder?.dispose();
+      receiver.decoder = undefined;
       worker?.terminate();
       resolve(result);
     };
@@ -44,25 +81,8 @@ function parseBackup<T extends WorkspaceBackup | WorkspaceVerbundBackup>(bytes: 
         // The sole producer is the locally created module worker. No document-origin fields are used as diagnostics.
         if (event.origin !== '' && event.origin !== globalThis.location.origin) return workerFailure();
         try {
-          const frame = event.data as Record<string, unknown> | null;
-          if (!frame || typeof frame !== 'object') throw new Error('Invalid frame');
-          if (frame.type === 'start' && hasKeys(frame, ['type']) && !decoder) {
-            decoder = new OscalSourceDecoder(BACKUP_TRANSPORT_LIMITS);
-          } else if (frame.type === 'chunk' && hasKeys(frame, ['type', 'sequence', 'operations']) && decoder && frame.sequence === sequence) {
-            // The acknowledgement is back pressure; `sequence` rules out skipped and repeated fragments.
-            decoder.accept(frame.operations);
-            worker.postMessage({ type: 'ack', sequence: sequence++ });
-          } else if (frame.type === 'done' && hasKeys(frame, ['type', 'sequence']) && decoder && frame.sequence === sequence) {
-            // This locally created worker is the validation authority; check the closed bundle form before adoption.
-            const value = decoder.finish();
-            if (!validStructure(value)) throw new Error('Invalid bundle');
-            finish({ ok: true, value });
-          } else if (frame.type === 'rejected' && hasKeys(frame, ['type', 'diagnostic']) && !decoder) {
-            const diagnostic = frame.diagnostic;
-            const code = diagnostic && typeof diagnostic === 'object' ? (diagnostic as Record<string, unknown>).code : undefined;
-            const allowedCodes: readonly unknown[] = WORKSPACE_BACKUP_DIAGNOSTIC_CODES;
-            finish(rejectWorkspaceBackup(allowedCodes.includes(code) ? code as string : 'WORKSPACE_BACKUP_WORKER_FAILURE'));
-          } else throw new Error('Invalid frame');
+          const result = receiveFrame(event.data, receiver, validStructure, sequence => worker.postMessage({ type: 'ack', sequence }));
+          if (result) finish(result);
         } catch { workerFailure(); }
       };
       worker.onerror = workerFailure;

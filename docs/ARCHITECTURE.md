@@ -385,7 +385,8 @@ src/                              # Anwendungsquellcode
 │   ├── oscalRoundTrip.ts             # No-op-Round-trip-Harnisch
 │   ├── oscalStructure.ts             # Strukturorakel (Zählregeln A und B)
 │   ├── renderAppShell.tsx            # Rendert die Shell mit echter Routentabelle für Komponententests
-│   └── workflowFixtures.ts           # Job-Blöcke und temporäre Repository-Fixtures für Skripttests
+│   ├── workflowFixtures.ts           # Job-Blöcke und temporäre Repository-Fixtures für Skripttests
+│   └── workspaceNodeWorkers.ts       # In-Process-Ersatz für Import-Gate und Backup-Worker in Node-Tests
 ├── index.css                     # Tailwind-Einstieg und einzige Quelle der Gestaltungstokens
 ├── main.tsx                      # Einstiegspunkt
 ├── test-setup.ts                 # Vitest-Setup der jsdom-Lane

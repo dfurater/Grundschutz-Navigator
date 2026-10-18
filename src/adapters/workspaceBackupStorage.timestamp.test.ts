@@ -2,14 +2,8 @@
 import 'fake-indexeddb/auto';
 import Dexie from 'dexie';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-vi.mock('@/adapters/oscalImportGate', async () => {
-  const { processClass2OscalBytes } = await import('@/domain/oscalClass2Import');
-  return { importClass2OscalDocument: processClass2OscalBytes };
-});
-vi.mock('@/adapters/workspaceBackup', async () => {
-  const { processWorkspaceBackupBytes, processVerbundBackupBytes } = await import('@/adapters/workspaceBackupProcessing');
-  return { parseWorkspaceBackup: processWorkspaceBackupBytes, parseVerbundBackup: processVerbundBackupBytes };
-});
+vi.mock('@/adapters/oscalImportGate', async () => (await import('@/test/workspaceNodeWorkers')).inProcessImportGate());
+vi.mock('@/adapters/workspaceBackup', async () => (await import('@/test/workspaceNodeWorkers')).inProcessBackupParser());
 import { WorkspaceStore, WORKSPACE_DATABASE_NAME } from '@/adapters/workspaceStore';
 import { importClass2OscalDocument } from '@/adapters/oscalImportGate';
 import { makeSchemaValidOscalDocument } from '@/test/fixtures/oscalSchemaFixtures';
