@@ -13,6 +13,7 @@
 
 import { createOscalDiagnostic, type OscalDiagnostic } from '@/domain/oscalDiagnostics';
 import { CLASS_2_IMPORT_LIMITS, CLASS_2_IMPORT_VALIDATOR } from '@/domain/oscalImportContract';
+import { WORKSPACE_BACKUP_FRAME_DEPTH } from '@/domain/class2ImportLimits.mjs';
 import {
   accountEmbeddedBase64,
   windowForElement,
@@ -68,6 +69,8 @@ function reject(code: string): OscalDiagnostic {
 }
 
 interface WalkState {
+  readonly maxDepth: number;
+  readonly countBase64: boolean;
   /** Identitätsmenge über den GESAMTEN Lauf, nicht nur den aktiven Pfad. */
   readonly seenContainers: Set<object>;
   nodeCount: number;
@@ -177,7 +180,7 @@ function visitRecord(
 
     // Base64-Buchhaltung an genau der alten Adjazenz, ohne Dekodierung.
     if (
-      childWindow === 'base64-payload'
+      state.countBase64 && childWindow === 'base64-payload'
       && typeof propertyValue === 'object'
       && propertyValue !== null
       && !Array.isArray(propertyValue)
@@ -218,9 +221,9 @@ function walkObjectGraph(
       limitNodes: CLASS_2_IMPORT_LIMITS.maxNodes,
     });
   }
-  if (depth > CLASS_2_IMPORT_LIMITS.maxDepth) {
+  if (depth > state.maxDepth) {
     return createClass2ResourceLimitDiagnostic('OSCAL_RESOURCE_DEPTH_LIMIT_EXCEEDED', {
-      limitDepth: CLASS_2_IMPORT_LIMITS.maxDepth,
+      limitDepth: state.maxDepth,
     });
   }
 
@@ -252,7 +255,42 @@ export function enforceClass2ObjectGraphInvariants(source: unknown): OscalDiagno
   return walkObjectGraph(
     source,
     1,
-    { seenContainers: new Set(), nodeCount: 0, decodedBase64Bytes: 0 },
+    { seenContainers: new Set(), nodeCount: 0, decodedBase64Bytes: 0, maxDepth: CLASS_2_IMPORT_LIMITS.maxDepth, countBase64: true },
+    'none',
+  );
+}
+
+/**
+ * Zählt die Knoten eines Graphen in der Zählweise von `walkObjectGraph` — jeder
+ * Wert zählt, auch Primitive — und bricht nach `maxNodes` gezählten Knoten ab:
+ * Der Rückgabewert ist dann `maxNodes + 1`. Die Abbruchprüfung rechnet die schon
+ * abgelegten, ungezählten Stapel-Einträge mit; jeder von ihnen zählt mindestens
+ * einen Knoten, der Hilfsstapel bleibt damit auf das Restbudget begrenzt. Budgets
+ * erkennen eine Überschreitung, ohne den Graphen vollständig zu durchlaufen; die
+ * autoritative Prüfung bleibt `enforceWorkspaceBackupGraphInvariants()`.
+ */
+export function countObjectGraphNodesCapped(value: unknown, maxNodes: number): number {
+  let count = 0;
+  const pending: unknown[] = [value];
+  while (pending.length > 0) {
+    const current = pending.pop();
+    count += 1;
+    if (count > maxNodes) return count;
+    if (current === null || typeof current !== 'object') continue;
+    const children: readonly unknown[] = Array.isArray(current) ? current : Object.values(current);
+    // Jeder Stapel- und Kindeintrag zählt mindestens einen Knoten: Der Abbruch hält den Hilfsstapel im Restbudget.
+    if (count + pending.length + children.length > maxNodes) return maxNodes + 1;
+    for (const child of children) pending.push(child);
+  }
+  return count;
+}
+
+/** Aggregate shape/node admission; callers enforce OSCAL limits independently for each source. */
+export function enforceWorkspaceBackupGraphInvariants(backup: unknown): OscalDiagnostic | null {
+  return walkObjectGraph(
+    backup,
+    1,
+    { seenContainers: new Set(), nodeCount: 0, decodedBase64Bytes: 0, maxDepth: CLASS_2_IMPORT_LIMITS.maxDepth + WORKSPACE_BACKUP_FRAME_DEPTH, countBase64: false },
     'none',
   );
 }

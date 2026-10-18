@@ -134,18 +134,52 @@ export function DatenschutzPage() {
           5. Lokale Datenspeicherung
         </h2>
         <p className="catalog-prose-text text-sm text-slate-700 leading-relaxed">
-          Nach aktuellem Stand speichert die Anwendung keine fachlichen
-          Nutzungsdaten in <code>localStorage</code>,{' '}
-          <code>sessionStorage</code> oder vergleichbaren Browser-Speichern.
+          Die technische Speicherschnittstelle kann eigene Dokumente auf Wunsch
+          lokal im Browser speichern. Die Dokumente verlassen das Gerät dabei nicht.
+          Die Anwendung setzt keine Löschfrist und löscht gespeicherte Dokumente
+          nicht automatisch. Der Browser kann lokal gespeicherte Daten jedoch ohne
+          Rückfrage entfernen, etwa bei knappem Speicherplatz oder wenn Sie diese
+          Website längere Zeit nicht nutzen.
+        </p>
+        <p className="catalog-prose-text text-sm text-slate-700 leading-relaxed">
           Ausgelieferte Dateien können browser- oder netzwerkbedingt
           zwischengespeichert werden und lassen sich über die
           Browser-Einstellungen entfernen.
+        </p>
+        <p className="catalog-prose-text text-sm text-slate-700 leading-relaxed">
+          Über die technische Schnittstelle lassen sich einzelne Dokumente, alle
+          Daten eines Verbunds oder sämtliche gespeicherten Daten vollständig
+          löschen. Bedienelemente zum Speichern, Löschen und Exportieren eigener
+          Dokumente sind derzeit nicht verfügbar. Über die Browser-Einstellungen
+          können Sie sämtliche lokalen Daten dieser Anwendung entfernen.
+          Bereits exportierte Dateien werden dadurch nicht gelöscht; das gilt
+          auch für deren Kopien, etwa in Betriebssystem-Backups oder bei Dritten.
+        </p>
+        <p className="catalog-prose-text text-sm text-slate-700 leading-relaxed">
+          Der Betreiber hat keine Kopie Ihrer gespeicherten Dokumente und kann
+          sie nicht wiederherstellen. Der über die technische Schnittstelle
+          erzeugte Export ist die einzige Sicherung. Ohne eine solche Datei
+          gehen die Dokumente beim Verlust des Geräts oder Browserprofils verloren.
         </p>
       </section>
 
       <section className="space-y-2">
         <h2 className="text-base font-semibold leading-snug text-slate-900">
-          6. Externe Ressourcen
+          6. Unverschlüsselte Speicherung
+        </h2>
+        <p className="catalog-prose-text text-sm text-slate-700 leading-relaxed">
+          Gespeicherte Dokumente liegen unverschlüsselt im Browserprofil.
+          Personen mit Zugriff auf Ihr Browserprofil oder das entsperrte Gerät
+          können die Dokumente lesen. Das betrifft insbesondere die Nutzung auf
+          geteilten Geräten sowie Vertretungs- und Administrationszugänge.
+          Auch beim Verlust des Geräts können Dritte die Dokumente lesen, wenn
+          sie Zugang zum Browserprofil erhalten.
+        </p>
+      </section>
+
+      <section className="space-y-2">
+        <h2 className="text-base font-semibold leading-snug text-slate-900">
+          7. Externe Ressourcen
         </h2>
         <p className="catalog-prose-text text-sm text-slate-700 leading-relaxed">
           Die Anwendung bindet keine externen Schriftarten, Analyse- oder
@@ -156,7 +190,7 @@ export function DatenschutzPage() {
 
       <section className="space-y-2">
         <h2 className="text-base font-semibold leading-snug text-slate-900">
-          7. Ihre Rechte
+          8. Ihre Rechte
         </h2>
         <p className="catalog-prose-text text-sm text-slate-700 leading-relaxed">
           Soweit personenbezogene Daten von Ihnen verarbeitet werden, stehen

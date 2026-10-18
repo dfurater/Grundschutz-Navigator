@@ -16,6 +16,7 @@ Bei der Anwendung handelt es sich um eine **Client-Side Single-Page Application 
 | Routing | React Router v8 |
 | Volltextsuche | FlexSearch |
 | Scrollleisten | OverlayScrollbars (MIT) |
+| Lokaler Dokumentenspeicher | Dexie 4.4.6 (exakter Produktionspin), IndexedDB `gspp-workspace` |
 | Testing | Vitest + @testing-library/react + jsdom + Chromium-Browser-Lane; jsdom parst im Build zusätzlich die gebaute HTML-Auslieferung für den Titelvertrag |
 | Deployment | GitHub Pages (via GitHub Actions) |
 
@@ -140,6 +141,7 @@ src/                              # Anwendungsquellcode
 │   ├── oscalRootDocument.ts          # Root-Envelope des generischen Dispatch
 │   ├── oscalSchemaBundle.ts          # Einziger Zugriffsweg auf die gepinnten NIST-Schemas
 │   ├── oscalSchemaValidation.ts      # Stufe 3: JSON-Schema-Prüfung im Worker
+│   ├── oscalSystemSecurityPlan.ts    # Raw-Typen des Roots system-security-plan
 │   ├── oscalVersionMatrix.d.mts      # Typen der Versionsmatrix
 │   ├── oscalVersionMatrix.mjs        # Root-Typ × OSCAL-Version × gepinntes Schema
 │   ├── oscalVersionMatrix.ts         # Typsicherer Einstieg in oscalVersionMatrix.mjs
@@ -171,13 +173,17 @@ src/                              # Anwendungsquellcode
 │   ├── sourceRegistry.mjs            # Verbindlicher Upstream-/Katalogvertrag
 │   ├── sourceRegistry.ts             # Typsicherer Einstieg in sourceRegistry.mjs
 │   ├── statementSegments.ts          # Reine Segmentierung des Anforderungssatzes
+│   ├── systemSecurityPlanModel.ts    # Domänenmodell des SSP
+│   ├── systemSecurityPlanSystemModel.ts # Domänenmodell der SSP-Systembeschreibung
 │   ├── taxonomyVocabulary.ts         # Auflösung von Praktiken und Themen
 │   ├── uuidV5.ts                     # Deterministische UUIDv5-Ableitung
 │   ├── vocabulary.ts                 # BSI-Vokabular-Auflösung
 │   ├── vocabularyNamespaces.ts       # Namespace-URLs aus dem Quellregister
 │   ├── vocabularyRouteId.d.mts       # Typ der Routenkennung
 │   ├── vocabularyRouteId.mjs         # Routenkennung aus dem Upstream-Pfad (einzige Quelle, reines ESM)
-│   └── vocabularyRouteId.ts          # Typsicherer Einstieg in vocabularyRouteId.mjs
+│   ├── vocabularyRouteId.ts          # Typsicherer Einstieg in vocabularyRouteId.mjs
+│   ├── workspaceJson.ts              # Verlustfreie JSON-Zahlengrenze des Speichers
+│   └── workspaceModel.ts             # Informationsverbünde, Envelopes, Bindungen und Backup-Typen
 ├── adapters/                     # Infrastruktur- und Datengrenzen
 │   ├── browserDownload.ts            # Temporärer Browser-Download mit Cleanup
 │   ├── oscalAdapter.ts               # OSCAL-Katalogkörper → Domain Model
@@ -192,10 +198,25 @@ src/                              # Anwendungsquellcode
 │   ├── oscalProfileAdapter.ts        # Projektion des Profile
 │   ├── oscalProfileDocument.ts       # Verlustfreier Dokumenteinstieg Profile
 │   ├── oscalProfileReaders.ts        # Knotenleser und Diagnosen des Profile-Adapters
-│   ├── oscalReaders.ts               # Strukturleser der Adapter mit gebundener Diagnosefunktion
+│   ├── oscalReaders.ts               # Struktur- und Elementleser der Adapter mit gebundener Diagnosefunktion
 │   ├── oscalRootAdapters.ts          # Adapter-Registrierung je Root-Typ
 │   ├── oscalRootDocumentParse.ts     # Root-Dispatch mit Root-Typ-Schranke für alle Dokumenteinstiege
-│   └── oscalRootDocumentSchema.ts    # Stufe 3 für geparste Root-Dokumente, getrennt vom Katalogpfad
+│   ├── oscalRootDocumentSchema.ts    # Stufe 3 für geparste Root-Dokumente, getrennt vom Katalogpfad
+│   ├── oscalSspAdapter.ts            # Projektion des SSP, nur Vertrauensklasse 2
+│   ├── oscalSspControl.ts            # SSP-Projektion von control-implementation
+│   ├── oscalSspDocument.ts           # Verlustfreier Dokumenteinstieg SSP
+│   ├── oscalSspReaders.ts            # Knotenleser, Referenzprüfungen und Diagnosen des SSP-Adapters
+│   ├── oscalSspSystem.ts             # SSP-Projektion von system-characteristics und system-implementation
+│   ├── workspaceBackup.ts            # Begrenzter Backup-Einstieg über einen Modul-Worker
+│   ├── workspaceBackupContract.ts    # Redigierte Backup-Diagnosen und Workerfrist
+│   ├── workspaceBackupProcessing.ts  # Backup-Validierung und Klasse-2-Dokumentprüfung
+│   ├── workspaceBackupStorage.ts     # Backup-Snapshots innerhalb der Speichertransaktionen
+│   ├── workspaceBackupStructure.ts   # Geschlossene Bündelform und Beziehungsintegrität
+│   ├── workspaceDocumentAdmission.ts # Zustandsabhängige Sourcevalidierung, Dokumentzustände und Referenzpointer
+│   ├── workspaceDraftSource.ts       # Sourcegrenzen und Root-Bindung ohne Schemaprüfung
+│   ├── workspaceMigration.ts         # Vorwärtsmigration in einer versionchange-Transaktion
+│   ├── workspaceStorageFailure.ts    # Redigierte Speicherfehler und monotone Zeitstempel
+│   └── workspaceStore.ts             # Transaktionaler Dexie-Speicher für Informationsverbünde
 ├── state/                        # Globaler Anwendungszustand
 │   ├── CatalogContext.tsx            # Katalog-Kontextprovider
 │   ├── MobileNavigationContext.ts    # Mobiler Navigationszustand für Sheet-Mount-Gates
@@ -330,7 +351,8 @@ src/                              # Anwendungsquellcode
 │   └── vocabularyDetailPage.ts       # Lazy-Seite des Vokabulardetails
 ├── workers/                      # Modul-Worker
 │   ├── catalogParser.worker.ts       # Klasse-1-Katalogparser
-│   └── oscalImport.worker.ts         # Klasse-2-Import
+│   ├── oscalImport.worker.ts         # Klasse-2-Import
+│   └── workspaceBackup.worker.ts     # Backup-Eingangsprüfung
 ├── test/                         # Testinfrastruktur (siehe docs/OSCAL_ROUND_TRIP.md)
 │   ├── browser/                      # Chromium-Browser-Lane
 │   │   ├── a11yCatalogState.ts          # Synthetischer Katalogzustand für Accessibility-Prüfungen
@@ -348,7 +370,8 @@ src/                              # Anwendungsquellcode
 │   │   ├── egressOracleContract.mjs      # Negativfälle des Egress-Orakels
 │   │   ├── __screenshots__/              # Linux-Referenzbilder der visuellen Regression
 │   │   ├── mobileDrawerHarness.ts        # App-Shell-Aufbau der Drawer-Browser-Tests
-│   │   └── tabletCatalogFixture.ts       # Katalogzustand mit langer Liste und vollen Details für Tablet-Prüfungen
+│   │   ├── tabletCatalogFixture.ts       # Katalogzustand mit langer Liste und vollen Details für Tablet-Prüfungen
+│   │   └── workspaceStoreFixtures.ts    # Gemeinsame Speicherfixtures und Verbindungsbereinigung
 │   ├── fixtures/                     # Testfixtures, darunter der NIST-Orakelkorpus
 │   ├── catalogState.ts               # Sammlungsfelder des CatalogState für Komponententests
 │   ├── deviceProfile.ts              # Geräte aus Breite und Touch für Komponententests der Breakpoint-Abos
@@ -528,9 +551,9 @@ Nach der Größenkontrolle läuft im Worker die feste Reihenfolge aus dem [OSCAL
 
 Stufe 3 prüft mit `ajv` 8.20.0 gegen das gepinnte NIST-Schema der von Stufe 2 gewählten Matrixzelle. Die Schemabytes liegen eingecheckt unter `schemas/oscal/` und werden über `src/domain/oscalSchemaBundle.ts` je Zelle in einen eigenen Chunk gebaut. Zur Laufzeit lädt der Worker genau einen davon nach — den der ausgewählten Zelle, als Modul **derselben Origin** wie die Anwendung. Weder das Release-Asset auf `github.com` noch die `$id`-Domain `csrc.nist.gov` wird angefragt; ein Browsertest prüft das über das Egress-Orakel. Vite baut den Modul-Worker über `worker.format: 'es'` als ES-Modul, damit nicht alle Schemas in einer Worker-Datei liegen.
 
-Dieser Einstieg liefert weder Dateiauswahl noch Persistenz, UI oder Renderer. Er ändert weder den Klasse-1-Katalogladepfad noch dessen Integritätskette.
+Die Anwendung besitzt keine Dateiauswahl und keine Bearbeitungsoberfläche für eigene Dokumente. Der Klasse-1-Katalogladepfad verwendet die Integritätskette aus [INTEGRITY.md](./INTEGRITY.md).
 
-Den Speicherort importierter Klasse-2-Dokumente legt der [Persistenzvertrag](./PERSISTENCE.md) als Vorgabe ohne Umsetzung fest: eine eigene IndexedDB-Datenbank `gspp-workspace`, in der Klasse 1 **keinen** Store besitzt. Der Arbeitsbereich hält allenfalls einen `artifactKey`-Verweis. Speicherschlüssel, Envelope, Versionsführung, Referenzbindung, Migration, Export und Löschung sind dort verbindlich beschrieben.
+`src/adapters/workspaceStore.ts` öffnet auf ausdrücklichen Aufruf die IndexedDB-Datenbank `gspp-workspace` mit den Stores `verbuende`, `documents`, `drafts`, `bindings` und `workspaceMeta`. Die Domänentypen liegen in `src/domain/workspaceModel.ts`; `LocalId` und `VerbundId` besitzen getrennte `unique symbol`-Phantommarken. Klasse 1 besitzt dort keinen Inhaltsspeicher; Bindungen enthalten ausschließlich `artifactKey`-Verweise. Der Adapter bietet atomare Schreiboperationen mit `savedAt`-Konfliktprüfung für Dokumente und Entwürfe, Verbund- und Dokumentlöschung, Backup und Wiederherstellung. Unbekannte Lösch-IDs melden `WORKSPACE_DOCUMENT_NOT_FOUND` oder `WORKSPACE_VERBUND_NOT_FOUND`. `src/adapters/workspaceBackup.ts` startet für die Wiederherstellung einen eigenen Modul-Worker; enthaltene Dokumente außerhalb des Zustands `draft` durchlaufen dort einzeln die Klasse-2-Kette `processClass2OscalBytes()`. Speicher-Schema, Ressourcenlimits, Versionswechsel, Export- und Löschgrenzen stehen in [PERSISTENCE.md](./PERSISTENCE.md).
 
 Der separate Sync-Pfad (`scripts/sync-upstream-manifest.mjs` mit `scripts/upstream-artifacts.mjs`) vergleicht die vollständigen normalisierten Trees des bisherigen und des neuen Snapshots. Neue nicht registrierte Pfade werden als `unclassified` gemeldet, ohne ihren Blob zu fetchen oder sie auszuliefern.
 
@@ -607,9 +630,9 @@ Die Anwendung verwendet den Data-Router von React Router (`createBrowserRouter`,
 
 Das Vite-Plugin `github-pages-spa-fallback` (`vite.config.ts`) erzeugt beim Build statische HTTP-200-Einstiege unter `dist/<route>/index.html`. Es gilt nur für den Build (`apply: 'build'`), weil Vite `closeBundle` auch beim Schließen von Dev-Server und Vitest aufruft. Die festen Inhaltsrouten (`/suche`, `/vokabular`, `/about`, `/datenschutz`, `/impressum`, `/lizenzen`) stammen aus der gemeinsamen Titeltabelle `STATIC_CONTENT_TITLES` in `scripts/seoRouteEntries.ts`; Katalogeinstiege und deren adressierbare Praktiken, Themen und Kontrollen stammen ausschließlich aus den von `listSupportedCatalogs()` ausgelieferten öffentlichen Katalogen. Der Helfer prüft die Katalogbytes gegen ihre Integritätsmetadaten, verarbeitet sie mit `parseCatalog()` und verwendet dieselben URL-Builder wie die App. Die Node-Brücke (`scripts/oscal-domain-bridge.mjs`) löst beim Laden dieser TypeScript-Module den Projektalias auf, bevor Vite selbst seine Konfiguration geladen hat.
 
-Jeder HTML-Einstieg erhält genau einen inhaltsbezogenen `og:title` und eine kanonische `og:url`. Die Titel lauten: Produktname für die Startseite, fester Seitentitel für Inhaltsseiten, Katalogname für einen Katalog, `Gruppenname | Katalogname` für Praktik oder Thema und `Kontroll-ID: Kontrolltitel | Katalogname` für eine Kontrolle. Die Titeltrenner `: ` zwischen Kennung und Titel sowie ` | ` vor dem übergeordneten Namen werden zentral als `TITLE_ID_SEPARATOR` und `TITLE_PARENT_SEPARATOR` in `src/app/pageTitles.ts` gepflegt. Browser-Titel ergänzen ` | Grundschutz++ Navigator`; Vokabularseiten verwenden `<Vokabularname> | Vokabulare | Grundschutz++ Navigator`. Die Meta-Beschreibung verwendet einen Doppelpunkt nach dem Produktnamen; der Alternativtext des OG-Bildes gibt die Textzeilen des Bildes als Sätze wieder. Die URL verwendet den Production-Origin und die normalisierte Deployment-Basis aus `BUILD_BASE`. HTML-Attributwerte werden maskiert. Beim Erzeugen der Routen-HTML ersetzt `writeSeoRouteEntries` `og:title` und `og:url` und fügt für Einstiege von Lazy-Routen genau ein `modulepreload` auf den Seitenchunk vor `</head>` ein (siehe Route- und Chunk-Vertrag; der Chunk-Pfad muss `assets/<Name>.js` entsprechen); `PageTitle` entfernt den statischen Titel-Fallback im Layout-Effekt.
+Jeder HTML-Einstieg erhält genau einen inhaltsbezogenen `og:title` und eine kanonische `og:url`. Die Titel lauten: `HOME_OG_TITLE` aus `src/app/pageTitles.ts` für die Startseite, fester Seitentitel für Inhaltsseiten, Katalogname für einen Katalog, `Gruppenname | Katalogname` für Praktik oder Thema und `Kontroll-ID: Kontrolltitel | Katalogname` für eine Kontrolle. Die Titeltrenner `: ` zwischen Kennung und Titel sowie ` | ` vor dem übergeordneten Namen werden zentral als `TITLE_ID_SEPARATOR` und `TITLE_PARENT_SEPARATOR` in `src/app/pageTitles.ts` gepflegt. Browser-Titel ergänzen ` | Grundschutz++ Navigator`; Vokabularseiten verwenden `<Vokabularname> | Vokabulare | Grundschutz++ Navigator`. Die Meta-Beschreibung verwendet einen Doppelpunkt nach dem Produktnamen; der Alternativtext des OG-Bildes gibt die Textzeilen des Bildes als Sätze wieder und steht gleichlautend in `og:image:alt` und `twitter:image:alt`. Die URL verwendet den Production-Origin und die normalisierte Deployment-Basis aus `BUILD_BASE`. HTML-Attributwerte werden maskiert. Beim Erzeugen der Routen-HTML ersetzt `writeSeoRouteEntries` `og:title` und `og:url` und fügt für Einstiege von Lazy-Routen genau ein `modulepreload` auf den Seitenchunk vor `</head>` ein (siehe Route- und Chunk-Vertrag; der Chunk-Pfad muss `assets/<Name>.js` entsprechen); `PageTitle` entfernt den statischen Titel-Fallback im Layout-Effekt.
 
-Query und Fragment erzeugen keine zusätzlichen Dateien und erscheinen nicht in Metadaten; ein Such- oder Filterlink erhält den Kopf seiner Route. Gruppen ohne ID erzeugen keinen Einstieg. Fehlende oder nicht auflösbare unterstützte Daten, Hashabweichungen, Pfad-Ausbruch, Symlinks und kollidierende Ausgabepfade führen vor dem Schreiben der Routendateien zum Fehler. Nach dem Schreiben prüft der Titelvertrag (`scripts/check-seo-titles.mjs`) jede gebaute HTML-Datei mit dem HTML-Parser von jsdom auf genau einen `<title>`-, `og:title`-, Meta-Description- und `og:image:alt`-Treffer ohne Gedankenstrich — erst er sieht das gebaute `dist/`-HTML statt der Quellvorlage. Für unbekannte Ziele dient `dist/404.html` als Fallback mit neutralem Produkttitel und kanonischer Startseiten-URL. Der Fallback bleibt bytegleich zum gebauten Startseiten-HTML.
+Query und Fragment erzeugen keine zusätzlichen Dateien und erscheinen nicht in Metadaten; ein Such- oder Filterlink erhält den Kopf seiner Route. Gruppen ohne ID erzeugen keinen Einstieg. Fehlende oder nicht auflösbare unterstützte Daten, Hashabweichungen, Pfad-Ausbruch, Symlinks und kollidierende Ausgabepfade führen vor dem Schreiben der Routendateien zum Fehler. Nach dem Schreiben prüft der Titelvertrag (`scripts/check-seo-titles.mjs`) jede gebaute HTML-Datei mit dem HTML-Parser von jsdom auf genau einen `<title>`-, `og:title`-, Meta-Description- und `og:image:alt`-Treffer ohne Gedankenstrich — erst er sieht das gebaute `dist/`-HTML statt der Quellvorlage. Für unbekannte Ziele dient `dist/404.html` als Fallback mit dem `og:title` der Startseite und kanonischer Startseiten-URL. Der Fallback bleibt bytegleich zum gebauten Startseiten-HTML.
 
 ### Sitemap
 
