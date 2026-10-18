@@ -22,8 +22,10 @@ export async function exportNewerWorkspaceBackup(db: Dexie): Promise<WorkspaceRe
       };
       for (const name of names) {
         const table = transaction.objectStore(name);
-        const rows: unknown[] = stores[name] = [];
-        const keys: unknown[] | undefined = table.keyPath === null ? outOfLineKeys[name] = [] : undefined;
+        const rows: unknown[] = [];
+        stores[name] = rows;
+        const keys: unknown[] | undefined = table.keyPath === null ? [] : undefined;
+        if (keys) outOfLineKeys[name] = keys;
         const request = table.openCursor();
         request.onsuccess = () => {
           const cursor = request.result;

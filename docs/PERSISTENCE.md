@@ -313,7 +313,7 @@ Was das Werkzeug als Dokument verlässt, ist gültiges OSCAL. Das Bündel ist au
 
 Bei `db.verno > STORAGE_SCHEMA_VERSION` liest `src/adapters/workspaceRecoveryStorage.ts` die tatsächlichen `IDBDatabase.objectStoreNames` mit nativen Cursorn in einer einzigen schreibgeschützten Transaktion. Die Store- und Schlüsselsammlungen haben keinen Prototyp; auch `__proto__`, `constructor` und `toString` bleiben eigene Einträge. Die Serialisierung beginnt nach Abschluss der Lesetransaktion. Die aktuelle Datenbankversion verwendet `workspaceBackupStorage.ts` mit ihren Byte-, Knoten- und Strukturprüfungen.
 
-`src/adapters/workspaceRecoveryJson.ts` erhält JSON-Bäume im normalen Gesamtformat. Enthält der Snapshot besondere Werte, gemeinsame Objektreferenzen, Zyklen oder Arraylücken, trägt das Bündel `format: "gspp-workspace"`, die höhere `storageSchemaVersion`, `valueEncoding: "gspp-structured-clone-v1"` und `payload: { root: 0, nodes: [...] }`. Auch ein JSON-Baum, dessen Tiefe den rekursiven JSON-Serializer überlastet, verwendet die flache Graphkodierung. Der Wurzelknoten enthält das gesamte ursprüngliche Gesamtbündel einschließlich Stores und `outOfLineKeys`. Jede Referenz ist ein nullbasierter Index in `nodes`; Nutzerobjekte und Arrays haben eigene Knoten und können deshalb keine Typmarkierungen vortäuschen.
+`src/adapters/workspaceRecoveryJson.ts` prüft JSON-Bäume in einer Tiefensuche mit Iteratoren und einer WeakSet-Identitätsmenge vor der Serialisierung; diese Vorprüfung baut keine zweite kodierte Knotenliste auf. Ein JSON-Baum ohne besondere Werte behält das normale Gesamtformat. Enthält der Snapshot besondere Werte, gemeinsame Objektreferenzen, Zyklen oder Arraylücken oder erreicht ein Objekt die Tiefe 128, trägt das Bündel `format: "gspp-workspace"`, die höhere `storageSchemaVersion`, `valueEncoding: "gspp-structured-clone-v1"` und `payload: { root: 0, nodes: [...] }`. Die flache Graphkodierung verarbeitet auch tiefere Bäume iterativ. Der Wurzelknoten enthält das gesamte ursprüngliche Gesamtbündel einschließlich Stores und `outOfLineKeys`. Jede Referenz ist ein nullbasierter Index in `nodes`; Nutzerobjekte und Arrays haben eigene Knoten und können deshalb keine Typmarkierungen vortäuschen.
 
 | Knoten | Bedeutung |
 | --- | --- |
@@ -322,12 +322,12 @@ Bei `db.verno > STORAGE_SCHEMA_VERSION` liest `src/adapters/workspaceRecoverySto
 | `["object", [[name, referenz], ...]]` | Eigene aufzählbare Objektfelder |
 | `["array", länge, [[name, referenz], ...]]` | Arraylänge und vorhandene eigene Einträge einschließlich zusätzlicher Eigenschaften; fehlende Indizes bleiben Lücken |
 | `["date", text]` | Millisekunden seit Unix-Epoche als Dezimaltext; `"NaN"` erhält ein ungültiges Datum |
-| `["buffer", base64]` | Sämtliche Bytes eines ArrayBuffer |
+| `["buffer", base64]` | Sämtliche Bytes eines ArrayBuffer mit fester Größe |
 | `["view", typ, pufferreferenz, byteOffset, byteLength]` | TypedArray oder DataView mit Typnamen, gemeinsamem Puffer und Ausschnitt in Bytes |
 | `["map", [[schlüsselreferenz, wertreferenz], ...]]`, `["set", [referenz, ...]]` | Map- beziehungsweise Set-Einträge in Einfügereihenfolge |
 | `["regexp", quelle, flags]` | Regulärer Ausdruck mit seinen IndexedDB-gespeicherten Eigenschaften |
 
-Andere Werttypen, darunter Blob und File, brechen den Export mit `WORKSPACE_STORAGE_FAILED` ab; die Diagnose enthält keine Nutzdaten, und der gespeicherte Bestand bleibt unverändert. Die geladene Anwendung lehnt die Wiederherstellung von Bündeln neuerer Speicherschemas einschließlich Graphbündeln vollständig ab. Die Graphkodierung erweitert weder die OSCAL-Importtypen noch die zugelassenen Werte des aktuellen Speicherschemas.
+Veränderbare ArrayBuffer und ihre TypedArray-/DataView-Ansichten sowie andere Werttypen, darunter Blob und File, brechen den Export mit `WORKSPACE_STORAGE_FAILED` ab; die Diagnose enthält keine Nutzdaten, und der gespeicherte Bestand bleibt unverändert. Ein Abbruch der nativen Lesetransaktion nach bereits gelesenen Zeilen liefert ebenfalls nur die redigierte Diagnose und kein Teilbackup; Zeilen und Schlüssel bleiben erhalten. Die geladene Anwendung lehnt die Wiederherstellung von Bündeln neuerer Speicherschemas einschließlich Graphbündeln vollständig ab. Die Graphkodierung erweitert weder die OSCAL-Importtypen noch die zugelassenen Werte des aktuellen Speicherschemas.
 
 Die Heap-Messung des objektdichten Bündels bei 33 554 432 Bytes und 1 000 000 Knoten liefert unter Node v22.22.3 / V8 12.4.254.21-node.56 einen Median von 56 000 936 Bytes gehaltenem Ergebnisheap; die Spannweite der fünf Samples beträgt 1 781 424 Bytes.
 

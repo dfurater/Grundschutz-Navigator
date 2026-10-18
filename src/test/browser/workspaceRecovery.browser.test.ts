@@ -1,5 +1,5 @@
 import Dexie from 'dexie';
-import { expect, test } from 'vitest';
+import { expect, test, vi } from 'vitest';
 import { WORKSPACE_DATABASE_NAME } from '@/adapters/workspaceStore';
 import { open, value } from '@/test/browser/workspaceStoreFixtures';
 
@@ -141,5 +141,53 @@ test('bricht bei nicht unterstützten Werten redigiert ab und erhält den gespei
     expect(result).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_STORAGE_FAILED' } });
     expect(JSON.stringify(result)).not.toContain('PRIVATE_SYNTHETIC');
     expect(await (await next.table('futureStore').get('separate')).text()).toBe('PRIVATE_SYNTHETIC');
+  } finally { next.close(); }
+});
+
+test.each(['buffer', 'typed', 'view'])('lehnt veränderbare Puffer ohne stillen Eigenschaftsverlust ab (%s)', async kind => {
+  const next = new Dexie(WORKSPACE_DATABASE_NAME);
+  next.version(2).stores({ futureStore: '' });
+  await next.open();
+  try {
+    const buffer = Reflect.construct(ArrayBuffer, [4, { maxByteLength: 8 }]) as ArrayBuffer;
+    expect(Reflect.get(buffer, 'resizable')).toBe(true);
+    const storedValue = kind === 'buffer' ? buffer : kind === 'typed' ? new Uint8Array(buffer) : new DataView(buffer);
+    await next.table('futureStore').add(storedValue, 'separate');
+    const older = await open();
+    const result = await older.exportBackup();
+    expect(result).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_STORAGE_FAILED' } });
+    expect(result).not.toHaveProperty('value');
+    const saved = await next.table('futureStore').get('separate');
+    const savedBuffer = saved instanceof ArrayBuffer ? saved : saved.buffer;
+    expect(Reflect.get(savedBuffer, 'resizable')).toBe(true);
+    expect(Reflect.get(savedBuffer, 'maxByteLength')).toBe(8);
+    expect(savedBuffer.byteLength).toBe(4);
+  } finally { next.close(); }
+});
+
+test('bricht die native Lesetransaktion nach einer Zeile ohne Teilbackup und ohne Datenänderung ab', async () => {
+  const next = new Dexie(WORKSPACE_DATABASE_NAME);
+  next.version(2).stores({ futureStore: '' });
+  await next.open();
+  try {
+    await next.table('futureStore').bulkAdd([{ sentinel: 'PRIVATE_ONE' }, { sentinel: 'PRIVATE_TWO' }], ['one', 'two']);
+    const before = await next.table('futureStore').toArray();
+    const older = await open();
+    const original = IDBCursor.prototype.continue;
+    let rows = 0;
+    const cursor = vi.spyOn(IDBCursor.prototype, 'continue').mockImplementation(function (this: IDBCursor, ...args: Parameters<IDBCursor['continue']>) {
+      if (this.source instanceof IDBObjectStore && this.source.name === 'futureStore') {
+        rows++;
+        this.source.transaction.abort();
+      } else original.apply(this, args);
+    });
+    const result = await older.exportBackup();
+    cursor.mockRestore();
+    expect(rows).toBe(1);
+    expect(result).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_STORAGE_FAILED' } });
+    expect(result).not.toHaveProperty('value');
+    expect(JSON.stringify(result)).not.toContain('PRIVATE_');
+    expect(await next.table('futureStore').toArray()).toEqual(before);
+    expect(await next.table('futureStore').toCollection().primaryKeys()).toEqual(['one', 'two']);
   } finally { next.close(); }
 });
