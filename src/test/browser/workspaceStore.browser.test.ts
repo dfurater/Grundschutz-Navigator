@@ -265,7 +265,11 @@ test('Dokument- und Verbundlöschung entfernen beide Richtungen und Entwürfe', 
   expect(await storedValuesAndIndexKeys()).not.toContain('DELETE_SENTINEL');
   expect(value(await store.listBindings())).toEqual([]);
   expect(value(await store.getDocument(control.localId))).toEqual(control);
+  const kept = { fromLocalId: control.localId, pointer: '/catalog/metadata/title', href: 'CONTROL', target: { kind: 'class-1' as const, artifactKey: 'catalog-gspp' } };
+  value(await store.setBinding(kept, control.savedAt));
+  value(await store.setBinding({ ...kept, fromLocalId: b.localId, href: 'B' }, value(await store.getDocument(b.localId))!.savedAt));
   value(await store.deleteVerbund(one.verbundId));
+  expect(value(await store.listBindings())).toEqual([kept]);
   expect(value(await store.listDocuments())).toMatchObject([{ localId: control.localId }]);
   value(await store.deleteAll('delete-workspace'));
   expect(await Dexie.exists(WORKSPACE_DATABASE_NAME)).toBe(false);
