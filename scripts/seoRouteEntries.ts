@@ -6,7 +6,7 @@ import type { Catalog } from '../src/domain/models.ts';
 import {
   catalogDataFileName, catalogMetadataFileName, listSupportedCatalogs,
 } from '../src/domain/sourceRegistry.mjs';
-import { PAGE_TITLES, PRODUCT_TITLE, TITLE_ID_SEPARATOR, TITLE_PARENT_SEPARATOR } from '../src/app/pageTitles.ts';
+import { HOME_OG_TITLE, PAGE_TITLES, TITLE_ID_SEPARATOR, TITLE_PARENT_SEPARATOR } from '../src/app/pageTitles.ts';
 
 // Die Vite-Konfiguration wird vor dem Vite-Aliashook gebündelt. Die bestehende
 // Node-Brücke lädt die App-Module deshalb über ihre echten URLs und löst @/ auf.
@@ -73,7 +73,7 @@ export function listSeoRouteMetadata(
   modulePreloads: ReadonlyMap<string, string> = new Map(),
 ): SeoRouteMetadata[] {
   const entries: SeoRouteMetadata[] = [
-    { path: '/', title: PRODUCT_TITLE },
+    { path: '/', title: HOME_OG_TITLE },
     ...Object.entries(STATIC_CONTENT_TITLES).map(([path, title]) => {
       const modulePreload = modulePreloads.get(path);
       return modulePreload === undefined ? { path, title } : { path, title, modulePreload };

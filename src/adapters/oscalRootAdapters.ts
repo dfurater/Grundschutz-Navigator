@@ -1,10 +1,11 @@
 // =============================================================================
 // Adapter-Registrierung je OSCAL-Root-Typ (GSPP-285)
 //
-// Der Root-Dispatch erkennt alle acht Root-Typen. Verarbeiten kann der
-// Navigator davon heute genau einen. Diese Trennung ist bewusst sichtbar: Ein
-// bekanntes Modell ohne Adapter ist etwas anderes als ein unbekannter Root und
-// bekommt eine eigene Diagnose.
+// Der Root-Dispatch erkennt alle acht Root-Typen. Einen Modelladapter haben
+// `catalog`, `profile`, `mapping-collection`, `component-definition` und
+// `system-security-plan`. Diese Trennung ist bewusst sichtbar: Ein bekanntes
+// Modell ohne Adapter ist etwas anderes als ein unbekannter Root und bekommt
+// eine eigene Diagnose.
 //
 // Erweiterung: ein neues Modell ist eine neue Datei mit dem Modelladapter plus
 // genau ein Eintrag in `OSCAL_ROOT_ADAPTERS`. Bestehende Adapter bleiben dabei
@@ -26,6 +27,11 @@ import {
 import type { MappingCollection } from '@/adapters/oscalMappingAdapter';
 import { deriveProfile, PROFILE_ROOT_TYPE } from '@/adapters/oscalProfileAdapter';
 import type { Profile } from '@/adapters/oscalProfileAdapter';
+import {
+  deriveSystemSecurityPlan,
+  SYSTEM_SECURITY_PLAN_ROOT_TYPE,
+} from '@/adapters/oscalSspAdapter';
+import type { SystemSecurityPlan } from '@/adapters/oscalSspAdapter';
 import {
   dispatchOscalDocument,
   ROOT_DISPATCH_DIAGNOSTIC_CODES,
@@ -146,6 +152,19 @@ export const mappingCollectionRootAdapter: OscalRootAdapter<MappingCollection> =
     deriveMappingCollection(body, context),
 });
 
+/**
+ * SSP-Adapter (Implementation Layer). Ein SSP trägt seine `uuid` selbst und ist
+ * nicht kataloggescopt. Die Ableitung nimmt ausschließlich die Vertrauensklasse
+ * `class-2-local-user` an, weil das Quellregister kein SSP-Artefakt führt
+ * (GSPP-293).
+ */
+export const sspRootAdapter: OscalRootAdapter<SystemSecurityPlan> = Object.freeze({
+  rootType: SYSTEM_SECURITY_PLAN_ROOT_TYPE,
+  moduleEntryPoint: 'src/adapters/oscalSspAdapter.ts',
+  derive: (body: unknown, context: OscalDocumentContext) =>
+    deriveSystemSecurityPlan(body, context),
+});
+
 /** Registrierte Modelladapter. Ein neues Modell ergänzt hier genau eine Zeile. */
 const OSCAL_ROOT_ADAPTERS: ReadonlyMap<OscalRootKey, OscalRootAdapter> = new Map<
   OscalRootKey,
@@ -155,6 +174,7 @@ const OSCAL_ROOT_ADAPTERS: ReadonlyMap<OscalRootKey, OscalRootAdapter> = new Map
   [componentDefinitionRootAdapter.rootType, componentDefinitionRootAdapter],
   [profileRootAdapter.rootType, profileRootAdapter],
   [mappingCollectionRootAdapter.rootType, mappingCollectionRootAdapter],
+  [sspRootAdapter.rootType, sspRootAdapter],
 ]);
 
 export function getOscalRootAdapter(rootType: OscalRootKey): OscalRootAdapter | null {

@@ -2,9 +2,10 @@
 // Wartungssync des NIST-Orakelkorpus (GSPP-291, Commit B)
 //
 // Lädt die vier SP 800-53 rev5 Baseline-Profile und ihre von NIST selbst
-// aufgelösten Vergleichskataloge aus usnistgov/oscal-content am statisch
-// gepinnten Tag v1.5.0 (Commit 78650f02ad9321bb7b817846f8fbd4f2bcd620de)
-// und legt sie mit SHA-256-Manifest unter src/test/fixtures/ ab. Die
+// aufgelösten Vergleichskataloge sowie die drei SSP-Beispiele (GSPP-293) aus
+// usnistgov/oscal-content am statisch gepinnten Tag v1.5.0 (Commit
+// 78650f02ad9321bb7b817846f8fbd4f2bcd620de) und legt sie mit
+// SHA-256-Manifest unter src/test/fixtures/ ab. Die
 // committeten Dateien machen den NIST-Orakelvergleich offline deterministisch;
 // dies ist der EINZIGE Netzpfad dieses Nachweises (Wartung, kein Testpfad).
 // Bei unverändertem Commit-Pin muss der Dateisatz des bestehenden Manifests vor
@@ -25,6 +26,7 @@ import { readBodyWithLimit } from './security-guards.mjs';
 const REPOSITORY_COMMIT = '78650f02ad9321bb7b817846f8fbd4f2bcd620de';
 const RAW_BASE = `https://raw.githubusercontent.com/usnistgov/oscal-content/${REPOSITORY_COMMIT}`;
 const DIRECTORY_PREFIX = 'nist.gov/SP800-53/rev5/json/';
+const SSP_EXAMPLE_PREFIX = 'examples/ssp/json/';
 const TARGET_DIRECTORY = 'src/test/fixtures/oscal-content-v1.5.0';
 const MAX_ORACLE_ARTIFACT_BYTES = 10 * 1024 * 1024;
 
@@ -52,6 +54,18 @@ const ARTIFACTS = [
     fileName: `${baseline.toLowerCase()}-resolved.json`,
   },
   ]),
+  // Positivorakel des SSP-Adapters: Fragment-Baseline, `export`,
+  // `inherited` und `satisfied` in NIST-eigener Form.
+  ...[
+    ['nist-ssp-example', 'ssp-example-min.json', 'ssp-example.json'],
+    ['nist-ssp-leveraged-example', 'oscal_leveraged-example_ssp-min.json', 'ssp-leveraged-example.json'],
+    ['nist-ssp-leveraging-example', 'oscal_leveraging-example_ssp-min.json', 'ssp-leveraging-example.json'],
+  ].map(([artifactKey, remoteName, fileName]) => ({
+    artifactKey,
+    role: 'example',
+    remotePath: `${SSP_EXAMPLE_PREFIX}${remoteName}`,
+    fileName,
+  })),
 ];
 
 async function fetchArtifact(artifact, fetchImpl) {
