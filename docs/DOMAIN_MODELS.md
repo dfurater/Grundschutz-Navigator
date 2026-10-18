@@ -281,7 +281,8 @@ type RawOscalRootBodyFor<K extends OscalRootKey> =
     : K extends 'component-definition' ? RawOscalComponentDefinition
       : K extends 'profile' ? RawOscalProfile
         : K extends 'mapping-collection' ? RawOscalMappingCollection
-          : RawOscalRootBody;
+          : K extends 'system-security-plan' ? RawOscalSystemSecurityPlan
+            : RawOscalRootBody;
 
 /** Genau ein Root-Key plus die zulässige Schema-Direktive. */
 type RawOscalDocumentFor<K extends OscalRootKey> =
@@ -375,9 +376,10 @@ und der Ableitungsauftakt `openRootDerive`
 `validateParsedSchema` (`src/adapters/oscalRootDocumentSchema.ts`, getrennt,
 damit der Katalogpfad den Schema-Validator nicht lädt), Versionsbindung,
 Diagnosevertrag,
-die JSON-Typwächter (`src/domain/jsonGuards.ts`) und die Strukturleser für
-Arrayfelder (`src/adapters/oscalReaders.ts`), die jeder Adapter an seine
-eigene Diagnosefunktion bindet. Modellspezifische Leser und Read-Model-Ableitung
+die JSON-Typwächter (`src/domain/jsonGuards.ts`) sowie die Struktur- und
+Elementleser aus `src/adapters/oscalReaders.ts` — Arrayfelder, `props`,
+`links`, `set-parameters`, `responsible-roles` und `responsible-parties` —, die
+jeder Adapter an seine eigene Diagnosefunktion bindet. Modellspezifische Leser und Read-Model-Ableitung
 bleiben je Root-Typ in eigenen Modulen; `models.ts` wächst nicht zu einer
 monolithischen Modellschicht.
 
@@ -387,7 +389,7 @@ monolithischen Modellschicht.
 | `profile` | Control | `src/adapters/oscalProfileAdapter.ts` | registriert |
 | `mapping-collection` | Control | `src/adapters/oscalMappingAdapter.ts` | registriert |
 | `component-definition` | Implementation | `src/adapters/oscalComponentAdapter.ts` | registriert |
-| `system-security-plan` | Implementation | — | [GSPP-293](https://linear.app/grundschutz-plus-plus/issue/GSPP-293) |
+| `system-security-plan` | Implementation | `src/adapters/oscalSspAdapter.ts` | registriert |
 | `assessment-plan` | Assessment | — | nicht erschlossen |
 | `assessment-results` | Assessment | — | nicht erschlossen |
 | `plan-of-action-and-milestones` | Assessment | — | nicht erschlossen |
@@ -752,7 +754,8 @@ Der fachliche Nutzen ist Navigierbarkeit („welche Kontrollen adressiert
 Komponente X", „welche Komponenten adressieren Kontrolle Y"). Nach NIST sind
 Component Definitions dafür gedacht, dass ihre Inhalte in einen SSP übernommen
 werden; eine Import-Kante SSP → Component Definition gibt es dabei **nicht** —
-der SSP importiert ausschließlich ein Profile (`import-profile`, required).
+der SSP verweist über `import-profile` (required) auf genau eine Baseline, im
+Regelfall ein Profile.
 
 ### Versionsspreizung im Bestand
 
@@ -853,6 +856,174 @@ Der Realkorpus ist optional: `oscalComponentDocument.node.test.ts` läuft nur,
 wenn `GSPP_COMPONENT_CORPUS_PATH` auf ein lokal geholtes Verzeichnis zeigt, und
 wird sonst übersprungen. Er prüft Erhaltung und die Byte-Identität gegen
 `contentSha256` aus `upstream-manifest.json`, nie feste Inhaltszahlen.
+
+## System Security Plans (Implementation Layer)
+
+| Datei | Rolle |
+| --- | --- |
+| `src/domain/oscalSystemSecurityPlan.ts` | Raw-Typen, über `PinnedOscalVersion` parametrisiert |
+| `src/domain/systemSecurityPlanModel.ts` | Projektion (`SystemSecurityPlan`, Baseline, Referenzen, `control-implementation`), ohne Logik |
+| `src/domain/systemSecurityPlanSystemModel.ts` | Projektion von `system-characteristics` und `system-implementation` |
+| `src/adapters/oscalSspReaders.ts` | Knotenleser, Referenzprüfungen und Diagnosesammler |
+| `src/adapters/oscalSspSystem.ts` | Ableitung von `system-characteristics` und `system-implementation` |
+| `src/adapters/oscalSspControl.ts` | Ableitung von `control-implementation` |
+| `src/adapters/oscalSspAdapter.ts` | Ableitung `deriveSystemSecurityPlan(body, context, options)` |
+| `src/adapters/oscalSspDocument.ts` | Dokumenteinstieg `parseSspDocument()` mit Root-Dispatch und Übergang nach Stufe 3 |
+
+In `system-characteristics`, `system-implementation` und
+`control-implementation` führt jeder Knoten, für den das Schema `props` und
+`links` deklariert, beide in der Projektion (`SspElements`). Ausgenommen sind
+Rollenzuweisungen (`responsible-roles`, `responsible-parties`): Ihre `props`
+und `links` bleiben im Quellgraphen, ebenso die `protocols` einer Komponente.
+
+`props` gehen nur im OSCAL-Namespace in die Projektion: `ns` fehlt oder ist
+exakt `http://csrc.nist.gov/ns/oscal` (`OSCAL_NAMESPACE` in
+`src/domain/mappingModel.ts`, der Default des Flags `ns` im
+OSCAL-Metadata-Metaschema). Ein `prop` mit jedem anderen `ns`, auch mit dem
+Projektnamespace aus [PROJECT_PROPS.md](PROJECT_PROPS.md) oder einem
+Nicht-String, bleibt ausschließlich im Quellgraphen und erzeugt keine
+Diagnose. Der SSP-Adapter übergibt diese Prüfung als `includeProp` an
+`createElementReaders()`; Component-, Profil- und Mapping-Adapter übergeben
+keine und projizieren jedes `prop` mit `name` und `value`.
+
+### Eingang ausschließlich als Vertrauensklasse 2
+
+Das Quellregister führt kein SSP-Artefakt. `deriveSystemSecurityPlan()` nimmt
+ausschließlich den Kontext `trustClass: 'class-2-local-user'` an; jeder andere
+Kontext endet mit `SspTrustClassError` und der Diagnose
+`OSCAL_SSP_TRUST_CLASS_REJECTED`, ohne Dokument. Das gilt für
+`parseSspDocument()` und für den generischen Einstieg `parseOscalDocument()`.
+
+Der Weg eines SSP in die Anwendung ist die Klasse-2-Importgrenze:
+`importClass2OscalDocument()` prüft im Worker Bytes, Root, Version und Schema
+(Stufen 1–3); `source` und `context` ihres Erfolgsergebnisses gehen an
+`parseSspDocument()`. Stufe 4 bleibt `not-checked`; die Referenzprüfungen
+unten sind Modelldiagnosen des Adapters.
+
+### Umsetzungsstatus je Komponente
+
+`implementation-status` sitzt in OSCAL an `by-component` — pro Komponente je
+Anforderung. `SspByComponent.implementationStatus` ist deshalb das einzige
+Statusfeld; `SspImplementedRequirement` und `SspStatement` tragen keines, und
+kein Typ fasst die Komponentenstatus zu einem Control-Status zusammen.
+`state` ist ein String: Das Schema bindet ihn per `anyOf` an Token oder Enum
+(`implemented`, `partial`, `planned`, `alternative`, `not-applicable`), ein
+unbekanntes Token wird unverändert gelesen. `export` (mit `provided` und
+`responsibilities`), `inherited`, `satisfied` und `responsible-roles` sitzen
+ebenfalls an `by-component`.
+
+Ein SSP dokumentiert Implementierungsbehauptungen eines
+Systemverantwortlichen. Kein Feld der Projektion ist ein geprüfter
+Compliance-, Audit- oder Wirksamkeitsstatus.
+
+### Baseline und Control-Bezug
+
+`import-profile.href` wird über `resolveOscalReference()` klassifiziert und
+nie geladen:
+
+| Form | Klassifikation |
+| --- | --- |
+| `#uuid` auf eine `back-matter.resource` desselben Dokuments | `resource`; eine eingebettete `base64`-Ressource erscheint nur mit `filename` und `mediaType` |
+| relative URI | `unresolved`, Grund `relative` |
+| absolute HTTPS-URL | `external` |
+
+`SspImportProfile.baseline` ist `bound`, wenn der Aufrufer über
+`SystemSecurityPlanDeriveOptions.baseline` einen Katalog übergibt, und sonst
+`not-resolvable-in-context`. Eine `control-id` wird nur gegen diese Bindung
+aufgelöst:
+
+| Lage | `SspControlReference` | Diagnose |
+| --- | --- | --- |
+| keine Bindung | `not-resolvable-in-context`, Grund `catalog-not-supplied` | keine |
+| Bindung, ID bekannt | `resolved` mit `catalogKey` und `control` | keine |
+| Bindung, ID unbekannt | `unresolved`, Grund `control-not-in-catalog` | `OSCAL_SSP_CONTROL_REFERENCE_UNRESOLVED` |
+| `control-id` fehlt | `unresolved`, Grund `control-id-missing` | `OSCAL_SSP_CONTROL_ID_MISSING` |
+
+`statement-id` steht als gelesener Wert im Modell; das `Control`-Read-Model
+führt keine Part-IDs, gegen die sie auflösbar wäre. `inherited[].provided-uuid`
+und `satisfied[].responsibility-uuid` zeigen in das `export` eines anderen SSP
+und stehen als `not-resolvable-in-context` im Modell, ohne Diagnose.
+
+### Dokumentinterne Referenzen
+
+`system-implementation.components` wird vor Inventar und
+`control-implementation` gelesen; `by-component.component-uuid` und
+`inventory-items[].implemented-components[].component-uuid` werden dagegen
+aufgelöst. Weder das JSON-Schema noch ein Metaschema-Constraint prüft diese
+Referenz; die Diagnose bei fehlendem Ziel ist eine Projektregel. Trägt die UUID
+mehr als eine Komponente, bleibt die Referenz mit Grund `component-ambiguous`
+unaufgelöst.
+
+Rollen- und Parteibezüge werden gegen `metadata` geprüft:
+
+| Quelle | Ziel | Verankerung |
+| --- | --- | --- |
+| `role-id` einer `responsible-role` in `control-implementation` (Anforderung, Statement, `by-component` samt `provided`, `responsibilities`, `inherited`, `satisfied`) | `metadata.roles[].id` | `oscal-implemented-requirement-index-metadata-role-id` |
+| `role-id` einer `responsible-role` an einer Komponente | `metadata.roles[].id` | Projektregel |
+| `role-id` einer `responsible-party` an `system-characteristics`, Inventareintrag oder `implemented-component` | `metadata.roles[].id` | `oscal-metadata-responsible-party-index-metadata-role-id` |
+| `users[].role-ids[]` | `metadata.roles[].id` | `oscal-index-metadata-role-id` |
+| jede `party-uuids`-Angabe dieser Rollenzuweisungen | `metadata.parties[].uuid` | `oscal-index-metadata-party-uuid` |
+| `party-uuid` einer `leveraged-authorization` in `system-implementation` | `metadata.parties[].uuid` | Projektregel |
+
+UUIDs vergleicht der Adapter ohne Unterschied der Schreibweise
+(`uuidKey()` in `src/adapters/oscalSspReaders.ts`): `component-uuid`, die
+Eindeutigkeit der Komponenten-UUIDs und der `by-components` sowie
+Party-UUIDs. Modell und `source` behalten den gelesenen Wert. Eine `role-id`
+ist ein Token und wird exakt verglichen.
+
+### Versionsdrift
+
+Zwischen den vier gepinnten `oscal_ssp_schema.json` unterscheiden sich drei
+vom SSP-Root erreichbare Definitionen. `oscalSystemSecurityPlan.versionDrift.test.ts`
+weist die vollständige Menge am vendorierten Schema nach:
+
+| Feld | Unterschied |
+| --- | --- |
+| `system-implementation.users` | Pflichtfeld (`minItems: 1`) nur in 1.1.2 und 1.1.3 |
+| `protocol.name` | Pflichtfeld nur in 1.1.2 |
+| `port-range.remarks` | erst ab 1.2.1 deklariert |
+
+`users` ist das einzige Feldprädikat der SSP-Raw-Typen
+(`OscalVersionsWithRequiredSystemUsers`); `protocol` und `port-range` kommen
+mit ihren Prädikaten aus `oscalComponentDefinition.ts`.
+
+### Modellinterne Diagnosen
+
+Stufe `domain`, Validator `gspp-ssp-adapter`. Pfade sind strukturelle JSON
+Pointer aus Schlüsseln und Indizes; ein Referenzwert aus dem Dokument steht in
+keiner Diagnose. Modelldiagnosen verwerfen ein Dokument nie.
+
+| Code | Anlass |
+| --- | --- |
+| `OSCAL_SSP_STRUCTURE_UNEXPECTED` | Pflichtobjekt fehlt, Knoten hat nicht die erwartete Form, oder einem Eintrag fehlt das Feld, ohne das die Projektion ihn nicht führt (`href`, `state`, `id`, `name`/`value`, `param-id`, `role-id`) |
+| `OSCAL_SSP_COMPONENT_UUID_DUPLICATE` | zwei Komponenten mit derselben `uuid` |
+| `OSCAL_SSP_COMPONENT_REFERENCE_UNRESOLVED` | `component-uuid` trifft keine oder mehr als eine Komponente |
+| `OSCAL_SSP_BY_COMPONENT_DUPLICATE` | dieselbe `component-uuid` zweimal in den `by-components` einer Anforderung oder eines Statements |
+| `OSCAL_SSP_ROLE_REFERENCE_UNRESOLVED` | `role-id` ohne Rolle in `metadata.roles` |
+| `OSCAL_SSP_PARTY_REFERENCE_UNRESOLVED` | Party-UUID ohne Partei in `metadata.parties` |
+| `OSCAL_SSP_CONTROL_ID_MISSING` | `implemented-requirement` ohne `control-id` |
+| `OSCAL_SSP_CONTROL_REFERENCE_UNRESOLVED` | gebundene Baseline kennt die `control-id` nicht |
+
+Pflichtobjekte sind `import-profile`, `system-characteristics` mit
+`system-information`, `status` und `authorization-boundary`,
+`system-implementation` mit dem `status` jeder Komponente und
+`control-implementation`. Ein fehlendes Pflicht-Array liest der Adapter als
+leere Liste ohne Befund; Pflicht-Arrays, Mindestanzahlen und die übrigen
+Pflichtwerte prüft Stufe 3.
+
+### Testkorpus
+
+Der synthetische Korpus liegt in `src/test/fixtures/systemSecurityPlans.ts`:
+ein gegen das 1.2.2-Schema gültiges Vollfixture mit jeder projizierten
+Struktur und je Version das Minimaldokument aus
+`src/test/fixtures/oscalSchemaFixtures.ts`. Als NIST-Orakel liegen
+`ssp-example.json`, `ssp-leveraged-example.json` und
+`ssp-leveraging-example.json` aus `usnistgov/oscal-content` am Commit
+`78650f02ad9321bb7b817846f8fbd4f2bcd620de` (Tag v1.5.0) unter
+`src/test/fixtures/oscal-content-v1.5.0/`, SHA-256-gepinnt im
+`ORACLE_MANIFEST.json`. Alle drei deklarieren `oscal-version` 1.2.2, setzen
+`import-profile.href` als Fragment, bestehen Stufe 3 und werden ohne
+Modelldiagnose projiziert.
 
 ## Enriched Domain Types
 
@@ -1069,7 +1240,7 @@ interface Catalog {
 }
 ```
 
-`controlsByAltIdentifier` ist katalogintern vollständig und eindeutig. Der Parser lehnt Kontrollen mit fehlendem oder im selben Katalog doppeltem Alt-Identifier als Integritätsfehler ab. Derselbe Alt-Identifier darf in verschiedenen Katalogen vorkommen, weil die kanonische URL-Identität immer aus `catalogKey + altIdentifier` besteht.
+`controlsById` und `controlsByAltIdentifier` sind katalogintern vollständig und eindeutig. Der Parser lehnt Kontrollen mit im selben Katalog doppelter Control-ID sowie mit fehlendem oder im selben Katalog doppeltem Alt-Identifier als Integritätsfehler ab; die Eindeutigkeit der Control-ID verlangt der Index `catalog-controls` im OSCAL-Katalog-Metaschema. Derselbe Alt-Identifier darf in verschiedenen Katalogen vorkommen, weil die kanonische URL-Identität immer aus `catalogKey + altIdentifier` besteht.
 
 #### Warum jede Identität den `catalogKey` mitführt
 
@@ -1165,7 +1336,7 @@ Der Katalogadapter löst sie über `resolveCatalogKey()` auf und bricht in zwei 
 
 Die vierte Zeile ist dieselbe Regel, die der Dispatch für den Root-Typ mit `OSCAL_ROOT_TYPE_MISMATCH` anwendet.
 
-Beim Aufbau von `controlsByAltIdentifier` failt `parseCatalog` geschlossen, wenn ein Control keinen Alt-Identifier besitzt oder derselbe Wert innerhalb des Katalogs mehrfach vorkommt.
+`parseCatalog` failt geschlossen, wenn eine Control-ID im Quellkatalog mehrfach vorkommt — geprüft über alle `controls` und `groups` in beliebiger Tiefe, auch unterhalb der projizierten Themenebene — oder wenn beim Aufbau von `controlsByAltIdentifier` ein Control keinen Alt-Identifier besitzt oder derselbe Alt-Identifier innerhalb des Katalogs mehrfach vorkommt.
 
 Der Envelope wird hier **nicht** ausgepackt: Welcher Root-Typ vorliegt,
 entscheidet allein der [Root-Dispatch](#root-envelope-und-root-dispatch).

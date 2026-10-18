@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  countObjectGraphNodesCapped,
   enforceClass2ObjectGraphInvariants,
   OBJECT_GRAPH_DIAGNOSTIC_CODES,
 } from './oscalObjectGraph';
@@ -39,6 +40,53 @@ describe('enforceClass2ObjectGraphInvariants — Strukturinvariante und Limits i
       stage: 'resource-limit',
       path: '/',
     });
+  });
+});
+
+describe('countObjectGraphNodesCapped — Knotenzählung mit Abbruch am Budget', () => {
+  it('zählt jeden Wert als Knoten, auch Primitive und null', () => {
+    expect(countObjectGraphNodesCapped(null, 10)).toBe(1);
+    expect(countObjectGraphNodesCapped('text', 10)).toBe(1);
+    expect(countObjectGraphNodesCapped({ a: [null, { b: false }] }, 10)).toBe(5);
+  });
+
+  it('bricht als erstes Ergebnis oberhalb des Budgets mit maxNodes + 1 ab', () => {
+    const source = Array.from({ length: 50 }, () => null);
+
+    expect(countObjectGraphNodesCapped(source, 7)).toBe(8);
+    expect(countObjectGraphNodesCapped(source, 51)).toBe(51);
+  });
+
+  it('bricht an der bekannten Kinderzahl ab, ohne die Kinder abzulegen', () => {
+    const children = Array.from({ length: 50 }, () => null);
+    Object.defineProperty(children, Symbol.iterator, { value: () => { throw new Error('Kinder durchlaufen'); } });
+
+    // Fehlschlag, wenn der Abbruch die Kinder erst nach dem Durchlaufen und Ablegen bemerkt.
+    expect(countObjectGraphNodesCapped(children, 3)).toBe(4);
+  });
+
+  it('begrenzt den Hilfsstapel am Restbudget und lässt tiefere Ebenen unberührt', () => {
+    const grandchild = Array.from({ length: 500 }, () => null);
+    Object.defineProperty(grandchild, Symbol.iterator, { value: () => { throw new Error('Enkel durchlaufen'); } });
+    const child = [ ...Array.from({ length: 500 }, () => null), grandchild ];
+    const root = [ ...Array.from({ length: 500 }, () => null), child ];
+
+    // Fehlschlag, wenn der Abbruch die schon abgelegten Stapel-Einträge ignoriert:
+    // Dann steigt die Zählung in den Enkel ab und läuft über dessen Werfer.
+    expect(countObjectGraphNodesCapped(root, 1000)).toBe(1001);
+  });
+
+  it('zählt genau eine Million Knoten vollständig', () => {
+    const source = { values: Array.from({ length: CLASS_2_IMPORT_LIMITS.maxNodes - 2 }, () => null) };
+
+    expect(countObjectGraphNodesCapped(source, CLASS_2_IMPORT_LIMITS.maxNodes)).toBe(CLASS_2_IMPORT_LIMITS.maxNodes);
+  });
+
+  it('terminiert auch auf einem Zyklus am Budget statt unbegrenzt zu laufen', () => {
+    const cycle: Record<string, unknown> = {};
+    cycle['schleifenfeld'] = cycle;
+
+    expect(countObjectGraphNodesCapped(cycle, 5)).toBe(6);
   });
 });
 
