@@ -1,9 +1,12 @@
 import { isJsonObject } from '@/domain/jsonGuards';
 import { buildWorkspaceCatalog, type WorkspaceCatalogControl, type WorkspaceCatalogResult } from '@/domain/workspaceCatalog';
 import { createOscalDiagnostic } from '@/domain/oscalDiagnostics';
+import { WORKSPACE_DIAGNOSTIC_CODES } from '@/domain/workspaceDiagnostics';
 import { readWorkspaceDocumentEdges } from '@/domain/workspaceEdges';
+import { REFERENCE_GRAPH_CODES } from '@/domain/referenceGraphModel';
 import { workspaceDocumentToken, type WorkspaceGraphDocument, type WorkspaceGraphEdge, type WorkspaceProfileResolution, type WorkspaceNodeId } from '@/domain/workspaceGraphModel';
 
+const SEMANTIC_EDGES_VALIDATOR = Object.freeze({ name: 'workspace-semantic-edges', version: '1' });
 const object = (value: unknown): Record<string, unknown> => isJsonObject(value) ? value : {};
 const list = (value: unknown): readonly unknown[] => Array.isArray(value) ? value : [];
 
@@ -103,23 +106,30 @@ export function deriveWorkspaceSemanticEdges(
   const { outgoing, project, hasStatement } = createSemanticLookup(edges, resolutions);
   const artifact = (document: WorkspaceGraphDocument): WorkspaceNodeId => ({ document: document.key, kind: 'artifact', localId: null });
   const emit = (document: WorkspaceGraphDocument, kind: WorkspaceGraphEdge['kind'], path: string, state: WorkspaceGraphEdge['state'], to?: WorkspaceNodeId, code?: string) => {
-    result.push({ kind, from: artifact(document), path, state, ...(to ? { to } : {}), ...(code ? { diagnostic: createOscalDiagnostic({ code, path, stage: 'reference', validator: { name: 'workspace-semantic-edges', version: '1' }, artifact: { rootType: document.rootType } }) } : {}) });
+    const diagnostic = code === undefined ? undefined : createOscalDiagnostic({
+      code,
+      path,
+      stage: 'reference',
+      validator: SEMANTIC_EDGES_VALIDATOR,
+      artifact: { rootType: document.rootType },
+    });
+    result.push({ kind, from: artifact(document), path, state, ...(to ? { to } : {}), ...(diagnostic ? { diagnostic } : {}) });
   };
   const requirements = (document: WorkspaceGraphDocument, values: unknown, path: string, context: WorkspaceGraphEdge | undefined, component: boolean) => {
     const target = context?.state === 'resolved' && context.to ? byKey.get(workspaceDocumentToken(context.to.document)) : undefined;
     const projection = project(target);
     const diagnose = (id: unknown, controlId: unknown, statement: boolean, referencePath: string) => {
       const kind = semanticRequirementKind(component, statement);
-      if (context?.state === 'error') { emit(document, kind, referencePath, 'error', undefined, 'OSCAL_GRAPH_CONTEXT_INVALID'); return; }
+      if (context?.state === 'error') { emit(document, kind, referencePath, 'error', undefined, WORKSPACE_DIAGNOSTIC_CODES.contextInvalid); return; }
       if (!target || !projection) { emit(document, kind, referencePath, 'not-evaluable'); return; }
       if (projection.status === 'failure') {
         const ambiguous = projection.diagnostics.some(item => item.code.endsWith('_AMBIGUOUS'));
-        emit(document, kind, referencePath, 'error', undefined, ambiguous ? 'OSCAL_GRAPH_TARGET_AMBIGUOUS' : 'OSCAL_GRAPH_TARGET_NOT_FOUND');
+        emit(document, kind, referencePath, 'error', undefined, ambiguous ? REFERENCE_GRAPH_CODES.targetAmbiguous : REFERENCE_GRAPH_CODES.targetNotFound);
         return;
       }
       const control = typeof controlId === 'string' ? projection.catalog.controlsById.get(controlId) : undefined;
       const found = control && typeof id === 'string' && (!statement || hasStatement(control, id));
-      if (!found) { emit(document, kind, referencePath, 'error', undefined, 'OSCAL_GRAPH_TARGET_NOT_FOUND'); return; }
+      if (!found) { emit(document, kind, referencePath, 'error', undefined, REFERENCE_GRAPH_CODES.targetNotFound); return; }
       emit(document, kind, referencePath, 'resolved', { document: target.key, kind: statement ? 'statement' : 'control', localId: id, ...(statement ? { controlId: control.id } : {}) });
     };
     list(values).forEach((value, index) => {
@@ -138,10 +148,10 @@ export function deriveWorkspaceSemanticEdges(
         const id = object(entry)['component-uuid'];
         const matches = typeof id === 'string' ? components.get(id.toLowerCase()) ?? [] : [];
         const path = `/component-definition/capabilities/${index}/incorporates-components/${entryIndex}/component-uuid`;
-        if (matches.length > 1) emit(document, 'component-incorporates', path, 'error', undefined, 'OSCAL_GRAPH_TARGET_AMBIGUOUS');
+        if (matches.length > 1) emit(document, 'component-incorporates', path, 'error', undefined, REFERENCE_GRAPH_CODES.targetAmbiguous);
         else if (matches.length === 1) emit(document, 'component-incorporates', path, 'resolved', matches[0]);
         else if (incomplete) emit(document, 'component-incorporates', path, 'not-evaluable');
-        else emit(document, 'component-incorporates', path, 'error', undefined, 'OSCAL_GRAPH_TARGET_NOT_FOUND');
+        else emit(document, 'component-incorporates', path, 'error', undefined, REFERENCE_GRAPH_CODES.targetNotFound);
       });
     });
   };

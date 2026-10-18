@@ -28,13 +28,18 @@ describe('preloaded class-1 profile dependency bindings', () => {
     expect(graph.resolutions.map(resolution => resolution.status)).toEqual(['resolved', 'resolved']);
     expect([local.source, profile.source, catalog.source]).toEqual(before);
   });
-  it('leaves unbound or stale class-1 imports not evaluable', async () => {
+  it('leaves unbound class-1 imports not evaluable', async () => {
     const [profile, catalog] = artifacts();
-    for (const bindings of [undefined, [{ pointer: '/profile/imports/0/href', href: 'stale.json', artifactKey: 'catalog-gspp' }]]) {
-      const graph = await buildWorkspaceGraph({ members: [], class1Artifacts: [{ ...profile, bindings }, catalog] });
-      expect(graph.edges.find(edge => edge.kind === 'profile-import')?.state).toBe('not-evaluable');
-      expect(graph.resolutions[0].status).toBe('not-evaluable');
-    }
+    const graph = await buildWorkspaceGraph({ members: [], class1Artifacts: [{ ...profile, bindings: undefined }, catalog] });
+    expect(graph.edges.find(edge => edge.kind === 'profile-import')?.state).toBe('not-evaluable');
+    expect(graph.resolutions[0].status).toBe('not-evaluable');
+  });
+  it('reports stale class-1 dependency bindings as reference errors', async () => {
+    const [profile, catalog] = artifacts();
+    const bindings = [{ pointer: '/profile/imports/0/href', href: 'stale.json', artifactKey: 'catalog-gspp' }];
+    const graph = await buildWorkspaceGraph({ members: [], class1Artifacts: [{ ...profile, bindings }, catalog] });
+    expect(graph.edges.find(edge => edge.kind === 'profile-import')).toMatchObject({ state: 'error', diagnostic: { code: 'OSCAL_WORKSPACE_BINDING_STALE' } });
+    expect(graph.resolutions[0]).toMatchObject({ status: 'error', diagnostic: { code: 'OSCAL_WORKSPACE_BINDING_STALE' } });
   });
   it('does not fall back from an absent class-1 target to a local member', async () => {
     const [profile] = artifacts();

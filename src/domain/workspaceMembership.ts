@@ -1,5 +1,6 @@
 import { processClass2OscalBytes, type Class2OscalImportedDocument } from '@/domain/oscalClass2Import';
 import { createOscalDiagnostic, type OscalDiagnostic } from '@/domain/oscalDiagnostics';
+import { WORKSPACE_DIAGNOSTIC_CODES } from '@/domain/workspaceDiagnostics';
 import { enforceClass2ObjectGraphInvariants } from '@/domain/oscalObjectGraph';
 import { serializeWorkspaceJson } from '@/domain/workspaceJson';
 import type { LocalId, VerbundId, WorkspaceEnvelope } from '@/domain/workspaceModel';
@@ -23,10 +24,10 @@ export async function checkWorkspaceMembership(input: {
 }): Promise<WorkspaceMembershipResult> {
   const { document, members, verbundId, replacingLocalId } = input;
   if (document?.context?.trustClass !== 'class-2-local-user') {
-    return { ok: false, diagnostic: diagnostic('WORKSPACE_TRUST_CLASS_REJECTED') };
+    return { ok: false, diagnostic: diagnostic(WORKSPACE_DIAGNOSTIC_CODES.trustClassRejected) };
   }
   if (replacingLocalId !== undefined && !members.some(member => member.localId === replacingLocalId && member.verbundId === verbundId)) {
-    return { ok: false, diagnostic: diagnostic('WORKSPACE_REPLACEMENT_TARGET_INVALID') };
+    return { ok: false, diagnostic: diagnostic(WORKSPACE_DIAGNOSTIC_CODES.replacementTargetInvalid) };
   }
   const structuralFailure = enforceClass2ObjectGraphInvariants(document.source);
   if (structuralFailure) return { ok: false, diagnostic: structuralFailure };
@@ -36,10 +37,10 @@ export async function checkWorkspaceMembership(input: {
   const validated = await processClass2OscalBytes(bytes, { trustClass: 'class-2-local-user' });
   if (!validated.ok) return validated;
   if (validated.document.rootType !== document.rootType || validated.document.oscalVersion !== document.oscalVersion) {
-    return { ok: false, diagnostic: diagnostic('WORKSPACE_DOCUMENT_INVALID') };
+    return { ok: false, diagnostic: diagnostic(WORKSPACE_DIAGNOSTIC_CODES.documentInvalid) };
   }
   if (document.rootType === 'mapping-collection') {
-    return { ok: false, diagnostic: diagnostic('WORKSPACE_MEMBERSHIP_ROOT_REJECTED', '/mapping-collection') };
+    return { ok: false, diagnostic: diagnostic(WORKSPACE_DIAGNOSTIC_CODES.membershipRootRejected, '/mapping-collection') };
   }
   const source = validated.document.source as Record<string, { uuid: string }>;
   const uuid = source[document.rootType].uuid.toLowerCase();
@@ -51,7 +52,7 @@ export async function checkWorkspaceMembership(input: {
     return typeof existingUuid === 'string' && existingUuid.toLowerCase() === uuid;
   });
   if (duplicate) {
-    return { ok: false, diagnostic: diagnostic('WORKSPACE_ROOT_UUID_DUPLICATE', `/${document.rootType}/uuid`), existingLocalId: duplicate.localId, action: 'replace' };
+    return { ok: false, diagnostic: diagnostic(WORKSPACE_DIAGNOSTIC_CODES.rootUuidDuplicate, `/${document.rootType}/uuid`), existingLocalId: duplicate.localId, action: 'replace' };
   }
   return { ok: true };
 }

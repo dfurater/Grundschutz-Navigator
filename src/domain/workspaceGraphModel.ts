@@ -1,7 +1,7 @@
-import type { ReferenceGraphDocumentKey, ReferenceNodeKind } from '@/domain/referenceGraphModel';
+import type { ReferenceEdgeKind, ReferenceGraphDocumentKey, ReferenceNodeKind } from '@/domain/referenceGraphModel';
 import type { OscalDiagnostic } from '@/domain/oscalDiagnostics';
 import type { OscalRootKey } from '@/domain/oscalVersionMatrix';
-import type { LocalId, WorkspaceBinding, WorkspaceEnvelope } from '@/domain/workspaceModel';
+import type { BindingTarget, LocalId, WorkspaceBinding, WorkspaceEnvelope } from '@/domain/workspaceModel';
 import type { WorkspaceDocumentEdgeKind } from '@/domain/workspaceEdges';
 import type { TrustClass } from '@/domain/oscalDocumentContext';
 
@@ -46,8 +46,17 @@ export interface WorkspaceGraphNode extends WorkspaceNodeId {
   readonly trustClass: TrustClass;
 }
 
+/** Document edges plus the document-internal and baseline-scoped semantic edges. */
+export type WorkspaceGraphEdgeKind = Extract<ReferenceEdgeKind,
+  | WorkspaceDocumentEdgeKind
+  | 'document-internal'
+  | 'component-control'
+  | 'ssp-control'
+  | 'ssp-statement'
+  | 'component-incorporates'>;
+
 export interface WorkspaceGraphEdge {
-  readonly kind: WorkspaceDocumentEdgeKind | 'document-internal' | 'component-control' | 'ssp-control' | 'ssp-statement' | 'component-incorporates';
+  readonly kind: WorkspaceGraphEdgeKind;
   readonly from: WorkspaceNodeId;
   readonly path: string;
   readonly state: 'resolved' | 'resolved-empty' | 'missing-source' | 'not-evaluable' | 'external' | 'error';
@@ -77,7 +86,7 @@ export interface WorkspaceGraph {
 }
 
 /** Disjoint tokens for internal maps; never used as OSCAL or diagnostic fields. */
-export function workspaceDocumentToken(key: ReferenceGraphDocumentKey): string {
+export function workspaceDocumentToken(key: ReferenceGraphDocumentKey | BindingTarget): string {
   return key.kind === 'local' ? `local:${key.localId}` : `class-1:${key.artifactKey}`;
 }
 

@@ -3,7 +3,8 @@ import { dispatchOscalDocument } from '@/domain/oscalRootDispatch';
 import { SOURCE_REGISTRY } from '@/domain/sourceRegistry';
 import { buildWorkspaceCatalog } from '@/domain/workspaceCatalog';
 import { readWorkspaceDocumentEdges } from '@/domain/workspaceEdges';
-import { localDocumentKey, workspaceDocumentToken, type WorkspaceGraph, type WorkspaceGraphInput, type WorkspaceGraphDocument, type WorkspaceGraphNode, type WorkspaceGraphEdge, type WorkspaceProfileResolution } from '@/domain/workspaceGraphModel';
+import { localDocumentKey, workspaceDocumentToken, type WorkspaceClass1Artifact, type WorkspaceGraph, type WorkspaceGraphInput, type WorkspaceGraphDocument, type WorkspaceGraphNode, type WorkspaceGraphEdge, type WorkspaceProfileResolution } from '@/domain/workspaceGraphModel';
+import { WORKSPACE_DIAGNOSTIC_CODES } from '@/domain/workspaceDiagnostics';
 import { prepareWorkspaceDocument, evaluateWorkspaceDocumentReference, deriveWorkspaceInternalEdges, markWorkspaceCycles, workspaceDiagnostic, type PreparedWorkspaceDocument } from '@/domain/workspaceGraphContext';
 import { resolveWorkspaceProfiles } from '@/domain/workspaceProfileResolution';
 import { deriveWorkspaceSemanticEdges } from '@/domain/workspaceSemanticEdges';
@@ -20,31 +21,66 @@ function emptyGraph(diagnostic: OscalDiagnostic): WorkspaceGraph {
 function validateGraphDocument(document: WorkspaceGraphDocument): OscalDiagnostic | undefined {
   const structuralFailure = enforceClass2ObjectGraphInvariants(document.source);
   if (structuralFailure) return structuralFailure;
-  const dispatch = dispatchOscalDocument(document.source, {trustClass: document.trustClass});
+  const dispatch = dispatchOscalDocument(document.source, { trustClass: document.trustClass });
   if (!dispatch.ok) return dispatch.diagnostic;
-  if (dispatch.rootType !== document.rootType || dispatch.oscalVersion !== document.oscalVersion) return workspaceDiagnostic('OSCAL_WORKSPACE_DOCUMENT_INVALID');
+  if (dispatch.rootType !== document.rootType || dispatch.oscalVersion !== document.oscalVersion) {
+    return workspaceDiagnostic(WORKSPACE_DIAGNOSTIC_CODES.documentInvalid);
+  }
+}
+
+function memberDocument(member: WorkspaceGraphInput['members'][number], verbundId: string | undefined): WorkspaceGraphDocument | OscalDiagnostic {
+  if (member.verbundId !== verbundId) return workspaceDiagnostic(WORKSPACE_DIAGNOSTIC_CODES.verbundMismatch);
+  if (member.trustClass !== 'class-2-local-user') return workspaceDiagnostic(WORKSPACE_DIAGNOSTIC_CODES.trustClassRejected);
+  if (member.rootType === 'mapping-collection') return workspaceDiagnostic(WORKSPACE_DIAGNOSTIC_CODES.rootNotAllowed);
+  return {
+    key: localDocumentKey(member.localId),
+    source: member.source,
+    rootType: member.rootType,
+    oscalVersion: member.oscalVersion,
+    trustClass: member.trustClass,
+    savedAt: member.savedAt,
+  };
+}
+
+function class1Document(artifact: WorkspaceClass1Artifact): WorkspaceGraphDocument | OscalDiagnostic {
+  const registered = SOURCE_REGISTRY.find(entry => entry.artifactKey === artifact.artifactKey);
+  const supported = artifact.lifecycle === 'supported'
+    && artifact.trustClass === 'class-1-verified-public'
+    && registered?.lifecycle === 'supported'
+    && registered.kind === 'oscal'
+    && registered.expectedRootType === artifact.rootType
+    && registered.oscalVersion === artifact.oscalVersion;
+  if (!supported) return workspaceDiagnostic(WORKSPACE_DIAGNOSTIC_CODES.artifactUnsupported);
+  return {
+    key: { kind: 'class-1', artifactKey: artifact.artifactKey, lifecycle: 'supported' },
+    source: artifact.source,
+    rootType: artifact.rootType,
+    oscalVersion: artifact.oscalVersion,
+    trustClass: artifact.trustClass,
+  };
+}
+
+function isDiagnostic(value: WorkspaceGraphDocument | OscalDiagnostic): value is OscalDiagnostic {
+  return 'code' in value;
 }
 
 function graphDocuments(input: WorkspaceGraphInput): WorkspaceGraphDocument[] | OscalDiagnostic {
   const verbundId = input.members[0]?.verbundId;
-  const documents: WorkspaceGraphDocument[]=[];
-  for (const member of input.members) {
-    if (member.verbundId !== verbundId) return workspaceDiagnostic('OSCAL_WORKSPACE_VERBUND_MISMATCH');
-    if (member.trustClass !== 'class-2-local-user') return workspaceDiagnostic('OSCAL_WORKSPACE_TRUST_CLASS_REJECTED');
-    if (member.rootType === 'mapping-collection') return workspaceDiagnostic('OSCAL_WORKSPACE_ROOT_NOT_ALLOWED');
-    documents.push({key:localDocumentKey(member.localId), source:member.source, rootType:member.rootType, oscalVersion:member.oscalVersion, trustClass:member.trustClass, savedAt:member.savedAt});
+  const documents: WorkspaceGraphDocument[] = [];
+  for (const candidate of [
+    ...input.members.map(member => memberDocument(member, verbundId)),
+    ...(input.class1Artifacts ?? []).map(class1Document),
+  ]) {
+    if (isDiagnostic(candidate)) return candidate;
+    documents.push(candidate);
   }
-  for (const artifact of input.class1Artifacts ?? []) {
-    const registered = SOURCE_REGISTRY.find(entry=>entry.artifactKey===artifact.artifactKey);
-    if (artifact.lifecycle !== 'supported' || artifact.trustClass !== 'class-1-verified-public' || registered?.lifecycle !== 'supported' || registered.kind !== 'oscal' || registered.expectedRootType !== artifact.rootType || registered.oscalVersion !== artifact.oscalVersion) return workspaceDiagnostic('OSCAL_WORKSPACE_ARTIFACT_UNSUPPORTED');
-    documents.push({key:{kind:'class-1',artifactKey:artifact.artifactKey,lifecycle:'supported'},source:artifact.source,rootType:artifact.rootType,oscalVersion:artifact.oscalVersion,trustClass:artifact.trustClass});
-  }
-  const seen=new Set<string>();
-  for(const document of documents){
-    const token=workspaceDocumentToken(document.key);
-    if(seen.has(token))return workspaceDiagnostic('OSCAL_WORKSPACE_DOCUMENT_DUPLICATE');
+  const seen = new Set<string>();
+  for (const document of documents) {
+    const token = workspaceDocumentToken(document.key);
+    if (seen.has(token)) return workspaceDiagnostic(WORKSPACE_DIAGNOSTIC_CODES.documentDuplicate);
     seen.add(token);
-    const failure=validateGraphDocument(document);if(failure)return failure;
+    const failure = validateGraphDocument(document);
+    if (failure) return failure;
   }
   return documents;
 }

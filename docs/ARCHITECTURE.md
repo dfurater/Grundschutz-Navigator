@@ -184,6 +184,7 @@ src/                              # Anwendungsquellcode
 │   ├── vocabularyRouteId.ts          # Typsicherer Einstieg in vocabularyRouteId.mjs
 │   ├── workspaceJson.ts              # Verlustfreie JSON-Zahlengrenze des Speichers
 │   ├── workspaceCatalog.ts           # Minimale lokale Baseline-Projektion mit Controls und Part-IDs
+│   ├── workspaceDiagnostics.ts       # Diagnosecodes von Verbundgraph, Aufnahme und Baseline-Projektion
 │   ├── workspaceEdges.ts             # Acht dokumentübergreifende OSCAL-Referenzfelder
 │   ├── workspaceGraph.ts             # Reiner Dokumentgraph eines Informationsverbunds
 │   ├── workspaceGraphContext.ts      # Explizite Bindungen, interne Ressourcen und iterative Zykluserkennung

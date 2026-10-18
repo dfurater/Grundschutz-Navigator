@@ -46,12 +46,12 @@ describe('checkWorkspaceMembership', () => {
   });
   it('rejects mapping collections with a dedicated structural diagnostic', async () => {
     const document = await imported('mapping-collection');
-    expect(await checkWorkspaceMembership({ document, members: [], verbundId })).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_MEMBERSHIP_ROOT_REJECTED', path: '/mapping-collection' } });
+    expect(await checkWorkspaceMembership({ document, members: [], verbundId })).toMatchObject({ ok: false, diagnostic: { code: 'OSCAL_WORKSPACE_MEMBERSHIP_ROOT_REJECTED', path: '/mapping-collection' } });
   });
   it.each<OscalRootKey>(['profile', 'system-security-plan'])('offers explicit replacement of duplicate %s outside the diagnostic', async root => {
     const document = await imported(root);
     const result = await checkWorkspaceMembership({ document, members: [member(document)], verbundId });
-    expect(result).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_ROOT_UUID_DUPLICATE' }, existingLocalId: localId, action: 'replace' });
+    expect(result).toMatchObject({ ok: false, diagnostic: { code: 'OSCAL_WORKSPACE_ROOT_UUID_DUPLICATE' }, existingLocalId: localId, action: 'replace' });
     if (!result.ok) expect(JSON.stringify(result.diagnostic)).not.toContain(localId);
     expect(await checkWorkspaceMembership({ document, members: [member(document)], verbundId, replacingLocalId: localId })).toEqual({ ok: true });
   });
@@ -73,13 +73,13 @@ describe('checkWorkspaceMembership', () => {
     for (const operations of encodeOscalSource(document.source)) decoder.accept(operations);
     expect(await checkWorkspaceMembership({ document: { ...document, source: decoder.finish() }, members: [], verbundId })).toEqual({ ok: true });
     expect(await checkWorkspaceMembership({ document: { ...document, source: { profile: undefined } }, members: [], verbundId })).toMatchObject({ ok: false });
-    expect(await checkWorkspaceMembership({ document: { ...document, rootType: 'catalog' }, members: [], verbundId })).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_DOCUMENT_INVALID' } });
-    expect(await checkWorkspaceMembership({ document: { ...document, oscalVersion: '1.1.3' }, members: [], verbundId })).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_DOCUMENT_INVALID' } });
+    expect(await checkWorkspaceMembership({ document: { ...document, rootType: 'catalog' }, members: [], verbundId })).toMatchObject({ ok: false, diagnostic: { code: 'OSCAL_WORKSPACE_DOCUMENT_INVALID' } });
+    expect(await checkWorkspaceMembership({ document: { ...document, oscalVersion: '1.1.3' }, members: [], verbundId })).toMatchObject({ ok: false, diagnostic: { code: 'OSCAL_WORKSPACE_DOCUMENT_INVALID' } });
   });
   it('rejects wrong trust and schema-invalid documents with redacted diagnostics', async () => {
     const document = await imported('profile');
     const wrongTrust = { ...document, context: { trustClass: 'class-1-verified-public' } } as unknown as Class2OscalImportedDocument;
-    expect(await checkWorkspaceMembership({ document: wrongTrust, members: [], verbundId })).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_TRUST_CLASS_REJECTED' } });
+    expect(await checkWorkspaceMembership({ document: wrongTrust, members: [], verbundId })).toMatchObject({ ok: false, diagnostic: { code: 'OSCAL_WORKSPACE_TRUST_CLASS_REJECTED' } });
     const source = makeSchemaValidOscalDocument('profile', '1.2.2');
     const body = source.profile as Record<string, unknown>;
     body.uuid = 'PRIVATE_SENTINEL';
@@ -98,10 +98,10 @@ describe('checkWorkspaceMembership', () => {
   it('rejects absent or foreign replacement targets and missing context', async () => {
     const document = await imported('profile');
     for (const members of [[], [member(document, { verbundId: 'foreign' as VerbundId })]]) {
-      expect(await checkWorkspaceMembership({ document, members, verbundId, replacingLocalId: localId })).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_REPLACEMENT_TARGET_INVALID' } });
+      expect(await checkWorkspaceMembership({ document, members, verbundId, replacingLocalId: localId })).toMatchObject({ ok: false, diagnostic: { code: 'OSCAL_WORKSPACE_REPLACEMENT_TARGET_INVALID' } });
     }
     const missingContext = { ...document, context: undefined } as unknown as Class2OscalImportedDocument;
-    expect(await checkWorkspaceMembership({ document: missingContext, members: [], verbundId })).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_TRUST_CLASS_REJECTED' } });
+    expect(await checkWorkspaceMembership({ document: missingContext, members: [], verbundId })).toMatchObject({ ok: false, diagnostic: { code: 'OSCAL_WORKSPACE_TRUST_CLASS_REJECTED' } });
   });
 
   it.each([
@@ -119,7 +119,7 @@ describe('checkWorkspaceMembership', () => {
       (existingSource[root] as Record<string, unknown>).uuid = incomingUppercase ? uuid : uuid.toUpperCase();
       const existing = member(result.document, { source: existingSource });
       const before = JSON.stringify([result.document, existing]);
-      expect(await checkWorkspaceMembership({ document: result.document, members: [existing], verbundId })).toMatchObject({ ok: false, existingLocalId: localId, action: 'replace', diagnostic: { code: 'WORKSPACE_ROOT_UUID_DUPLICATE' } });
+      expect(await checkWorkspaceMembership({ document: result.document, members: [existing], verbundId })).toMatchObject({ ok: false, existingLocalId: localId, action: 'replace', diagnostic: { code: 'OSCAL_WORKSPACE_ROOT_UUID_DUPLICATE' } });
       expect(JSON.stringify([result.document, existing])).toBe(before);
     }
   });

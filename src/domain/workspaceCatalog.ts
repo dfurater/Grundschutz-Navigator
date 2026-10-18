@@ -1,5 +1,6 @@
 import { isJsonObject, type JsonObject } from '@/domain/jsonGuards';
 import { createOscalDiagnostic, type OscalDiagnostic } from '@/domain/oscalDiagnostics';
+import { WORKSPACE_DIAGNOSTIC_CODES } from '@/domain/workspaceDiagnostics';
 
 /** Minimal transient lookup projection; contains no registry or provenance claim. */
 export interface WorkspaceCatalogControl {
@@ -40,7 +41,7 @@ function addPartIdentity(part: LocatedNode, seen: Set<string>, ids: string[], di
   if (typeof id !== 'string' || id.length === 0) {
     diagnose(`${part.path}/id`);
   } else if (seen.has(id)) {
-    diagnose(`${part.path}/id`, 'OSCAL_WORKSPACE_CATALOG_STATEMENT_AMBIGUOUS');
+    diagnose(`${part.path}/id`, WORKSPACE_DIAGNOSTIC_CODES.catalogStatementAmbiguous);
   } else {
     seen.add(id);
     ids.push(id);
@@ -64,7 +65,7 @@ function addControl(item: LocatedNode, controls: Map<string, WorkspaceCatalogCon
   if (typeof id !== 'string' || id.length === 0) {
     diagnose(`${item.path}/id`);
   } else if (controls.has(id)) {
-    diagnose(`${item.path}/id`, 'OSCAL_WORKSPACE_CATALOG_CONTROL_AMBIGUOUS');
+    diagnose(`${item.path}/id`, WORKSPACE_DIAGNOSTIC_CODES.catalogControlAmbiguous);
   } else {
     controls.set(id, { id, statementIds: statementIds(item, diagnose) });
   }
@@ -85,7 +86,7 @@ function indexControls(root: JsonObject, diagnose: Diagnose): ReadonlyMap<string
 /** Reads validated local or resolved OSCAL sources without BSI-specific UI assumptions. */
 export function buildWorkspaceCatalog(source: unknown): WorkspaceCatalogResult {
   const diagnostics: OscalDiagnostic[] = [];
-  const diagnose: Diagnose = (path, code = 'OSCAL_WORKSPACE_CATALOG_STRUCTURE_INVALID') => {
+  const diagnose: Diagnose = (path, code = WORKSPACE_DIAGNOSTIC_CODES.catalogStructureInvalid) => {
     diagnostics.push(createOscalDiagnostic({
       code, path, stage: 'domain', artifact: { rootType: 'catalog' },
       validator: { name: 'workspace-catalog', version: '1' },

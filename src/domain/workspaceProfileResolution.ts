@@ -2,8 +2,10 @@ import { parseProfileDocument, type ProfileDocument } from '@/adapters/oscalProf
 import { createOscalDiagnostic, type OscalDiagnostic } from '@/domain/oscalDiagnostics';
 import type { TrustClass } from '@/domain/oscalDocumentContext';
 import { resolveProfile, type ProfileResolutionExecution } from '@/domain/profileResolutionEngine';
-import { buildProfileResolutionPlan, type ProfileResolutionEdge } from '@/domain/profileResolutionImportGraph';
+import { buildProfileResolutionPlan, PROFILE_RESOLUTION_DIAGNOSTIC_CODES, type ProfileResolutionEdge } from '@/domain/profileResolutionImportGraph';
+import { REFERENCE_GRAPH_CODES } from '@/domain/referenceGraphModel';
 import { readWorkspaceDocumentEdges, type WorkspaceDocumentReference } from '@/domain/workspaceEdges';
+import { WORKSPACE_DIAGNOSTIC_CODES } from '@/domain/workspaceDiagnostics';
 import { workspaceDocumentToken, type WorkspaceGraphDocument, type WorkspaceGraphEdge, type WorkspaceProfileResolution } from '@/domain/workspaceGraphModel';
 
 function diagnostic(code: string, path = '/'): OscalDiagnostic {
@@ -38,16 +40,16 @@ function indexEdges(edges: readonly WorkspaceGraphEdge[]): EdgeIndex {
 type NormalizedImport = { readonly edge: ProfileResolutionEdge } | { readonly problem: Problem };
 
 function normalizeImport(reference: WorkspaceDocumentReference, matches: readonly WorkspaceGraphEdge[], sources: Sources): NormalizedImport {
-  if (matches.some((edge) => edge.diagnostic?.code === 'OSCAL_GRAPH_IMPORT_CYCLE')) {
-    return { problem: { status: 'error', diagnostic: diagnostic('PROFILE_RESOLUTION_CYCLE') } };
+  if (matches.some((edge) => edge.diagnostic?.code === REFERENCE_GRAPH_CODES.importCycle)) {
+    return { problem: { status: 'error', diagnostic: diagnostic(PROFILE_RESOLUTION_DIAGNOSTIC_CODES.CYCLE) } };
   }
   if (matches.length > 1) {
-    return { problem: { status: 'error', diagnostic: diagnostic('OSCAL_WORKSPACE_BINDING_AMBIGUOUS', reference.path) } };
+    return { problem: { status: 'error', diagnostic: diagnostic(WORKSPACE_DIAGNOSTIC_CODES.bindingAmbiguous, reference.path) } };
   }
   const edge = matches[0];
   if (edge?.state === 'error') {
     return { problem: { status: 'error', diagnostic: edge.diagnostic === undefined
-      ? diagnostic('OSCAL_WORKSPACE_PROFILE_REFERENCE_INVALID', reference.path) : redact(edge.diagnostic) } };
+      ? diagnostic(WORKSPACE_DIAGNOSTIC_CODES.profileReferenceInvalid, reference.path) : redact(edge.diagnostic) } };
   }
   if (reference.href === undefined || edge?.state !== 'resolved' || edge.to?.kind !== 'artifact') {
     return { problem: { status: 'not-evaluable' } };
@@ -116,7 +118,7 @@ async function resolveOneProfile(doc: WorkspaceGraphDocument, profiles: readonly
         specificationStatus: 'work-in-progress', source: outcome.output.tree }
       : { document: doc.key, status: 'error', diagnostic: redact(outcome.diagnostic) };
   } catch {
-    return { document: doc.key, status: 'error', diagnostic: diagnostic('OSCAL_WORKSPACE_PROFILE_RESOLUTION_FAILED') };
+    return { document: doc.key, status: 'error', diagnostic: diagnostic(WORKSPACE_DIAGNOSTIC_CODES.profileResolutionFailed) };
   }
 }
 

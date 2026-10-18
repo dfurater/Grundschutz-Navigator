@@ -1,6 +1,8 @@
 import type { OscalRootKey } from '@/domain/oscalVersionMatrix';
+import type { ReferenceEdgeKind } from '@/domain/referenceGraphModel';
 
-export type WorkspaceDocumentEdgeKind =
+/** The eight document edges of an information network; names come from `REFERENCE_EDGE_KINDS`. */
+export type WorkspaceDocumentEdgeKind = Extract<ReferenceEdgeKind,
   | 'profile-import'
   | 'ssp-import-profile'
   | 'ssp-leveraged-authorization'
@@ -8,7 +10,7 @@ export type WorkspaceDocumentEdgeKind =
   | 'component-import'
   | 'ap-import-ssp'
   | 'ar-import-ap'
-  | 'poam-import-ssp';
+  | 'poam-import-ssp'>;
 
 export interface WorkspaceDocumentReference {
   readonly kind: WorkspaceDocumentEdgeKind;
