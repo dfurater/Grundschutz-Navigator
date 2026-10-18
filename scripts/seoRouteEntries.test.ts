@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { parseCatalog } from '../src/adapters/oscalAdapter';
+import { HOME_OG_TITLE } from '../src/app/pageTitles';
 import type { CatalogKey } from '../src/domain/sourceRegistry';
 import { catalogDataFileName, catalogMetadataFileName, listSupportedCatalogs } from '../src/domain/sourceRegistry.mjs';
 import { STATIC_CONTENT_TITLES, listSeoRouteMetadata, loadPublicSeoCatalogs, writeSeoRouteEntries } from './seoRouteEntries';
@@ -65,7 +66,7 @@ function metadata(html: string) {
 describe('listSeoRouteMetadata', () => {
   it('uses the shared fixed labels and resolved catalog, practice, topic and control titles', () => {
     const entries = listSeoRouteMetadata([catalog()]);
-    expect(entries).toContainEqual({ path: '/', title: 'Grundschutz++ Navigator' });
+    expect(entries).toContainEqual({ path: '/', title: HOME_OG_TITLE });
     for (const [path, title] of Object.entries(STATIC_CONTENT_TITLES)) expect(entries).toContainEqual({ path, title });
     expect(entries).toContainEqual({ path: '/katalog/gspp', title: 'Catalog' });
     expect(entries).toContainEqual({ path: '/katalog/gspp/GC', title: 'Governance | Catalog' });
@@ -136,7 +137,7 @@ describe('loadPublicSeoCatalogs', () => {
 });
 
 describe('writeSeoRouteEntries', () => {
-  it('changes only the two OG tags and writes a neutral index for the 404 fallback', () => {
+  it('changes only the two OG tags and writes the home index for the 404 fallback', () => {
     const directory = tempDir();
     const entries = listSeoRouteMetadata([catalog()]);
     writeSeoRouteEntries(directory, entries, BASE_URL);
@@ -149,7 +150,7 @@ describe('writeSeoRouteEntries', () => {
     }
     expect(existsSync(join(directory, 'katalog/gspp/unknown/index.html'))).toBe(false);
     expect(existsSync(join(directory, 'katalog/unknown/index.html'))).toBe(false);
-    expect(metadata(readFileSync(join(directory, 'index.html'), 'utf8'))).toEqual({ title: 'Grundschutz++ Navigator', url: BASE_URL });
+    expect(metadata(readFileSync(join(directory, 'index.html'), 'utf8'))).toEqual({ title: HOME_OG_TITLE, url: BASE_URL });
   });
 
   it('writes every public OG title without an em dash', () => {
