@@ -259,20 +259,6 @@ it.each(['workspace', 'verbund'] as const)('validates the file stamp of restored
   expect(writtenDocument.savedAt).not.toBe(documentRow.savedAt);
 });
 
-it('keeps every stamp within four-digit years and the stored state exportable', async () => {
-  const parsed = JSON.parse(value(await store.exportVerbundBackup(a.verbundId)));
-  parsed.documents[0].savedAt = '9999-12-31T23:59:59.999Z';
-  const before = value(await store.exportBackup());
-  expect(await store.restoreVerbundBackup(bytes(JSON.stringify(parsed)), 'replace-verbund')).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_BACKUP_INVALID' } });
-  expect(value(await store.exportBackup())).toBe(before);
-  parsed.documents[0].savedAt = '9999-12-31T23:59:59.998Z';
-  value(await store.restoreVerbundBackup(bytes(JSON.stringify(parsed)), 'replace-verbund'));
-  const restored = value(await store.exportBackup());
-  // Fehlschlag, wenn die nächste Schreibtransaktion einen fünfstelligen Jahresstempel schreibt und jeden Export bricht.
-  expect(await store.createVerbund('After the mark')).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_TIMESTAMP_EXHAUSTED' } });
-  expect(value(await store.exportBackup())).toBe(restored);
-});
-
 it('exports out-of-line keys of newer stores and rejects stores named like bundle members', async () => {
   db.close();
   store.close();

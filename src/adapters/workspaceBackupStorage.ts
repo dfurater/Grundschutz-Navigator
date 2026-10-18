@@ -132,16 +132,17 @@ export async function exportVerbundBackupSnapshot(db: Dexie, verbundId: VerbundI
 }
 
 /**
- * Fresh shared stamp of both restores: past the previous `workspaceMeta.savedAt` and every value of the bundle, so no
- * comparison value issued before the restore and none carried by the bundle matches a restored row.
+ * Fresh shared stamp of both restores: past the previous `workspaceMeta.savedAt` and every row value of the bundle, so no
+ * comparison value issued before the restore and none carried by the bundle matches a restored row. The bundle's own
+ * `workspaceMeta.savedAt` is no row value and stays out: it carries the stamp of the restore that preceded its export.
  */
-async function restoredStamp(db: Dexie, values: readonly string[]): Promise<string> {
+async function restoredStamp(db: Dexie, rows: readonly { savedAt: string }[]): Promise<string> {
   const meta = await db.table<WorkspaceMeta>('workspaceMeta').get('workspace');
   if (!meta) reject('WORKSPACE_SCHEMA_INVALID');
-  const latest = values.reduce((max, value) => Math.max(max, Date.parse(value)), Date.parse(meta.savedAt));
-  // The mark must lie after every restored value and still within the bundle grammar.
+  const latest = rows.reduce((max, row) => Math.max(max, Date.parse(row.savedAt)), Date.parse(meta.savedAt));
+  // The mark must lie after every restored value and still within the bundle grammar; it may take the reserved last millisecond.
   if (latest >= LAST_TIMESTAMP_MS) reject('WORKSPACE_BACKUP_INVALID');
-  return timestamp(new Date(latest).toISOString());
+  return timestamp(new Date(latest).toISOString(), LAST_TIMESTAMP_MS);
 }
 
 /** The stored comparison value is the fresh stamp; the file value stays visible in every export as `backupSavedAt`. */
@@ -158,7 +159,7 @@ export function writtenRow<T extends { backupSavedAt?: string }>(row: T): T {
 
 /** Caller owns the single write transaction and has validated the whole bundle. */
 export async function restoreWorkspaceBackupSnapshot(db: Dexie, backup: WorkspaceBackup): Promise<void> {
-  const stamp = await restoredStamp(db, [...backup.verbuende, ...backup.documents, ...backup.drafts, ...backup.workspaceMeta].map(row => row.savedAt));
+  const stamp = await restoredStamp(db, [...backup.verbuende, ...backup.documents, ...backup.drafts]);
   for (const table of db.tables) await table.clear();
   await db.table('verbuende').bulkAdd(backup.verbuende);
   await db.table('documents').bulkAdd(backup.documents.map(row => restoredRow(row, stamp)));
@@ -173,7 +174,7 @@ export async function restoreVerbundBackupSnapshot(db: Dexie, backup: WorkspaceV
   const documents = db.table<WorkspaceEnvelope, LocalId>('documents');
   const incoming = await documents.bulkGet(backup.documents.map(row => row.localId));
   if (incoming.some(row => row && row.verbundId !== verbundId)) reject('WORKSPACE_BACKUP_CONFLICT');
-  const stamp = await restoredStamp(db, [...backup.verbuende, ...backup.documents, ...backup.drafts].map(row => row.savedAt));
+  const stamp = await restoredStamp(db, [...backup.verbuende, ...backup.documents, ...backup.drafts]);
   const oldIds = new Set(await documents.where('verbundId').equals(verbundId).primaryKeys());
   await db.table<WorkspaceBinding>('bindings').filter(row => oldIds.has(row.fromLocalId) || (row.target.kind === 'local' && oldIds.has(row.target.localId))).delete();
   await db.table('drafts').bulkDelete([...oldIds]);
