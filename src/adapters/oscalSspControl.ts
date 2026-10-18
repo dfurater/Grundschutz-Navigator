@@ -161,7 +161,12 @@ function resolveControlReference(
       diagnostic: diagnose(state, codes.CONTROL_REFERENCE_UNRESOLVED, path),
     };
   }
-  return { status: 'resolved', catalogKey: state.baseline.catalogKey, control };
+  if ('catalogKey' in state.baseline) {
+    return { status: 'resolved', catalogKey: state.baseline.catalogKey,
+      control: state.baseline.catalog.controlsById.get(controlId)! };
+  }
+  return { status: 'resolved', kind: 'transient',
+    control: state.baseline.catalog.controlsById.get(controlId)! };
 }
 
 function deriveStatements(node: JsonObject, path: string, state: SspDeriveState): readonly SspStatement[] {

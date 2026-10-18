@@ -695,6 +695,42 @@ Layer (`catalog`, `profile`, `mapping-collection`) mit dem Implementation Layer
 haben, und ist rein: kein Netzwerk-, kein Dateizugriff, keine Auswertung
 eingebetteter Nutzlasten. Den Assessment Layer deckt der Graph nicht ab.
 
+### Dokumentgraph eines Informationsverbunds
+
+`buildWorkspaceGraph()` in [`workspaceGraph.ts`](../src/domain/workspaceGraph.ts) verarbeitet einen Snapshot aus `members`, `bindings` und bereits geladenen, hashgeprüften `class1Artifacts`. Mitglieder sind lokale `catalog`, `profile`, `component-definition`, `system-security-plan`, `assessment-plan`, `assessment-results` und `plan-of-action-and-milestones`; `mapping-collection` ist ausgeschlossen. Gemischte `verbundId`-Werte werden mit `OSCAL_WORKSPACE_VERBUND_MISMATCH` abgelehnt. Jedes Mitglied behält `localId`, `metadata.oscal-version` und `trustClass: 'class-2-local-user'`.
+
+`ReferenceGraphDocumentKey` in `src/domain/referenceGraphModel.ts` unterscheidet `{ kind: 'local', localId }` und `{ kind: 'class-1', artifactKey, lifecycle }`. Knoten und Kantenziele führen diese Dokumentidentität neben ihrer lokalen OSCAL-ID. `src/domain/workspaceEdges.ts` liest acht Dokumentkanten:
+
+| Kantenart | Referenzfeld | Erlaubter Zielroot |
+| --- | --- | --- |
+| `profile-import` | `profile.imports[].href` | `catalog`, `profile` |
+| `ssp-import-profile` | `system-security-plan.import-profile.href` | `profile`, `catalog` |
+| `ssp-leveraged-authorization` | `system-implementation.leveraged-authorizations[].links[]` mit `rel="system-security-plan"`, Feld `href` | `system-security-plan` |
+| `component-source` | `components[]` oder `capabilities[]`, jeweils `control-implementations[].source` | `catalog`, `profile` |
+| `component-import` | `component-definition.import-component-definitions[].href` | `component-definition` |
+| `ap-import-ssp` | `assessment-plan.import-ssp.href` | `system-security-plan` |
+| `ar-import-ap` | `assessment-results.import-ap.href` | `assessment-plan` |
+| `poam-import-ssp` | `plan-of-action-and-milestones.import-ssp.href`, falls vorhanden | `system-security-plan` |
+
+Eine lokale Bindung gilt genau für `fromLocalId`, den JSON Pointer des Referenzfelds und dessen unveränderten `href`. Ein abweichender gespeicherter Wert bleibt `not-evaluable`. Fragment- und relative Importreferenzen erhalten ausschließlich durch diese Bindung ein Dokumentziel; `back-matter.resource.rlinks` eröffnen keinen Dokumentkontext. Absolute URIs bleiben auch mit Bindung `external`. `createOscalReferenceClassifier()` verwendet denselben Klassifikationskern wie `resolveOscalReference()` und hält Ressourcenindex und Ressourcenmetadaten für einen Graphaufbau im Arbeitsspeicher; `rlinks` werden dabei nicht ausgewertet. Graphaufbau und Resolution führen keinen Netzwerk-, Datei-, Worker- oder Speicherzugriff aus.
+
+| Zustand einer Verbundkante | Bedeutung |
+| --- | --- |
+| `resolved` | Ziel im explizit gebundenen Kontext vorhanden |
+| `resolved-empty` | Dokumentinterner Link auf eine Ressource ohne Inhalt |
+| `missing-source` | Importobjekt ohne `href`, mit `OSCAL_GRAPH_IMPORT_SOURCE_MISSING` als Metaschema-Diagnose |
+| `not-evaluable` | Keine aktuelle Bindung oder kein auswertbarer Baseline-Kontext |
+| `external` | Absolute URI, ohne Auflösung |
+| `error` | Gebundenes Ziel fehlt, ist mehrdeutig, hat den falschen Root oder schließt einen Zyklus |
+
+Profilimporte, Component-Importe und Leveraged Authorizations werden iterativ auf Zyklen geprüft; die schließende Kante trägt `OSCAL_GRAPH_IMPORT_CYCLE`. `workspaceSemanticEdges.ts` wertet SSP-Controls und Statements gegen die gebundene Baseline und Component-Anforderungen gegen ihre gebundene `source` aus. Gleichlautende Control-IDs verschiedener Kataloge bleiben getrennt. Statement-Ziele führen zusätzlich die `controlId`. Transiente Profile liefern abgeleitete Control- und Part-Knoten unter ihrer Profilidentität, mit `derived: true` und Vertrauensklasse `class-2-local-user`. `incorporates-components` verwendet nur eigene Komponenten und explizit gebundene Component-Importe.
+
+`workspaceProfileResolution.ts` ruft `buildProfileResolutionPlan()` und `resolveProfile()` mit den gebundenen Importzielen auf. `ProfileResolutionEdge.importPath` adressiert ein Importobjekt; dadurch können gleiche `href`-Werte je Import unterschiedliche Ziele tragen. Jeder Graphaufbau berechnet die Resolution aus dem aktuellen Snapshot neu, einschließlich geänderter `savedAt`-Werte und Bindungen. Ergebnisse tragen `derived: true`, `transient: true` und `specificationStatus: 'work-in-progress'`; sie stehen ausschließlich unter `resolutions`, ohne Store-Operation. Die Engine erzeugt `resolution-tool` und `source-profile`; `source-profile` und `source-profile-uuid` bleiben Provenienz ohne Referenzkante. Gemischte Importversionen und Profilzyklen erscheinen mit `PROFILE_RESOLUTION_VERSION_MISMATCH` beziehungsweise `PROFILE_RESOLUTION_CYCLE`.
+
+`checkWorkspaceMembership()` in `workspaceMembership.ts` prüft die Aufnahme über die Klasse-2-Prüfkette und lehnt `mapping-collection` ab. Bei gleicher Root-UUID im Verbund liefert es `WORKSPACE_ROOT_UUID_DUPLICATE` mit `existingLocalId` und `action: 'replace'` außerhalb der Diagnose. Eine explizite Ersetzung verwendet die bestehende `localId` und die Speicheroperation aus [PERSISTENCE.md §7](PERSISTENCE.md#7-referenzen-und-bindungen).
+
+Die Verbundschicht erhält `source`, `href` und `link.resource-fragment` unverändert. Diagnosen entstehen über `createOscalDiagnostic()` mit strukturellen Pfaden und ohne Dokumentwerte oder lokale Dokumentschlüssel. `workspaceGraph.boundaries.test.ts` prüft den No-op-Round-trip aller sieben Root-Modelle; `workspaceGraph.test.ts` prüft den fehlenden Egress mit Spies auf `fetch`, `XMLHttpRequest` und `Worker`. Verbundmitgliedschaft und Bindung sind Projektregeln; das NIST-Orakel belegt die abgebildeten OSCAL-Eigenschaften, keine NIST-Dokumentsammlung.
+
 ### Vier Zustände, nicht drei
 
 | Zustand | Bedeutung | Diagnose |

@@ -85,6 +85,7 @@ interface ResourceIndex {
 interface PreparedReferenceResolutionContext extends ReferenceResolutionContext {
   readonly resourceIndex: ResourceIndex;
   readonly resourceIndexes: Map<ReferenceDocument, ResourceIndex>;
+  readonly resourceClassifications?: WeakMap<JsonObject, ResolvedResource>;
 }
 
 export interface ResolvedResourceLink {
@@ -411,6 +412,8 @@ function resolveResource(
   context: PreparedReferenceResolutionContext,
   resolveResourceLinks = true,
 ): ResolvedResource | null {
+  const cached = !resolveResourceLinks ? context.resourceClassifications?.get(resource) : undefined;
+  if (cached) return cached;
   const uuid = readString(resource.uuid);
   if (!uuid) return null;
 
@@ -432,7 +435,7 @@ function resolveResource(
     }
     : undefined;
 
-  return {
+  const resolved: ResolvedResource = {
     uuid,
     title: readString(resource.title),
     description: readString(resource.description),
@@ -443,6 +446,8 @@ function resolveResource(
       ? 'available'
       : 'empty',
   };
+  if (!resolveResourceLinks) context.resourceClassifications?.set(resource, resolved);
+  return resolved;
 }
 
 function resolveFragmentReference(
@@ -524,6 +529,14 @@ export function resolveOscalReference(
   context: ReferenceResolutionContext,
 ): ResolvedOscalReference {
   return resolveOscalReferenceInternal(input, prepareReferenceResolutionContext(context), true);
+}
+
+/** Classifies a fixed document snapshot with one resource index; rlinks are not evaluated. */
+export function createOscalReferenceClassifier(
+  context: ReferenceResolutionContext,
+): (input: OscalReferenceInput) => ResolvedOscalReference {
+  const prepared = { ...prepareReferenceResolutionContext(context), resourceClassifications: new WeakMap<JsonObject, ResolvedResource>() };
+  return input => resolveOscalReferenceInternal(input, prepared, false);
 }
 
 function visitCatalogControls(

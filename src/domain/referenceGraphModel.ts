@@ -27,6 +27,12 @@
 import type { OscalDiagnostic } from '@/domain/oscalDiagnostics';
 import type { OscalRootKey } from '@/domain/oscalVersionMatrix';
 import type { ArtifactLifecycle, CatalogKey } from '@/domain/sourceRegistry';
+import type { LocalId } from '@/domain/workspaceModel';
+
+/** Document identity outside OSCAL; local members never acquire registry identity. */
+export type ReferenceGraphDocumentKey =
+  | { readonly kind: 'class-1'; readonly artifactKey: string; readonly lifecycle: ArtifactLifecycle }
+  | { readonly kind: 'local'; readonly localId: LocalId };
 
 /** Der Validatorpin dieses Prüfers; er geht in jede Diagnosesignatur ein. */
 export const REFERENCE_GRAPH_VALIDATOR = Object.freeze({
@@ -135,6 +141,12 @@ export const REFERENCE_EDGE_KINDS = Object.freeze([
   'component-control',
   /** `link.href = "#<uuid>"` → Ressource in `back-matter/resources` */
   'document-internal',
+  'ssp-import-profile',
+  'ssp-leveraged-authorization',
+  'component-import',
+  'ap-import-ssp',
+  'ar-import-ap',
+  'poam-import-ssp',
 ] as const);
 
 export type ReferenceEdgeKind = (typeof REFERENCE_EDGE_KINDS)[number];

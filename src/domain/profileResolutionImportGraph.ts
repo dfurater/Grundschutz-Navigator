@@ -37,6 +37,8 @@ export const PROFILE_RESOLUTION_DIAGNOSTIC_CODES = Object.freeze({
 
 /** Eine normalisierte Importkante. */
 export interface ProfileResolutionEdge {
+  /** Exact import-object pointer; absent for legacy href-only callers. */
+  readonly importPath?: string;
   readonly href: string;
   readonly artifactKey: string;
 }

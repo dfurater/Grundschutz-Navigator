@@ -936,11 +936,13 @@ aufgelöst:
 | --- | --- | --- |
 | keine Bindung | `not-resolvable-in-context`, Grund `catalog-not-supplied` | keine |
 | Bindung, ID bekannt | `resolved` mit `catalogKey` und `control` | keine |
+| Transiente Bindung, ID bekannt | `resolved` mit `kind: 'transient'` und `control` aus `WorkspaceCatalog` | keine |
 | Bindung, ID unbekannt | `unresolved`, Grund `control-not-in-catalog` | `OSCAL_SSP_CONTROL_REFERENCE_UNRESOLVED` |
 | `control-id` fehlt | `unresolved`, Grund `control-id-missing` | `OSCAL_SSP_CONTROL_ID_MISSING` |
 
-`statement-id` steht als gelesener Wert im Modell; das `Control`-Read-Model
-führt keine Part-IDs, gegen die sie auflösbar wäre. `inherited[].provided-uuid`
+`SspBaselineBinding` akzeptiert einen Registry-Katalog mit `catalogKey` oder `{ kind: 'transient', catalog: WorkspaceCatalog }`. `buildWorkspaceCatalog()` in `src/domain/workspaceCatalog.ts` projiziert lokale und aufgelöste Kataloge auf Control-IDs und die Part-IDs je Control. Die Projektion verlangt keinen Registry-Schlüssel und keine BSI-Anzeigefelder; doppelte Control- oder Part-IDs ergeben strukturelle Diagnosen.
+
+`statement-id` steht als gelesener Wert im SSP-Modell; `src/domain/workspaceSemanticEdges.ts` löst ihn im Verbundgraphen gegen die gebundene Baseline und das jeweilige Control auf. `inherited[].provided-uuid`
 und `satisfied[].responsibility-uuid` zeigen in das `export` eines anderen SSP
 und stehen als `not-resolvable-in-context` im Modell, ohne Diagnose.
 
@@ -1523,6 +1525,20 @@ isoliert; `selectCatalog` ignoriert nicht ausgelieferte Schlüssel (fail-closed
 beim zuletzt gültigen Katalog). `catalog` ist `catalogDocument.view` des
 aktiven Katalogs. Wer Felder braucht, die das Domänenmodell nicht abbildet,
 geht über `catalogDocument.source`.
+
+## Dokumentgraph eines Informationsverbunds
+
+`src/domain/workspaceGraphModel.ts` definiert den Eingabesnapshot `WorkspaceGraphInput` und den Rückgabewert `WorkspaceGraph`. `buildWorkspaceGraph()` in `src/domain/workspaceGraph.ts` liest lokale `WorkspaceEnvelope`-Mitglieder mit einer gemeinsamen `verbundId`; zulässig sind `catalog`, `profile`, `component-definition`, `system-security-plan`, `assessment-plan`, `assessment-results` und `plan-of-action-and-milestones`. `mapping-collection` ergibt `OSCAL_WORKSPACE_ROOT_NOT_ALLOWED`. Die Mitgliederübersicht führt `localId`, Root-Typ, deklarierte Version, Vertrauensklasse und `savedAt`.
+
+Knoten und Kantenziele besitzen einen `ReferenceGraphDocumentKey` aus `src/domain/referenceGraphModel.ts`: `{ kind: 'local', localId }` oder `{ kind: 'class-1', artifactKey, lifecycle }`. Lokale OSCAL-IDs bleiben im jeweiligen Dokumentkontext. Klasse-1-Ziele stammen aus den übergebenen, bereits hashgeprüften `class1Artifacts`; sie werden nicht zu Mitgliedern oder Store-Inhalten.
+
+`src/domain/workspaceEdges.ts` liest die Dokumentkanten `profile-import`, `ssp-import-profile`, `ssp-leveraged-authorization`, `component-source`, `component-import`, `ap-import-ssp`, `ar-import-ap` und `poam-import-ssp`. Feldpfade und erlaubte Zielroots stehen in [OSCAL_VALIDATION.md](OSCAL_VALIDATION.md#dokumentgraph-eines-informationsverbunds). `workspaceSemanticEdges.ts` ergänzt Control- und Statement-Referenzen je gebundener Baseline sowie Component-UUIDs aus explizit gebundenen Importketten. Ein POA&M ohne `import-ssp` erzeugt keine SSP-Kante.
+
+Eine lokale Bindung adressiert `fromLocalId`, den Referenz-Pointer und den unveränderten `href`. Fragment- und relative Referenzen benötigen ein explizites Ziel; absolute URIs bleiben `external`. Die Zustände sind `resolved`, `resolved-empty`, `missing-source`, `not-evaluable`, `external` und `error`. Ein internes Ressourcenziel mit ausschließlich `uuid` ist `resolved-empty`; ein Profilimport ohne `href` erhält `missing-source` mit Metaschema-Diagnose. Eine ungebundene Referenz erzeugt keinen Ziel-Fehlt-Befund. Bindungen werden weder aus Root-UUIDs noch aus `rlinks` abgeleitet.
+
+`src/domain/workspaceProfileResolution.ts` berechnet für jeden Graphaufbau die Profile mit den aktuellen gebundenen Importzielen neu. Ein aufgelöstes Ergebnis enthält `derived: true`, `transient: true`, `specificationStatus: 'work-in-progress'` und den abgeleiteten OSCAL-Katalog unter `source`; es enthält keinen Speicherauftrag. `workspaceCatalog.ts` projiziert die Baseline auf Control-IDs und Part-IDs je Control. SSP- und Component-Referenzen verwenden ausschließlich den Katalog hinter der eigenen Bindung, einschließlich transient aufgelöster Profile.
+
+`src/domain/workspaceMembership.ts` prüft aufnehmbare Klasse-2-Dokumente über die bestehende Eingangsprüfkette. Gleiche Root-UUIDs im selben Verbund ergeben `WORKSPACE_ROOT_UUID_DUPLICATE`; `existingLocalId` und `action: 'replace'` stehen als Entscheidungsdaten neben der redigierten Diagnose. Die explizite Ersetzung verwendet `WorkspaceStore.replaceDocument()` mit der vorhandenen `localId`. Graphaufbau und Resolution verändern kein Mitglieds-`source`; `href` und `link.resource-fragment` bleiben erhalten.
 
 ## Siehe auch
 

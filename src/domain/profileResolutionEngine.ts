@@ -641,17 +641,21 @@ function selectedControlNodes(
  * quadratische ID-Suche, die dieses Issue bereits einmal beseitigt hat. Der
  * Aufbau kostet eine Arbeitseinheit je Kante und ist damit gedeckt.
  */
-function indexEdgesByHref(
+function indexImportEdges(
   input: SingleProfileInput,
   budget: ProfileResolutionBudget,
-): ReadonlyMap<string, ProfileResolutionEdge> {
+): { readonly byHref: ReadonlyMap<string, ProfileResolutionEdge>; readonly byImportPath: ReadonlyMap<string, ProfileResolutionEdge> } {
+  const byImportPath = new Map<string, ProfileResolutionEdge>();
   const byHref = new Map<string, ProfileResolutionEdge>();
   for (const candidate of input.edgesByArtifactKey.get(input.artifactKey) ?? []) {
     budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE);
-    // Erste Kante je href gewinnt — dieselbe Auswahl, die `find` traf.
-    if (!byHref.has(candidate.href)) byHref.set(candidate.href, candidate);
+    if (candidate.importPath !== undefined) {
+      if (!byImportPath.has(candidate.importPath)) byImportPath.set(candidate.importPath, candidate);
+    } else if (!byHref.has(candidate.href)) {
+      byHref.set(candidate.href, candidate);
+    }
   }
-  return byHref;
+  return { byHref, byImportPath };
 }
 
 function collectPhaseOne(
@@ -662,7 +666,7 @@ function collectPhaseOne(
   const inclusions: ControlInclusion[] = [];
   const consumedResourceUuids = new Set<string>();
 
-  const edgeByHref = indexEdgesByHref(input, budget);
+  const edgeIndex = indexImportEdges(input, budget);
 
   for (const profileImport of input.document.view.imports) {
     budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE);
@@ -674,7 +678,7 @@ function collectPhaseOne(
         currentProfileArtifact(input)
       );
     }
-    const edge = edgeByHref.get(href);
+    const edge = edgeIndex.byImportPath.get(profileImport.path) ?? edgeIndex.byHref.get(href);
     if (edge === undefined) {
       return reject(
         PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES.IMPORT_UNMAPPED,

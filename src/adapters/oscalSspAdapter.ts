@@ -50,6 +50,7 @@ import {
   SYSTEM_SECURITY_PLAN_ROOT_TYPE,
 } from '@/domain/systemSecurityPlanModel';
 import type {
+  SspBaselineState,
   SspImportProfile,
   SystemSecurityPlan,
   SystemSecurityPlanDeriveOptions,
@@ -115,14 +116,19 @@ function deriveImportProfile(body: JsonObject, state: SspDeriveState): SspImport
     return null;
   }
 
+  let baseline: SspBaselineState = { status: NOT_RESOLVABLE_IN_CONTEXT };
+  if (state.baseline !== null) {
+    baseline = 'catalogKey' in state.baseline
+      ? { status: 'bound', catalogKey: state.baseline.catalogKey }
+      : { status: 'bound', kind: 'transient' };
+  }
+
   return {
     href,
     // Einziger Klassifikationsweg (GSPP-286): kein Netzzugriff, keine
     // Normalisierung gegen eine Basis, keine eigene href-Verzweigung hier.
     reference: resolveOscalReference({ href, path: `${path}/href` }, { document: state.referenceDocument }),
-    baseline: state.baseline === null
-      ? { status: NOT_RESOLVABLE_IN_CONTEXT }
-      : { status: 'bound', catalogKey: state.baseline.catalogKey },
+    baseline,
     remarks: readString(node.remarks),
     path,
   };
