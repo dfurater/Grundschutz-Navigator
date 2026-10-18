@@ -8,7 +8,7 @@ import {
   type WorkspaceDraft, type WorkspaceEnvelope, type WorkspaceMeta, type WorkspaceDocumentSummary,
   type WorkspaceResult, type WorkspaceVerbund,
 } from '@/domain/workspaceModel';
-import { snapshotDocument, assertState, pointerValue } from '@/adapters/workspaceDocumentAdmission';
+import { snapshotDocument, assertAdmissible, assertState, pointerValue } from '@/adapters/workspaceDocumentAdmission';
 import { parseWorkspaceBackup, parseVerbundBackup } from '@/adapters/workspaceBackup';
 import { CLASS_2_IMPORT_LIMITS } from '@/domain/oscalImportContract';
 import { serializeWorkspaceJson } from '@/domain/workspaceJson';
@@ -125,8 +125,8 @@ export class WorkspaceStore {
 
   async addDocument(verbundId: VerbundId, input: Class2OscalImportedDocument, state: DocumentState = 'imported'): Promise<WorkspaceResult<WorkspaceEnvelope>> {
     try {
-      const document = await snapshotDocument(input);
       assertState(state);
+      const { document } = await snapshotDocument(input, state);
       return this.write(async stamp => {
         if (!await this.verbuende.get(verbundId)) reject('WORKSPACE_VERBUND_NOT_FOUND');
         const envelope: WorkspaceEnvelope = {
@@ -154,9 +154,10 @@ export class WorkspaceStore {
     try {
       const bindingSnapshot = changedBindings === undefined ? undefined : structuredClone(changedBindings);
       if (state !== undefined) assertState(state);
-      const document = await snapshotDocument(input);
+      const { document, schemaValid } = await snapshotDocument(input, state);
       return this.write(async stamp => {
         const current = await this.current(localId, expectedSavedAt, expectedDraftSavedAt);
+        assertAdmissible(state ?? current.documentState, schemaValid);
         if ((document.source as Record<string, { uuid?: string }>)[document.rootType]?.uuid === localId) reject('WORKSPACE_DOCUMENT_INVALID');
         const updated: WorkspaceEnvelope = { ...writtenRow(current), source: document.source, rootType: document.rootType, oscalVersion: document.oscalVersion, savedAt: stamp, documentState: state ?? current.documentState };
         await this.documents.put(updated);
