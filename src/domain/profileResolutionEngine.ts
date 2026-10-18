@@ -120,7 +120,6 @@ const PROFILE_RESOLUTION_TIMESTAMP = '1970-01-01T00:00:00.000Z';
 /** Trusted caller-owned state for one graph invocation; never sourced from OSCAL input. */
 export interface ProfileResolutionExecution {
   readonly resolvedCatalogs: Map<string, unknown>;
-  readonly budget: ProfileResolutionBudget;
 }
 
 export interface ProfileResolutionRequest {
@@ -1204,7 +1203,8 @@ function resolveSingleProfile(input: SingleProfileInput, budget: ProfileResoluti
  * BUDGET: Der Lauf besitzt genau eine Budgetinstanz. Sie entsteht hier, wird
  * nach unten gereicht und nie über Verbundläufe hinweg wiederverwendet.
  * Optionale Execution-Daten kommen ausschließlich vom aufrufenden Domain-Code;
- * sie teilen Budget und validierte Zwischenergebnisse innerhalb eines Verbundlaufs.
+ * sie teilen validierte Zwischenergebnisse innerhalb eines Verbundlaufs.
+ * Jede angeforderte Profilauflösung besitzt ihr eigenes unverändertes Budget.
  * Dokumentinhalt erreicht weder diese Execution-Daten noch Budgetgrenzen.
  *
  * FANGSTELLE: Das `try` hier ist die einzige im ganzen Auflösungsweg. Ein
@@ -1219,7 +1219,7 @@ export async function resolveProfile(
   const plan = request.plan;
   if (!plan.ok) return { ok: false, diagnostic: plan.diagnostic };
 
-  const budget = request.execution?.budget ?? createProfileResolutionBudget();
+  const budget = createProfileResolutionBudget();
 
   try {
     const resolvedByArtifact = request.execution?.resolvedCatalogs ?? new Map<string, unknown>();

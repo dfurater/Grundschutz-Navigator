@@ -1,10 +1,9 @@
 import { parseProfileDocument, type ProfileDocument } from '@/adapters/oscalProfileDocument';
 import { createOscalDiagnostic, type OscalDiagnostic } from '@/domain/oscalDiagnostics';
-import { createProfileResolutionBudget } from '@/domain/profileResolutionBudget';
 import type { TrustClass } from '@/domain/oscalDocumentContext';
 import { resolveProfile, type ProfileResolutionExecution } from '@/domain/profileResolutionEngine';
 import { buildProfileResolutionPlan, type ProfileResolutionEdge } from '@/domain/profileResolutionImportGraph';
-import { readWorkspaceDocumentEdges } from '@/domain/workspaceEdges';
+import { readWorkspaceDocumentEdges, type WorkspaceDocumentReference } from '@/domain/workspaceEdges';
 import { workspaceDocumentToken, type WorkspaceGraphDocument, type WorkspaceGraphEdge, type WorkspaceProfileResolution } from '@/domain/workspaceGraphModel';
 
 function diagnostic(code: string, path = '/'): OscalDiagnostic {
@@ -36,69 +35,82 @@ function indexEdges(edges: readonly WorkspaceGraphEdge[]): EdgeIndex {
   return edgesByDocument;
 }
 
+type NormalizedImport = { readonly edge: ProfileResolutionEdge } | { readonly problem: Problem };
+
+function normalizeImport(reference: WorkspaceDocumentReference, matches: readonly WorkspaceGraphEdge[], sources: Sources): NormalizedImport {
+  if (matches.some((edge) => edge.diagnostic?.code === 'OSCAL_GRAPH_IMPORT_CYCLE')) {
+    return { problem: { status: 'error', diagnostic: diagnostic('PROFILE_RESOLUTION_CYCLE') } };
+  }
+  if (matches.length > 1) {
+    return { problem: { status: 'error', diagnostic: diagnostic('OSCAL_WORKSPACE_BINDING_AMBIGUOUS', reference.path) } };
+  }
+  const edge = matches[0];
+  if (edge?.state === 'error') {
+    return { problem: { status: 'error', diagnostic: edge.diagnostic === undefined
+      ? diagnostic('OSCAL_WORKSPACE_PROFILE_REFERENCE_INVALID', reference.path) : redact(edge.diagnostic) } };
+  }
+  if (reference.href === undefined || edge?.state !== 'resolved' || edge.to?.kind !== 'artifact') {
+    return { problem: { status: 'not-evaluable' } };
+  }
+  const target = workspaceDocumentToken(edge.to.document);
+  if (!sources.has(target)) return { problem: { status: 'not-evaluable' } };
+  return { edge: { href: reference.href, artifactKey: target, importPath: reference.path.slice(0, -'/href'.length) } };
+}
+
 function normalizeImports(doc: WorkspaceGraphDocument, edgesByDocument: EdgeIndex, sources: Sources): {
   readonly imports: readonly ProfileResolutionEdge[];
   readonly problem?: Problem;
 } {
   const token = workspaceDocumentToken(doc.key);
   const normalized: ProfileResolutionEdge[] = [];
+  let problem: Problem | undefined;
   for (const reference of readWorkspaceDocumentEdges(doc.source, 'profile')) {
-    const matches = edgesByDocument.get(token)?.get(reference.path) ?? [];
-    if (matches.some((edge) => edge.diagnostic?.code === 'OSCAL_GRAPH_IMPORT_CYCLE')) {
-      return { imports: normalized, problem: { status: 'error', diagnostic: diagnostic('PROFILE_RESOLUTION_CYCLE') } };
-    }
-    if (matches.length > 1) {
-      return { imports: normalized, problem: { status: 'error', diagnostic: diagnostic('OSCAL_WORKSPACE_BINDING_AMBIGUOUS', reference.path) } };
-    }
-    const edge = matches[0];
-    if (edge?.state === 'error') {
-      return { imports: normalized, problem: { status: 'error', diagnostic: edge.diagnostic === undefined
-        ? diagnostic('OSCAL_WORKSPACE_PROFILE_REFERENCE_INVALID', reference.path) : redact(edge.diagnostic) } };
-    }
-    if (reference.href === undefined || edge?.state !== 'resolved' || edge.to?.kind !== 'artifact') {
-      return { imports: normalized, problem: { status: 'not-evaluable' } };
-    }
-    const target = workspaceDocumentToken(edge.to.document);
-    if (!sources.has(target)) return { imports: normalized, problem: { status: 'not-evaluable' } };
-    normalized.push({ href: reference.href, artifactKey: target, importPath: reference.path.slice(0, -'/href'.length) });
+    const result = normalizeImport(reference, edgesByDocument.get(token)?.get(reference.path) ?? [], sources);
+    if ('edge' in result) normalized.push(result.edge);
+    else if (problem?.status !== 'error') problem = result.problem;
   }
-  return { imports: normalized };
+  return { imports: normalized, problem };
 }
 
 function reachableProblem(token: string, imports: ImportIndex, problems: ReadonlyMap<string, Problem>): Problem | undefined {
   const seen = new Set<string>();
   const pending = [token];
+  let missingContext: Problem | undefined;
   while (pending.length > 0) {
     const current = pending.pop()!;
     if (seen.has(current)) continue;
     seen.add(current);
     const problem = problems.get(current);
-    if (problem !== undefined) return problem;
+    if (problem?.status === 'error') return problem;
+    if (problem !== undefined) missingContext = problem;
     for (const edge of imports.get(current) ?? []) pending.push(edge.artifactKey);
   }
-  return undefined;
+  return missingContext;
 }
 
-function profileViews(profiles: readonly WorkspaceGraphDocument[], order: readonly string[]): ReadonlyMap<string, ProfileDocument> {
-  const views = new Map<string, ProfileDocument>();
+interface WorkspaceExecution extends ProfileResolutionExecution {
+  readonly parsedProfiles: Map<string, ProfileDocument>;
+}
+
+function profileViews(profiles: readonly WorkspaceGraphDocument[], order: readonly string[], views: Map<string, ProfileDocument>): ReadonlyMap<string, ProfileDocument> {
   const included = new Set(order);
   for (const profile of profiles) {
     const key = workspaceDocumentToken(profile.key);
-    if (included.has(key)) views.set(key, parseProfileDocument(profile.source, { trustClass: profile.trustClass }));
+    if (included.has(key) && !views.has(key)) views.set(key, parseProfileDocument(profile.source, { trustClass: profile.trustClass }));
   }
   return views;
 }
 
 async function resolveOneProfile(doc: WorkspaceGraphDocument, profiles: readonly WorkspaceGraphDocument[], sources: Sources,
   imports: ImportIndex, problems: ReadonlyMap<string, Problem>,
-  trustClassesByArtifactKey: ReadonlyMap<string, TrustClass>, execution: ProfileResolutionExecution): Promise<WorkspaceProfileResolution> {
+  trustClassesByArtifactKey: ReadonlyMap<string, TrustClass>, execution: WorkspaceExecution): Promise<WorkspaceProfileResolution> {
   const token = workspaceDocumentToken(doc.key);
   const problem = reachableProblem(token, imports, problems);
   if (problem !== undefined) return { document: doc.key, ...problem };
   const plan = buildProfileResolutionPlan({ topProfileArtifactKey: token, documents: sources, edgesByArtifactKey: imports, trustClassesByArtifactKey });
   if (!plan.ok) return { document: doc.key, status: 'error', diagnostic: redact(plan.diagnostic) };
   try {
-    const outcome = await resolveProfile({ plan, edgesByArtifactKey: imports, execution, profileViews: profileViews(profiles, plan.order) });
+    const outcome = await resolveProfile({ plan, edgesByArtifactKey: imports, execution, profileViews: profileViews(profiles, plan.order, execution.parsedProfiles) });
     return outcome.ok
       ? { document: doc.key, status: 'resolved', derived: true, transient: true,
         specificationStatus: 'work-in-progress', source: outcome.output.tree }
@@ -124,7 +136,7 @@ export async function resolveWorkspaceProfiles(
     if (normalized.problem !== undefined) problems.set(token, normalized.problem);
   }
   const trustClasses = new Map(documents.map((doc) => [workspaceDocumentToken(doc.key), doc.trustClass]));
-  const execution: ProfileResolutionExecution = { resolvedCatalogs: new Map(), budget: createProfileResolutionBudget() };
+  const execution: WorkspaceExecution = { resolvedCatalogs: new Map(), parsedProfiles: new Map() };
   const results: WorkspaceProfileResolution[] = [];
   for (const doc of profiles) results.push(await resolveOneProfile(doc, profiles, sources, imports, problems, trustClasses, execution));
   return results;

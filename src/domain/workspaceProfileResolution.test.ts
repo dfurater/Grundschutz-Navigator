@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import * as profileParser from '@/adapters/oscalProfileDocument';
 import * as budgetModule from '@/domain/profileResolutionBudget';
 import * as pipeline from '@/domain/oscalObjectPipeline';
 import { getSchemaPin } from '@/domain/oscalVersionMatrix';
@@ -114,6 +115,7 @@ it('propagates reference errors with redacted causes through dependent profiles'
 
 it('builds each intermediate profile once per graph invocation and recomputes on the next invocation', async () => {
   const spy = vi.spyOn(pipeline, 'processClass2OscalValue');
+  const parseSpy = vi.spyOn(profileParser, 'parseProfileDocument');
   const budgetSpy = vi.spyOn(budgetModule, 'createProfileResolutionBudget');
   try {
     const profiles = Array.from({ length: 100 }, (_, index) => profile(`p${index}`));
@@ -121,12 +123,14 @@ it('builds each intermediate profile once per graph invocation and recomputes on
     const first = await resolveWorkspaceProfiles([...profiles, catalog()], edges);
     expect(first.every((result) => result.status === 'resolved')).toBe(true);
     expect(spy).toHaveBeenCalledTimes(100);
-    expect(budgetSpy).toHaveBeenCalledTimes(1);
+    expect(parseSpy).toHaveBeenCalledTimes(100);
+    expect(budgetSpy).toHaveBeenCalledTimes(100);
     const second = await resolveWorkspaceProfiles([...profiles, catalog('c', 'changed')], edges);
     expect(second[0]).toMatchObject({ status: 'resolved', source: { catalog: { controls: [{ id: 'changed' }] } } });
     expect(spy).toHaveBeenCalledTimes(200);
-    expect(budgetSpy).toHaveBeenCalledTimes(2);
-  } finally { spy.mockRestore(); budgetSpy.mockRestore(); }
+    expect(parseSpy).toHaveBeenCalledTimes(200);
+    expect(budgetSpy).toHaveBeenCalledTimes(200);
+  } finally { spy.mockRestore(); parseSpy.mockRestore(); budgetSpy.mockRestore(); }
 });
 
 
@@ -142,4 +146,62 @@ it('checks versions before consuming an already cached dependency', async () => 
     { status: 'resolved' },
     { status: 'error', diagnostic: { code: 'PROFILE_RESOLUTION_VERSION_MISMATCH' } },
   ]);
+});
+
+it('isolates output budgets of independent profiles even when their combined output exceeds one limit', async () => {
+  const realFactory = budgetModule.createProfileResolutionBudget;
+  const measured = realFactory();
+  const budgetSpy = vi.spyOn(budgetModule, 'createProfileResolutionBudget').mockReturnValueOnce(measured);
+  try {
+    expect(await resolveWorkspaceProfiles([profile(), catalog()], [edge()])).toMatchObject([{ status: 'resolved' }]);
+    const oneOutputNodes = measured.usage().nodes;
+    expect(oneOutputNodes).toBeGreaterThan(0);
+    budgetSpy.mockImplementation(() => realFactory({ maxNodes: oneOutputNodes }));
+    const results = await resolveWorkspaceProfiles([profile('p'), profile('q'), catalog()], [edge(), edge('q')]);
+    expect(results).toMatchObject([{ status: 'resolved' }, { status: 'resolved' }]);
+  } finally { budgetSpy.mockRestore(); }
+});
+
+it('does not let an exhausted profile poison an unrelated profile or publish partial output', async () => {
+  const realFactory = budgetModule.createProfileResolutionBudget;
+  const budgetSpy = vi.spyOn(budgetModule, 'createProfileResolutionBudget')
+    .mockImplementationOnce(() => realFactory({ maxNodes: 1 }))
+    .mockImplementation(() => realFactory());
+  try {
+    const results = await resolveWorkspaceProfiles([profile('p'), profile('q'), catalog()], [edge(), edge('q')]);
+    expect(results).toMatchObject([
+      { status: 'error', diagnostic: { code: 'OSCAL_RESOLUTION_OUTPUT_BUDGET_EXCEEDED' } },
+      { status: 'resolved', source: { catalog: { controls: [{ id: 'a' }] } } },
+    ]);
+    expect(results[0]).not.toHaveProperty('source');
+  } finally { budgetSpy.mockRestore(); }
+});
+
+
+it.each([0, 1])('prioritizes local reference errors over missing context regardless of import order %i', async (missingIndex) => {
+  const cause = createOscalDiagnostic({ code: 'OSCAL_GRAPH_TARGET_NOT_FOUND', path: `/profile/imports/${1 - missingIndex}/href`, stage: 'reference', validator: { name: 'test', version: '1' }, artifact: { key: 'SECRET' } });
+  const results = await resolveWorkspaceProfiles([profile('p', ['./one', './two'])], [
+    { ...edge('p', 'c', missingIndex), state: 'not-evaluable' },
+    { ...edge('p', 'c', 1 - missingIndex), state: 'error', diagnostic: cause },
+  ]);
+  expect(results).toMatchObject([{ status: 'error', diagnostic: { code: cause.code, artifact: { key: null } } }]);
+  expect(JSON.stringify(results)).not.toContain('SECRET');
+});
+
+it.each([false, true])('prioritizes errors over missing context across dependency branches %s', async (reverse) => {
+  const cause = createOscalDiagnostic({ code: 'OSCAL_GRAPH_ROOT_TYPE_MISMATCH', path: '/profile/imports/0/href', stage: 'reference', validator: { name: 'test', version: '1' } });
+  const targets = reverse ? ['missing', 'error'] : ['error', 'missing'];
+  const results = await resolveWorkspaceProfiles([profile('p', ['./one', './two']), profile('missing'), profile('error')], [
+    edge('p', targets[0], 0), edge('p', targets[1], 1),
+    { ...edge('error'), state: 'error', diagnostic: cause },
+  ]);
+  expect(results[0]).toMatchObject({ status: 'error', diagnostic: { code: cause.code } });
+});
+
+it('does not let a local missing import mask a bound dependency error', async () => {
+  const cause = createOscalDiagnostic({ code: 'OSCAL_GRAPH_TARGET_AMBIGUOUS', path: '/profile/imports/0/href', stage: 'reference', validator: { name: 'test', version: '1' } });
+  const results = await resolveWorkspaceProfiles([profile('p', ['./missing', './bound']), profile('q')], [
+    edge('p', 'q', 1), { ...edge('q'), state: 'error', diagnostic: cause },
+  ]);
+  expect(results[0]).toMatchObject({ status: 'error', diagnostic: { code: cause.code } });
 });
