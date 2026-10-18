@@ -12,6 +12,7 @@ import { snapshotDocument, assertAdmissible, assertState, pointerValue } from '@
 import { parseWorkspaceBackup, parseVerbundBackup } from '@/adapters/workspaceBackup';
 import { CLASS_2_IMPORT_LIMITS } from '@/domain/oscalImportContract';
 import { serializeWorkspaceJson } from '@/domain/workspaceJson';
+import { exportNewerWorkspaceBackup } from '@/adapters/workspaceRecoveryStorage';
 import { exportWorkspaceBackupSnapshot, restoreWorkspaceBackupSnapshot, exportVerbundBackupSnapshot, restoreVerbundBackupSnapshot, writtenRow } from '@/adapters/workspaceBackupStorage';
 import { StorageFailure, failure, reject, timestamp } from '@/adapters/workspaceStorageFailure';
 
@@ -253,7 +254,7 @@ export class WorkspaceStore {
     });
   }
 
-  exportBackup(): Promise<WorkspaceResult<string>> { return this.read(this.db.tables.map(table => table.name), () => exportWorkspaceBackupSnapshot(this.db)); }
+  exportBackup(): Promise<WorkspaceResult<string>> { return this.db.verno > STORAGE_SCHEMA_VERSION ? exportNewerWorkspaceBackup(this.db) : this.read(this.db.tables.map(table => table.name), () => exportWorkspaceBackupSnapshot(this.db)); }
   exportVerbundBackup(verbundId: VerbundId): Promise<WorkspaceResult<string>> {
     return this.read(this.db.tables.map(table => table.name), () => exportVerbundBackupSnapshot(this.db, verbundId));
   }

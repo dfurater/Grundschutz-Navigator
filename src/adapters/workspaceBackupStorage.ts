@@ -4,6 +4,7 @@ import { STORAGE_SCHEMA_VERSION, type LocalId, type VerbundId, type WorkspaceBac
 import { CLASS_2_IMPORT_LIMITS, WORKSPACE_BACKUP_MAX_BYTES } from '@/domain/class2ImportLimits.mjs';
 import { countObjectGraphNodesCapped, enforceClass2ObjectGraphInvariants, enforceWorkspaceBackupGraphInvariants } from '@/domain/oscalObjectGraph';
 import { serializeWorkspaceJson } from '@/domain/workspaceJson';
+import { serializeWorkspaceRecoveryJson } from '@/adapters/workspaceRecoveryJson';
 import { validWorkspaceBackupStructure, validVerbundBackupStructure } from '@/adapters/workspaceBackupStructure';
 import { LAST_TIMESTAMP_MS, reject, timestamp } from '@/adapters/workspaceStorageFailure';
 
@@ -19,7 +20,7 @@ function assertCurrentBackup(backup: unknown): void {
 }
 
 /** Date, binary and ±Infinity keys get a tagged JSON form; no valid IndexedDB key is a plain object, so the tags stay unambiguous. */
-function jsonKey(key: unknown): unknown {
+export function encodeWorkspaceBackupKey(key: unknown): unknown {
   if (key === Infinity || key === -Infinity) return { number: String(key) };
   if (key instanceof Date) return { date: key.toISOString() };
   if (key instanceof ArrayBuffer || ArrayBuffer.isView(key)) {
@@ -28,7 +29,7 @@ function jsonKey(key: unknown): unknown {
     for (const byte of bytes) binary += String.fromCodePoint(byte);
     return { binary: btoa(binary) };
   }
-  return Array.isArray(key) ? key.map(jsonKey) : key;
+  return Array.isArray(key) ? key.map(encodeWorkspaceBackupKey) : key;
 }
 
 /**
@@ -69,7 +70,7 @@ async function readRows<T>(collection: Collection<T>, budget?: BackupBudget, key
       if (budget.bytes > WORKSPACE_BACKUP_MAX_BYTES) { exceedsLimit = true; return; }
     }
     rows.push(exported);
-    keys?.push(jsonKey(cursor.primaryKey));
+    keys?.push(encodeWorkspaceBackupKey(cursor.primaryKey));
   });
   // Reject after the cursor settles, preserving the limit diagnostic on native abort paths.
   if (exceedsLimit) reject('WORKSPACE_BACKUP_LIMIT_EXCEEDED');
@@ -78,14 +79,14 @@ async function readRows<T>(collection: Collection<T>, budget?: BackupBudget, key
 
 function serializeBackup(backup: unknown, current = true): string {
   if (current) assertCurrentBackup(backup);
-  const text = serializeWorkspaceJson(backup);
+  const text = current ? serializeWorkspaceJson(backup) : serializeWorkspaceRecoveryJson(backup as { storageSchemaVersion: number });
   if (current && new TextEncoder().encode(text).byteLength > WORKSPACE_BACKUP_MAX_BYTES) reject('WORKSPACE_BACKUP_LIMIT_EXCEEDED');
   return text;
 }
 
 /** Caller owns the single read transaction over all stores. */
 export async function exportWorkspaceBackupSnapshot(db: Dexie): Promise<string> {
-  const stores: Record<string, unknown> = {};
+  const stores: Record<string, unknown> = Object.create(null);
   // Newer database versions pass through without interpreting even the metadata store.
   let storageSchemaVersion = db.verno;
   if (db.verno <= STORAGE_SCHEMA_VERSION) {
@@ -96,7 +97,7 @@ export async function exportWorkspaceBackupSnapshot(db: Dexie): Promise<string> 
   }
   const current = storageSchemaVersion === STORAGE_SCHEMA_VERSION;
   const budget: BackupBudget | undefined = current ? { bytes: 0, nodes: frameNodes(db.tables.length) } : undefined;
-  const outOfLineKeys: Record<string, unknown[]> = {};
+  const outOfLineKeys: Record<string, unknown[]> = Object.create(null);
   for (const table of db.tables) {
     if (BACKUP_FRAME_MEMBERS.has(table.name)) reject('WORKSPACE_SCHEMA_INVALID');
     // A store whose key is not part of its rows keeps its keys in read order next to the rows.
