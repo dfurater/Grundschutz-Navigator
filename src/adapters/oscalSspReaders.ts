@@ -239,6 +239,13 @@ export function checkRoleAssignmentReferences(
   });
 }
 
+/** Prüft eine einzelne `party-uuid` gegen `metadata.parties`. */
+export function checkPartyUuidReference(value: unknown, path: string, state: SspDeriveState): void {
+  if (typeof value === 'string' && !state.partyUuids.has(uuidKey(value))) {
+    diagnose(state, SSP_ADAPTER_DIAGNOSTIC_CODES.PARTY_REFERENCE_UNRESOLVED, path);
+  }
+}
+
 /** Prüft die `role-ids` eines Benutzers gegen `metadata.roles`. */
 export function checkRoleIdReferences(node: JsonObject, path: string, state: SspDeriveState): void {
   const roleIds = node['role-ids'];

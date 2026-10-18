@@ -321,7 +321,7 @@ Eine Transaktion über: `documents`, `drafts`, `bindings` in **beiden** Richtung
 
 ### Vollständiger Arbeitsbereich
 
-`deleteAll("delete-workspace")` schließt die eigene Verbindung und ruft `deleteDatabase('gspp-workspace')` auf. Bei `onblocked` meldet der Adapter nach `WORKSPACE_DELETE_BLOCKED_TIMEOUT_MS` (2 000 ms) `WORKSPACE_DELETE_BLOCKED`. Der Browser kann einen gestarteten Löschrequest nicht abbrechen; nach dem Schließen der blockierenden Verbindung kann er die Löschung noch abschließen. Der Adapter hält weder Quellgraphen noch Views oder Suchindizes als Cache.
+`deleteAll("delete-workspace")` schließt die eigene Verbindung und ruft `deleteDatabase('gspp-workspace')` auf. Bei `onblocked` meldet der Adapter nach `WORKSPACE_DELETE_BLOCKED_TIMEOUT_MS` (2 000 ms) `WORKSPACE_DELETE_PENDING`. Der Code bedeutet: Die Löschung ist angefordert, der Bestand ist bis zum Schließen der blockierenden Verbindung weiter vorhanden, und der Browser schließt die Löschung danach ab. Der Browser kann einen gestarteten Löschrequest nicht abbrechen; die eigene Verbindung des Adapters ist bereits geschlossen, ein Export ist über diese Instanz nicht mehr möglich. Der Adapter hält weder Quellgraphen noch Views oder Suchindizes als Cache.
 
 ### Vollständige Aufzählung der Löschziele
 

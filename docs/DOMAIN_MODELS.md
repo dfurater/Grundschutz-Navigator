@@ -963,6 +963,7 @@ Rollen- und Parteibezüge werden gegen `metadata` geprüft:
 | `role-id` einer `responsible-party` an `system-characteristics`, Inventareintrag oder `implemented-component` | `metadata.roles[].id` | `oscal-metadata-responsible-party-index-metadata-role-id` |
 | `users[].role-ids[]` | `metadata.roles[].id` | `oscal-index-metadata-role-id` |
 | jede `party-uuids`-Angabe dieser Rollenzuweisungen | `metadata.parties[].uuid` | `oscal-index-metadata-party-uuid` |
+| `party-uuid` einer `leveraged-authorization` in `system-implementation` | `metadata.parties[].uuid` | Projektregel |
 
 UUIDs vergleicht der Adapter ohne Unterschied der Schreibweise
 (`uuidKey()` in `src/adapters/oscalSspReaders.ts`): `component-uuid`, die
