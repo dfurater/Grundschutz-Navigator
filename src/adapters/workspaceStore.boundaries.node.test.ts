@@ -10,7 +10,7 @@ vi.mock('@/adapters/workspaceBackup', async () => {
   const { processWorkspaceBackupBytes } = await import('@/adapters/workspaceBackupProcessing');
   return { parseWorkspaceBackup: processWorkspaceBackupBytes };
 });
-import { WorkspaceStore, WORKSPACE_DATABASE_NAME } from './workspaceStore';
+import { WorkspaceStore, WORKSPACE_DATABASE_NAME, WORKSPACE_OPEN_TIMEOUT_MS } from './workspaceStore';
 import { processClass2OscalBytes, type Class2OscalImportedDocument } from '@/domain/oscalClass2Import';
 import { makeSchemaValidOscalDocument } from '@/test/fixtures/oscalSchemaFixtures';
 import { CLASS_2_IMPORT_LIMITS } from '@/domain/class2ImportLimits.mjs';
@@ -45,6 +45,53 @@ describe('storage boundary failures', () => {
   it('redacts native IndexedDB opening failures', async () => {
     vi.spyOn(indexedDB, 'open').mockImplementation(() => { throw new Error('PRIVATE_SENTINEL'); });
     rejected(await WorkspaceStore.open(), 'WORKSPACE_STORAGE_FAILED');
+  });
+  it('abandons an open whose existence check outlasts the deadline without creating the database', async () => {
+    store.close();
+    await Dexie.delete(WORKSPACE_DATABASE_NAME);
+    let settle!: (exists: boolean) => void;
+    vi.spyOn(Dexie, 'exists').mockReturnValue(new Promise<boolean>(resolve => { settle = resolve; }) as ReturnType<typeof Dexie.exists>);
+    const opened = vi.spyOn(Dexie.prototype, 'open');
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const pending = WorkspaceStore.open();
+      await vi.advanceTimersByTimeAsync(WORKSPACE_OPEN_TIMEOUT_MS);
+      rejected(await pending, 'WORKSPACE_OPEN_TIMEOUT');
+    } finally { vi.useRealTimers(); }
+    settle(false);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(opened).not.toHaveBeenCalled();
+    expect((await indexedDB.databases()).map(database => database.name)).not.toContain(WORKSPACE_DATABASE_NAME);
+  });
+  it('closes a connection that opens after the deadline', async () => {
+    store.close();
+    const original = Dexie.prototype.open;
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    // The first open belongs to Dexie.exists(); only the store's own connection is delayed.
+    const opening = vi.spyOn(Dexie.prototype, 'open').mockImplementationOnce(function (this: Dexie) { return original.call(this); }).mockImplementationOnce(function (this: Dexie) {
+      return gate.then(() => original.call(this)) as ReturnType<Dexie['open']>;
+    });
+    const closed = vi.spyOn(Dexie.prototype, 'close');
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const pending = WorkspaceStore.open();
+      // fake-indexeddb schedules through the real setImmediate; let the existence check finish first.
+      while (opening.mock.calls.length < 2) await new Promise(resolve => setImmediate(resolve));
+      await vi.advanceTimersByTimeAsync(WORKSPACE_OPEN_TIMEOUT_MS);
+      rejected(await pending, 'WORKSPACE_OPEN_TIMEOUT');
+    } finally { vi.useRealTimers(); }
+    const late = opening.mock.contexts[1] as Dexie;
+    release();
+    await vi.waitFor(() => expect(closed.mock.contexts).toContain(late));
+    expect(late.isOpen()).toBe(false);
+    const deletion = await new Promise<string>((resolve, fail) => {
+      const request = indexedDB.deleteDatabase(WORKSPACE_DATABASE_NAME);
+      request.onblocked = () => resolve('blocked');
+      request.onsuccess = () => resolve('deleted');
+      request.onerror = () => fail(request.error);
+    });
+    expect(deletion).toBe('deleted');
   });
   it.each([undefined, 0, 1.5])('blocks writes when workspace metadata is missing or corrupt %#', async schema => {
     const db = await raw();

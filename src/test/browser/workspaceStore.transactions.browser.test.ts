@@ -1,6 +1,6 @@
 import Dexie from 'dexie';
 import { expect, test, vi } from 'vitest';
-import { WORKSPACE_SCHEMA, WORKSPACE_DATABASE_NAME, WORKSPACE_DELETE_BLOCKED_TIMEOUT_MS } from '@/adapters/workspaceStore';
+import { WorkspaceStore, WORKSPACE_SCHEMA, WORKSPACE_DATABASE_NAME, WORKSPACE_DELETE_BLOCKED_TIMEOUT_MS, WORKSPACE_OPEN_TIMEOUT_MS } from '@/adapters/workspaceStore';
 import type { LocalId, WorkspaceResult } from '@/domain/workspaceModel';
 import { value, open, document } from '@/test/browser/workspaceStoreFixtures';
 
@@ -151,7 +151,7 @@ test('Backup stellt zwei Verbünde mit Dokumenten, Entwürfen und Bindungen verl
   expect(value(await store.exportBackup())).toBe(restored);
 });
 
-test('blockierte Gesamtlöschung meldet nach fester Frist eine ausstehende Löschung und wird nach dem Schließen der Blockade abgeschlossen', async () => {
+test('blockierte Gesamtlöschung meldet nach fester Frist eine ausstehende Löschung, begrenzt ein Öffnen dahinter und wird nach dem Schließen der Blockade ohne neue Datenbank abgeschlossen', async () => {
   const store = await open();
   const blocker = await new Promise<IDBDatabase>((resolve, reject) => {
     const request = indexedDB.open(WORKSPACE_DATABASE_NAME);
@@ -163,8 +163,14 @@ test('blockierte Gesamtlöschung meldet nach fester Frist eine ausstehende Lösc
     expect(await store.deleteAll('delete-workspace')).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_DELETE_PENDING' } });
     expect(performance.now() - started).toBeGreaterThanOrEqual(WORKSPACE_DELETE_BLOCKED_TIMEOUT_MS - 30);
     expect((await indexedDB.databases()).map(database => database.name)).toContain(WORKSPACE_DATABASE_NAME);
+    const opening = performance.now();
+    expect(await WorkspaceStore.open()).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_OPEN_TIMEOUT' } });
+    expect(performance.now() - opening).toBeGreaterThanOrEqual(WORKSPACE_OPEN_TIMEOUT_MS - 30);
   } finally { blocker.close(); }
   await expect.poll(async () => (await indexedDB.databases()).map(database => database.name)).not.toContain(WORKSPACE_DATABASE_NAME);
+  // The abandoned open resumes once the deletion completes and must not recreate the database.
+  await new Promise(resolve => setTimeout(resolve, 200));
+  expect((await indexedDB.databases()).map(database => database.name)).not.toContain(WORKSPACE_DATABASE_NAME);
 });
 
 test('jede Speicheroperation verwendet genau eine native Transaktion', async () => {

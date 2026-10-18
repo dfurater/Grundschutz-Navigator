@@ -212,6 +212,7 @@ src/                              # Anwendungsquellcode
 │   ├── workspaceBackupProcessing.ts  # Backup-Validierung und Klasse-2-Dokumentprüfung
 │   ├── workspaceBackupStorage.ts     # Backup-Snapshots innerhalb der Speichertransaktionen
 │   ├── workspaceBackupStructure.ts   # Geschlossene Bündelform und Beziehungsintegrität
+│   ├── workspaceDatabaseLifecycle.ts # Fristgebundenes Öffnen und Löschen der Datenbank
 │   ├── workspaceDocumentAdmission.ts # Zustandsabhängige Sourcevalidierung, Dokumentzustände und Referenzpointer
 │   ├── workspaceDraftSource.ts       # Sourcegrenzen und Root-Bindung ohne Schemaprüfung
 │   ├── workspaceMigration.ts         # Vorwärtsmigration in einer versionchange-Transaktion
