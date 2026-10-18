@@ -1,16 +1,9 @@
 import Dexie, { type Transaction } from 'dexie';
 import { createWorkspaceStructureValidator } from '@/adapters/workspaceBackupStructure';
-import { dispatchOscalDocument } from '@/domain/oscalRootDispatch';
-import { enforceClass2ObjectGraphInvariants } from '@/domain/oscalObjectGraph';
-import { CLASS_2_IMPORT_LIMITS } from '@/domain/oscalImportContract';
-import { serializeWorkspaceJson } from '@/domain/workspaceJson';
+import { bindsEnvelopeSource, withinSourceLimits } from '@/adapters/workspaceDraftSource';
 import { STORAGE_SCHEMA_VERSION } from '@/domain/workspaceModel';
 
 function invalid(): never { throw new Error('WORKSPACE_MIGRATION_INVALID'); }
-function validSource(source: unknown): boolean {
-  return !enforceClass2ObjectGraphInvariants(source)
-    && new TextEncoder().encode(serializeWorkspaceJson(source)).byteLength <= CLASS_2_IMPORT_LIMITS.maxBytes;
-}
 
 function visitRows(transaction: Transaction, store: string, visit: (cursor: IDBCursorWithValue) => IDBRequest | void): Promise<void> {
   return new Dexie.Promise<void>((resolve, reject) => {
@@ -50,13 +43,11 @@ export async function migrateWorkspaceStorage(transaction: Transaction, fromVers
     await visitRows(transaction, 'verbuende', cursor => { if (!validate.verbuende(cursor.value)) invalid(); });
     await visitRows(transaction, 'documents', cursor => {
       const row = cursor.value;
-      if (!validate.documents(row) || !validSource(row.source)) invalid();
-      const dispatched = dispatchOscalDocument(row.source, { trustClass: 'class-2-local-user' });
-      if (!dispatched.ok || dispatched.rootType !== row.rootType || dispatched.oscalVersion !== row.oscalVersion) invalid();
+      if (!validate.documents(row) || !bindsEnvelopeSource(row.source, row.rootType, row.oscalVersion)) invalid();
     });
     await visitRows(transaction, 'drafts', cursor => {
       const row = cursor.value;
-      if (!validate.drafts(row) || !validSource(row.source)) invalid();
+      if (!validate.drafts(row) || !withinSourceLimits(row.source)) invalid();
     });
     await visitRows(transaction, 'bindings', cursor => { if (!validate.bindings(cursor.value)) invalid(); });
     await visitRows(transaction, 'workspaceMeta', cursor => { if (!validate.workspaceMeta(cursor.value)) invalid(); });
