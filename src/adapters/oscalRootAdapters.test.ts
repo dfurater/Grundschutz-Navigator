@@ -7,8 +7,12 @@ import {
   mappingCollectionRootAdapter,
   parseOscalDocument,
   profileRootAdapter,
+  sspRootAdapter,
 } from './oscalRootAdapters';
+import { SspTrustClassError } from './oscalSspAdapter';
+import type { SystemSecurityPlan } from './oscalSspAdapter';
 import { ROOT_DISPATCH_DIAGNOSTIC_CODES } from '@/domain/oscalRootDispatch';
+import { makeMinimalSsp } from '@/test/fixtures/systemSecurityPlans';
 import type { Catalog, OscalDocumentContext } from '@/domain/models';
 import { OSCAL_ROOT_KEYS, VERSION_MATRIX_DIAGNOSTIC_CODES } from '@/domain/oscalVersionMatrix';
 import { listOscalArtifacts } from '@/domain/sourceRegistry';
@@ -52,17 +56,19 @@ function makeCatalogDocument() {
 }
 
 describe('Adapter-Registrierung', () => {
-  it('führt heute den Katalog-, Component-Definition-, Profile- und Mapping-Adapter', () => {
+  it('führt den Katalog-, Component-Definition-, Profile-, Mapping- und SSP-Adapter', () => {
     expect(listAdaptedOscalRootTypes()).toEqual([
       'catalog',
       'component-definition',
       'profile',
       'mapping-collection',
+      'system-security-plan',
     ]);
     expect(getOscalRootAdapter('catalog')).toBe(catalogRootAdapter);
     expect(getOscalRootAdapter('component-definition')).toBe(componentDefinitionRootAdapter);
     expect(getOscalRootAdapter('profile')).toBe(profileRootAdapter);
     expect(getOscalRootAdapter('mapping-collection')).toBe(mappingCollectionRootAdapter);
+    expect(getOscalRootAdapter('system-security-plan')).toBe(sspRootAdapter);
   });
 
   it('benennt für jeden registrierten Root-Typ einen Modul-Einstiegspunkt', () => {
@@ -72,14 +78,14 @@ describe('Adapter-Registrierung', () => {
     }
   });
 
-  it('meldet für die vier noch nicht adaptierten Root-Typen keinen Adapter', () => {
+  it('meldet für die drei noch nicht adaptierten Root-Typen keinen Adapter', () => {
     const unadapted = OSCAL_ROOT_KEYS.filter(
       (rootKey) => !listAdaptedOscalRootTypes().includes(rootKey),
     );
 
     // Die Zahl steht bewusst ausgeschrieben: Ein neuer Modelladapter soll
     // diesen Test rot machen und bewusst nachgezogen werden.
-    expect(unadapted).toHaveLength(4);
+    expect(unadapted).toHaveLength(3);
     for (const rootKey of unadapted) {
       expect(getOscalRootAdapter(rootKey)).toBeNull();
     }
@@ -97,15 +103,28 @@ describe('parseOscalDocument', () => {
     expect((result.view as Catalog).totalControls).toBe(1);
   });
 
+  it('leitet ein SSP im Klasse-2-Kontext über den SSP-Adapter ab', () => {
+    const result = parseOscalDocument(makeMinimalSsp('1.2.2'), { trustClass: 'class-2-local-user' });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.dispatch.rootType).toBe('system-security-plan');
+    expect((result.view as SystemSecurityPlan).systemCharacteristics?.systemName).toBe('Beispielsystem');
+  });
+
+  it('weist ein SSP im Klasse-1-Kontext ab, statt eine Projektion zu liefern', () => {
+    expect(() => parseOscalDocument(makeMinimalSsp('1.2.2'), context)).toThrow(SspTrustClassError);
+  });
+
   it('unterscheidet „bekannt, aber nicht unterstützt" von „unbekannt"', () => {
-    // Seit GSPP-240 ist `profile` adaptiert; als „bekannt, aber ohne Adapter"
-    // dient deshalb ein Root aus den fünf verbliebenen.
+    // Als „bekannt, aber ohne Adapter" dient ein Root aus den drei Modellen
+    // ohne registrierten Adapter.
     const known = parseOscalDocument(
       {
-        'system-security-plan': {
-          uuid: 'uuid-ssp',
+        'assessment-plan': {
+          uuid: 'uuid-ap',
           metadata: {
-            title: 'Sicherheitsplan',
+            title: 'Prüfplan',
             'last-modified': '2026-08-06T00:00:00Z',
             version: '1',
             'oscal-version': '1.1.3',
@@ -124,9 +143,9 @@ describe('parseOscalDocument', () => {
     if (known.ok || unknown.ok) return;
 
     expect(known.diagnostic.code).toBe(ROOT_DISPATCH_DIAGNOSTIC_CODES.ROOT_TYPE_UNSUPPORTED);
-    expect(known.diagnostic.artifact.rootType).toBe('system-security-plan');
+    expect(known.diagnostic.artifact.rootType).toBe('assessment-plan');
     expect(known.diagnostic.artifact.oscalVersion).toBe('1.1.3');
-    expect(known.diagnostic.path).toBe('/system-security-plan');
+    expect(known.diagnostic.path).toBe('/assessment-plan');
 
     expect(unknown.diagnostic.code).toBe(VERSION_MATRIX_DIAGNOSTIC_CODES.ROOT_TYPE_UNKNOWN);
     expect(unknown.diagnostic.code).not.toBe(known.diagnostic.code);

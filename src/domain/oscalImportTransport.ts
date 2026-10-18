@@ -61,6 +61,10 @@ export function* encodeOscalSource(source: unknown): Generator<TransportOperatio
 
 type Target = { value: Record<string, unknown> | unknown[]; key: string | undefined };
 
+/** Bounds of one decoded tree: inserted values, nesting depth and string code units in total. */
+export interface TransportLimits { maxNodes: number; maxDepth: number; maxCodeUnits: number }
+const CLASS_2_TRANSPORT_LIMITS: TransportLimits = { maxNodes: CLASS_2_IMPORT_LIMITS.maxNodes, maxDepth: CLASS_2_IMPORT_LIMITS.maxDepth, maxCodeUnits: CLASS_2_IMPORT_LIMITS.maxBytes };
+
 /** Incremental protocol verification and construction; never walks the finished tree. */
 export class OscalSourceDecoder {
   private root: unknown;
@@ -70,6 +74,9 @@ export class OscalSourceDecoder {
   private pending: { kind: 'key' | 'string'; value: string } | undefined;
   private nodes = 0;
   private units = 0;
+  private readonly limits: TransportLimits;
+
+  constructor(limits: TransportLimits = CLASS_2_TRANSPORT_LIMITS) { this.limits = limits; }
 
   accept(input: unknown): void {
     if (this.closed) this.fail();
@@ -109,7 +116,7 @@ export class OscalSourceDecoder {
     // Code units against a byte limit: every UTF-16 unit costs at least one
     // UTF-8 byte, so an admissible document always stays below it.
     this.units += value.length;
-    if (value.length > TRANSPORT_MAX_CODE_UNITS || this.units > CLASS_2_IMPORT_LIMITS.maxBytes) this.fail();
+    if (value.length > TRANSPORT_MAX_CODE_UNITS || this.units > this.limits.maxCodeUnits) this.fail();
     if (!last && !value.length) this.fail();
     if (this.pending && this.pending.kind !== kind) this.fail();
     this.pending ??= { kind, value: '' };
@@ -141,7 +148,7 @@ export class OscalSourceDecoder {
   }
 
   private insert(value: unknown): void {
-    if (++this.nodes > CLASS_2_IMPORT_LIMITS.maxNodes || this.stack.length + 1 > CLASS_2_IMPORT_LIMITS.maxDepth) this.fail();
+    if (++this.nodes > this.limits.maxNodes || this.stack.length + 1 > this.limits.maxDepth) this.fail();
     const target = this.stack.at(-1);
     if (!target) {
       if (this.hasRoot) this.fail();
