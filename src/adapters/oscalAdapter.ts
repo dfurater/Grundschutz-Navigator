@@ -594,8 +594,15 @@ export function parseCatalog(raw: unknown, options: ParseCatalogOptions): Catalo
     allControls.push(...controls);
   }
 
+  // OSCAL 1.1.3 verlangt eindeutige Control-IDs je Katalog (Metaschema-Index
+  // `catalog-controls`). Eine Dublette würde in der Map still den früheren
+  // Eintrag überschreiben und jeden Lookup über `controlsById` auf das falsche
+  // Control lenken — daher fail-closed wie beim alt-identifier.
   const controlsById = new Map<string, Control>();
   for (const c of allControls) {
+    if (controlsById.has(c.id)) {
+      throw new Error(`Duplicate control id "${c.id}" in catalog "${catalogKey}"`);
+    }
     controlsById.set(c.id, c);
   }
 
