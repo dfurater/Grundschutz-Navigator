@@ -13,19 +13,12 @@
 // Quellgraph bleibt, wie er ist (ADR-2).
 // =============================================================================
 
-import { createStructureReaders } from '@/adapters/oscalReaders';
-import { readString, type JsonObject } from '@/domain/jsonGuards';
+import { createElementReaders, createStructureReaders } from '@/adapters/oscalReaders';
 import { createOscalDiagnostic } from '@/domain/oscalDiagnostics';
 import type { OscalDiagnostic, OscalDiagnosticValidator } from '@/domain/oscalDiagnostics';
 import type { ReferenceDocument } from '@/domain/referenceResolution';
 import { COMPONENT_DEFINITION_ROOT_TYPE } from '@/domain/componentDefinitionModel';
-import type {
-  ComponentLink,
-  ComponentProp,
-  ComponentResponsibleRole,
-  ComponentSetParameter,
-  ComponentSourceCatalogBinding,
-} from '@/domain/componentDefinitionModel';
+import type { ComponentSourceCatalogBinding } from '@/domain/componentDefinitionModel';
 import type { PinnedOscalVersion } from '@/domain/oscalVersionMatrix';
 
 /** Stufe der modellinternen Befunde dieses Adapters. */
@@ -82,82 +75,16 @@ export function diagnose(state: DeriveState, code: string, path: string): OscalD
   return diagnostic;
 }
 
-const structureReaders = createStructureReaders<DeriveState>((state, path) => {
+function diagnoseUnexpected(state: DeriveState, path: string): void {
   diagnose(state, COMPONENT_ADAPTER_DIAGNOSTIC_CODES.STRUCTURE_UNEXPECTED, path);
-});
+}
+
+const structureReaders = createStructureReaders<DeriveState>(diagnoseUnexpected);
 
 export const { readArrayField, readObjectArrayField, readStringArrayField } = structureReaders;
 
-export function readProps(node: JsonObject, path: string, state: DeriveState): readonly ComponentProp[] {
-  return readObjectArrayField(node, 'props', path, state).flatMap(({ node: prop, path: propPath }) => {
-    const name = readString(prop.name);
-    const value = readString(prop.value);
-    if (name === undefined || value === undefined) {
-      diagnose(state, COMPONENT_ADAPTER_DIAGNOSTIC_CODES.STRUCTURE_UNEXPECTED, propPath);
-      return [];
-    }
-    return [{ name, value, ns: readString(prop.ns), class: readString(prop.class) }];
-  });
-}
-
-export function readLinks(node: JsonObject, path: string, state: DeriveState): readonly ComponentLink[] {
-  return readObjectArrayField(node, 'links', path, state).flatMap(({ node: link, path: linkPath }) => {
-    const href = readString(link.href);
-    if (href === undefined) {
-      diagnose(state, COMPONENT_ADAPTER_DIAGNOSTIC_CODES.STRUCTURE_UNEXPECTED, linkPath);
-      return [];
-    }
-    return [{
-      href,
-      rel: readString(link.rel),
-      mediaType: readString(link['media-type']),
-      resourceFragment: readString(link['resource-fragment']),
-      text: readString(link.text),
-    }];
-  });
-}
-
-export function readSetParameters(
-  node: JsonObject,
-  path: string,
-  state: DeriveState,
-): readonly ComponentSetParameter[] {
-  return readObjectArrayField(node, 'set-parameters', path, state).flatMap(
-    ({ node: parameter, path: parameterPath }) => {
-      const paramId = readString(parameter['param-id']);
-      if (paramId === undefined) {
-        diagnose(state, COMPONENT_ADAPTER_DIAGNOSTIC_CODES.STRUCTURE_UNEXPECTED, parameterPath);
-        return [];
-      }
-      return [{
-        paramId,
-        values: readStringArrayField(parameter, 'values', parameterPath, state),
-        remarks: readString(parameter.remarks),
-      }];
-    },
-  );
-}
-
-export function readResponsibleRoles(
-  node: JsonObject,
-  path: string,
-  state: DeriveState,
-): readonly ComponentResponsibleRole[] {
-  return readObjectArrayField(node, 'responsible-roles', path, state).flatMap(
-    ({ node: role, path: rolePath }) => {
-      const roleId = readString(role['role-id']);
-      if (roleId === undefined) {
-        diagnose(state, COMPONENT_ADAPTER_DIAGNOSTIC_CODES.STRUCTURE_UNEXPECTED, rolePath);
-        return [];
-      }
-      return [{
-        roleId,
-        partyUuids: readStringArrayField(role, 'party-uuids', rolePath, state),
-        remarks: readString(role.remarks),
-      }];
-    },
-  );
-}
+export const { readProps, readLinks, readSetParameters, readResponsibleRoles } =
+  createElementReaders(structureReaders, diagnoseUnexpected);
 
 /**
  * Registriert eine `uuid` dokumentweit. Ein zweites Vorkommen erzeugt eine

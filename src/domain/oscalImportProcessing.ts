@@ -7,6 +7,7 @@ import {
 import {
   createClass2ResourceLimitDiagnostic,
 } from '@/domain/oscalObjectGraph';
+import { WORKSPACE_BACKUP_MAX_BYTES, WORKSPACE_BACKUP_FRAME_DEPTH } from '@/domain/class2ImportLimits.mjs';
 import { walkOwnContainers } from '@/domain/oscalObjectWalk';
 
 // =============================================================================
@@ -77,9 +78,11 @@ class DuplicateMemberScanner {
   private position = 0;
 
   private readonly text: string;
+  private readonly maxDepth: number;
 
-  constructor(text: string) {
+  constructor(text: string, maxDepth: number) {
     this.text = text;
+    this.maxDepth = maxDepth;
   }
 
   scan(): JsonScanResult {
@@ -91,14 +94,14 @@ class DuplicateMemberScanner {
   }
 
   private scanValue(path: string, depth: number): JsonScanResult {
-    if (depth > CLASS_2_IMPORT_LIMITS.maxDepth) return { kind: 'depth-limit' };
+    if (depth > this.maxDepth) return { kind: 'depth-limit' };
 
     this.skipWhitespace();
     const character = this.text[this.position];
 
     if (character === '{') return this.scanObject(path, depth);
     if (character === '[') return this.scanArray(path, depth);
-    if (character === '"') return this.readString() === null ? { kind: 'invalid' } : { kind: 'valid' };
+    if (character === '"') return this.readString(false) === null ? { kind: 'invalid' } : { kind: 'valid' };
     if (character === 't') return this.readLiteral('true');
     if (character === 'f') return this.readLiteral('false');
     if (character === 'n') return this.readLiteral('null');
@@ -154,57 +157,36 @@ class DuplicateMemberScanner {
     return { kind: 'invalid' };
   }
 
-  private readString(): string | null {
+  private readString(capture = true): string | null {
     if (!this.consume('"')) return null;
 
     let value = '';
     while (this.position < this.text.length) {
-      const character = this.text[this.position]!;
-      this.position += 1;
-      if (character === '"') return value;
-      if ((character.codePointAt(0) ?? 0) < 0x20) return null;
-
-      if (character !== '\\') {
-        value += character;
-        continue;
-      }
-
-      const escape = this.text[this.position];
-      this.position += 1;
-      switch (escape) {
-        case '"':
-        case '\\':
-        case '/':
-          value += escape;
-          break;
-        case 'b':
-          value += '\b';
-          break;
-        case 'f':
-          value += '\f';
-          break;
-        case 'n':
-          value += '\n';
-          break;
-        case 'r':
-          value += '\r';
-          break;
-        case 't':
-          value += '\t';
-          break;
-        case 'u': {
-          const hexadecimal = this.text.slice(this.position, this.position + 4);
-          if (!/^[0-9a-fA-F]{4}$/.test(hexadecimal)) return null;
-          value += String.fromCodePoint(Number.parseInt(hexadecimal, 16));
-          this.position += 4;
-          break;
-        }
-        default:
-          return null;
-      }
+      if (this.consume('"')) return value;
+      const character = this.readStringCharacter();
+      if (character === null) return null;
+      if (capture) value += character;
     }
 
     return null;
+  }
+
+  private readStringCharacter(): string | null {
+    const character = this.text[this.position++]!;
+    if ((character.codePointAt(0) ?? 0) < 0x20) return null;
+    return character === '\\' ? this.readEscape() : character;
+  }
+
+  private readEscape(): string | null {
+    const escape = this.text[this.position++];
+    if (escape === 'u') {
+      const hexadecimal = this.text.slice(this.position, this.position + 4);
+      if (!/^[0-9a-fA-F]{4}$/.test(hexadecimal)) return null;
+      this.position += 4;
+      return String.fromCodePoint(Number.parseInt(hexadecimal, 16));
+    }
+    const escapes: Record<string, string> = { '"': '"', '\\': '\\', '/': '/', b: '\b', f: '\f', n: '\n', r: '\r', t: '\t' };
+    return escape !== undefined && Object.hasOwn(escapes, escape) ? escapes[escape] : null;
   }
 
   private readLiteral(literal: string): JsonScanResult {
@@ -285,8 +267,8 @@ class DuplicateMemberScanner {
   }
 }
 
-export function parseClass2OscalInput(bytes: Uint8Array): Class2OscalInputResult {
-  if (bytes.byteLength > CLASS_2_IMPORT_LIMITS.maxBytes) {
+function parseBoundedInput(bytes: Uint8Array, maxBytes: number, register: boolean, maxDepth = CLASS_2_IMPORT_LIMITS.maxDepth): Class2OscalInputResult {
+  if (bytes.byteLength > maxBytes) {
     return {
       ok: false,
       diagnostic: createClass2ByteLimitDiagnostic(),
@@ -308,12 +290,12 @@ export function parseClass2OscalInput(bytes: Uint8Array): Class2OscalInputResult
     };
   }
 
-  const scan = new DuplicateMemberScanner(text).scan();
+  const scan = new DuplicateMemberScanner(text, maxDepth).scan();
   if (scan.kind === 'depth-limit') {
     return {
       ok: false,
       diagnostic: createClass2ResourceLimitDiagnostic('OSCAL_RESOURCE_DEPTH_LIMIT_EXCEEDED', {
-        limitDepth: CLASS_2_IMPORT_LIMITS.maxDepth,
+        limitDepth: maxDepth,
       }),
     };
   }
@@ -346,7 +328,7 @@ export function parseClass2OscalInput(bytes: Uint8Array): Class2OscalInputResult
     // Duplicate-Member-Prüfung bestanden sind, wird der Baum registriert —
     // ein Beleg trägt damit stets die vollständige Bytepolitik.
     const source = JSON.parse(text);
-    registerParsedTree(source);
+    if (register) registerParsedTree(source);
     return { ok: true, source };
   } catch {
     return {
@@ -359,4 +341,14 @@ export function parseClass2OscalInput(bytes: Uint8Array): Class2OscalInputResult
       }),
     };
   }
+}
+
+/** OSCAL provenance is registered only under the original document byte policy. */
+export function parseClass2OscalInput(bytes: Uint8Array): Class2OscalInputResult {
+  return parseBoundedInput(bytes, CLASS_2_IMPORT_LIMITS.maxBytes, true);
+}
+
+/** Bounded backup syntax parsing grants no OSCAL parser provenance. */
+export function parseWorkspaceBackupInput(bytes: Uint8Array): Class2OscalInputResult {
+  return parseBoundedInput(bytes, WORKSPACE_BACKUP_MAX_BYTES, false, CLASS_2_IMPORT_LIMITS.maxDepth + WORKSPACE_BACKUP_FRAME_DEPTH);
 }
