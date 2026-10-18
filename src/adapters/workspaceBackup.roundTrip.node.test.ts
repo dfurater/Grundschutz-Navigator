@@ -24,7 +24,7 @@ it('rolls back all restored stores when quota fails after existing rows were cle
     const imported = await importClass2OscalDocument(new TextEncoder().encode(JSON.stringify(source)), { trustClass: 'class-2-local-user' });
     if (!imported.ok) throw new Error(imported.diagnostic.code);
     const envelope = value(await store.addDocument(verbund.verbundId, imported.document));
-    value(await store.setBinding({ fromLocalId: envelope.localId, pointer: '/catalog/metadata/title', href: 'Minimalbeispiel', target: { kind: 'class-1', artifactKey: 'catalog-gspp' } }));
+    value(await store.setBinding({ fromLocalId: envelope.localId, pointer: '/catalog/metadata/title', href: 'Minimalbeispiel', target: { kind: 'class-1', artifactKey: 'catalog-gspp' } }, value(await store.getDocument(envelope.localId))!.savedAt));
     const backup = value(await store.exportBackup());
     value(await store.renameVerbund(verbund.verbundId, 'Current data'));
     const before = value(await store.exportBackup());

@@ -193,8 +193,8 @@ export class WorkspaceStore {
     } catch (error) { return failure(error); }
   }
 
-  private async putBinding(binding: WorkspaceBinding): Promise<void> {
-    const from = await this.current(binding.fromLocalId);
+  private async putBinding(binding: WorkspaceBinding, expectedSavedAt?: string): Promise<void> {
+    const from = await this.current(binding.fromLocalId, expectedSavedAt);
     if (typeof binding.pointer !== 'string' || typeof binding.href !== 'string' || pointerValue(from.source, binding.pointer) !== binding.href) reject('WORKSPACE_BINDING_INVALID');
     if (binding.target?.kind === 'local') {
       const target = await this.current(binding.target.localId);
@@ -210,16 +210,16 @@ export class WorkspaceStore {
     await this.bindings.put({ fromLocalId: binding.fromLocalId, pointer: binding.pointer, href: binding.href, target });
   }
 
-  async setBinding(binding: WorkspaceBinding): Promise<WorkspaceResult<void>> {
+  async setBinding(binding: WorkspaceBinding, expectedSavedAt: string): Promise<WorkspaceResult<void>> {
     try {
       const snapshot = structuredClone(binding);
-      return this.write(async stamp => { await this.putBinding(snapshot); await this.touchDocument(snapshot.fromLocalId, stamp); });
+      return this.write(async stamp => { await this.putBinding(snapshot, expectedSavedAt ?? ''); await this.touchDocument(snapshot.fromLocalId, stamp); });
     }
     catch (error) { return failure(error); }
   }
-  removeBinding(fromLocalId: LocalId, pointer: string): Promise<WorkspaceResult<void>> {
+  removeBinding(fromLocalId: LocalId, pointer: string, expectedSavedAt: string): Promise<WorkspaceResult<void>> {
     return this.write(async stamp => {
-      await this.current(fromLocalId);
+      await this.current(fromLocalId, expectedSavedAt ?? '');
       if (!await this.bindings.get([fromLocalId, pointer])) return;
       await this.bindings.delete([fromLocalId, pointer]);
       await this.touchDocument(fromLocalId, stamp);

@@ -81,7 +81,7 @@ test('abgebrochener Save rollt documents, Bindungen und Entwurf gemeinsam zurüc
   const envelope = value(await store.addDocument(verbund.verbundId, imported));
   const draft = value(await store.autosaveDraft(envelope.localId, envelope.savedAt, null, { text: 'DRAFT_SENTINEL' }));
   const binding = { fromLocalId: envelope.localId, pointer: '/catalog/metadata/title', href: 'DOCUMENT_SENTINEL', target: { kind: 'class-1' as const, artifactKey: 'catalog-gspp' } };
-  value(await store.setBinding(binding));
+  value(await store.setBinding(binding, value(await store.getDocument(binding.fromLocalId))!.savedAt));
   const before = value(await store.exportBackup());
   const rejected = await store.saveDocument(envelope.localId, value(await store.getDocument(envelope.localId))!.savedAt, draft.savedAt, imported, [{ ...binding, target: { kind: 'local', localId: crypto.randomUUID() as LocalId } }]);
   expect(rejected).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_DOCUMENT_NOT_FOUND' } });
@@ -136,7 +136,7 @@ test('Backup stellt zwei Verbünde mit Dokumenten, Entwürfen und Bindungen verl
   const one = value(await store.addDocument(a.verbundId, await document()));
   value(await store.addDocument(b.verbundId, await document('OTHER')));
   value(await store.autosaveDraft(one.localId, one.savedAt, null, { incomplete: 'DRAFT' }));
-  value(await store.setBinding({ fromLocalId: one.localId, pointer: '/catalog/metadata/title', href: 'DOCUMENT_SENTINEL', target: { kind: 'class-1', artifactKey: 'catalog-gspp' } }));
+  value(await store.setBinding({ fromLocalId: one.localId, pointer: '/catalog/metadata/title', href: 'DOCUMENT_SENTINEL', target: { kind: 'class-1', artifactKey: 'catalog-gspp' } }, value(await store.getDocument(one.localId))!.savedAt));
   const before = value(await store.exportBackup());
   value(await store.deleteVerbund(a.verbundId));
   value(await store.restoreBackup(new TextEncoder().encode(before), 'replace-workspace'));
@@ -183,8 +183,9 @@ test('jede Speicheroperation verwendet genau eine native Transaktion', async () 
   const doc = await one(() => store.addDocument(a.verbundId, imported));
   const draft = await one(() => store.autosaveDraft(doc.localId, doc.savedAt, null, { incomplete: true }));
   const binding = { fromLocalId: doc.localId, pointer: '/catalog/metadata/title', href: 'DOCUMENT_SENTINEL', target: { kind: 'class-1' as const, artifactKey: 'catalog-gspp' } };
-  await one(() => store.setBinding(binding));
-  await one(() => store.removeBinding(doc.localId, binding.pointer));
+  await one(() => store.setBinding(binding, doc.savedAt));
+  const bound = value(await store.getDocument(doc.localId))!;
+  await one(() => store.removeBinding(doc.localId, binding.pointer, bound.savedAt));
   const loaded = value(await store.getDocument(doc.localId))!;
   const saved = await one(() => store.saveDocument(doc.localId, loaded.savedAt, draft.savedAt, imported, [binding]));
   await one(() => store.replaceDocument(doc.localId, saved.savedAt, null, imported));
@@ -192,4 +193,66 @@ test('jede Speicheroperation verwendet genau eine native Transaktion', async () 
   await one(() => store.restoreBackup(new TextEncoder().encode(backup), 'replace-workspace'));
   await one(() => store.deleteDocument(doc.localId));
   await one(() => store.deleteVerbund(a.verbundId));
+});
+
+test('veraltete Bindungsänderungen erhalten das neuere Ziel und den gesamten Speicherstand', async () => {
+  const first = await open();
+  const second = await open();
+  const verbund = value(await first.createVerbund('Binding CAS'));
+  const envelope = value(await first.addDocument(verbund.verbundId, await document()));
+  const target = value(await first.addDocument(verbund.verbundId, await document('TARGET')));
+  const binding = { fromLocalId: envelope.localId, pointer: '/catalog/metadata/title', href: 'DOCUMENT_SENTINEL', target: { kind: 'class-1' as const, artifactKey: 'catalog-gspp' } };
+  value(await first.setBinding(binding, envelope.savedAt));
+  const loaded = value(await first.getDocument(envelope.localId))!;
+  const changed = { ...binding, target: { kind: 'local' as const, localId: target.localId } };
+  value(await second.setBinding(changed, loaded.savedAt));
+  const before = JSON.parse(value(await second.exportBackup()));
+  for (const stale of [loaded.savedAt, undefined as unknown as string]) {
+    expect(await first.setBinding(binding, stale)).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_SAVE_CONFLICT' } });
+    expect(await first.removeBinding(envelope.localId, binding.pointer, stale)).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_SAVE_CONFLICT' } });
+    expect(JSON.parse(value(await first.exportBackup()))).toEqual(before);
+  }
+  expect(value(await first.listBindings())).toEqual([changed]);
+  const current = value(await first.getDocument(envelope.localId))!;
+  value(await first.removeBinding(envelope.localId, binding.pointer, current.savedAt));
+  const removed = value(await first.exportBackup());
+  // A stale remove still conflicts when the binding has already disappeared.
+  expect(await second.removeBinding(envelope.localId, binding.pointer, current.savedAt)).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_SAVE_CONFLICT' } });
+  expect(await second.setBinding(binding, current.savedAt)).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_SAVE_CONFLICT' } });
+  expect(value(await first.exportBackup())).toBe(removed);
+  const fresh = value(await first.getDocument(envelope.localId))!;
+  value(await first.removeBinding(envelope.localId, binding.pointer, fresh.savedAt));
+  expect(value(await first.getDocument(envelope.localId))).toEqual(fresh);
+  value(await first.setBinding(binding, fresh.savedAt));
+  expect(value(await first.listBindings())).toEqual([binding]);
+  expect(value(await first.getDocument(envelope.localId))?.source).toEqual(envelope.source);
+});
+
+test.each([
+  { key: 'next', rows: [{ next: 'workspace-next', version: 2 }] },
+  { key: 'id', rows: [{ id: 'workspace', version: 2 }] },
+  { key: 'id', rows: [] },
+  { key: 'id', rows: [{ id: 'workspace', storageSchemaVersion: 1, backupSavedAt: 'OPAQUE_FILE_STAMP' }] },
+])('sichert neuere Datenbankmetadaten ohne Interpretation ($key, $rows)', async ({ key, rows }) => {
+  const store = await open();
+  store.close();
+  await Dexie.delete(WORKSPACE_DATABASE_NAME);
+  const next = new Dexie(WORKSPACE_DATABASE_NAME);
+  next.version(2).stores({ workspaceMeta: key, futureStore: '' });
+  await next.open();
+  try {
+    await next.table('workspaceMeta').bulkAdd(rows);
+    await next.table('futureStore').add({ source: { unknown: true }, backupSavedAt: 'FUTURE_FIELD' }, 'separate-key');
+    const older = await open();
+    const before = await next.table('workspaceMeta').toArray();
+    expect(JSON.parse(value(await older.exportBackup()))).toEqual({
+      format: 'gspp-workspace', storageSchemaVersion: 2,
+      workspaceMeta: rows,
+      futureStore: [{ source: { unknown: true }, backupSavedAt: 'FUTURE_FIELD' }],
+      outOfLineKeys: { futureStore: ['separate-key'] },
+    });
+    expect(await next.table('workspaceMeta').toArray()).toEqual(before);
+    expect(await older.createVerbund('No write')).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_SCHEMA_NEWER' } });
+    expect(await older.exportVerbundBackup('missing' as Parameters<typeof older.exportVerbundBackup>[0])).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_SCHEMA_NEWER' } });
+  } finally { next.close(); }
 });

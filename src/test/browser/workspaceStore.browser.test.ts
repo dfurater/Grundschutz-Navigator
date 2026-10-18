@@ -79,7 +79,7 @@ test('geladene Klasse-1-Katalogbytes gelangen auch bei einer Bindung nicht in di
   const store = await open();
   const verbund = value(await store.createVerbund('Test'));
   const envelope = value(await store.addDocument(verbund.verbundId, await document()));
-  value(await store.setBinding({ fromLocalId: envelope.localId, pointer: '/catalog/metadata/title', href: 'DOCUMENT_SENTINEL', target: { kind: 'class-1', artifactKey: 'catalog-gspp' } }));
+  value(await store.setBinding({ fromLocalId: envelope.localId, pointer: '/catalog/metadata/title', href: 'DOCUMENT_SENTINEL', target: { kind: 'class-1', artifactKey: 'catalog-gspp' } }, value(await store.getDocument(envelope.localId))!.savedAt));
   expect(await storedValuesAndIndexKeys()).not.toContain('CLASS_ONE_CATALOG_SENTINEL');
 });
 
@@ -155,11 +155,11 @@ test('Bindungsänderungen schützen ihren Stand vor einem veralteten Save', asyn
   const imported = await document();
   const envelope = value(await first.addDocument(verbund.verbundId, imported));
   const binding = { fromLocalId: envelope.localId, pointer: '/catalog/metadata/title', href: 'DOCUMENT_SENTINEL', target: { kind: 'class-1' as const, artifactKey: 'catalog-gspp' } };
-  value(await second.setBinding(binding));
+  value(await second.setBinding(binding, value(await second.getDocument(binding.fromLocalId))!.savedAt));
   expect(await first.saveDocument(envelope.localId, envelope.savedAt, null, imported, [])).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_SAVE_CONFLICT' } });
   expect(value(await first.listBindings())).toEqual([binding]);
   const loaded = value(await first.getDocument(envelope.localId))!;
-  value(await second.removeBinding(envelope.localId, binding.pointer));
+  value(await second.removeBinding(envelope.localId, binding.pointer, loaded.savedAt));
   expect(await first.saveDocument(envelope.localId, loaded.savedAt, null, imported, [binding])).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_SAVE_CONFLICT' } });
   expect(value(await first.listBindings())).toEqual([]);
 });
@@ -210,7 +210,7 @@ test('Backup erhält gespeicherte Artefaktverweise auch nach einer Registersperr
   expect(JSON.parse(backup).bindings[0].target).toEqual(target);
   value(await store.restoreBackup(new TextEncoder().encode(backup), 'replace-workspace'));
   expect(value(await store.listBindings())[0].target).toEqual(target);
-  expect(await store.setBinding({ fromLocalId: envelope.localId, pointer: '/catalog/metadata/title', href: 'DOCUMENT_SENTINEL', target: target as never })).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_ARTIFACT_UNSUPPORTED' } });
+  expect(await store.setBinding({ fromLocalId: envelope.localId, pointer: '/catalog/metadata/title', href: 'DOCUMENT_SENTINEL', target: target as never }, value(await store.getDocument(envelope.localId))!.savedAt)).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_ARTIFACT_UNSUPPORTED' } });
 });
 
 test('Quota beim nativen Transaktionsabbruch wird redigiert erkannt und rollt zurück', async () => {
@@ -241,14 +241,14 @@ test('ersetzt Dokumente mit stabiler Identität und erhält beide Bindungsrichtu
   const a = value(await store.addDocument(verbund.verbundId, await document('A')));
   const b = value(await store.addDocument(verbund.verbundId, await document('B')));
   const binding = { fromLocalId: a.localId, pointer: '/catalog/metadata/title', href: 'A', target: { kind: 'local' as const, localId: b.localId } };
-  value(await store.setBinding(binding));
-  value(await store.setBinding({ fromLocalId: b.localId, pointer: '/catalog/metadata/title', href: 'B', target: { kind: 'local', localId: a.localId } }));
+  value(await store.setBinding(binding, value(await store.getDocument(binding.fromLocalId))!.savedAt));
+  value(await store.setBinding({ fromLocalId: b.localId, pointer: '/catalog/metadata/title', href: 'B', target: { kind: 'local', localId: a.localId } }, value(await store.getDocument(b.localId))!.savedAt));
   const replacement = value(await store.replaceDocument(a.localId, value(await store.getDocument(a.localId))!.savedAt, null, await document('REPLACED')));
   expect(replacement).toMatchObject({ localId: a.localId, verbundId: a.verbundId, source: (await document('REPLACED')).source });
   expect(value(await store.listBindings())).toHaveLength(2);
   const other = value(await store.createVerbund('Other'));
   const foreign = value(await store.addDocument(other.verbundId, await document()));
-  expect(await store.setBinding({ ...binding, href: 'REPLACED', target: { kind: 'local', localId: foreign.localId } })).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_BINDING_CROSS_VERBUND' } });
+  expect(await store.setBinding({ ...binding, href: 'REPLACED', target: { kind: 'local', localId: foreign.localId } }, value(await store.getDocument(binding.fromLocalId))!.savedAt)).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_BINDING_CROSS_VERBUND' } });
 });
 
 test('Dokument- und Verbundlöschung entfernen beide Richtungen und Entwürfe', async () => {
@@ -259,8 +259,8 @@ test('Dokument- und Verbundlöschung entfernen beide Richtungen und Entwürfe', 
   const b = value(await store.addDocument(one.verbundId, await document('B')));
   const control = value(await store.addDocument(two.verbundId, await document('CONTROL')));
   value(await store.autosaveDraft(a.localId, a.savedAt, null, { text: 'DELETE_SENTINEL' }));
-  value(await store.setBinding({ fromLocalId: b.localId, pointer: '/catalog/metadata/title', href: 'B', target: { kind: 'local', localId: a.localId } }));
-  value(await store.setBinding({ fromLocalId: a.localId, pointer: '/catalog/metadata/title', href: 'DELETE_SENTINEL', target: { kind: 'local', localId: b.localId } }));
+  value(await store.setBinding({ fromLocalId: b.localId, pointer: '/catalog/metadata/title', href: 'B', target: { kind: 'local', localId: a.localId } }, value(await store.getDocument(b.localId))!.savedAt));
+  value(await store.setBinding({ fromLocalId: a.localId, pointer: '/catalog/metadata/title', href: 'DELETE_SENTINEL', target: { kind: 'local', localId: b.localId } }, value(await store.getDocument(a.localId))!.savedAt));
   value(await store.deleteDocument(a.localId));
   expect(await storedValuesAndIndexKeys()).not.toContain('DELETE_SENTINEL');
   expect(value(await store.listBindings())).toEqual([]);

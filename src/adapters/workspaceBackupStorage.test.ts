@@ -55,7 +55,7 @@ beforeEach(async () => {
   one = value(await store.addDocument(a.verbundId, imported));
   other = value(await store.addDocument(b.verbundId, await catalog('OTHER_DOCUMENT_SENTINEL')));
   value(await store.autosaveDraft(one.localId, one.savedAt, null, { incomplete: true }));
-  value(await store.setBinding({ fromLocalId: one.localId, pointer: '/catalog/metadata/title', href: 'Selected', target: { kind: 'class-1', artifactKey: 'catalog-gspp' } }));
+  value(await store.setBinding({ fromLocalId: one.localId, pointer: '/catalog/metadata/title', href: 'Selected', target: { kind: 'class-1', artifactKey: 'catalog-gspp' } }, value(await store.getDocument(one.localId))!.savedAt));
   db = new Dexie(WORKSPACE_DATABASE_NAME); await db.open();
 });
 afterEach(async () => { vi.restoreAllMocks(); db?.close(); store?.close(); await Dexie.delete(WORKSPACE_DATABASE_NAME); });
@@ -251,7 +251,7 @@ it.each(['workspace', 'verbund'] as const)('validates the file stamp of restored
   const restoredSummary = value(await store.listDocuments(a.verbundId)).find(row => row.localId === one.localId);
   expect(restoredSummary).toMatchObject({ savedAt: restored.savedAt });
   expect(restoredSummary).not.toHaveProperty('backupSavedAt');
-  value(await store.setBinding({ fromLocalId: one.localId, pointer: '/catalog/metadata/title', href: 'Selected', target: { kind: 'class-1', artifactKey: 'catalog-gspp' } }));
+  value(await store.setBinding({ fromLocalId: one.localId, pointer: '/catalog/metadata/title', href: 'Selected', target: { kind: 'class-1', artifactKey: 'catalog-gspp' } }, value(await store.getDocument(one.localId))!.savedAt));
   const touched = value(await store.getDocument(one.localId))!;
   expect(Date.parse(touched.savedAt)).toBeGreaterThan(Date.parse(restored.savedAt));
   const writtenDocument = JSON.parse(value(await exportBundle())).documents.find((row: { localId: string }) => row.localId === one.localId);
