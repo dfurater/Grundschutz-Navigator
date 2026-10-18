@@ -568,24 +568,24 @@ describe('Dokumentinterne Katalogreferenzen', () => {
       .toBe(true);
   });
 
-  it('meldet eine doppelt vergebene Control-ID und macht ihr Ziel mehrdeutig', () => {
+  // Doppelte Control-IDs lehnt schon `parseCatalog` ab; die Graph-Diagnose
+  // greift für die übrigen Knotenarten, hier an einer Back-Matter-Ressource.
+  it('meldet eine doppelt vergebene Ressourcen-UUID', () => {
+    const resourceUuid = 'dddddddd-dddd-4ddd-8ddd-ddddddddddd1';
     const graph = buildReferenceGraph({
       documents: [
         catalogDocument({
           artifactKey: 'catalog-a',
           catalogKey: 'gspp',
-          controls: [
-            { id: 'C.1', altIdentifier: 'alt-1' },
-            { id: 'C.1', altIdentifier: 'alt-2' },
-            { id: 'C.2', altIdentifier: 'alt-3', links: [{ href: '#C.1', rel: 'related' }] },
-          ],
+          controls: [{ id: 'C.1' }],
+          resources: [{ uuid: resourceUuid }, { uuid: resourceUuid }],
         }),
       ],
     });
 
     const codes = graph.diagnostics.map((diagnostic) => diagnostic.code);
     expect(codes).toContain(REFERENCE_GRAPH_CODES.duplicateNodeId);
-    expect(graph.nodes.filter((node) => node.kind === 'control')).toHaveLength(2);
+    expect(graph.nodes.filter((node) => node.kind === 'resource')).toHaveLength(1);
   });
 });
 

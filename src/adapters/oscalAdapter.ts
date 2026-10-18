@@ -542,6 +542,36 @@ function parseBackMatter(
 /* ------------------------------------------------------------------ */
 
 /** Options for parseCatalog */
+/**
+ * OSCAL 1.1.3 verlangt eindeutige Control-IDs je Katalog (Metaschema-Index
+ * `catalog-controls`). Geprüft wird der gesamte Quellkatalog, auch unter
+ * Gruppen, die die Projektion nicht besucht: Eine Dublette würde einen Lookup
+ * über `controlsById` still auf ein anderes Control lenken als das, das die
+ * Quelle meint — daher fail-closed wie beim alt-identifier.
+ */
+function assertUniqueControlIds(catalog: RawOscalCatalog, catalogKey: CatalogKey): void {
+  const seen = new Set<string>();
+
+  const visitControls = (controls: readonly RawOscalControl[] | undefined): void => {
+    for (const control of controls ?? []) {
+      if (seen.has(control.id)) {
+        throw new Error(`Duplicate control id "${control.id}" in catalog "${catalogKey}"`);
+      }
+      seen.add(control.id);
+      visitControls(control.controls);
+    }
+  };
+  const visitGroups = (groups: readonly RawOscalGroup[] | undefined): void => {
+    for (const group of groups ?? []) {
+      visitControls(group.controls);
+      visitGroups(group.groups);
+    }
+  };
+
+  visitControls(catalog.controls);
+  visitGroups(catalog.groups);
+}
+
 export interface ParseCatalogOptions {
   /**
    * Source-registry catalog key (ADR-1). **Pflicht**: Die Identität steht
@@ -593,6 +623,8 @@ export function parseCatalog(raw: unknown, options: ParseCatalogOptions): Catalo
     practices.push(practice);
     allControls.push(...controls);
   }
+
+  assertUniqueControlIds(catalog, catalogKey);
 
   const controlsById = new Map<string, Control>();
   for (const c of allControls) {

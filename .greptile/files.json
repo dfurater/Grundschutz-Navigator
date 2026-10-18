@@ -61,6 +61,27 @@
     {
       "path": "README.md",
       "description": "Projektzweck, Setup, Kommandos"
+    },
+    {
+      "path": "docs/PERSISTENCE.md",
+      "description": "Datenklassen, Verbundidentität, Transaktionen, Konflikte, Entwürfe, Backup, Migration und Löschung",
+      "scope": [
+        "src/**"
+      ]
+    },
+    {
+      "path": "docs/PROJECT_PROPS.md",
+      "description": "Projektsemantik, Namespace-Grenze, Werteräume, Träger und Katalogreferenzpaare",
+      "scope": [
+        "src/**"
+      ]
+    },
+    {
+      "path": "docs/OSCAL_ROUND_TRIP.md",
+      "description": "Verlustfreiheit, No-op-Identität, Ausgabeprüfung und Grenzen des Round-trip-Nachweises",
+      "scope": [
+        "src/**"
+      ]
     }
   ]
 }

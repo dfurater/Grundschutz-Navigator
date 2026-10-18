@@ -27,7 +27,7 @@
 // | `mapping-resource-reference/type` | `anyOf` mit `allow-other` — bindet nicht | **einzige** Prüfung |
 // =============================================================================
 
-import { createStructureReaders } from '@/adapters/oscalReaders';
+import { createElementReaders, createStructureReaders } from '@/adapters/oscalReaders';
 import { isJsonObject, readString, type JsonObject } from '@/domain/jsonGuards';
 import { createOscalDiagnostic } from '@/domain/oscalDiagnostics';
 import type { OscalDiagnostic, OscalDiagnosticValidator } from '@/domain/oscalDiagnostics';
@@ -38,7 +38,6 @@ import {
 } from '@/domain/mappingModel';
 import type {
   MappingLink,
-  MappingProp,
   MappingVocabularyBinding,
 } from '@/domain/mappingModel';
 import type { PinnedOscalVersion } from '@/domain/oscalVersionMatrix';
@@ -250,29 +249,15 @@ export function missingVocabulary<T extends string>(
 /*  Strukturleser                                                      */
 /* ------------------------------------------------------------------ */
 
-const structureReaders = createStructureReaders<DeriveState>((state, path) => {
+function diagnoseUnexpected(state: DeriveState, path: string): void {
   diagnose(state, codes.STRUCTURE_UNEXPECTED, path);
-});
+}
+
+const structureReaders = createStructureReaders<DeriveState>(diagnoseUnexpected);
 
 export const { readArrayField, readObjectArrayField, readStringArrayField } = structureReaders;
 
-export function readProps(
-  node: JsonObject,
-  path: string,
-  state: DeriveState,
-): readonly MappingProp[] {
-  return readObjectArrayField(node, 'props', path, state).flatMap(
-    ({ node: prop, path: propPath }) => {
-      const name = readString(prop.name);
-      const value = readString(prop.value);
-      if (name === undefined || value === undefined) {
-        diagnose(state, codes.STRUCTURE_UNEXPECTED, propPath);
-        return [];
-      }
-      return [{ name, value, ns: readString(prop.ns), class: readString(prop.class) }];
-    },
-  );
-}
+export const { readProps } = createElementReaders(structureReaders, diagnoseUnexpected);
 
 export function readLinks(
   node: JsonObject,
