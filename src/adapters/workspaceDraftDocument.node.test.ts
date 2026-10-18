@@ -85,3 +85,17 @@ it.each<DocumentState>(['imported', 'export-ready'])('rejects a bundle that carr
   const result = await store.restoreBackup(new TextEncoder().encode(JSON.stringify(bundle)), 'replace-workspace');
   expect(code(result)).toBe('WORKSPACE_BACKUP_DOCUMENT_REJECTED');
 });
+
+// A root type the source does not carry already fails the bundle structure (WORKSPACE_BACKUP_INVALID); these rows reach the draft binding check.
+it.each([
+  ['an envelope oscalVersion other than the source', (row: Record<string, unknown>) => { row.oscalVersion = '1.1.2'; }],
+  ['a source without oscal-version', (row: Record<string, unknown>) => { delete ((row.source as { profile: { metadata: Record<string, unknown> } }).profile.metadata)['oscal-version']; }],
+])('rejects a bundle whose draft row has %s', async (_case, manipulate) => {
+  value(await store.addDocument(verbund.verbundId, incomplete(), 'draft'));
+  const before = value(await store.exportBackup());
+  const bundle = JSON.parse(before) as { documents: Record<string, unknown>[] };
+  manipulate(bundle.documents[0]);
+  const result = await store.restoreBackup(new TextEncoder().encode(JSON.stringify(bundle)), 'replace-workspace');
+  expect(code(result)).toBe('WORKSPACE_BACKUP_DOCUMENT_REJECTED');
+  expect(value(await store.exportBackup())).toBe(before);
+});
