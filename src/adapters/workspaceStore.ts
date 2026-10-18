@@ -15,9 +15,11 @@ import { serializeWorkspaceJson } from '@/domain/workspaceJson';
 import { exportNewerWorkspaceBackup } from '@/adapters/workspaceRecoveryStorage';
 import { exportWorkspaceBackupSnapshot, restoreWorkspaceBackupSnapshot, exportVerbundBackupSnapshot, restoreVerbundBackupSnapshot, writtenRow } from '@/adapters/workspaceBackupStorage';
 import { StorageFailure, failure, reject, timestamp } from '@/adapters/workspaceStorageFailure';
+import { deleteDatabase, withinDeadline } from '@/adapters/workspaceDatabaseLifecycle';
 
 export const WORKSPACE_DATABASE_NAME = 'gspp-workspace';
 export const WORKSPACE_DELETE_BLOCKED_TIMEOUT_MS = 2_000;
+export const WORKSPACE_OPEN_TIMEOUT_MS = 2_000;
 export const WORKSPACE_SCHEMA = Object.freeze({
   verbuende: 'verbundId',
   documents: 'localId, verbundId, rootType, oscalVersion, savedAt',
@@ -38,11 +40,20 @@ export class WorkspaceStore {
 
   private constructor(db: Dexie) { this.db = db; }
 
-  static async open(): Promise<WorkspaceResult<WorkspaceStore>> {
+  /** IndexedDB queues every open behind a pending `deleteDatabase`; the deadline keeps that wait terminal. */
+  static open(): Promise<WorkspaceResult<WorkspaceStore>> {
+    // A connection that opens after the deadline is never handed out and must not hold the database open.
+    return withinDeadline(WORKSPACE_OPEN_TIMEOUT_MS, 'WORKSPACE_OPEN_TIMEOUT', expired => WorkspaceStore.openDatabase(expired), late => { if (late.ok) late.value.close(); });
+  }
+
+  private static async openDatabase(expired: () => boolean): Promise<WorkspaceResult<WorkspaceStore>> {
     let db = new Dexie(WORKSPACE_DATABASE_NAME);
     try {
       // Dynamic opening keeps newer databases readable without a downgrade.
-      if (!await Dexie.exists(WORKSPACE_DATABASE_NAME)) {
+      const exists = await Dexie.exists(WORKSPACE_DATABASE_NAME);
+      // After the deadline nobody receives the store, so a late open must not recreate a deleted database.
+      if (expired()) reject('WORKSPACE_OPEN_TIMEOUT');
+      if (!exists) {
         db.version(STORAGE_SCHEMA_VERSION).stores(WORKSPACE_SCHEMA);
         db.on('populate', transaction => {
           const now = timestamp();
@@ -280,21 +291,6 @@ export class WorkspaceStore {
   async deleteAll(confirmation: 'delete-workspace'): Promise<WorkspaceResult<void>> {
     if (confirmation !== 'delete-workspace') return failure(new StorageFailure('WORKSPACE_CONFIRMATION_REQUIRED'));
     this.close();
-    return new Promise(resolve => {
-      const request = indexedDB.deleteDatabase(WORKSPACE_DATABASE_NAME);
-      let settled = false;
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      const finish = (result: WorkspaceResult<void>) => {
-        if (settled) return;
-        settled = true;
-        if (timer !== undefined) clearTimeout(timer);
-        resolve(result);
-      };
-      request.onsuccess = () => finish({ ok: true, value: undefined });
-      request.onerror = () => finish(failure(request.error));
-      request.onblocked = () => {
-        timer ??= setTimeout(() => finish(failure(new StorageFailure('WORKSPACE_DELETE_PENDING'))), WORKSPACE_DELETE_BLOCKED_TIMEOUT_MS);
-      };
-    });
+    return deleteDatabase(WORKSPACE_DATABASE_NAME, WORKSPACE_DELETE_BLOCKED_TIMEOUT_MS);
   }
 }
