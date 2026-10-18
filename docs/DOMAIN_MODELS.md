@@ -1336,7 +1336,7 @@ Der Katalogadapter löst sie über `resolveCatalogKey()` auf und bricht in zwei 
 
 Die vierte Zeile ist dieselbe Regel, die der Dispatch für den Root-Typ mit `OSCAL_ROOT_TYPE_MISMATCH` anwendet.
 
-`parseCatalog` failt geschlossen, wenn beim Aufbau von `controlsById` eine Control-ID innerhalb des Katalogs mehrfach vorkommt oder beim Aufbau von `controlsByAltIdentifier` ein Control keinen Alt-Identifier besitzt oder derselbe Alt-Identifier innerhalb des Katalogs mehrfach vorkommt.
+`parseCatalog` failt geschlossen, wenn eine Control-ID im Quellkatalog mehrfach vorkommt — geprüft über alle `controls` und `groups` in beliebiger Tiefe, auch unterhalb der projizierten Themenebene — oder wenn beim Aufbau von `controlsByAltIdentifier` ein Control keinen Alt-Identifier besitzt oder derselbe Alt-Identifier innerhalb des Katalogs mehrfach vorkommt.
 
 Der Envelope wird hier **nicht** ausgepackt: Welcher Root-Typ vorliegt,
 entscheidet allein der [Root-Dispatch](#root-envelope-und-root-dispatch).
