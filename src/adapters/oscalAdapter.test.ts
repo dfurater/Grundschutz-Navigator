@@ -1054,6 +1054,34 @@ describe('parseCatalog', () => {
     );
   });
 
+  it('rejects duplicate control ids within one catalog', () => {
+    const doc = makeCatalog();
+    doc.catalog.controls = [
+      makeControl({ props: [{ name: 'alt-identifier', value: 'uuid-control-root' }] }),
+    ];
+    doc.catalog.groups = [
+      makePracticeGroup({ groups: [makeGroup({ controls: [makeControl()] })] }),
+    ];
+    expect(() => parseCatalog(doc.catalog, GSPP)).toThrow(
+      'Duplicate control id "GC.1.1" in catalog "gspp"',
+    );
+  });
+
+  it('rejects duplicate control ids below groups the projection does not visit', () => {
+    const doc = makeCatalog();
+    doc.catalog.controls = [
+      makeControl({ props: [{ name: 'alt-identifier', value: 'uuid-control-root' }] }),
+    ];
+    doc.catalog.groups = [
+      makePracticeGroup({
+        groups: [makeGroup({ controls: [], groups: [makeGroup({ id: 'GC.1.X' })] })],
+      }),
+    ];
+    expect(() => parseCatalog(doc.catalog, GSPP)).toThrow(
+      'Duplicate control id "GC.1.1" in catalog "gspp"',
+    );
+  });
+
   it('handles catalog with multiple practices', () => {
     const doc = makeCatalog();
     doc.catalog.groups = [

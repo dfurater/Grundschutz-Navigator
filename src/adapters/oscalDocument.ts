@@ -40,8 +40,8 @@ import { getCatalogByKey } from '@/domain/sourceRegistry';
  * @param context Ableitungskontext: Katalogidentität und Vertrauensklasse
  * @throws OscalRootDispatchError wenn Root-Erkennung oder Versionsbindung
  *   fehlschlagen
- * @throws Error wenn die Katalogstruktur ungültig ist oder alt-identifier
- *   kollidieren
+ * @throws Error wenn die Katalogstruktur ungültig ist oder Control-IDs bzw.
+ *   alt-identifier kollidieren
  */
 export function parseCatalogDocument(
   source: unknown,

@@ -12,6 +12,9 @@ export const TITLE_PARENT_SEPARATOR = ' | ';
 
 export const PRODUCT_TITLE = 'Grundschutz++ Navigator';
 
+// `og:title` der Startseite; der Produktname steht in `og:site_name`.
+export const HOME_OG_TITLE = 'BSI-Anwenderkatalog Grundschutz++ durchsuchen, filtern und exportieren';
+
 export const PAGE_TITLES = {
   search: 'Suche',
   vocabularies: 'Vokabulare',
