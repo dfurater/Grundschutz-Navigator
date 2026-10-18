@@ -86,13 +86,14 @@ function serializeBackup(backup: unknown, current = true): string {
 /** Caller owns the single read transaction over all stores. */
 export async function exportWorkspaceBackupSnapshot(db: Dexie): Promise<string> {
   const stores: Record<string, unknown> = {};
-  // A newer schema may lack `workspaceMeta`; its bundle then carries the database version and stays uninterpreted.
+  // Newer database versions pass through without interpreting even the metadata store.
   let storageSchemaVersion = db.verno;
-  if (db.tables.some(table => table.name === 'workspaceMeta')) {
+  if (db.verno <= STORAGE_SCHEMA_VERSION) {
+    if (!db.tables.some(table => table.name === 'workspaceMeta')) reject('WORKSPACE_SCHEMA_INVALID');
     const meta = await db.table<WorkspaceMeta>('workspaceMeta').get('workspace');
     if (!meta || !Number.isInteger(meta.storageSchemaVersion) || meta.storageSchemaVersion < 1) reject('WORKSPACE_SCHEMA_INVALID');
     storageSchemaVersion = meta.storageSchemaVersion;
-  } else if (db.verno <= STORAGE_SCHEMA_VERSION) reject('WORKSPACE_SCHEMA_INVALID');
+  }
   const current = storageSchemaVersion === STORAGE_SCHEMA_VERSION;
   const budget: BackupBudget | undefined = current ? { bytes: 0, nodes: frameNodes(db.tables.length) } : undefined;
   const outOfLineKeys: Record<string, unknown[]> = {};

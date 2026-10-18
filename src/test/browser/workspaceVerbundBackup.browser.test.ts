@@ -13,7 +13,7 @@ test('Verbund-Backup ersetzt oder ergänzt nur den gewählten Verbund in je eine
   const two = value(await store.addDocument(a.verbundId, await document('TARGET')));
   const other = value(await store.addDocument(b.verbundId, await document('OTHER_DOCUMENT_SENTINEL')));
   value(await store.autosaveDraft(one.localId, one.savedAt, null, { incomplete: 'Selected draft' }));
-  value(await store.setBinding({ fromLocalId: one.localId, pointer: '/catalog/metadata/title', href: 'SELECTED', target: { kind: 'local', localId: two.localId } }));
+  value(await store.setBinding({ fromLocalId: one.localId, pointer: '/catalog/metadata/title', href: 'SELECTED', target: { kind: 'local', localId: two.localId } }, value(await store.getDocument(one.localId))!.savedAt));
   const untouched = value(await store.exportVerbundBackup(b.verbundId));
   transaction.mockClear();
   const backup = value(await store.exportVerbundBackup(a.verbundId));
@@ -78,7 +78,7 @@ test('ein fehlgeschlagener Verbund-Restore rollt Löschungen, Bindungen und Meta
   const store = await open();
   const verbund = value(await store.createVerbund('Rollback'));
   const envelope = value(await store.addDocument(verbund.verbundId, await document()));
-  value(await store.setBinding({ fromLocalId: envelope.localId, pointer: '/catalog/metadata/title', href: 'DOCUMENT_SENTINEL', target: { kind: 'class-1', artifactKey: 'catalog-gspp' } }));
+  value(await store.setBinding({ fromLocalId: envelope.localId, pointer: '/catalog/metadata/title', href: 'DOCUMENT_SENTINEL', target: { kind: 'class-1', artifactKey: 'catalog-gspp' } }, value(await store.getDocument(envelope.localId))!.savedAt));
   const backup = value(await store.exportVerbundBackup(verbund.verbundId));
   value(await store.renameVerbund(verbund.verbundId, 'Current'));
   const before = value(await store.exportBackup());

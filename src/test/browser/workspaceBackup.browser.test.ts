@@ -74,7 +74,7 @@ it.each(['workspace', 'verbund'] as const)('retains a binding after its source h
   const pointer = '/catalog/metadata/title';
   const href = (envelope.source as { catalog: { metadata: { title: string } } }).catalog.metadata.title;
   const binding = { fromLocalId: envelope.localId, pointer, href, target: { kind: 'class-1' as const, artifactKey: 'catalog-gspp' } };
-  value(await store.setBinding(binding));
+  value(await store.setBinding(binding, value(await store.getDocument(binding.fromLocalId))!.savedAt));
   const current = value(await store.getDocument(envelope.localId))!;
   const source = makeSchemaValidOscalDocument('catalog', '1.1.3');
   (source.catalog as { metadata: { title: string } }).metadata.title = 'Changed source';

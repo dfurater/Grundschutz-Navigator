@@ -79,7 +79,7 @@ describe('storage boundary failures', () => {
     rejected(await store.addDocument('missing' as VerbundId, document), 'WORKSPACE_VERBUND_NOT_FOUND');
     rejected(await store.saveDocument('missing' as LocalId, envelope.savedAt, null, document), 'WORKSPACE_DOCUMENT_NOT_FOUND');
     rejected(await store.autosaveDraft('missing' as LocalId, envelope.savedAt, null, {}), 'WORKSPACE_DOCUMENT_NOT_FOUND');
-    rejected(await store.removeBinding('missing' as LocalId, '/catalog'), 'WORKSPACE_DOCUMENT_NOT_FOUND');
+    rejected(await store.removeBinding('missing' as LocalId, '/catalog', envelope.savedAt), 'WORKSPACE_DOCUMENT_NOT_FOUND');
   });
   it('rejects deleting unknown IDs without touching workspace metadata', async () => {
     const before = value(await store.exportBackup());
@@ -145,13 +145,13 @@ describe('explicit binding admission', () => {
     (row: WorkspaceBinding) => ({ ...row, target: null }),
     (row: WorkspaceBinding) => ({ ...row, target: { kind: 'unknown' } }),
   ])('rejects invalid pointer, href and target inputs %#', async mutate => {
-    rejected(await store.setBinding(mutate(binding()) as WorkspaceBinding), 'WORKSPACE_BINDING_INVALID');
+    rejected(await store.setBinding(mutate(binding()) as WorkspaceBinding, value(await store.getDocument(envelope.localId))!.savedAt), 'WORKSPACE_BINDING_INVALID');
   });
   it('rejects unsupported class-1 artifact references', async () => {
-    rejected(await store.setBinding({ ...binding(), target: { kind: 'class-1', artifactKey: 'PRIVATE_SENTINEL' } }), 'WORKSPACE_ARTIFACT_UNSUPPORTED');
+    rejected(await store.setBinding({ ...binding(), target: { kind: 'class-1', artifactKey: 'PRIVATE_SENTINEL' } }, value(await store.getDocument(envelope.localId))!.savedAt), 'WORKSPACE_ARTIFACT_UNSUPPORTED');
   });
   it('rejects bindings whose local target is missing', async () => {
-    rejected(await store.setBinding({ ...binding(), target: { kind: 'local', localId: 'missing' as LocalId } }), 'WORKSPACE_DOCUMENT_NOT_FOUND');
+    rejected(await store.setBinding({ ...binding(), target: { kind: 'local', localId: 'missing' as LocalId } }, value(await store.getDocument(envelope.localId))!.savedAt), 'WORKSPACE_DOCUMENT_NOT_FOUND');
   });
   it('rejects outgoing replacements belonging to another document and rolls back save', async () => {
     rejected(await store.saveDocument(envelope.localId, envelope.savedAt, null, document, [{ ...binding(), fromLocalId: 'foreign' as LocalId }]), 'WORKSPACE_BINDING_INVALID');
@@ -178,7 +178,7 @@ describe('aggregate backup export bounds', () => {
 });
 it('redacts uncloneable binding inputs before touching persisted rows', async () => {
   const malformed = { fromLocalId: envelope.localId, pointer: '/catalog', href: 'PRIVATE_SENTINEL', target: { kind: 'local', localId: envelope.localId }, extra: () => 'PRIVATE_SENTINEL' };
-  rejected(await store.setBinding(malformed as WorkspaceBinding), 'WORKSPACE_STORAGE_FAILED');
+  rejected(await store.setBinding(malformed as WorkspaceBinding, value(await store.getDocument(envelope.localId))!.savedAt), 'WORKSPACE_STORAGE_FAILED');
   expect(value(await store.listBindings())).toEqual([]);
 });
 it('rejects a generated local ID equal to the imported document root UUID', async () => {
