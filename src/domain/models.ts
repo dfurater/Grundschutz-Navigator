@@ -384,7 +384,11 @@ export interface Catalog {
   metadata: CatalogMetadataInfo;
   /** All 19 practices */
   practices: Practice[];
-  /** All controls, indexed by ID for O(1) lookup (catalog-internal identity) */
+  /**
+   * All controls, indexed by ID for O(1) lookup (catalog-internal identity).
+   * Duplicate control IDs within one catalog are rejected at parse time, so
+   * every lookup hits exactly one control.
+   */
   controlsById: Map<string, Control>;
   /**
    * All controls indexed by their alt-identifier (canonical URL identity,

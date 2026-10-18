@@ -1240,7 +1240,7 @@ interface Catalog {
 }
 ```
 
-`controlsByAltIdentifier` ist katalogintern vollständig und eindeutig. Der Parser lehnt Kontrollen mit fehlendem oder im selben Katalog doppeltem Alt-Identifier als Integritätsfehler ab. Derselbe Alt-Identifier darf in verschiedenen Katalogen vorkommen, weil die kanonische URL-Identität immer aus `catalogKey + altIdentifier` besteht.
+`controlsById` und `controlsByAltIdentifier` sind katalogintern vollständig und eindeutig. Der Parser lehnt Kontrollen mit im selben Katalog doppelter Control-ID sowie mit fehlendem oder im selben Katalog doppeltem Alt-Identifier als Integritätsfehler ab; die Eindeutigkeit der Control-ID verlangt der Index `catalog-controls` im OSCAL-Katalog-Metaschema. Derselbe Alt-Identifier darf in verschiedenen Katalogen vorkommen, weil die kanonische URL-Identität immer aus `catalogKey + altIdentifier` besteht.
 
 #### Warum jede Identität den `catalogKey` mitführt
 
@@ -1336,7 +1336,7 @@ Der Katalogadapter löst sie über `resolveCatalogKey()` auf und bricht in zwei 
 
 Die vierte Zeile ist dieselbe Regel, die der Dispatch für den Root-Typ mit `OSCAL_ROOT_TYPE_MISMATCH` anwendet.
 
-Beim Aufbau von `controlsByAltIdentifier` failt `parseCatalog` geschlossen, wenn ein Control keinen Alt-Identifier besitzt oder derselbe Wert innerhalb des Katalogs mehrfach vorkommt.
+`parseCatalog` failt geschlossen, wenn eine Control-ID im Quellkatalog mehrfach vorkommt — geprüft über alle `controls` und `groups` in beliebiger Tiefe, auch unterhalb der projizierten Themenebene — oder wenn beim Aufbau von `controlsByAltIdentifier` ein Control keinen Alt-Identifier besitzt oder derselbe Alt-Identifier innerhalb des Katalogs mehrfach vorkommt.
 
 Der Envelope wird hier **nicht** ausgepackt: Welcher Root-Typ vorliegt,
 entscheidet allein der [Root-Dispatch](#root-envelope-und-root-dispatch).
