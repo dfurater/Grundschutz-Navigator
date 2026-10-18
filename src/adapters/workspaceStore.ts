@@ -164,7 +164,7 @@ export class WorkspaceStore {
         await this.documents.put(updated);
         if (bindingSnapshot !== undefined) {
           // Replaces this document's outgoing set, keeping incoming bindings.
-          await this.bindings.filter(binding => binding.fromLocalId === localId).delete();
+          await this.bindings.where('[fromLocalId+pointer]').between([localId, Dexie.minKey], [localId, Dexie.maxKey]).delete();
           for (const binding of bindingSnapshot) {
             if (binding.fromLocalId !== localId) reject('WORKSPACE_BINDING_INVALID');
             await this.putBinding(binding);
@@ -238,7 +238,7 @@ export class WorkspaceStore {
       if (sourceId !== localId) await this.touchDocument(sourceId, stamp);
     }
     await this.bindings.where('target.localId').equals(localId).delete();
-    await this.bindings.filter(binding => binding.fromLocalId === localId).delete();
+    await this.bindings.where('[fromLocalId+pointer]').between([localId, Dexie.minKey], [localId, Dexie.maxKey]).delete();
     await this.drafts.delete(localId);
     await this.documents.delete(localId);
   }
