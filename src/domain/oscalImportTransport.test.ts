@@ -56,6 +56,15 @@ describe('bounded OSCAL source transport', () => {
     const text = new OscalSourceDecoder();
     expect(() => { for (let i = 0;i < 321;i++) text.accept([['string', 'x'.repeat(32768), false]]); }).toThrow();
   });
+  it('applies injected node, depth and text limits instead of the class-2 defaults', () => {
+    const limits = { maxNodes: 3, maxDepth: 2, maxCodeUnits: 4 };
+    const accepted = new OscalSourceDecoder(limits);
+    accepted.accept([['array'], ['string', 'abcd', true], ['value', 1], ['end']]);
+    expect(accepted.finish()).toEqual(['abcd', 1]);
+    expect(() => new OscalSourceDecoder(limits).accept([['array'], ['value', 1], ['value', 2], ['value', 3]])).toThrow();
+    expect(() => new OscalSourceDecoder(limits).accept([['array'], ['array'], ['value', 1]])).toThrow();
+    expect(() => new OscalSourceDecoder(limits).accept([['array'], ['string', 'abcde', true]])).toThrow();
+  });
   it('does not allow using a decoder after finish, failure or disposal', () => {
     for (const action of ['finish', 'fail', 'dispose']) {
       const decoder = new OscalSourceDecoder();

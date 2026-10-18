@@ -28,9 +28,12 @@ export function failure(error: unknown): WorkspaceResult<never> {
 /** Latest instant the bundle grammar admits; it accepts four-digit years only. */
 export const LAST_TIMESTAMP_MS = Date.parse('9999-12-31T23:59:59.999Z');
 
-/** A later stamp would make every following export invalid, so the write aborts and the stored state stays exportable. */
-export function timestamp(previous?: string): string {
+/**
+ * Write stamps end one millisecond before `LAST_TIMESTAMP_MS`; the last one is reserved for the restore stamp, so every
+ * exported bundle stays restorable. A later stamp aborts the write and the stored state stays exportable.
+ */
+export function timestamp(previous?: string, last = LAST_TIMESTAMP_MS - 1): string {
   const value = Math.max(Date.now(), previous ? Date.parse(previous) + 1 : 0);
-  if (value > LAST_TIMESTAMP_MS) reject('WORKSPACE_TIMESTAMP_EXHAUSTED');
+  if (value > last) reject('WORKSPACE_TIMESTAMP_EXHAUSTED');
   return new Date(value).toISOString();
 }

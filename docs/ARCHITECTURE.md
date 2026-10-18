@@ -130,7 +130,7 @@ src/                              # Anwendungsquellcode
 │   ├── oscalDocumentContext.ts       # Vertrauensklasse und Ableitungskontext
 │   ├── oscalImportContract.ts        # Validatorpin, Worker-Timeout, Limit-Diagnosen
 │   ├── oscalImportProcessing.ts      # Byte-Eintrittspunkt mit Herkunftsregister
-│   ├── oscalImportTransport.ts       # Fragmentierter Rückweg des Quellgraphen aus dem Worker
+│   ├── oscalImportTransport.ts       # Fragmentierter Rückweg aus Import- und Backup-Worker
 │   ├── oscalMapping.ts               # Raw-Typen des Roots mapping-collection
 │   ├── oscalObjectGraph.ts           # Objektgraph-Invariante und Ressourcenlimits
 │   ├── oscalObjectPipeline.ts        # Gemeinsame objektorientierte Klasse-2-Prüfkette
@@ -555,7 +555,7 @@ Stufe 3 prüft mit `ajv` 8.20.0 gegen das gepinnte NIST-Schema der von Stufe 2 g
 
 Die Anwendung besitzt keine Dateiauswahl und keine Bearbeitungsoberfläche für eigene Dokumente. Der Klasse-1-Katalogladepfad verwendet die Integritätskette aus [INTEGRITY.md](./INTEGRITY.md).
 
-`src/adapters/workspaceStore.ts` öffnet auf ausdrücklichen Aufruf die IndexedDB-Datenbank `gspp-workspace` mit den Stores `verbuende`, `documents`, `drafts`, `bindings` und `workspaceMeta`. Die Domänentypen liegen in `src/domain/workspaceModel.ts`; `LocalId` und `VerbundId` besitzen getrennte `unique symbol`-Phantommarken. Klasse 1 besitzt dort keinen Inhaltsspeicher; Bindungen enthalten ausschließlich `artifactKey`-Verweise. Der Adapter bietet atomare Schreiboperationen mit `savedAt`-Konfliktprüfung für Dokumente und Entwürfe, Verbund- und Dokumentlöschung, Backup und Wiederherstellung. Unbekannte Lösch-IDs melden `WORKSPACE_DOCUMENT_NOT_FOUND` oder `WORKSPACE_VERBUND_NOT_FOUND`. `src/adapters/workspaceBackup.ts` startet für die Wiederherstellung einen eigenen Modul-Worker; enthaltene Dokumente außerhalb des Zustands `draft` durchlaufen dort einzeln die Klasse-2-Kette `processClass2OscalBytes()`. Speicher-Schema, Ressourcenlimits, Versionswechsel, Export- und Löschgrenzen stehen in [PERSISTENCE.md](./PERSISTENCE.md).
+`src/adapters/workspaceStore.ts` öffnet auf ausdrücklichen Aufruf die IndexedDB-Datenbank `gspp-workspace` mit den Stores `verbuende`, `documents`, `drafts`, `bindings` und `workspaceMeta`. Die Domänentypen liegen in `src/domain/workspaceModel.ts`; `LocalId` und `VerbundId` besitzen getrennte `unique symbol`-Phantommarken. Klasse 1 besitzt dort keinen Inhaltsspeicher; Bindungen enthalten ausschließlich `artifactKey`-Verweise. Der Adapter bietet atomare Schreiboperationen mit `savedAt`-Konfliktprüfung für Dokumente und Entwürfe, Verbund- und Dokumentlöschung, Backup und Wiederherstellung. Unbekannte Lösch-IDs melden `WORKSPACE_DOCUMENT_NOT_FOUND` oder `WORKSPACE_VERBUND_NOT_FOUND`. `src/adapters/workspaceBackup.ts` startet für die Wiederherstellung einen eigenen Modul-Worker; enthaltene Dokumente außerhalb des Zustands `draft` durchlaufen dort einzeln die Klasse-2-Kette `processClass2OscalBytes()`, und das geprüfte Bündel kehrt in quittierten Fragmenten zurück. Speicher-Schema, Ressourcenlimits, Versionswechsel, Export- und Löschgrenzen stehen in [PERSISTENCE.md](./PERSISTENCE.md).
 
 Der separate Sync-Pfad (`scripts/sync-upstream-manifest.mjs` mit `scripts/upstream-artifacts.mjs`) vergleicht die vollständigen normalisierten Trees des bisherigen und des neuen Snapshots. Neue nicht registrierte Pfade werden als `unclassified` gemeldet, ohne ihren Blob zu fetchen oder sie auszuliefern.
 

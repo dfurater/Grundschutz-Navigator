@@ -70,7 +70,7 @@ export class WorkspaceStore {
     } catch (error) { return failure(error); }
   }
 
-  /** Every savedAt written in one transaction is its stamp; workspaceMeta.savedAt therefore bounds every issued comparison value. */
+  /** Every savedAt written in one transaction is its stamp; workspaceMeta.savedAt therefore bounds every issued comparison value. Without `touchMeta` the operation is a restore and issues its own stamp (`restoredStamp()`). */
   private async write<T>(operation: (stamp: string) => Promise<T>, touchMeta = true): Promise<WorkspaceResult<T>> {
     try {
       if (this.db.verno > STORAGE_SCHEMA_VERSION) reject('WORKSPACE_SCHEMA_NEWER');
@@ -78,7 +78,7 @@ export class WorkspaceStore {
         const meta = await this.meta.get('workspace');
         if (!meta || !Number.isInteger(meta.storageSchemaVersion) || meta.storageSchemaVersion < 1) reject('WORKSPACE_SCHEMA_INVALID');
         if (meta.storageSchemaVersion > STORAGE_SCHEMA_VERSION) reject('WORKSPACE_SCHEMA_NEWER');
-        const stamp = timestamp(meta.savedAt);
+        const stamp = touchMeta ? timestamp(meta.savedAt) : meta.savedAt;
         const result = await operation(stamp);
         if (touchMeta) await this.meta.put({ ...meta, savedAt: stamp });
         return result;
