@@ -5,15 +5,13 @@ import {
   useNavigate,
   useLocation,
 } from 'react-router';
+import { AreaSwitch } from '@/components/AreaSwitch';
 import { HeaderBar } from '@/components/HeaderBar';
-import { TreeNav } from '@/components/TreeNav';
 import { Footer } from '@/components/Footer';
-import { ScopeSwitcher } from '@/components/ScopeSwitcher';
 import type { ScopeSwitcherItem } from '@/components/ScopeSwitcher';
 import {
   IconChevronLeft,
   IconChevronRight,
-  IconX,
 } from '@/components/icons';
 import type { TreeItem } from '@/components/TreeNav';
 import { useCatalog } from '@/hooks/useCatalog';
@@ -37,6 +35,8 @@ import {
   buildGroupUrl,
   resolveControlRoute,
 } from '@/app/routes';
+import { ShellSidebar } from '@/app/ShellSidebar';
+import { useShellArea } from '@/app/useShellArea';
 import { useRoutePrefetch } from '@/app/routePrefetch';
 import { NavigationPendingIndicator, NavigationPendingProvider } from '@/app/navigationPending';
 import { MobileNavigationContext } from '@/state/MobileNavigationContext';
@@ -258,6 +258,12 @@ function AppShellLayout() {
 
   const treeItems = useMemo(() => buildTreeItems(catalog), [catalog]);
 
+  const {
+    area, catalogHref, workspaceHref, selectArea, hasAreaNav, navLabel, stations,
+  } = useShellArea(location.pathname, activeCatalogKey, () => {
+    if (mobileNavOpen) setSideNavOpen(false);
+  });
+
   const handleSearch = (term: string) => {
     if (term) {
       void navigate(`/suche?q=${encodeURIComponent(term)}`);
@@ -291,6 +297,15 @@ function AppShellLayout() {
         className="mobile-nav-push"
         obscured={mobileNavOpen}
         onUncover={dismissMobileNav}
+        areaSwitch={(
+          <AreaSwitch
+            active={area}
+            catalogHref={catalogHref}
+            workspaceHref={workspaceHref}
+            onSelect={selectArea}
+            tone="header"
+          />
+        )}
         menuExpanded={mobileNavOpen}
         menuControls={sideNavId}
         menuButtonRef={menuButtonRef}
@@ -329,11 +344,11 @@ function AppShellLayout() {
         {/* Sidebar / Mobile Drawer */}
         <aside
           id={sideNavId}
-          aria-label="Katalog-Explorer"
+          aria-label={area === 'katalog' ? 'Katalog-Explorer' : 'Arbeitsnavigation'}
           inert={!isPersistentNav && !sideNavOpen}
-          className="mobile-nav-drawer
+          className={`mobile-nav-drawer ${hasAreaNav ? '' : 'desktop:hidden '}
             bg-white flex shrink-0 z-40 overflow-hidden touch-pan-y touch-pinch-zoom desktop:touch-auto desktop:z-30 desktop:border-r desktop:border-slate-200
-            absolute left-0 -mt-14 h-dvh desktop:relative desktop:inset-auto desktop:mt-0 desktop:h-auto"
+            absolute left-0 -mt-14 h-dvh desktop:relative desktop:inset-auto desktop:mt-0 desktop:h-auto`}
           ref={drawerRef}
           style={{
             top: drawerPlacement.top,
@@ -350,8 +365,8 @@ function AppShellLayout() {
                 type="button"
                 onClick={() => setSidebarCollapsed(false)}
                 className="rounded p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
-                aria-label="Katalog-Explorer einblenden"
-                title="Katalog-Explorer einblenden"
+                aria-label={`${navLabel} einblenden`}
+                title={`${navLabel} einblenden`}
               >
                 <IconChevronRight className="w-4 h-4" aria-hidden="true" />
               </button>
@@ -362,57 +377,36 @@ function AppShellLayout() {
               className="h-full min-w-0 flex flex-1 flex-col desktop:flex-none"
               style={isPersistentNav ? { width: sidebarWidth } : undefined}
             >
-              {/* Kontextwahl als Kopf: mobil mit Schließen, auf dem Desktop mit Einklappen */}
-              <ScopeSwitcher
-                label="Katalog"
-                items={catalogItems}
-                activeKey={activeCatalogKey}
-                onItemActivate={closeSideNav}
-                trailing={isPersistentNav ? (
+              <ShellSidebar
+                area={area}
+                persistent={isPersistentNav}
+                catalogHref={catalogHref}
+                workspaceHref={workspaceHref}
+                onSelectArea={selectArea}
+                onClose={closeSideNav}
+                collapseButton={(
                   <button
                     type="button"
                     onClick={() => setSidebarCollapsed(true)}
                     className="flex h-8 w-8 shrink-0 items-center justify-center rounded text-slate-400 transition-colors hover:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
-                    aria-label="Katalog-Explorer ausblenden"
-                    title="Katalog-Explorer ausblenden"
+                    aria-label={`${navLabel} ausblenden`}
+                    title={`${navLabel} ausblenden`}
                   >
                     <IconChevronLeft className="w-3.5 h-3.5" />
                   </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={closeSideNav}
-                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded text-slate-400 transition-colors hover:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
-                    aria-label="Menü schließen"
-                  >
-                    <IconX className="w-4 h-4" />
-                  </button>
                 )}
+                catalog={{
+                  items: catalogItems,
+                  activeKey: activeCatalogKey,
+                  treeItems,
+                  selectedId,
+                  loading,
+                  error,
+                  onTreeSelect: handleTreeSelect,
+                }}
+                treeScrollRef={treeScrollRef}
+                workspace={stations}
               />
-
-              {/* TreeNav */}
-              <div ref={treeScrollRef} className="flex-1 overflow-y-auto py-2">
-                {loading && (
-                  <div className="px-4 py-8 text-center">
-                    <div className="inline-block w-5 h-5 border-2 border-slate-300 border-t-primary-main rounded-full animate-spin" />
-                    <p className="text-xs text-slate-500 mt-2">Katalog wird geladen…</p>
-                  </div>
-                )}
-                {error && (
-                  <div className="px-4 py-4 text-center">
-                    <p className="text-xs text-red-600 font-medium">Fehler</p>
-                    <p className="text-xs text-[var(--color-danger-text)] mt-1">{error}</p>
-                  </div>
-                )}
-                {!loading && !error && treeItems.length > 0 && (
-                  <TreeNav
-                    catalogKey={activeCatalogKey}
-                    items={treeItems}
-                    onSelect={handleTreeSelect}
-                    selectedId={selectedId}
-                  />
-                )}
-              </div>
             </div>
           )}
 
@@ -443,7 +437,7 @@ function AppShellLayout() {
             </MobileNavigationContext.Provider>
           </main>
           <div inert={mobileNavOpen} className="mobile-nav-push shrink-0">
-            <Footer />
+            <Footer showVerification={area === 'katalog'} />
           </div>
         </div>
       </div>

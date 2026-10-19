@@ -5,6 +5,12 @@ import { buildVocabularyIndexPath } from '@/app/routes';
 
 export interface FooterProps {
   readonly className?: string;
+  /**
+   * Integritätsanzeige des aktiven Katalogs. Im Bereich Informationsverbünde
+   * entfällt sie, damit sie nicht als Prüfaussage über eigene Daten gelesen
+   * wird (ADR-11 §4).
+   */
+  readonly showVerification?: boolean;
 }
 
 const secondaryFooterLinks = [
@@ -15,7 +21,7 @@ const secondaryFooterLinks = [
   { to: '/impressum', label: 'Impressum' },
 ] as const;
 
-export function Footer({ className = '' }: FooterProps) {
+export function Footer({ className = '', showVerification = true }: FooterProps) {
   const { verification } = useCatalog();
   const verified = verification?.valid;
 
@@ -46,7 +52,7 @@ export function Footer({ className = '' }: FooterProps) {
             <IconExternalLink className="h-3 w-3 shrink-0" aria-hidden="true" />
             <span className="sr-only"> (öffnet in neuem Tab)</span>
           </a>
-          {verified !== undefined && (
+          {showVerification && verified !== undefined && (
             <Link
               to="/about"
               className={`inline-flex min-h-8 shrink-0 items-center gap-1 whitespace-nowrap rounded font-medium desktop:min-h-6 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)] ${verified ? 'text-[var(--color-success-text)]' : 'text-[var(--color-warning-text)]'}`}

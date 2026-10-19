@@ -98,6 +98,14 @@ export class WorkspaceStore {
     } catch (error) { return failure(error); }
   }
 
+  /** `newer`: the stored schema is above this build's version; writes stay locked, reading and the global export remain. */
+  async schemaStatus(): Promise<WorkspaceResult<'current' | 'newer'>> {
+    if (this.db.verno > STORAGE_SCHEMA_VERSION) return { ok: true, value: 'newer' };
+    const meta = await this.read(['workspaceMeta'], () => this.meta.get('workspace'));
+    if (!meta.ok) return meta;
+    return { ok: true, value: (meta.value?.storageSchemaVersion ?? 0) > STORAGE_SCHEMA_VERSION ? 'newer' : 'current' };
+  }
+
   listVerbuende(): Promise<WorkspaceResult<WorkspaceVerbund[]>> { return this.read(['verbuende'], () => this.verbuende.toArray()); }
   listDocuments(verbundId?: VerbundId): Promise<WorkspaceResult<WorkspaceDocumentSummary[]>> {
     return this.read(['documents'], async () => {

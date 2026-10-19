@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { KeyboardEvent, RefObject } from 'react';
+import type { KeyboardEvent, ReactNode, RefObject } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { FOCUS_SEARCH_STATE } from '@/app/searchFocus';
 import { dismissModalDialogs } from '@/hooks/useModalDialog';
@@ -26,6 +26,8 @@ export interface HeaderBarProps {
    * `obscured` oder durch einen Dialog inert, wartet der Fokus auf die Freigabe.
    */
   readonly onUncover?: () => void;
+  /** Bereichswechsel auf der rechten Seite; nur auf dem Desktop, sonst trägt ihn die Schublade. */
+  readonly areaSwitch?: ReactNode;
   readonly className?: string;
 }
 
@@ -66,6 +68,7 @@ export function HeaderBar({
   menuButtonRef,
   obscured = false,
   onUncover,
+  areaSwitch,
   className = '',
 }: HeaderBarProps) {
   const [searchValue, setSearchValue] = useState('');
@@ -134,7 +137,7 @@ export function HeaderBar({
     <header
       role="banner"
       data-sticky-header
-      className={`header-reference-theme sticky top-0 z-30 grid h-14 shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-4 sm:grid-cols-[max-content_minmax(0,36rem)] sm:gap-0 xl:grid-cols-[1fr_minmax(0,36rem)_1fr] ${className}`}
+      className={`header-reference-theme sticky top-0 z-30 grid h-14 shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-4 sm:grid-cols-[max-content_minmax(0,36rem)] sm:gap-0 desktop:max-xl:grid-cols-[max-content_minmax(0,36rem)_max-content] xl:grid-cols-[1fr_minmax(0,36rem)_1fr] ${className}`}
       data-testid="header-bar"
     >
       {/* Hamburger + Brand — grouped as one visual unit */}
@@ -196,6 +199,12 @@ export function HeaderBar({
       >
         <IconSearch className="h-5 w-5" />
       </Link>
+
+      {areaSwitch && (
+        <div inert={obscured} className="hidden justify-self-end desktop:flex">
+          {areaSwitch}
+        </div>
+      )}
     </header>
   );
 }

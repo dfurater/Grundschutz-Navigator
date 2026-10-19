@@ -1,0 +1,140 @@
+import { buildWorkspaceGraph } from '@/domain/workspaceGraph';
+import type { WorkspaceGraphEdge } from '@/domain/workspaceGraphModel';
+import type { OscalRootKey } from '@/domain/oscalVersionMatrix';
+import type {
+  DocumentState, LocalId, VerbundId, WorkspaceEnvelope, WorkspaceResult, WorkspaceVerbund,
+} from '@/domain/workspaceModel';
+import type { WorkspaceStore } from '@/adapters/workspaceStore';
+
+/** Die Speicheroperationen, die der Bereich Informationsverbünde nutzt. */
+export type WorkspacePort = Pick<WorkspaceStore,
+  | 'schemaStatus' | 'listVerbuende' | 'listDocuments' | 'getDocument' | 'listBindings'
+  | 'createVerbund' | 'renameVerbund' | 'deleteVerbund' | 'exportBackup' | 'estimate' | 'close'>;
+
+export interface WorkspaceDocumentView {
+  readonly localId: LocalId;
+  readonly rootType: OscalRootKey;
+  readonly oscalVersion: string;
+  readonly documentState: DocumentState;
+  /** `metadata.title`, nur für den Seiteninhalt. */
+  readonly title?: string;
+}
+
+export interface WorkspaceEdgeView {
+  readonly kind: WorkspaceGraphEdge['kind'];
+  /** JSON Pointer des Verweisfelds im Ausgangsdokument. */
+  readonly path: string;
+  readonly state: WorkspaceGraphEdge['state'];
+  /** Wert des Verweisfelds, nur für den Seiteninhalt. */
+  readonly href?: string;
+  readonly targetLocalId?: LocalId;
+  readonly diagnosticCode?: string;
+}
+
+export interface WorkspaceDiagnosticView {
+  readonly code: string;
+  readonly path: string;
+}
+
+export interface VerbundView {
+  readonly verbund: WorkspaceVerbund;
+  readonly documents: readonly WorkspaceDocumentView[];
+  readonly edges: ReadonlyMap<LocalId, readonly WorkspaceEdgeView[]>;
+  readonly diagnostics: readonly WorkspaceDiagnosticView[];
+}
+
+/** Feste Anzeigereihenfolge entlang der Stationen; gleicher Typ nach Titel, dann `localId`. */
+const ROOT_ORDER: readonly OscalRootKey[] = [
+  'profile', 'system-security-plan', 'assessment-plan', 'assessment-results',
+  'plan-of-action-and-milestones', 'component-definition', 'catalog', 'mapping-collection',
+];
+
+function compareDocuments(a: WorkspaceDocumentView, b: WorkspaceDocumentView): number {
+  return ROOT_ORDER.indexOf(a.rootType) - ROOT_ORDER.indexOf(b.rootType)
+    || (a.title ?? '').localeCompare(b.title ?? '', 'de')
+    || a.localId.localeCompare(b.localId);
+}
+
+function record(value: unknown): Record<string, unknown> | undefined {
+  return value !== null && typeof value === 'object' ? value as Record<string, unknown> : undefined;
+}
+
+function documentTitle(envelope: WorkspaceEnvelope): string | undefined {
+  const title = record(record(record(envelope.source)?.[envelope.rootType])?.metadata)?.title;
+  return typeof title === 'string' ? title : undefined;
+}
+
+/** Liest einen Zeichenkettenwert per JSON Pointer; jeder andere Fund ergibt `undefined`. */
+function pointerString(source: unknown, pointer: string): string | undefined {
+  let value: unknown = source;
+  for (const segment of pointer.slice(1).split('/')) {
+    const container = record(value);
+    const key = segment.replaceAll('~1', '/').replaceAll('~0', '~');
+    if (!container || !Object.hasOwn(container, key)) return undefined;
+    value = container[key];
+  }
+  return typeof value === 'string' ? value : undefined;
+}
+
+function edgeView(edge: WorkspaceGraphEdge, source: unknown): WorkspaceEdgeView {
+  return {
+    kind: edge.kind,
+    path: edge.path,
+    state: edge.state,
+    href: pointerString(source, edge.path),
+    targetLocalId: edge.to?.document.kind === 'local' ? edge.to.document.localId : undefined,
+    diagnosticCode: edge.diagnostic?.code,
+  };
+}
+
+/**
+ * Baut die Ansicht eines Informationsverbunds aus dem Speicher. Die
+ * Quellgraphen dienen nur dem Dokumentgraphen und werden danach entlassen;
+ * die Ansicht hält Envelopemetadaten, Titel, Kanten und Diagnosen.
+ * `value: null` heißt: Den Verbund gibt es nicht.
+ */
+export async function loadVerbundView(port: WorkspacePort, verbundId: VerbundId): Promise<WorkspaceResult<VerbundView | null>> {
+  const verbuende = await port.listVerbuende();
+  if (!verbuende.ok) return verbuende;
+  const verbund = verbuende.value.find((entry) => entry.verbundId === verbundId);
+  if (!verbund) return { ok: true, value: null };
+  const summaries = await port.listDocuments(verbundId);
+  if (!summaries.ok) return summaries;
+  const members: WorkspaceEnvelope[] = [];
+  for (const summary of summaries.value) {
+    const document = await port.getDocument(summary.localId);
+    if (!document.ok) return document;
+    if (document.value) members.push(document.value);
+  }
+  const bindings = await port.listBindings();
+  if (!bindings.ok) return bindings;
+  const memberIds = new Set<string>(members.map((member) => member.localId));
+  const graph = await buildWorkspaceGraph({
+    members,
+    bindings: bindings.value.filter((binding) => memberIds.has(binding.fromLocalId)),
+  });
+  const sources = new Map<string, unknown>(members.map((member) => [member.localId, member.source]));
+  const edges = new Map<LocalId, WorkspaceEdgeView[]>();
+  for (const edge of graph.edges) {
+    if (edge.from.document.kind !== 'local') continue;
+    const localId = edge.from.document.localId;
+    const list = edges.get(localId) ?? [];
+    list.push(edgeView(edge, sources.get(localId)));
+    edges.set(localId, list);
+  }
+  return {
+    ok: true,
+    value: {
+      verbund,
+      documents: members.map((member) => ({
+        localId: member.localId,
+        rootType: member.rootType,
+        oscalVersion: member.oscalVersion,
+        documentState: member.documentState,
+        title: documentTitle(member),
+      })).sort(compareDocuments),
+      edges,
+      diagnostics: graph.diagnostics.map(({ code, path }) => ({ code, path })),
+    },
+  };
+}

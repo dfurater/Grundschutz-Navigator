@@ -186,11 +186,11 @@ describe('DatenschutzPage', () => {
       expect(container).not.toHaveTextContent(/Sie bestimmen die Speicherdauer/);
     });
 
-    it('erläutert Löschumfang und Grenzen ohne vorhandene Bedienelemente zu versprechen', () => {
+    it('erläutert Löschumfang und Grenzen genau mit den vorhandenen Bedienelementen', () => {
       const { container } = render(<DatenschutzPage />);
 
-      expect(container).toHaveTextContent(/einzelne Dokumente, alle Daten eines Verbunds oder sämtliche gespeicherten Daten vollständig löschen/);
-      expect(container).toHaveTextContent(/Bedienelemente zum Speichern, Löschen und Exportieren eigener Dokumente sind derzeit nicht verfügbar/);
+      expect(container).toHaveTextContent(/Informationsverbund mit allen zugehörigen Dokumenten vollständig löschen und eine Sicherungsdatei aller gespeicherten Daten exportieren/);
+      expect(container).toHaveTextContent(/einzelne Dokumente oder sämtliche gespeicherten Daten vollständig löschen; Bedienelemente dafür sind derzeit nicht verfügbar/);
       expect(container).toHaveTextContent(/Bereits exportierte Dateien werden dadurch nicht gelöscht/);
     });
 
@@ -210,7 +210,7 @@ describe('DatenschutzPage', () => {
       const { container } = render(<DatenschutzPage />);
 
       expect(container).toHaveTextContent(/Betreiber hat keine Kopie/);
-      expect(container).toHaveTextContent(/Export ist die einzige Sicherung/);
+      expect(container).toHaveTextContent(/exportierte Sicherungsdatei ist die einzige Sicherung/);
     });
 
     it('verwendet keine internen Projektbegriffe und nummeriert die Abschnitte fortlaufend', () => {
