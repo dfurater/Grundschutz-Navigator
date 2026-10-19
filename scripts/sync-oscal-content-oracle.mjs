@@ -72,7 +72,7 @@ const ARTIFACTS = [
     'ifa_assessment-plan-min.json',
     'ifa_assessment-plan.json',
   ].map(fileName => ({
-    artifactKey: `nist-ap-${fileName.replace(/\.json$/, '')}`,
+    artifactKey: `nist-ap-${fileName.replace(/\.json$/, '').replaceAll('_', '-')}`,
     role: 'example',
     remotePath: `examples/ap/json/${fileName}`,
     fileName,

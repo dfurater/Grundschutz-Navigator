@@ -219,7 +219,9 @@ export function deriveAssessmentPlan(
       remarks: stringField(local, 'remarks', lp, state),
     },
     termsAndConditions:
-      terms === null ? [] : parts(terms, `${AP_BASE_PATH}/terms-and-conditions`, state, true),
+      terms === null
+        ? []
+        : parts(terms, `${AP_BASE_PATH}/terms-and-conditions`, state, { assessmentPart: true }),
     assessmentSubjects: subjects(root, 'assessment-subjects', AP_BASE_PATH, state),
     assessmentAssets,
     tasks: tasks(root, AP_BASE_PATH, state),

@@ -7,10 +7,9 @@ import type {
 } from '@/domain/oscalRootDocument';
 import type { ResolvedOscalReference } from '@/domain/referenceResolution';
 import type { ComponentSourceCatalogBinding } from '@/domain/componentDefinitionModel';
-import type { Control } from '@/domain/models';
+import type { Control, OscalDocumentContext } from '@/domain/models';
 import type { CatalogKey } from '@/domain/sourceRegistry';
 import type { SystemSecurityPlan } from '@/domain/systemSecurityPlanModel';
-import type { OscalDocumentContext } from '@/domain/models';
 
 export const ASSESSMENT_PLAN_ROOT_TYPE = 'assessment-plan' as const;
 export type ApReference =

@@ -27,13 +27,16 @@ export function parts(
   node: JsonObject,
   path: string,
   state: ApDeriveState,
-  terms = false,
+  {
+    assessmentPart = false,
+    validateTermNames = assessmentPart,
+  }: { assessmentPart?: boolean; validateTermNames?: boolean } = {},
 ): readonly ApPart[] {
   return readObjectArrayField(node, 'parts', path, state).map(({ node: part, path: p }) => {
     const name = stringField(part, 'name', p, state, true);
     const ns = stringField(part, 'ns', p, state);
     if (
-      terms &&
+      validateTermNames &&
       (part.ns === undefined || ns === OSCAL_NAMESPACE) &&
       name !== undefined &&
       !TERM_NAMES.has(name)
@@ -41,14 +44,14 @@ export function parts(
       diagnose(state, 'PART_NAME_UNEXPECTED', `${p}/name`);
     return {
       ...readElements(part, p, state, false),
-      uuid: terms ? stringField(part, 'uuid', p, state) : undefined,
-      id: terms ? undefined : stringField(part, 'id', p, state),
+      uuid: assessmentPart ? stringField(part, 'uuid', p, state) : undefined,
+      id: assessmentPart ? undefined : stringField(part, 'id', p, state),
       name,
       ns,
       class: stringField(part, 'class', p, state),
       title: stringField(part, 'title', p, state),
       prose: stringField(part, 'prose', p, state),
-      parts: parts(part, p, state, terms),
+      parts: parts(part, p, state, { assessmentPart, validateTermNames: false }),
     };
   });
 }

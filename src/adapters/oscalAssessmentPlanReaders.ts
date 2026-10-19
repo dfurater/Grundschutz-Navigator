@@ -107,6 +107,7 @@ export function componentEntity(node: JsonObject, path: string, state: ApDeriveS
   };
 }
 export function userEntity(node: JsonObject, path: string, state: ApDeriveState) {
+  checkIdentityArray(node, 'role-ids', 'role', path, state);
   return {
     ...entity(node, path, state),
     shortName: stringField(node, 'short-name', path, state),
@@ -212,10 +213,27 @@ export function controlReference(
   }
   return { status: 'resolved', catalogKey: binding.catalogKey, control };
 }
+/** Prüft die Quellindizes auch dann korrekt, wenn Strukturleser ungültige Einträge auslassen. */
+function checkIdentityArray(
+  node: JsonObject,
+  key: 'role-ids' | 'party-uuids',
+  type: 'role' | 'party',
+  path: string,
+  state: ApDeriveState,
+): void {
+  const values = node[key];
+  if (!Array.isArray(values)) return;
+  const code = type === 'role' ? 'ROLE_REFERENCE_UNRESOLVED' : 'PARTY_REFERENCE_UNRESOLVED';
+  values.forEach((value: unknown, index) => {
+    if (typeof value === 'string')
+      reference(state, type, value, `${path}/${key}/${index}`, true, code);
+  });
+}
 export function responsibleRoles(node: JsonObject, path: string, state: ApDeriveState) {
   return readObjectArrayField(node, 'responsible-roles', path, state).flatMap(
     ({ node: role, path: rolePath }) => {
       const roleId = stringField(role, 'role-id', rolePath, state, true);
+      checkIdentityArray(role, 'party-uuids', 'party', rolePath, state);
       if (roleId === undefined) return [];
       return [
         {

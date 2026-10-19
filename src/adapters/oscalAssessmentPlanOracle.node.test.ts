@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
+import { hasRegistryKeyGrammar } from '@/domain/sourceRegistry';
 import {
   parseAssessmentPlanDocument,
   validateAssessmentPlanSchema,
@@ -13,11 +14,12 @@ describe('NIST-Assessment-Plan-Orakel', () => {
   it('prüft vier gepinnte Beispiele offline gegen die eigene Schemazelle', async () => {
     const directory = 'src/test/fixtures/oscal-content-v1.5.0/';
     const manifest = JSON.parse(readFileSync(`${directory}ORACLE_MANIFEST.json`, 'utf8')) as {
-      files: { fileName: string; sha256: string; remotePath: string }[];
+      files: { fileName: string; sha256: string; remotePath: string; artifactKey: string }[];
     };
     const examples = manifest.files.filter((f) => f.remotePath.startsWith('examples/ap/json/'));
     expect(examples).toHaveLength(4);
     for (const entry of examples) {
+      expect(hasRegistryKeyGrammar(entry.artifactKey), entry.artifactKey).toBe(true);
       const buffer = readFileSync(directory + entry.fileName);
       expect(createHash('sha256').update(buffer).digest('hex')).toBe(entry.sha256);
       const document = parse(JSON.parse(buffer.toString()));
