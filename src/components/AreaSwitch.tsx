@@ -22,7 +22,7 @@ const TONE = {
     list: 'flex gap-0.5 rounded-md bg-[var(--header-surface)] p-0.5',
     entry: 'flex',
     item: 'flex min-h-8 items-center rounded px-3 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--header-focus-ring)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--header-bg)]',
-    active: 'bg-[var(--header-bg)] font-semibold text-[var(--header-text)]',
+    active: 'bg-[var(--color-accent-soft)] font-semibold text-[var(--color-accent-default)]',
     idle: 'text-[var(--header-text-muted)] hover:text-[var(--header-text)]',
   },
   drawer: {
