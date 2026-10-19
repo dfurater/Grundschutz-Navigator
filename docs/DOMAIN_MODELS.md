@@ -753,9 +753,12 @@ Aussagen und macht sie navigierbar — er bewertet sie nicht.
 Keine Struktur des Modells trägt ein Status-, Reifegrad- oder Umsetzungsfeld:
 weder `component-definition` noch `defined-component`, `capability`,
 `control-implementation`, `implemented-requirement` oder `statement`.
-`implementation-status` existiert nur im SSP. Eine Component Definition kann
-deshalb keine Umsetzungs-, Wirksamkeits- oder Abdeckungsaussage tragen, und die
-Projektion leitet keine ab.
+`implementation-status` existiert nur im SSP. Die `description` einer
+`implemented-requirement` ist laut Schema ein Vorschlag des Anbieters, wie die
+Anforderung umgesetzt werden kann, sobald die Komponente in einem SSP
+eingesetzt wird; die Projektion übernimmt sie als Text. Ob eine Anforderung
+umgesetzt, wirksam oder abgedeckt ist, steht in keinem Feld des Modells, und
+die Projektion leitet es nicht ab.
 
 Der fachliche Nutzen ist Navigierbarkeit („welche Kontrollen adressiert
 Komponente X", „welche Komponenten adressieren Kontrolle Y"). Nach NIST sind
@@ -875,8 +878,12 @@ Ein unbekannter Wert erzeugt keine Diagnose. Fehlt `type`, fehlt auch
 
 ### Import-Kante `import-component-definitions`
 
-`import-component-definitions[].href` ist neben `profile.imports` die einzige
-Kante zwischen zwei Dokumenten desselben Root-Typs. Der Adapter klassifiziert
+`import-component-definitions[].href` verbindet zwei Component Definitions.
+Im Informationsverbund verbinden drei Kantenarten Dokumente desselben
+Root-Typs und können deshalb Zykel bilden: `profile-import`,
+`component-import` und `ssp-leveraged-authorization`
+(`leveraged-authorizations/*/links` mit `rel: 'system-security-plan'`).
+`markWorkspaceCycles()` prüft genau diese drei. Der Adapter klassifiziert
 jeden `href` über `src/domain/referenceResolution.ts` und lädt nichts nach. Im
 Informationsverbund wird die Kante zu `component-import`
 (`src/domain/workspaceEdges.ts`): Ein absoluter `href` ist `external`, auch mit

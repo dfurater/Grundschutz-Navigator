@@ -737,6 +737,21 @@ describe('Projektion', () => {
     expect(requirement?.remarks).toBe('Bemerkung zur Anforderung.');
   });
 
+  it.each([
+    ['ohne type', undefined],
+    ['mit nicht-textuellem type', 42],
+  ])('lässt typeVocabulary bei einer Komponente %s weg', (_case, type) => {
+    const source = structuredClone(makeRichComponentDefinitionSource());
+    const [component] = (source['component-definition'] as { components: Record<string, unknown>[] }).components;
+    if (type === undefined) Reflect.deleteProperty(component, 'type');
+    else component.type = type;
+
+    const [projected] = parseComponentDefinitionDocument(source, context).view.components;
+    expect(projected).toBeDefined();
+    expect(projected?.type).toBeUndefined();
+    expect(projected?.typeVocabulary).toBeUndefined();
+  });
+
   it('führt incorporates-components der Capability', () => {
     const { view } = parseComponentDefinitionDocument(
       makeRichComponentDefinitionSource(),
