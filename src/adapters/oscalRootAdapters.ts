@@ -2,8 +2,8 @@
 // Adapter-Registrierung je OSCAL-Root-Typ (GSPP-285)
 //
 // Der Root-Dispatch erkennt alle acht Root-Typen. Einen Modelladapter haben
-// `catalog`, `profile`, `mapping-collection`, `component-definition` und
-// `system-security-plan`. Diese Trennung ist bewusst sichtbar: Ein bekanntes
+// `catalog`, `profile`, `mapping-collection`, `component-definition`,
+// `system-security-plan` und `assessment-plan`. Ein bekanntes
 // Modell ohne Adapter ist etwas anderes als ein unbekannter Root und bekommt
 // eine eigene Diagnose.
 //
@@ -14,6 +14,8 @@
 // Root-Erkennung, Versionsbindung und Diagnosevertrag, nicht das Parsing.
 // =============================================================================
 
+import { deriveAssessmentPlan } from '@/adapters/oscalAssessmentPlanAdapter';
+import type { AssessmentPlan } from '@/domain/assessmentPlanModel';
 import { parseCatalog } from '@/adapters/oscalAdapter';
 import {
   COMPONENT_DEFINITION_ROOT_TYPE,
@@ -165,6 +167,12 @@ export const sspRootAdapter: OscalRootAdapter<SystemSecurityPlan> = Object.freez
     deriveSystemSecurityPlan(body, context),
 });
 
+export const assessmentPlanRootAdapter: OscalRootAdapter<AssessmentPlan> = Object.freeze({
+  rootType: 'assessment-plan',
+  moduleEntryPoint: 'src/adapters/oscalAssessmentPlanAdapter.ts',
+  derive: (body: unknown, context: OscalDocumentContext) => deriveAssessmentPlan(body, context),
+});
+
 /** Registrierte Modelladapter. Ein neues Modell ergänzt hier genau eine Zeile. */
 const OSCAL_ROOT_ADAPTERS: ReadonlyMap<OscalRootKey, OscalRootAdapter> = new Map<
   OscalRootKey,
@@ -175,6 +183,7 @@ const OSCAL_ROOT_ADAPTERS: ReadonlyMap<OscalRootKey, OscalRootAdapter> = new Map
   [profileRootAdapter.rootType, profileRootAdapter],
   [mappingCollectionRootAdapter.rootType, mappingCollectionRootAdapter],
   [sspRootAdapter.rootType, sspRootAdapter],
+  [assessmentPlanRootAdapter.rootType, assessmentPlanRootAdapter],
 ]);
 
 export function getOscalRootAdapter(rootType: OscalRootKey): OscalRootAdapter | null {

@@ -183,7 +183,7 @@ describe('NIST-Orakel — usnistgov/oscal-content @ v1.5.0', () => {
     source: { commit: string };
     files: { artifactKey: string; role: string; fileName: string; sha256: string; sizeBytes: number }[];
   };
-  const examples = manifest.files.filter((file) => file.role === 'example');
+  const examples = manifest.files.filter((file) => file.role === 'example' && file.artifactKey.startsWith('nist-ssp-'));
 
   function load(fileName: string): unknown {
     return JSON.parse(readFileSync(join(directory, fileName), 'utf8'));

@@ -173,6 +173,9 @@ src/                              # Anwendungsquellcode
 │   ├── sourceRegistry.mjs            # Verbindlicher Upstream-/Katalogvertrag
 │   ├── sourceRegistry.ts             # Typsicherer Einstieg in sourceRegistry.mjs
 │   ├── statementSegments.ts          # Reine Segmentierung des Anforderungssatzes
+│   ├── __snapshots__/             # Pfadbasierter Versionsdrift des Assessment-Plan-Schemas
+│   ├── oscalAssessmentPlan.ts       # Versionierte Raw-Typen des Assessment Plans
+│   ├── assessmentPlanModel.ts       # Projektion des Prüfplans und explizite SSP-/Katalogbindung
 │   ├── systemSecurityPlanModel.ts    # Domänenmodell des SSP
 │   ├── systemSecurityPlanSystemModel.ts # Domänenmodell der SSP-Systembeschreibung
 │   ├── taxonomyVocabulary.ts         # Auflösung von Praktiken und Themen
@@ -211,6 +214,11 @@ src/                              # Anwendungsquellcode
 │   ├── oscalRootAdapters.ts          # Adapter-Registrierung je Root-Typ
 │   ├── oscalRootDocumentParse.ts     # Root-Dispatch mit Root-Typ-Schranke für alle Dokumenteinstiege
 │   ├── oscalRootDocumentSchema.ts    # Stufe 3 für geparste Root-Dokumente, getrennt vom Katalogpfad
+│   ├── oscalAssessmentPlanAdapter.ts # Assessment-Plan-Projektion, ausschließlich Klasse 2
+│   ├── oscalAssessmentPlanDocument.ts # Verlustfreier Dokumenteinstieg Assessment Plan
+│   ├── oscalAssessmentPlanReaders.ts # Strukturleser, Identitätsindizes und Diagnosen
+│   ├── oscalAssessmentPlanSelections.ts # Control-Auswahl, Prüfsubjekte und Teile
+│   ├── oscalAssessmentPlanTasks.ts   # Aktivitäten und rekursive Aufgaben
 │   ├── oscalSspAdapter.ts            # Projektion des SSP, nur Vertrauensklasse 2
 │   ├── oscalSspControl.ts            # SSP-Projektion von control-implementation
 │   ├── oscalSspDocument.ts           # Verlustfreier Dokumenteinstieg SSP

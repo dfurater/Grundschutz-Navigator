@@ -122,8 +122,8 @@ seine Versionsbindung gilt die
 
 * Alle **acht** Root-Modelle sind geführt. Der No-op-Lauf benötigt **keinen**
   Root-Adapter — er vergleicht geparsten Graphen und Serialisierung; deshalb
-  sind auch die drei ohne registrierten Adapter (`assessment-plan`,
-  `assessment-results`, `plan-of-action-and-milestones`) abgedeckt. Stufe 5
+  sind auch die zwei ohne registrierten Adapter (`assessment-results`,
+  `plan-of-action-and-milestones`) abgedeckt. Stufe 5
   läuft im Harnisch ausschließlich für `catalog`; für alle übrigen Roots meldet
   sie nach bestandener Stufe 3 `not-available`.
 * Je Modell ein Maximaldokument mit den verlustkritischen Strukturen:
