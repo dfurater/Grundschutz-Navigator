@@ -6,9 +6,13 @@ import {
   CATALOG_ROUTE_PATTERN,
   CONTROL_ROUTE_PATTERN,
   GROUP_ROUTE_PATTERN,
+  STATION_ROUTE_PATTERN,
+  VERBUND_ROUTE_PATTERN,
   VOCABULARY_DETAIL_ROUTE_PATTERN,
+  WORKSPACE_DOCUMENT_ROUTE_PATTERN,
+  WORKSPACE_INDEX_PATH,
 } from '@/app/routes';
-import type { LazyPage } from '@/app/lazyPage';
+import { lazyPage, type LazyPage } from '@/app/lazyPage';
 import { PageScroll } from '@/app/PageScroll';
 import { PageTitle } from '@/app/PageTitle';
 import { PAGE_TITLES } from '@/app/pageTitles';
@@ -30,9 +34,20 @@ import { VocabularyNamespacePage } from '@/app/vocabularyDetailPage';
  * auch der Kernrouten, ersetzen nur den Inhalt von `<main>`.
  */
 
+// Bereich Informationsverbünde (GSPP-577): eigener Chunk, der Katalogpfad lädt ihn nicht.
+const VerbundOverviewPage = lazyPage(() =>
+  import('@/features/workspace/VerbundOverviewPage').then((m) => ({ default: m.VerbundOverviewPage })));
+const VerbundPage = lazyPage(() =>
+  import('@/features/workspace/VerbundPage').then((m) => ({ default: m.VerbundPage })));
+const DocumentReferenceDetailPage = lazyPage(() =>
+  import('@/features/workspace/DocumentReferenceDetail').then((m) => ({ default: m.DocumentReferenceDetailPage })));
+
 /** Titel einer Seite, deren Inhalt noch nicht steht oder ausgefallen ist. */
 export function pendingTitle(pathname: string): string | undefined {
   if (matchPath(VOCABULARY_DETAIL_ROUTE_PATTERN, pathname)) return PAGE_TITLES.vocabularies;
+  if (matchPath(WORKSPACE_INDEX_PATH, pathname)) return PAGE_TITLES.workspace;
+  if (matchPath(WORKSPACE_DOCUMENT_ROUTE_PATTERN, pathname)) return PAGE_TITLES.workspaceDocument;
+  if (matchPath(VERBUND_ROUTE_PATTERN, pathname) || matchPath(STATION_ROUTE_PATTERN, pathname)) return PAGE_TITLES.verbund;
   return STATIC_PAGE_ROUTES.find((route) => matchPath(route.path, pathname))?.title;
 }
 
@@ -92,6 +107,11 @@ export const PAGE_ROUTES: RouteObject[] = [
   { path: CATALOG_ROUTE_PATTERN, element: <CatalogBrowser /> },
   // Das Vokabulardetail setzt seinen Titel selbst, sobald der Namensraum aufgelöst ist.
   lazyRoute(VOCABULARY_DETAIL_ROUTE_PATTERN, VocabularyNamespacePage, { withTitle: false }, PAGE_TITLES.vocabularies),
+  // Arbeitsrouten setzen ihren festen Titel selbst, auch im Nicht-gefunden-Zustand.
+  lazyRoute(WORKSPACE_INDEX_PATH, VerbundOverviewPage, { withTitle: false }, PAGE_TITLES.workspace),
+  lazyRoute(VERBUND_ROUTE_PATTERN, VerbundPage, { withTitle: false }, PAGE_TITLES.verbund),
+  lazyRoute(STATION_ROUTE_PATTERN, VerbundPage, { withTitle: false }, PAGE_TITLES.verbund),
+  lazyRoute(WORKSPACE_DOCUMENT_ROUTE_PATTERN, DocumentReferenceDetailPage, { withTitle: false }, PAGE_TITLES.workspaceDocument),
   { path: '/mehr', element: <><PageTitle title={PAGE_TITLES.about} /><Navigate to="/about" replace /></> },
   { path: '*', element: NOT_FOUND },
 ];

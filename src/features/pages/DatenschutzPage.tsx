@@ -147,18 +147,20 @@ export function DatenschutzPage() {
           Browser-Einstellungen entfernen.
         </p>
         <p className="catalog-prose-text text-sm text-slate-700 leading-relaxed">
-          Über die technische Schnittstelle lassen sich einzelne Dokumente, alle
-          Daten eines Verbunds oder sämtliche gespeicherten Daten vollständig
-          löschen. Bedienelemente zum Speichern, Löschen und Exportieren eigener
-          Dokumente sind derzeit nicht verfügbar. Über die Browser-Einstellungen
-          können Sie sämtliche lokalen Daten dieser Anwendung entfernen.
+          Im Bereich Informationsverbünde können Sie einen Informationsverbund
+          mit allen zugehörigen Dokumenten vollständig löschen und eine
+          Sicherungsdatei aller gespeicherten Daten exportieren. Über die
+          technische Schnittstelle lassen sich zudem einzelne Dokumente oder
+          sämtliche gespeicherten Daten vollständig löschen; Bedienelemente dafür
+          sind derzeit nicht verfügbar. Über die Browser-Einstellungen können
+          Sie sämtliche lokalen Daten dieser Anwendung entfernen.
           Bereits exportierte Dateien werden dadurch nicht gelöscht; das gilt
           auch für deren Kopien, etwa in Betriebssystem-Backups oder bei Dritten.
         </p>
         <p className="catalog-prose-text text-sm text-slate-700 leading-relaxed">
           Der Betreiber hat keine Kopie Ihrer gespeicherten Dokumente und kann
-          sie nicht wiederherstellen. Der über die technische Schnittstelle
-          erzeugte Export ist die einzige Sicherung. Ohne eine solche Datei
+          sie nicht wiederherstellen. Die exportierte Sicherungsdatei ist die
+          einzige Sicherung. Ohne eine solche Datei
           gehen die Dokumente beim Verlust des Geräts oder Browserprofils verloren.
         </p>
       </section>

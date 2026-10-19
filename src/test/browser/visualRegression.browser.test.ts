@@ -7,8 +7,10 @@ import { afterEach, describe, expect, inject, test } from 'vitest';
 import { page } from 'vitest/browser';
 import { AppShell } from '@/app/AppShell';
 import { createAppRoutes } from '@/app/appRoutes';
-import { buildCatalogUrl, buildControlUrl } from '@/app/routes';
+import { buildCatalogUrl, buildControlUrl, buildVerbundUrl, buildWorkspaceIndexUrl } from '@/app/routes';
 import { CatalogContext } from '@/state/CatalogContext';
+import { WorkspaceProvider } from '@/state/WorkspaceContext';
+import { resetWorkspace, seedWorkspace } from '@/test/workspaceAreaFixture';
 import { ENTRY_CATALOG_KEY } from '@/domain/sourceRegistry';
 import { createA11yCatalogState } from '@/test/browser/a11yCatalogState';
 import '@/index.css';
@@ -20,7 +22,8 @@ declare module 'vitest' {
 }
 
 /*
- * Visuelle Regression (GSPP-533): Katalogliste, Detail, Filter und Suche je
+ * Visuelle Regression (GSPP-533, GSPP-577): Katalogliste, Detail, Filter, Suche,
+ * Übersicht der Informationsverbünde und Verbundseite je
  * Desktop und Mobil gegen eingecheckte Referenzbilder
  * (`…-chromium-linux.png`). Erzeugt und geprüft werden sie nur im gepinnten
  * Playwright-Container (`npm run test:browser:visual`,
@@ -37,13 +40,14 @@ let root: Root | undefined;
 let host: HTMLDivElement | undefined;
 let router: ReturnType<typeof createMemoryRouter> | undefined;
 
-afterEach(() => {
+afterEach(async () => {
   root?.unmount();
   router?.dispose();
   host?.remove();
   root = undefined;
   router = undefined;
   host = undefined;
+  await resetWorkspace();
 });
 
 async function renderAt(path: string, width: number, height: number) {
@@ -55,7 +59,7 @@ async function renderAt(path: string, width: number, height: number) {
   root = createRoot(host);
   flushSync(() => {
     root!.render(createElement(CatalogContext.Provider, { value: createA11yCatalogState() },
-      createElement(RouterProvider, { router: router! }),
+      createElement(WorkspaceProvider, null, createElement(RouterProvider, { router: router! })),
     ));
   });
   await expect.poll(() => router!.state.initialized).toBe(true);
@@ -92,6 +96,20 @@ describe.skipIf(!inject('visualRegression')).each(VIEWPORTS)('Ansicht $name', ({
       await expect.poll(() => document.querySelector('dialog[open]')?.checkVisibility()).toBe(true);
     }
     await expectScreen(`filter-${name}`);
+  });
+
+  test('Informationsverbünde', async () => {
+    await seedWorkspace();
+    const shell = await renderAt(buildWorkspaceIndexUrl(), width, height);
+    await expect.poll(() => shell.querySelector('main')?.textContent).toContain('2 Informationsverbünde');
+    await expectScreen(`informationsverbuende-${name}`);
+  });
+
+  test('Informationsverbund', async () => {
+    const { verbundId } = await seedWorkspace();
+    const shell = await renderAt(buildVerbundUrl(verbundId), width, height);
+    await expect.poll(() => shell.querySelector('main')?.textContent).toContain('5 Dokumente');
+    await expectScreen(`informationsverbund-${name}`);
   });
 
   test('Suche', async () => {
