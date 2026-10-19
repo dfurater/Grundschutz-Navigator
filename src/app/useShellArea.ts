@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { matchPath, useBlocker, useNavigate, type BlockerFunction } from 'react-router';
 import {
   STATION_ROUTE_PATTERN,
@@ -32,29 +32,44 @@ function routedWorkspace(pathname: string) {
 }
 
 /** Jede Navigation aus dem Bereich Informationsverbünde in den Katalogbereich. */
-const leavesWorkspace: BlockerFunction = ({ currentLocation, nextLocation }) =>
-  areaForPath(currentLocation.pathname) === 'informationsverbuende'
-  && areaForPath(nextLocation.pathname) === 'katalog';
+const leavesWorkspace = (currentPath: string, nextPath: string) =>
+  areaForPath(currentPath) === 'informationsverbuende' && areaForPath(nextPath) === 'katalog';
 
 /**
  * Hält jeden Übertritt in den Katalogbereich an, bis die registrierten Autosaves
  * gespeichert haben (ADR-11 §4): Bereichswechsel, Kopfzeilensuche, Markenlink und
  * Zurück/Vor. Scheitert ein Autosave, bleibt die Arbeitsroute stehen und die
  * Speichermeldung erscheint.
+ *
+ * Nur der jüngste Navigationsversuch darf den Blocker auflösen: Der Router ruft die
+ * Blockerfunktion bei jeder Navigation, sie zählt die Versuche mit. Ein Speichervorgang,
+ * dessen Versuch durch ein neues Ziel oder einen Klick im Bereich ersetzt wurde, ruft
+ * weder `proceed()` noch `reset()`. Speichervorgänge laufen nacheinander, und jeder
+ * Versuch speichert selbst, weil sich der Entwurf seit dem vorigen geändert haben kann.
  */
 function useAutosaveOnLeave(flushAutosaves: () => Promise<boolean>) {
-  const blocker = useBlocker(leavesWorkspace);
-  // Ein angehaltener Übertritt speichert genau einmal, auch wenn der Effekt erneut läuft.
-  const pending = useRef<string | null>(null);
+  const attempt = useRef({ count: 0, key: '' });
+  const shouldBlock = useCallback<BlockerFunction>(({ currentLocation, nextLocation }) => {
+    attempt.current = { count: attempt.current.count + 1, key: nextLocation.key };
+    return leavesWorkspace(currentLocation.pathname, nextLocation.pathname);
+  }, []);
+  const blocker = useBlocker(shouldBlock);
+  // Ein angehaltener Versuch speichert genau einmal, auch wenn der Effekt erneut läuft.
+  const started = useRef(0);
+  const saving = useRef<Promise<unknown>>(Promise.resolve());
   useEffect(() => {
-    if (blocker.state !== 'blocked') {
-      pending.current = null;
-      return;
-    }
-    if (pending.current === blocker.location.key) return;
-    pending.current = blocker.location.key;
+    if (blocker.state !== 'blocked') return;
+    const { count, key } = attempt.current;
+    if (key !== blocker.location.key || started.current === count) return;
+    started.current = count;
     const { proceed, reset } = blocker;
-    void flushAutosaves().then((saved) => (saved ? proceed() : reset()));
+    const flushed = saving.current.then(flushAutosaves);
+    saving.current = flushed.catch(() => undefined);
+    void flushed.then((saved) => {
+      if (attempt.current.count !== count) return;
+      if (saved) proceed();
+      else reset();
+    });
   }, [blocker, flushAutosaves]);
 }
 
