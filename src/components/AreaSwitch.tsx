@@ -29,7 +29,7 @@ const TONE = {
     list: 'flex min-w-0 flex-1 gap-1',
     entry: 'flex flex-auto',
     item: 'flex min-h-touch items-center justify-center rounded-md px-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-focus-ring)]',
-    active: 'bg-[var(--header-surface-hover)] font-semibold text-[var(--header-text)]',
+    active: 'bg-[var(--color-accent-soft)] font-semibold text-[var(--color-accent-default)]',
     idle: 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-subtle)] hover:text-[var(--color-text-primary)]',
   },
 } as const;
