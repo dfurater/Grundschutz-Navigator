@@ -1,5 +1,5 @@
-import { useEffect, useMemo } from 'react';
-import { matchPath, useNavigate } from 'react-router';
+import { useEffect, useMemo, useRef } from 'react';
+import { matchPath, useBlocker, useNavigate, type BlockerFunction } from 'react-router';
 import {
   STATION_ROUTE_PATTERN,
   VERBUND_ROUTE_PATTERN,
@@ -8,7 +8,6 @@ import {
   buildCatalogUrl,
   buildWorkspaceIndexUrl,
   isLocalIdentity,
-  type ProductArea,
 } from '@/app/routes';
 import type { CatalogKey } from '@/domain/sourceRegistry';
 import { isWorkspaceStation } from '@/domain/workspaceStations';
@@ -32,6 +31,33 @@ function routedWorkspace(pathname: string) {
   };
 }
 
+/** Jede Navigation aus dem Bereich Informationsverbünde in den Katalogbereich. */
+const leavesWorkspace: BlockerFunction = ({ currentLocation, nextLocation }) =>
+  areaForPath(currentLocation.pathname) === 'informationsverbuende'
+  && areaForPath(nextLocation.pathname) === 'katalog';
+
+/**
+ * Hält jeden Übertritt in den Katalogbereich an, bis die registrierten Autosaves
+ * gespeichert haben (ADR-11 §4): Bereichswechsel, Kopfzeilensuche, Markenlink und
+ * Zurück/Vor. Scheitert ein Autosave, bleibt die Arbeitsroute stehen und die
+ * Speichermeldung erscheint.
+ */
+function useAutosaveOnLeave(flushAutosaves: () => Promise<boolean>) {
+  const blocker = useBlocker(leavesWorkspace);
+  // Ein angehaltener Übertritt speichert genau einmal, auch wenn der Effekt erneut läuft.
+  const pending = useRef<string | null>(null);
+  useEffect(() => {
+    if (blocker.state !== 'blocked') {
+      pending.current = null;
+      return;
+    }
+    if (pending.current === blocker.location.key) return;
+    pending.current = blocker.location.key;
+    const { proceed, reset } = blocker;
+    void flushAutosaves().then((saved) => (saved ? proceed() : reset()));
+  }, [blocker, flushAutosaves]);
+}
+
 /**
  * Bereich der Shell (ADR-11): Der Pfad bestimmt den Bereich, öffnet den Speicher
  * beim ersten Betreten des Arbeitsroutenraums und wählt den Verbund der Route.
@@ -51,14 +77,11 @@ export function useShellArea(pathname: string, activeCatalogKey: CatalogKey, bef
     selectVerbund(routed.routeVerbundId);
   }, [routed.routeVerbundId, selectVerbund]);
 
-  // Der Wechsel in den Katalog speichert offene Entwürfe vorher (ADR-11 §4);
-  // scheitert das Speichern, bleibt die Ansicht stehen und die Meldung erscheint.
-  const selectArea = (target: ProductArea, href: string) => {
-    void (async () => {
-      if (area === 'informationsverbuende' && target === 'katalog' && !await flushAutosaves()) return;
-      beforeNavigate();
-      await navigate(href);
-    })();
+  useAutosaveOnLeave(flushAutosaves);
+
+  const selectArea = (href: string) => {
+    beforeNavigate();
+    void navigate(href);
   };
 
   const routedVerbund = verbund?.verbundId === routed.verbundId ? verbund : null;

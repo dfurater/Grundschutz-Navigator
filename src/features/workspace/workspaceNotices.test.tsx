@@ -1,8 +1,8 @@
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { useEffect } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { AppShell } from '@/app/AppShell';
-import { buildVerbundUrl, buildWorkspaceIndexUrl } from '@/app/routes';
+import { areaForPath, buildVerbundUrl, buildWorkspaceIndexUrl } from '@/app/routes';
 import { StorageFailure, failure } from '@/adapters/workspaceStorageFailure';
 import type { VerbundId, WorkspaceResult, WorkspaceVerbund } from '@/domain/workspaceModel';
 import { useWorkspace } from '@/hooks/useWorkspace';
@@ -50,12 +50,11 @@ function fakePort(overrides: Partial<WorkspacePort> = {}): WorkspacePort {
   };
 }
 
-function renderWith(port: WorkspacePort, path = buildWorkspaceIndexUrl(), probe?: React.ReactNode) {
-  return renderAppShell([path], {
+function renderWith(port: WorkspacePort) {
+  return renderAppShell([buildWorkspaceIndexUrl()], {
     shell: () => (
       <CatalogContext.Provider value={catalogState}>
         <WorkspaceProvider open={() => ok(port)}>
-          {probe}
           <AppShell />
         </WorkspaceProvider>
       </CatalogContext.Provider>
@@ -232,31 +231,65 @@ function AutosaveProbe({ flush }: Readonly<{ flush: AutosaveFlush }>) {
   return null;
 }
 
+type Router = ReturnType<typeof renderAppShell>['router'];
+
+/** Wege aus dem Arbeitsbereich in den Katalogbereich; jeder läuft über den Router. */
+const LEAVE_PATHS: readonly (readonly [string, (router: Router) => void | Promise<void>])[] = [
+  ['Bereichswechsel', () => {
+    const areas = within(screen.getByTestId('header-bar')).getByRole('navigation', { name: 'Bereiche' });
+    fireEvent.click(within(areas).getByRole('link', { name: 'Katalog' }), { button: 0 });
+  }],
+  ['Kopfzeilensuche', () => {
+    const input = screen.getByRole('searchbox', { name: 'Katalog durchsuchen' });
+    fireEvent.change(input, { target: { value: 'Passwort' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+  }],
+  ['Lupe', () => { fireEvent.click(screen.getByRole('link', { name: 'Suche' }), { button: 0 }); }],
+  ['Suchkürzel', () => { fireEvent.keyDown(document, { key: 'k', metaKey: true }); }],
+  ['Markenlink', () => { fireEvent.click(screen.getByRole('link', { name: 'Grundschutz++ Navigator' }), { button: 0 }); }],
+  ['Zurück', (router) => act(() => router.navigate(-1))],
+];
+
+function renderLeaving(flush: AutosaveFlush) {
+  // Der Katalogeintrag davor ist das Ziel von „Zurück“.
+  return renderAppShell(['/katalog/gspp', buildWorkspaceIndexUrl()], {
+    initialIndex: 1,
+    shell: () => (
+      <CatalogContext.Provider value={catalogState}>
+        <WorkspaceProvider open={() => ok(fakePort())}>
+          <AutosaveProbe flush={flush} />
+          <AppShell />
+        </WorkspaceProvider>
+      </CatalogContext.Provider>
+    ),
+  });
+}
+
 describe('Autosave beim Wechsel in den Katalog', () => {
-  it('speichert offene Entwürfe, bevor die Katalogroute erscheint', async () => {
+  it.each(LEAVE_PATHS)('%s speichert offene Entwürfe, bevor die Katalogroute erscheint', async (_, leave) => {
     const order: string[] = [];
-    const routerRef: { current?: ReturnType<typeof renderWith>['router'] } = {};
+    const routerRef: { current?: Router } = {};
     const flush = vi.fn(async () => {
       order.push(`gespeichert bei ${routerRef.current!.state.location.pathname}`);
       return { ok: true as const, value: undefined };
     });
-    const { router } = renderWith(fakePort(), buildWorkspaceIndexUrl(), <AutosaveProbe flush={flush} />);
+    const { router } = renderLeaving(flush);
     routerRef.current = router;
     await screen.findByRole('link', { name: 'Lesbarer Verbund' });
 
-    const areas = within(screen.getByTestId('header-bar')).getByRole('navigation', { name: 'Bereiche' });
-    fireEvent.click(within(areas).getByRole('link', { name: 'Katalog' }), { button: 0 });
-    await waitFor(() => expect(router.state.location.pathname).toBe('/katalog/gspp'));
+    await leave(router);
+    await waitFor(() => expect(areaForPath(router.state.location.pathname)).toBe('katalog'));
     expect(order).toEqual([`gespeichert bei ${buildWorkspaceIndexUrl()}`]);
   });
 
-  it('bleibt im Bereich, wenn ein Entwurf nicht gespeichert werden konnte', async () => {
+  it.each(LEAVE_PATHS)('%s bleibt im Bereich, wenn ein Entwurf nicht gespeichert werden konnte', async (_, leave) => {
     const flush = vi.fn(() => fail('WORKSPACE_SAVE_CONFLICT'));
-    const { router } = renderWith(fakePort(), buildWorkspaceIndexUrl(), <AutosaveProbe flush={flush} />);
+    const { router } = renderLeaving(flush);
     await screen.findByRole('link', { name: 'Lesbarer Verbund' });
-    const areas = within(screen.getByTestId('header-bar')).getByRole('navigation', { name: 'Bereiche' });
-    fireEvent.click(within(areas).getByRole('link', { name: 'Katalog' }), { button: 0 });
+
+    await leave(router);
     await notice('In einem anderen Tab geändert');
+    expect(flush).toHaveBeenCalledTimes(1);
     expect(router.state.location.pathname).toBe(buildWorkspaceIndexUrl());
   });
 });

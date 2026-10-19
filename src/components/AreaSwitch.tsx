@@ -6,8 +6,8 @@ export interface AreaSwitchProps {
   readonly active: ProductArea;
   readonly catalogHref: string;
   readonly workspaceHref: string;
-  /** Übernimmt den Wechsel, etwa um vorher offene Entwürfe zu speichern. */
-  readonly onSelect: (area: ProductArea, href: string) => void;
+  /** Übernimmt den Wechsel, etwa um vorher die Schublade zu schließen. */
+  readonly onSelect: (href: string) => void;
   /** `header`: dunkle Kopfzeile auf dem Desktop; `drawer`: Kopf der Navigationsschublade. */
   readonly tone: 'header' | 'drawer';
 }
@@ -42,7 +42,7 @@ export function AreaSwitch({ active, catalogHref, workspaceHref, onSelect, tone 
     // Modifizierte Klicks öffnen wie jeder Link einen neuen Tab.
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     event.preventDefault();
-    onSelect(area, hrefOf(area));
+    onSelect(hrefOf(area));
   };
 
   return (

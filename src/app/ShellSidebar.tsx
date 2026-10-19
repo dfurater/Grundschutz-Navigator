@@ -15,7 +15,7 @@ export interface ShellSidebarProps {
   readonly persistent: boolean;
   readonly catalogHref: string;
   readonly workspaceHref: string;
-  readonly onSelectArea: (area: ProductArea, href: string) => void;
+  readonly onSelectArea: (href: string) => void;
   readonly onClose: () => void;
   /** Einklappen auf dem Desktop. */
   readonly collapseButton: ReactNode;
@@ -109,7 +109,7 @@ export function ShellSidebar({
           active={workspace.active}
           documents={workspace.documents}
           catalogHref={catalogHref}
-          onSelectCatalog={(href) => onSelectArea('katalog', href)}
+          onSelectCatalog={onSelectArea}
           trailing={trailing}
         />
       )}
