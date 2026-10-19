@@ -128,7 +128,7 @@ describe('Ausgabebudget', () => {
     budget.admitNode(3);
 
     expect(Object.keys(budget).sort()).toEqual([
-      'admitBase64', 'admitNode', 'admitWorkingNode', 'spendWork', 'usage',
+      'admitBase64', 'admitNode', 'admitWorkingNode', 'replayCachedUsage', 'spendWork', 'usage',
     ]);
     rejectionOf(() => budget.admitNode(2));
   });
@@ -232,4 +232,49 @@ describe('Zwischenzustand', () => {
     expect(budget.usage().maxDepth).toBe(7);
     expect(budget.usage().nodes).toBe(2);
   });
+});
+
+describe('trusted cached usage replay', () => {
+  function measuredUsage() {
+    const budget = createProfileResolutionBudget();
+    budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE, 2);
+    budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP, 1);
+    budget.admitNode(3);
+    budget.admitWorkingNode();
+    budget.admitBase64('YWJj');
+    return budget.usage();
+  }
+
+  it('replays exact boundaries cumulatively with no per-node or per-byte operations', () => {
+    const usage = measuredUsage();
+    const budget = createProfileResolutionBudget({ maxNodes: 4, maxDepth: 3, maxDecodedBase64Bytes: 6, workUnits: 6 });
+    budget.replayCachedUsage(usage);
+    budget.replayCachedUsage(usage);
+    expect(budget.usage()).toMatchObject({ nodes: 4, maxDepth: 3, decodedBase64Bytes: 6, workUnits: 6 });
+    expect(budget.usage().workUnitsByCategory['import-edge']).toBe(4);
+    const before = budget.usage();
+    expect(() => budget.replayCachedUsage(usage)).toThrow(ProfileResolutionBudgetExceeded);
+    expect(budget.usage()).toEqual(before);
+  });
+
+  it.each([
+    [{ maxNodes: 1 }, 'OSCAL_RESOLUTION_OUTPUT_BUDGET_EXCEEDED'],
+    [{ maxDepth: 2 }, 'OSCAL_RESOLUTION_OUTPUT_BUDGET_EXCEEDED'],
+    [{ maxDecodedBase64Bytes: 2 }, 'OSCAL_RESOLUTION_OUTPUT_BUDGET_EXCEEDED'],
+    [{ workUnits: 2 }, 'OSCAL_RESOLUTION_WORK_BUDGET_EXCEEDED'],
+  ] as const)('checks each bound before changing any counter %j', (limits, code) => {
+    const budget = createProfileResolutionBudget(limits);
+    const before = budget.usage();
+    expect(rejectionOf(() => budget.replayCachedUsage(measuredUsage())).code).toBe(code);
+    expect(budget.usage()).toEqual(before);
+  });
+});
+
+
+it('rejects fabricated negative cached usage without decreasing counters', () => {
+  const budget = createProfileResolutionBudget();
+  budget.admitNode(1);
+  const before = budget.usage();
+  expect(() => budget.replayCachedUsage({ ...before, nodes: -1 })).toThrow(TypeError);
+  expect(budget.usage()).toEqual(before);
 });

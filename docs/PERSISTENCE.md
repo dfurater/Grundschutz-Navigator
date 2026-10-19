@@ -201,13 +201,13 @@ BindingTarget = { kind: 'local',   localId:    LocalId }
 
 Der zweite Zieltyp ist nötig, weil ein lokaler SSP mit `import-profile` typischerweise auf ein **öffentliches BSI-Profil** zeigt. Gespeichert wird der Verweis, nie der Inhalt. Verbindlich gilt:
 
-- **Kein impliziter Auflösungsversuch.** Ohne gesetzte Bindung wird nicht aufgelöst — weder über die Dokument-UUID noch über Namensähnlichkeit noch über ein anderes Rateverfahren. (Der Referenzgraph löst relative und externe Ziele nie auf; siehe [OSCAL_VALIDATION.md](OSCAL_VALIDATION.md#stufe-5--referenzgraph).)
+- **Kein impliziter Auflösungsversuch.** Ohne gesetzte Bindung bleibt die Referenz im Verbundgraphen `not-evaluable`. `buildWorkspaceGraph()` in `src/domain/workspaceGraph.ts` verwendet ausschließlich Bindungen je `fromLocalId`, Referenz-Pointer und unverändertem `href`; absolute URIs bleiben `external` (siehe [OSCAL_VALIDATION.md](OSCAL_VALIDATION.md#dokumentgraph-eines-informationsverbunds)).
 - **Kein Netzwerkfallback.** Ein `href` löst unter keinen Umständen einen Netzwerk- oder Dateizugriff aus.
 - **Zeigt eine Bindung auf ein nicht vorhandenes Ziel**, ist das Ergebnis eine benannte, fail-closed Diagnose („Referenz nicht aufgelöst"). Kein Teilergebnis, kein stiller Leerwert.
 - Bindungen sind gerichtet und werden bei Löschung **beider** Seiten entfernt. Lokale Ziele müssen existieren und dieselbe `verbundId` wie das Ausgangsdokument besitzen; anderenfalls meldet der Adapter `WORKSPACE_DOCUMENT_NOT_FOUND` oder `WORKSPACE_BINDING_CROSS_VERBUND`. `setBinding()` prüft den unveränderten `href` am angegebenen JSON Pointer; unterstützte Klasse-1-Ziele werden gegen das Quellregister geprüft.
-- Für die Referenzauflösung gilt: Eine Bindung ist nur gültig, solange der Wert in `source` am `pointer` gleich ihrem gespeicherten `href` ist; bei Abweichung lautet das Auflösungsergebnis „Referenz nicht aufgelöst“. `replaceDocument()`, `saveDocument()` ohne `changedBindings` und die Wiederherstellung erhalten auch solche Bindungen unverändert.
+- Für die Referenzauflösung gilt: Eine Bindung ist nur gültig, solange der Wert in `source` am `pointer` gleich ihrem gespeicherten `href` ist; bei Abweichung lautet das Auflösungsergebnis „Referenz nicht aufgelöst“: Die Verbundkante endet als `error` mit `OSCAL_WORKSPACE_BINDING_STALE`. `replaceDocument()`, `saveDocument()` ohne `changedBindings` und die Wiederherstellung erhalten auch solche Bindungen unverändert.
 
-Die Auflösung über `back-matter` und Dokumentgrenzen liegt in [GSPP-286](https://linear.app/grundschutz-plus-plus/issue/GSPP-286); dieser Vertrag legt nur fest, wie ein Ziel benannt wird.
+`src/domain/workspaceGraphContext.ts` klassifiziert Referenzen mit `createOscalReferenceClassifier()` aus `src/domain/referenceResolution.ts`, dem wiederverwendbaren Einstieg in den Klassifikationskern von `resolveOscalReference()`. Ein Fragment auf eine `back-matter.resource` erhält nur über eine explizite Bindung ein Dokumentziel; `rlinks` werden nicht verfolgt. `class1Artifacts` enthält ausschließlich bereits geladene, hashgeprüfte und im Quellregister unterstützte Artefakte. Der Graph führt keine Speicheroperation aus; transiente Resolutionsergebnisse stehen nur im Rückgabewert.
 
 ## 8. Übernahme aus dem Quellregister
 

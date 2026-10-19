@@ -18,6 +18,7 @@ import type {
   SystemSecurityPlanDeriveOptions,
 } from './oscalSspAdapter';
 import { parseCatalogDocument } from './oscalDocument';
+import { buildWorkspaceCatalog } from '@/domain/workspaceCatalog';
 import type { OscalDocumentContext } from '@/domain/models';
 import type { RawOscalSystemSecurityPlan } from '@/domain/oscalSystemSecurityPlan';
 import { makeLosslessCatalogSource } from '@/test/fixtures/losslessCatalog';
@@ -123,6 +124,17 @@ describe('control-id gegen die Baseline-Bindung', () => {
       codes.CONTROL_REFERENCE_UNRESOLVED,
       '/system-security-plan/control-implementation/implemented-requirements/1/control-id',
     ]]);
+  });
+
+  it('binds a transient catalog without a registry key', () => {
+    const result = buildWorkspaceCatalog({ catalog: { controls: [{ id: 'GC.1.1' }] } });
+    if (result.status !== 'success') throw new Error('Projection failed');
+    const plan = derive(makeFullSsp(), { baseline: { kind: 'transient', catalog: result.catalog } });
+    expect(plan.importProfile?.baseline).toEqual({ status: 'bound', kind: 'transient' });
+    expect(requirement(plan, 0).control).toEqual({
+      status: 'resolved', kind: 'transient', control: { id: 'GC.1.1', statementIds: [] },
+    });
+    expect(requirement(plan, 1).control.status).toBe('unresolved');
   });
 
   it('führt statement-id als gelesenen Wert ohne Auflösungsversuch', () => {

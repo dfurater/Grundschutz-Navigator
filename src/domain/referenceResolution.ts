@@ -72,6 +72,17 @@ export interface ReferenceResolutionContext {
   readonly documentsByHref?: ReadonlyMap<string, ReferenceDocument>;
 }
 
+export interface LocalControlReference extends ReferenceBase {
+  readonly kind: 'local-control';
+  readonly controlId: string;
+  readonly state: 'found' | 'ambiguous';
+}
+
+export interface ReferenceClassifierContext extends ReferenceResolutionContext {
+  /** Snapshot-local control identity lookup, without a registry or UI catalog claim. */
+  readonly localControlLookup?: (id: string) => 'found' | 'missing' | 'ambiguous';
+}
+
 interface IndexedResource {
   readonly resource: JsonObject;
   readonly index: number;
@@ -85,6 +96,7 @@ interface ResourceIndex {
 interface PreparedReferenceResolutionContext extends ReferenceResolutionContext {
   readonly resourceIndex: ResourceIndex;
   readonly resourceIndexes: Map<ReferenceDocument, ResourceIndex>;
+  readonly resourceClassifications?: WeakMap<JsonObject, ResolvedResource>;
 }
 
 export interface ResolvedResourceLink {
@@ -411,6 +423,8 @@ function resolveResource(
   context: PreparedReferenceResolutionContext,
   resolveResourceLinks = true,
 ): ResolvedResource | null {
+  const cached = !resolveResourceLinks ? context.resourceClassifications?.get(resource) : undefined;
+  if (cached) return cached;
   const uuid = readString(resource.uuid);
   if (!uuid) return null;
 
@@ -432,7 +446,7 @@ function resolveResource(
     }
     : undefined;
 
-  return {
+  const resolved: ResolvedResource = {
     uuid,
     title: readString(resource.title),
     description: readString(resource.description),
@@ -443,6 +457,8 @@ function resolveResource(
       ? 'available'
       : 'empty',
   };
+  if (!resolveResourceLinks) context.resourceClassifications?.set(resource, resolved);
+  return resolved;
 }
 
 function resolveFragmentReference(
@@ -524,6 +540,22 @@ export function resolveOscalReference(
   context: ReferenceResolutionContext,
 ): ResolvedOscalReference {
   return resolveOscalReferenceInternal(input, prepareReferenceResolutionContext(context), true);
+}
+
+/** Classifies a fixed document snapshot with one resource index; rlinks are not evaluated. */
+export function createOscalReferenceClassifier(
+  context: ReferenceClassifierContext,
+): (input: OscalReferenceInput) => ResolvedOscalReference | LocalControlReference {
+  const prepared = { ...prepareReferenceResolutionContext(context), resourceClassifications: new WeakMap<JsonObject, ResolvedResource>() };
+  return input => {
+    const reference = resolveOscalReferenceInternal(input, prepared, false);
+    if (reference.kind !== 'unresolved' || reference.reason !== 'fragment-not-found' || !isLocalFragmentHref(input.href)) return reference;
+    const controlId = input.href.slice(1);
+    const state = context.localControlLookup?.(controlId);
+    return state === 'found' || state === 'ambiguous'
+      ? { ...input, kind: 'local-control', controlId, state }
+      : reference;
+  };
 }
 
 function visitCatalogControls(

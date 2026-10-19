@@ -183,7 +183,16 @@ src/                              # Anwendungsquellcode
 │   ├── vocabularyRouteId.mjs         # Routenkennung aus dem Upstream-Pfad (einzige Quelle, reines ESM)
 │   ├── vocabularyRouteId.ts          # Typsicherer Einstieg in vocabularyRouteId.mjs
 │   ├── workspaceJson.ts              # Verlustfreie JSON-Zahlengrenze des Speichers
-│   └── workspaceModel.ts             # Informationsverbünde, Envelopes, Bindungen und Backup-Typen
+│   ├── workspaceCatalog.ts           # Minimale lokale Baseline-Projektion mit Controls und Part-IDs
+│   ├── workspaceDiagnostics.ts       # Diagnosecodes von Verbundgraph, Aufnahme und Baseline-Projektion
+│   ├── workspaceEdges.ts             # Acht dokumentübergreifende OSCAL-Referenzfelder
+│   ├── workspaceGraph.ts             # Reiner Dokumentgraph eines Informationsverbunds
+│   ├── workspaceGraphContext.ts      # Explizite Bindungen, interne Ressourcen und iterative Zykluserkennung
+│   ├── workspaceGraphModel.ts        # Lokale und öffentliche Dokumentidentitäten, Graphzustände
+│   ├── workspaceMembership.ts        # Validierte Aufnahme, Root-UUID-Konflikt und Ersetzen-Entscheidung
+│   ├── workspaceModel.ts             # Informationsverbünde, Envelopes, Bindungen und Backup-Typen
+│   ├── workspaceProfileResolution.ts # Transiente Profile Resolution mit Bindungen je Import-Pointer
+│   └── workspaceSemanticEdges.ts     # Baselinegescopte Control-/Statement- und Component-Referenzen
 ├── adapters/                     # Infrastruktur- und Datengrenzen
 │   ├── browserDownload.ts            # Temporärer Browser-Download mit Cleanup
 │   ├── oscalAdapter.ts               # OSCAL-Katalogkörper → Domain Model

@@ -25,6 +25,7 @@
 import type { OscalDiagnostic } from '@/domain/oscalDiagnostics';
 import type { ResolvedOscalReference } from '@/domain/referenceResolution';
 import type { Catalog, Control } from '@/domain/models';
+import type { WorkspaceCatalog, WorkspaceCatalogControl } from '@/domain/workspaceCatalog';
 import type { CatalogKey } from '@/domain/sourceRegistry';
 import type {
   OscalLinkView,
@@ -72,13 +73,13 @@ export interface SspState {
 /* ------------------------------------------------------------------ */
 
 /** Explizit übergebener Baseline-Katalog — eine Aussage des Aufrufers. */
-export interface SspBaselineBinding {
-  readonly catalogKey: CatalogKey;
-  readonly catalog: Catalog;
-}
+export type SspBaselineBinding =
+  | { readonly catalogKey: CatalogKey; readonly catalog: Catalog }
+  | { readonly kind: 'transient'; readonly catalog: WorkspaceCatalog };
 
 export type SspBaselineState =
   | { readonly status: 'bound'; readonly catalogKey: CatalogKey }
+  | { readonly status: 'bound'; readonly kind: 'transient' }
   | { readonly status: typeof NOT_RESOLVABLE_IN_CONTEXT };
 
 export interface SspImportProfile {
@@ -93,6 +94,7 @@ export interface SspImportProfile {
 }
 
 export type SspControlReference =
+  | { readonly status: 'resolved'; readonly kind: 'transient'; readonly control: WorkspaceCatalogControl }
   | {
     readonly status: 'resolved';
     readonly catalogKey: CatalogKey;
