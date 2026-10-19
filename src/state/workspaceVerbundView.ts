@@ -1,6 +1,6 @@
 import { REFERENCE_GRAPH_CODES } from '@/domain/referenceGraphModel';
 import { buildWorkspaceGraph } from '@/domain/workspaceGraph';
-import type { WorkspaceClass1Artifact, WorkspaceGraphEdge } from '@/domain/workspaceGraphModel';
+import type { WorkspaceClass1Artifact, WorkspaceGraph, WorkspaceGraphEdge } from '@/domain/workspaceGraphModel';
 import type { OscalRootKey } from '@/domain/oscalVersionMatrix';
 import type {
   DocumentState, LocalId, VerbundId, WorkspaceBinding, WorkspaceEnvelope, WorkspaceResult, WorkspaceVerbund,
@@ -118,23 +118,8 @@ function isUnavailableClass1Edge(edge: WorkspaceGraphEdge, href: string | undefi
     && unavailable.has(bindingKey(edge.from.document.localId, edge.path, href));
 }
 
-/**
- * Baut die Ansicht eines Informationsverbunds aus dem Speicher. Die
- * Quellgraphen dienen nur dem Dokumentgraphen und werden danach entlassen;
- * die Ansicht hält Envelopemetadaten, Titel, Kanten und Diagnosen.
- * `class1Artifacts` sind bereits geladene, hash-verifizierte BSI-Artefakte;
- * der Graph erhält nur die, auf die eine Bindung des Verbunds zeigt, und legt
- * nichts davon im Speicher ab. `value: null` heißt: Den Verbund gibt es nicht.
- */
-export async function loadVerbundView(
-  port: WorkspacePort,
-  verbundId: VerbundId,
-  class1Artifacts: readonly WorkspaceClass1Artifact[] = [],
-): Promise<WorkspaceResult<VerbundView | null>> {
-  const verbuende = await port.listVerbuende();
-  if (!verbuende.ok) return verbuende;
-  const verbund = verbuende.value.find((entry) => entry.verbundId === verbundId);
-  if (!verbund) return { ok: true, value: null };
+/** Lädt die vollständigen Envelopes eines Verbunds der Reihe nach. */
+async function loadMembers(port: WorkspacePort, verbundId: VerbundId): Promise<WorkspaceResult<WorkspaceEnvelope[]>> {
   const summaries = await port.listDocuments(verbundId);
   if (!summaries.ok) return summaries;
   const members: WorkspaceEnvelope[] = [];
@@ -143,17 +128,18 @@ export async function loadVerbundView(
     if (!document.ok) return document;
     if (document.value) members.push(document.value);
   }
-  const bindings = await port.listBindings();
-  if (!bindings.ok) return bindings;
-  const memberIds = new Set<string>(members.map((member) => member.localId));
-  const memberBindings = bindings.value.filter((binding) => memberIds.has(binding.fromLocalId));
-  const boundArtifacts = new Set(memberBindings.flatMap((binding) => binding.target.kind === 'class-1' ? [binding.target.artifactKey] : []));
-  const supplied = class1Artifacts.filter((artifact) => boundArtifacts.has(artifact.artifactKey));
-  const unavailable = unavailableClass1Bindings(memberBindings, new Set(supplied.map((artifact) => artifact.artifactKey)));
-  const graph = await buildWorkspaceGraph({ members, bindings: memberBindings, class1Artifacts: supplied });
-  const sources = new Map<string, unknown>(members.map((member) => [member.localId, member.source]));
+  return { ok: true, value: members };
+}
+
+interface EdgeProjection {
+  readonly edges: Map<LocalId, WorkspaceEdgeView[]>;
+  /** Diagnosen, die einen Sitzungszustand statt eines Dokumentfehlers beschreiben. */
+  readonly suppressed: Set<unknown>;
+}
+
+/** Kanten je lokalem Dokument; Kanten auf nicht geladene BSI-Artefakte werden zum Sitzungszustand. */
+function projectEdges(graph: WorkspaceGraph, sources: ReadonlyMap<string, unknown>, unavailable: ReadonlySet<string>): EdgeProjection {
   const edges = new Map<LocalId, WorkspaceEdgeView[]>();
-  // Die Diagnose einer Kante auf ein nicht geladenes BSI-Artefakt beschreibt die Sitzung, nicht das Dokument.
   const suppressed = new Set<unknown>();
   const missingEdges = new Set<string>();
   for (const edge of graph.edges) {
@@ -176,6 +162,39 @@ export async function loadVerbundView(
     if (resolution.document.kind === 'local' && diagnostic?.code === REFERENCE_GRAPH_CODES.targetNotFound
       && missingEdges.has(`${resolution.document.localId}|${diagnostic.path}`)) suppressed.add(diagnostic);
   }
+  return { edges, suppressed };
+}
+
+/**
+ * Baut die Ansicht eines Informationsverbunds aus dem Speicher. Die
+ * Quellgraphen dienen nur dem Dokumentgraphen und werden danach entlassen;
+ * die Ansicht hält Envelopemetadaten, Titel, Kanten und Diagnosen.
+ * `class1Artifacts` sind bereits geladene, hash-verifizierte BSI-Artefakte;
+ * der Graph erhält nur die, auf die eine Bindung des Verbunds zeigt, und legt
+ * nichts davon im Speicher ab. `value: null` heißt: Den Verbund gibt es nicht.
+ */
+export async function loadVerbundView(
+  port: WorkspacePort,
+  verbundId: VerbundId,
+  class1Artifacts: readonly WorkspaceClass1Artifact[] = [],
+): Promise<WorkspaceResult<VerbundView | null>> {
+  const verbuende = await port.listVerbuende();
+  if (!verbuende.ok) return verbuende;
+  const verbund = verbuende.value.find((entry) => entry.verbundId === verbundId);
+  if (!verbund) return { ok: true, value: null };
+  const loaded = await loadMembers(port, verbundId);
+  if (!loaded.ok) return loaded;
+  const members = loaded.value;
+  const bindings = await port.listBindings();
+  if (!bindings.ok) return bindings;
+  const memberIds = new Set<string>(members.map((member) => member.localId));
+  const memberBindings = bindings.value.filter((binding) => memberIds.has(binding.fromLocalId));
+  const boundArtifacts = new Set(memberBindings.flatMap((binding) => binding.target.kind === 'class-1' ? [binding.target.artifactKey] : []));
+  const supplied = class1Artifacts.filter((artifact) => boundArtifacts.has(artifact.artifactKey));
+  const unavailable = unavailableClass1Bindings(memberBindings, new Set(supplied.map((artifact) => artifact.artifactKey)));
+  const graph = await buildWorkspaceGraph({ members, bindings: memberBindings, class1Artifacts: supplied });
+  // Die Diagnose einer Kante auf ein nicht geladenes BSI-Artefakt beschreibt die Sitzung, nicht das Dokument.
+  const { edges, suppressed } = projectEdges(graph, new Map(members.map((member) => [member.localId, member.source])), unavailable);
   return {
     ok: true,
     value: {

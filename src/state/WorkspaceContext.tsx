@@ -33,7 +33,7 @@ function verifiedCatalogArtifacts(catalogs: CatalogState['catalogs'] | undefined
   const artifacts: WorkspaceClass1Artifact[] = [];
   for (const [catalogKey, loaded] of catalogs ?? []) {
     const entry = getCatalogByKey(catalogKey);
-    if (!entry || entry.lifecycle !== 'supported' || !loaded.catalogDocument || loaded.verification?.valid !== true) continue;
+    if (entry?.lifecycle !== 'supported' || !loaded.catalogDocument || loaded.verification?.valid !== true) continue;
     artifacts.push({
       artifactKey: entry.artifactKey,
       lifecycle: 'supported',
