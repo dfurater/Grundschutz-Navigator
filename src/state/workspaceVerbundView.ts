@@ -1,8 +1,8 @@
 import { buildWorkspaceGraph } from '@/domain/workspaceGraph';
-import type { WorkspaceGraphEdge } from '@/domain/workspaceGraphModel';
+import type { WorkspaceClass1Artifact, WorkspaceGraphEdge } from '@/domain/workspaceGraphModel';
 import type { OscalRootKey } from '@/domain/oscalVersionMatrix';
 import type {
-  DocumentState, LocalId, VerbundId, WorkspaceEnvelope, WorkspaceResult, WorkspaceVerbund,
+  DocumentState, LocalId, VerbundId, WorkspaceBinding, WorkspaceEnvelope, WorkspaceResult, WorkspaceVerbund,
 } from '@/domain/workspaceModel';
 import type { WorkspaceStore } from '@/adapters/workspaceStore';
 
@@ -29,6 +29,8 @@ export interface WorkspaceEdgeView {
   readonly href?: string;
   readonly targetLocalId?: LocalId;
   readonly diagnosticCode?: string;
+  /** Die Bindung zeigt auf einen BSI-Katalog, der in dieser Sitzung nicht geladen und verifiziert ist. */
+  readonly class1Unavailable?: true;
 }
 
 export interface WorkspaceDiagnosticView {
@@ -76,7 +78,10 @@ function pointerString(source: unknown, pointer: string): string | undefined {
   return typeof value === 'string' ? value : undefined;
 }
 
-function edgeView(edge: WorkspaceGraphEdge, source: unknown): WorkspaceEdgeView {
+function edgeView(edge: WorkspaceGraphEdge, source: unknown, class1Unavailable: boolean): WorkspaceEdgeView {
+  if (class1Unavailable) {
+    return { kind: edge.kind, path: edge.path, state: 'not-evaluable', href: pointerString(source, edge.path), class1Unavailable: true };
+  }
   return {
     kind: edge.kind,
     path: edge.path,
@@ -87,13 +92,28 @@ function edgeView(edge: WorkspaceGraphEdge, source: unknown): WorkspaceEdgeView 
   };
 }
 
+/** Bindungen auf BSI-Artefakte, die nicht als geladenes, verifiziertes Artefakt vorliegen. */
+function unavailableClass1Bindings(bindings: readonly WorkspaceBinding[], available: ReadonlySet<string>): Set<string> {
+  const keys = new Set<string>();
+  for (const binding of bindings) {
+    if (binding.target.kind === 'class-1' && !available.has(binding.target.artifactKey)) keys.add(`${binding.fromLocalId}|${binding.pointer}`);
+  }
+  return keys;
+}
+
 /**
  * Baut die Ansicht eines Informationsverbunds aus dem Speicher. Die
  * Quellgraphen dienen nur dem Dokumentgraphen und werden danach entlassen;
  * die Ansicht hält Envelopemetadaten, Titel, Kanten und Diagnosen.
- * `value: null` heißt: Den Verbund gibt es nicht.
+ * `class1Artifacts` sind bereits geladene, hash-verifizierte BSI-Artefakte;
+ * der Graph erhält nur die, auf die eine Bindung des Verbunds zeigt, und legt
+ * nichts davon im Speicher ab. `value: null` heißt: Den Verbund gibt es nicht.
  */
-export async function loadVerbundView(port: WorkspacePort, verbundId: VerbundId): Promise<WorkspaceResult<VerbundView | null>> {
+export async function loadVerbundView(
+  port: WorkspacePort,
+  verbundId: VerbundId,
+  class1Artifacts: readonly WorkspaceClass1Artifact[] = [],
+): Promise<WorkspaceResult<VerbundView | null>> {
   const verbuende = await port.listVerbuende();
   if (!verbuende.ok) return verbuende;
   const verbund = verbuende.value.find((entry) => entry.verbundId === verbundId);
@@ -109,17 +129,22 @@ export async function loadVerbundView(port: WorkspacePort, verbundId: VerbundId)
   const bindings = await port.listBindings();
   if (!bindings.ok) return bindings;
   const memberIds = new Set<string>(members.map((member) => member.localId));
-  const graph = await buildWorkspaceGraph({
-    members,
-    bindings: bindings.value.filter((binding) => memberIds.has(binding.fromLocalId)),
-  });
+  const memberBindings = bindings.value.filter((binding) => memberIds.has(binding.fromLocalId));
+  const boundArtifacts = new Set(memberBindings.flatMap((binding) => binding.target.kind === 'class-1' ? [binding.target.artifactKey] : []));
+  const supplied = class1Artifacts.filter((artifact) => boundArtifacts.has(artifact.artifactKey));
+  const unavailable = unavailableClass1Bindings(memberBindings, new Set(supplied.map((artifact) => artifact.artifactKey)));
+  const graph = await buildWorkspaceGraph({ members, bindings: memberBindings, class1Artifacts: supplied });
   const sources = new Map<string, unknown>(members.map((member) => [member.localId, member.source]));
   const edges = new Map<LocalId, WorkspaceEdgeView[]>();
+  // Die Diagnose einer Kante auf ein nicht geladenes BSI-Artefakt beschreibt die Sitzung, nicht das Dokument.
+  const suppressed = new Set<unknown>();
   for (const edge of graph.edges) {
     if (edge.from.document.kind !== 'local') continue;
     const localId = edge.from.document.localId;
+    const missing = unavailable.has(`${localId}|${edge.path}`);
+    if (missing && edge.diagnostic) suppressed.add(edge.diagnostic);
     const list = edges.get(localId) ?? [];
-    list.push(edgeView(edge, sources.get(localId)));
+    list.push(edgeView(edge, sources.get(localId), missing));
     edges.set(localId, list);
   }
   return {
@@ -134,7 +159,7 @@ export async function loadVerbundView(port: WorkspacePort, verbundId: VerbundId)
         title: documentTitle(member),
       })).sort(compareDocuments),
       edges,
-      diagnostics: graph.diagnostics.map(({ code, path }) => ({ code, path })),
+      diagnostics: graph.diagnostics.filter((diagnostic) => !suppressed.has(diagnostic)).map(({ code, path }) => ({ code, path })),
     },
   };
 }

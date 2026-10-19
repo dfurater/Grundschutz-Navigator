@@ -6,6 +6,7 @@ import { buildVerbundUrl } from '@/app/routes';
 import { Button } from '@/components/Button';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useWorkspace } from '@/hooks/useWorkspace';
+import type { WorkspaceContextValue } from '@/state/WorkspaceContext';
 import { isVerbundName, type WorkspaceVerbund } from '@/domain/workspaceModel';
 import { FOCUS_RING, OriginLabel } from '@/features/workspace/DocumentMarks';
 import { WorkspaceNotices, useBackupExport } from '@/features/workspace/WorkspaceNotices';
@@ -23,10 +24,16 @@ function NameForm({ label, submitLabel, initial = '', disabled, onSubmit, onCanc
 }>) {
   const inputId = useId();
   const [name, setName] = useState(initial);
+  // Während des Speicherns ist das Formular gesperrt: ein Doppelklick legt keinen zweiten Verbund an.
+  const [saving, setSaving] = useState(false);
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!isVerbundName(name)) return;
-    void onSubmit(name.trim()).then((saved) => { if (saved && !onCancel) setName(''); });
+    if (saving || !isVerbundName(name)) return;
+    setSaving(true);
+    void onSubmit(name.trim()).then((saved) => {
+      setSaving(false);
+      if (saved && !onCancel) setName('');
+    });
   };
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-2 sm:flex-row sm:items-end">
@@ -46,7 +53,7 @@ function NameForm({ label, submitLabel, initial = '', disabled, onSubmit, onCanc
         />
       </div>
       <div className="flex gap-2">
-        <Button type="submit" className={ROW_BUTTON} disabled={disabled || !isVerbundName(name)}>{submitLabel}</Button>
+        <Button type="submit" className={ROW_BUTTON} disabled={disabled || saving || !isVerbundName(name)}>{submitLabel}</Button>
         {onCancel && <Button variant="secondary" className={ROW_BUTTON} onClick={onCancel}>Abbrechen</Button>}
       </div>
     </form>
@@ -101,6 +108,12 @@ function VerbundRow({ verbund, writable, onDelete }: Readonly<{
   );
 }
 
+function inventoryLabel(status: WorkspaceContextValue['status'], verbuende: readonly WorkspaceVerbund[] | null): string {
+  if (status === 'unavailable') return 'Speicher nicht verfügbar';
+  if (status !== 'ready' || verbuende === null) return 'Speicher wird geöffnet…';
+  return `${verbuende.length} ${verbuende.length === 1 ? 'Informationsverbund' : 'Informationsverbünde'}`;
+}
+
 /** Übersicht des Bereichs: Verbünde anlegen, umbenennen und mit Bestätigung löschen. */
 export function VerbundOverviewPage() {
   const { status, verbuende, writable, createVerbund, deleteVerbund } = useWorkspace();
@@ -118,7 +131,7 @@ export function VerbundOverviewPage() {
           <div className="flex flex-wrap items-center gap-2">
             <OriginLabel />
             <span aria-live="polite" className="text-xs font-medium tabular-nums text-[var(--color-text-secondary)]">
-              {ready ? `${count} ${count === 1 ? 'Informationsverbund' : 'Informationsverbünde'}` : 'Speicher wird geöffnet…'}
+              {inventoryLabel(status, verbuende)}
             </span>
           </div>
         </header>

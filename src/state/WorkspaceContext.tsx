@@ -1,8 +1,12 @@
-import { createContext, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { StorageFailure, failure } from '@/adapters/workspaceStorageFailure';
 import { isLocalIdentity } from '@/app/routes';
+import type { CatalogState } from '@/domain/models';
+import { getCatalogByKey } from '@/domain/sourceRegistry';
+import type { WorkspaceClass1Artifact } from '@/domain/workspaceGraphModel';
 import type { VerbundId, WorkspaceResult, WorkspaceVerbund } from '@/domain/workspaceModel';
+import { CatalogContext } from '@/state/CatalogContext';
 import {
   noticeForDiagnostic, quotaNearlyExhausted, withNotice, withoutNotice, type WorkspaceNotice,
 } from '@/state/workspaceNotices';
@@ -15,10 +19,32 @@ export type OpenWorkspace = () => Promise<WorkspaceResult<WorkspacePort>>;
 const storageFailed = () => failure(new StorageFailure('WORKSPACE_STORAGE_FAILED'));
 const openWorkspaceStore: OpenWorkspace = () =>
   import('@/adapters/workspaceStore').then(({ WorkspaceStore }) => WorkspaceStore.open());
-const loadView = (port: WorkspacePort, verbundId: VerbundId): Promise<WorkspaceResult<VerbundView | null>> =>
+const loadView = (port: WorkspacePort, verbundId: VerbundId, class1: readonly WorkspaceClass1Artifact[]): Promise<WorkspaceResult<VerbundView | null>> =>
   import('@/state/workspaceVerbundView')
-    .then(({ loadVerbundView }) => loadVerbundView(port, verbundId))
+    .then(({ loadVerbundView }) => loadVerbundView(port, verbundId, class1))
     .catch(storageFailed);
+
+/**
+ * Bereits geladene Kataloge mit bestandener Hashprüfung als lesende
+ * Klasse-1-Artefakte für den Dokumentgraphen. Nicht verifizierte oder nicht
+ * unterstützte Kataloge bleiben draußen; nichts davon gelangt in den Speicher.
+ */
+function verifiedCatalogArtifacts(catalogs: CatalogState['catalogs'] | undefined): WorkspaceClass1Artifact[] {
+  const artifacts: WorkspaceClass1Artifact[] = [];
+  for (const [catalogKey, loaded] of catalogs ?? []) {
+    const entry = getCatalogByKey(catalogKey);
+    if (!entry || entry.lifecycle !== 'supported' || !loaded.catalogDocument || loaded.verification?.valid !== true) continue;
+    artifacts.push({
+      artifactKey: entry.artifactKey,
+      lifecycle: 'supported',
+      trustClass: 'class-1-verified-public',
+      rootType: entry.expectedRootType,
+      oscalVersion: entry.oscalVersion,
+      source: loaded.catalogDocument.source,
+    });
+  }
+  return artifacts;
+}
 
 /** Speichert einen offenen Entwurf; Stationen registrieren ihn für den Bereichswechsel. */
 export type AutosaveFlush = () => Promise<WorkspaceResult<unknown>>;
@@ -82,6 +108,8 @@ export function WorkspaceProvider({ open = openWorkspaceStore, children }: Reado
   const openRef = useRef(open);
   const startedRef = useRef(false);
   const autosaves = useRef(new Set<AutosaveFlush>());
+  const { catalogs } = useContext(CatalogContext);
+  const class1 = useMemo(() => verifiedCatalogArtifacts(catalogs), [catalogs]);
 
   const report = useCallback((diagnostic: { readonly code: string }) => {
     const notice = noticeForDiagnostic(diagnostic);
@@ -100,7 +128,13 @@ export function WorkspaceProvider({ open = openWorkspaceStore, children }: Reado
         return;
       }
       const schema = await opened.value.schemaStatus();
-      if (schema.ok && schema.value === 'newer') report({ code: 'WORKSPACE_SCHEMA_NEWER' });
+      // Eine nicht bestätigte Schemaversion gibt das Schreiben nicht frei; Lesen und Export bleiben.
+      if (!schema.ok) {
+        setWritable(false);
+        report(schema.diagnostic);
+      } else if (schema.value === 'newer') {
+        report({ code: 'WORKSPACE_SCHEMA_NEWER' });
+      }
       setPort(opened.value);
       setStatus('ready');
     });
@@ -131,24 +165,28 @@ export function WorkspaceProvider({ open = openWorkspaceStore, children }: Reado
   useEffect(() => {
     if (!port || selectedVerbundId === null || !isLocalIdentity(selectedVerbundId)) return;
     let current = true;
-    void loadView(port, selectedVerbundId as VerbundId).then((result) => {
+    void loadView(port, selectedVerbundId as VerbundId, class1).then((result) => {
       if (!current) return;
-      if (!result.ok) report(result.diagnostic);
-      setLoaded(!result.ok
-        ? { verbundId: selectedVerbundId, status: 'failed' }
-        : result.value === null
-          ? { verbundId: selectedVerbundId, status: 'not-found' }
-          : { verbundId: selectedVerbundId, status: 'ready', view: result.value });
+      if (!result.ok) {
+        report(result.diagnostic);
+        setLoaded({ verbundId: selectedVerbundId, status: 'failed' });
+      } else if (result.value === null) {
+        setLoaded({ verbundId: selectedVerbundId, status: 'not-found' });
+      } else {
+        setLoaded({ verbundId: selectedVerbundId, status: 'ready', view: result.value });
+      }
     });
     return () => { current = false; };
-  }, [port, selectedVerbundId, revision, report]);
+  }, [port, selectedVerbundId, revision, report, class1]);
 
   const verbund = useMemo<VerbundViewState | null>(() => {
     if (selectedVerbundId === null) return null;
     if (!isLocalIdentity(selectedVerbundId)) return { verbundId: selectedVerbundId, status: 'not-found' };
+    // Ein gescheitertes Öffnen ist terminal; „Neu laden“ auf der Fehlerfläche versucht es erneut.
+    if (status === 'unavailable') return { verbundId: selectedVerbundId, status: 'failed' };
     if (loaded?.verbundId === selectedVerbundId) return loaded;
     return { verbundId: selectedVerbundId, status: 'loading' };
-  }, [selectedVerbundId, loaded]);
+  }, [selectedVerbundId, loaded, status]);
 
   const write = useCallback(async <T,>(operation: (store: WorkspacePort) => Promise<WorkspaceResult<T>>): Promise<WorkspaceResult<T>> => {
     if (!port) return storageFailed();
@@ -189,7 +227,12 @@ export function WorkspaceProvider({ open = openWorkspaceStore, children }: Reado
     },
     createVerbund: (name) => write((store) => store.createVerbund(name)),
     renameVerbund: (verbundId, name) => write((store) => store.renameVerbund(verbundId, name)),
-    deleteVerbund: (verbundId) => write((store) => store.deleteVerbund(verbundId)),
+    deleteVerbund: async (verbundId) => {
+      const result = await write((store) => store.deleteVerbund(verbundId));
+      // Keine Restkopie der gelöschten Inhalte im Tab, auch nicht für Browser-Zurück.
+      if (result.ok) setLoaded((current) => current?.verbundId === verbundId ? null : current);
+      return result;
+    },
     exportBackup: async () => {
       if (!port) return storageFailed();
       const result = await port.exportBackup();

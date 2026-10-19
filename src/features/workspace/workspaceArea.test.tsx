@@ -1,16 +1,11 @@
 import 'fake-indexeddb/auto';
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { AppShell } from '@/app/AppShell';
 import {
   buildStationUrl, buildVerbundUrl, buildWorkspaceDocumentUrl, buildWorkspaceIndexUrl,
 } from '@/app/routes';
 import { WORKSPACE_STATIONS } from '@/domain/workspaceStations';
-import type { CatalogState } from '@/domain/models';
-import { CatalogContext } from '@/state/CatalogContext';
-import { WorkspaceProvider } from '@/state/WorkspaceContext';
-import { catalogCollectionDefaults } from '@/test/catalogState';
-import { renderAppShell } from '@/test/renderAppShell';
+import { mainLandmark as main, renderWorkspaceArea as renderArea } from '@/test/renderWorkspaceArea';
 import {
   SENTINEL, SENTINEL_DOCUMENT_UUID, SENTINEL_HREF, SENTINEL_PARTY, SENTINEL_TITLE, SENTINEL_VERBUND,
   readStore, resetWorkspace, seedWorkspace, type SeededWorkspace,
@@ -24,33 +19,6 @@ vi.mock('@/adapters/oscalImportGate', async () => {
 vi.mock('@/features/catalog/CatalogBrowser', () => ({
   CatalogBrowser: () => <h1>Katalogansicht</h1>,
 }));
-
-const catalogState: CatalogState = {
-  ...catalogCollectionDefaults(),
-  catalogDocument: null,
-  catalog: null,
-  provenance: null,
-  verification: null,
-  loading: false,
-  error: null,
-  vocabularyRegistry: null,
-  vocabularyProvenance: null,
-  vocabularyVerification: null,
-} as CatalogState;
-
-function renderArea(path: string) {
-  return renderAppShell([path], {
-    shell: () => (
-      <CatalogContext.Provider value={catalogState}>
-        <WorkspaceProvider><AppShell /></WorkspaceProvider>
-      </CatalogContext.Provider>
-    ),
-  });
-}
-
-function main() {
-  return screen.getByRole('main');
-}
 
 let seeded: SeededWorkspace;
 
@@ -209,6 +177,21 @@ describe('Dokumentdetail', () => {
 });
 
 describe('Arbeitsroutenraum: Nicht-gefunden, Reload und Zurück', () => {
+  it('verwirft die Ansicht eines gelöschten Verbunds; Browser-Zurück zeigt nichts davon', async () => {
+    const { router } = renderArea(buildVerbundUrl(seeded.verbundId));
+    await within(main()).findByRole('heading', { level: 1, name: SENTINEL_VERBUND });
+    fireEvent.click(within(main()).getByRole('link', { name: '‹ Informationsverbünde' }));
+    const row = (await within(main()).findByRole('link', { name: SENTINEL_VERBUND })).closest('li')!;
+    fireEvent.click(within(row).getByRole('button', { name: 'Löschen…' }));
+    fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Endgültig löschen' }));
+    await waitFor(() => expect(within(main()).queryByRole('link', { name: SENTINEL_VERBUND })).not.toBeInTheDocument());
+
+    await act(() => router.navigate(-1));
+    expect(screen.getByRole('main')).not.toHaveTextContent(SENTINEL);
+    expect(await within(main()).findByRole('heading', { level: 1, name: 'Informationsverbund nicht gefunden' })).toBeInTheDocument();
+    expect(main()).not.toHaveTextContent(SENTINEL);
+  });
+
   it.each([
     ['unbekannte verbundId', () => buildVerbundUrl('0e1d2c3b-4a59-4687-8796-a5b4c3d2e1f0'), 'Informationsverbund nicht gefunden'],
     ['keine lokale Identität', () => '/informationsverbuende/nicht-lokal', 'Informationsverbund nicht gefunden'],

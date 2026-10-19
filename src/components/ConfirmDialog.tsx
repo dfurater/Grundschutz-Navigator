@@ -42,11 +42,12 @@ export function ConfirmDialog({ open, title, children, confirmLabel, onConfirm, 
           aria-modal="true"
           aria-labelledby={titleId}
           aria-describedby={descriptionId}
-          className="pointer-events-auto static m-0 w-full max-w-md rounded-lg border border-[var(--color-border-default)] bg-[var(--color-surface-overlay)] p-4 text-inherit shadow-overlay"
+          className="pointer-events-auto static m-0 flex max-h-[calc(100dvh-2rem)] w-full max-w-md flex-col rounded-lg border border-[var(--color-border-default)] bg-[var(--color-surface-overlay)] p-4 text-inherit shadow-overlay"
         >
-          <h2 id={titleId} className="text-base font-semibold leading-snug text-[var(--color-text-primary)]">{title}</h2>
-          <div id={descriptionId} className="mt-2 text-sm leading-relaxed text-[var(--color-text-secondary)]">{children}</div>
-          <div className="mt-4 flex flex-wrap justify-end gap-2">
+          <h2 id={titleId} className="shrink-0 text-base font-semibold leading-snug text-[var(--color-text-primary)]">{title}</h2>
+          {/* Ein langer Name scrollt im Text; die Aktionen bleiben im Bild. */}
+          <div id={descriptionId} className="mt-2 min-h-0 overflow-y-auto break-words text-sm leading-relaxed text-[var(--color-text-secondary)]">{children}</div>
+          <div className="mt-4 flex shrink-0 flex-wrap justify-end gap-2">
             {/* Abbrechen steht zuerst und erhält den Fokus: Enter löscht nichts. */}
             <Button variant="secondary" className="min-h-touch desktop:min-h-0" onClick={onCancel} autoFocus>Abbrechen</Button>
             <Button variant="danger" className="min-h-touch desktop:min-h-0" onClick={onConfirm}>{confirmLabel}</Button>
