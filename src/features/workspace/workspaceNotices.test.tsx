@@ -102,6 +102,19 @@ describe('Speichermeldungen', () => {
     expect(screen.getByRole('button', { name: 'Umbenennen' })).toBeDisabled();
   });
 
+  it('prüft die Schemaversion bei „Neu laden“ erneut und gibt das Schreiben erst danach frei', async () => {
+    const schemaStatus = vi.fn<WorkspacePort['schemaStatus']>()
+      .mockImplementationOnce(() => fail('WORKSPACE_STORAGE_FAILED'))
+      .mockImplementationOnce(() => fail('WORKSPACE_STORAGE_FAILED'))
+      .mockImplementation(() => ok('current' as const));
+    renderWith(fakePort({ schemaStatus }));
+    fireEvent.click(within(await notice('Speicher nicht verfügbar')).getByRole('button', { name: 'Neu laden' }));
+    fireEvent.click(within(await notice('Speicher nicht verfügbar')).getByRole('button', { name: 'Neu laden' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Umbenennen' })).toBeEnabled());
+    expect(screen.queryByText('Speicher nicht verfügbar')).not.toBeInTheDocument();
+    expect(schemaStatus).toHaveBeenCalledTimes(3);
+  });
+
   it('legt bei schnellem Doppelklick nur einen Verbund an', async () => {
     let finish: (result: WorkspaceResult<WorkspaceVerbund>) => void = () => undefined;
     const createVerbund = vi.fn(() => new Promise<WorkspaceResult<WorkspaceVerbund>>((resolve) => { finish = resolve; }));

@@ -1,3 +1,4 @@
+import { REFERENCE_GRAPH_CODES } from '@/domain/referenceGraphModel';
 import { buildWorkspaceGraph } from '@/domain/workspaceGraph';
 import type { WorkspaceClass1Artifact, WorkspaceGraphEdge } from '@/domain/workspaceGraphModel';
 import type { OscalRootKey } from '@/domain/oscalVersionMatrix';
@@ -92,13 +93,29 @@ function edgeView(edge: WorkspaceGraphEdge, source: unknown, class1Unavailable: 
   };
 }
 
+function bindingKey(localId: string, pointer: string, href: string | undefined): string {
+  return `${localId}|${pointer}|${href ?? ''}`;
+}
+
 /** Bindungen auf BSI-Artefakte, die nicht als geladenes, verifiziertes Artefakt vorliegen. */
 function unavailableClass1Bindings(bindings: readonly WorkspaceBinding[], available: ReadonlySet<string>): Set<string> {
   const keys = new Set<string>();
   for (const binding of bindings) {
-    if (binding.target.kind === 'class-1' && !available.has(binding.target.artifactKey)) keys.add(`${binding.fromLocalId}|${binding.pointer}`);
+    if (binding.target.kind === 'class-1' && !available.has(binding.target.artifactKey)) keys.add(bindingKey(binding.fromLocalId, binding.pointer, binding.href));
   }
   return keys;
+}
+
+/**
+ * Nur das fehlende Ziel einer passenden Klasse-1-Bindung ist ein Sitzungszustand.
+ * Eine veraltete oder mehrdeutige Bindung bleibt ein Dokumentfehler, auch wenn
+ * eine ihrer Bindungen auf einen nicht geladenen Katalog zeigt.
+ */
+function isUnavailableClass1Edge(edge: WorkspaceGraphEdge, href: string | undefined, unavailable: ReadonlySet<string>): boolean {
+  return edge.from.document.kind === 'local'
+    && edge.state === 'error'
+    && edge.diagnostic?.code === REFERENCE_GRAPH_CODES.targetNotFound
+    && unavailable.has(bindingKey(edge.from.document.localId, edge.path, href));
 }
 
 /**
@@ -138,14 +155,26 @@ export async function loadVerbundView(
   const edges = new Map<LocalId, WorkspaceEdgeView[]>();
   // Die Diagnose einer Kante auf ein nicht geladenes BSI-Artefakt beschreibt die Sitzung, nicht das Dokument.
   const suppressed = new Set<unknown>();
+  const missingEdges = new Set<string>();
   for (const edge of graph.edges) {
     if (edge.from.document.kind !== 'local') continue;
     const localId = edge.from.document.localId;
-    const missing = unavailable.has(`${localId}|${edge.path}`);
-    if (missing && edge.diagnostic) suppressed.add(edge.diagnostic);
+    const source = sources.get(localId);
+    const missing = isUnavailableClass1Edge(edge, pointerString(source, edge.path), unavailable);
+    if (missing) {
+      suppressed.add(edge.diagnostic);
+      missingEdges.add(`${localId}|${edge.path}`);
+    }
     const list = edges.get(localId) ?? [];
-    list.push(edgeView(edge, sources.get(localId), missing));
+    list.push(edgeView(edge, source, missing));
     edges.set(localId, list);
+  }
+  // Die Profilauflösung übernimmt eine solche Kantendiagnose als eigenes Objekt mit
+  // Code und Pfad der Kante; importierende Profile tragen dasselbe Objekt weiter.
+  for (const resolution of graph.resolutions) {
+    const diagnostic = resolution.status === 'error' ? resolution.diagnostic : undefined;
+    if (resolution.document.kind === 'local' && diagnostic?.code === REFERENCE_GRAPH_CODES.targetNotFound
+      && missingEdges.has(`${resolution.document.localId}|${diagnostic.path}`)) suppressed.add(diagnostic);
   }
   return {
     ok: true,

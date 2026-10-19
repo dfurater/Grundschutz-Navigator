@@ -117,6 +117,20 @@ export function WorkspaceProvider({ open = openWorkspaceStore, children }: Reado
     setNotices((current) => withNotice(current, notice));
   }, []);
 
+  // Eine nicht bestätigte Schemaversion gibt das Schreiben nicht frei; Lesen und Export bleiben.
+  const checkSchema = useCallback(async (store: WorkspacePort) => {
+    const schema = await store.schemaStatus().catch(storageFailed);
+    if (!schema.ok) {
+      setWritable(false);
+      report(schema.diagnostic);
+    } else if (schema.value === 'newer') {
+      report({ code: 'WORKSPACE_SCHEMA_NEWER' });
+    } else {
+      setWritable(true);
+      setNotices((current) => withoutNotice(current, 'write-locked'));
+    }
+  }, [report]);
+
   const activate = useCallback(() => {
     if (startedRef.current) return;
     startedRef.current = true;
@@ -127,18 +141,11 @@ export function WorkspaceProvider({ open = openWorkspaceStore, children }: Reado
         report(opened.diagnostic);
         return;
       }
-      const schema = await opened.value.schemaStatus();
-      // Eine nicht bestätigte Schemaversion gibt das Schreiben nicht frei; Lesen und Export bleiben.
-      if (!schema.ok) {
-        setWritable(false);
-        report(schema.diagnostic);
-      } else if (schema.value === 'newer') {
-        report({ code: 'WORKSPACE_SCHEMA_NEWER' });
-      }
+      await checkSchema(opened.value);
       setPort(opened.value);
       setStatus('ready');
     });
-  }, [report]);
+  }, [report, checkSchema]);
 
   useEffect(() => () => port?.close(), [port]);
 
@@ -219,10 +226,13 @@ export function WorkspaceProvider({ open = openWorkspaceStore, children }: Reado
     reload: () => {
       setNotices((current) => withoutNotice(withoutNotice(current, 'conflict'), 'storage-failed'));
       setRevision((current) => current + 1);
-      // Ein gescheitertes Öffnen wird erneut versucht.
+      // Ein gescheitertes Öffnen wird erneut versucht, eine gescheiterte Schemaprüfung
+      // ebenso; eine Schreibsperre durch ein neueres Speicherschema bleibt bestehen.
       if (status === 'unavailable') {
         startedRef.current = false;
         activate();
+      } else if (port && !writable && !notices.includes('write-locked')) {
+        void checkSchema(port);
       }
     },
     createVerbund: (name) => write((store) => store.createVerbund(name)),
@@ -241,7 +251,7 @@ export function WorkspaceProvider({ open = openWorkspaceStore, children }: Reado
     },
     registerAutosave,
     flushAutosaves,
-  }), [status, verbuende, writable, notices, verbund, activate, write, port, report, registerAutosave, flushAutosaves]);
+  }), [status, verbuende, writable, notices, verbund, activate, checkSchema, write, port, report, registerAutosave, flushAutosaves]);
 
   return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>;
 }
