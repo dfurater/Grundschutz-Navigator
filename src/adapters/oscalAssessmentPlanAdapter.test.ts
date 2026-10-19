@@ -96,6 +96,58 @@ describe('Assessment-Plan-Referenzgrenzen', () => {
       reason: 'identity-ambiguous',
     });
   });
+  it('verwendet Prüfwerkzeuge nicht als Systemsubjekte, auch bei gebundenem SSP', () => {
+    const source = makeFullAssessmentPlan();
+    const body = source['assessment-plan'];
+    Object.assign(body['assessment-assets'], { components: body['local-definitions'].components });
+    body['local-definitions'].components = [];
+    const view = parse(source);
+    expect(view.assessmentSubjects[0].includeSubjects[0].reference).toEqual({
+      status: 'not-resolvable-in-context', reason: 'ssp-not-supplied',
+    });
+    expect(view.assessmentAssets?.assessmentPlatforms[0].usesComponents[0].reference).toEqual({
+      status: 'resolved', origin: 'local', path: '/assessment-plan/assessment-assets/components/0',
+    });
+    const ssp = parseSspDocument(makeMinimalSsp('1.2.2'), context);
+    const bound = parseAssessmentPlanDocument(source, context, { ssp }).view;
+    expect(bound.assessmentSubjects[0].includeSubjects[0].reference).toEqual({
+      status: 'unresolved', reason: 'identity-not-found',
+    });
+  });
+  it('trennt identische UUIDs in Systemkomponenten und Prüfwerkzeugen', () => {
+    const source = makeFullAssessmentPlan();
+    const body = source['assessment-plan'];
+    Object.assign(body['assessment-assets'], { components: body['local-definitions'].components });
+    const view = parse(source);
+    expect(view.diagnostics).toEqual([]);
+    expect(view.assessmentSubjects[0].includeSubjects[0].reference).toEqual({
+      status: 'resolved', origin: 'local', path: '/assessment-plan/local-definitions/components/0',
+    });
+    expect(view.tasks[0].subjects[0].includeSubjects[0].reference).toEqual(
+      view.assessmentSubjects[0].includeSubjects[0].reference,
+    );
+    expect(view.tasks[0].associatedActivities[0].subjects[0].includeSubjects[0].reference).toEqual(
+      view.assessmentSubjects[0].includeSubjects[0].reference,
+    );
+    expect(view.assessmentAssets?.assessmentPlatforms[0].usesComponents[0].reference).toEqual({
+      status: 'resolved', origin: 'local', path: '/assessment-plan/assessment-assets/components/0',
+    });
+  });
+  it('diagnostiziert doppelte Prüfwerkzeuge nur in ihrem eigenen Bereich', () => {
+    const source = makeFullAssessmentPlan();
+    const body = source['assessment-plan'];
+    const component = body['local-definitions'].components[0];
+    Object.assign(body['assessment-assets'], { components: [component, component] });
+    const view = parse(source);
+    expect(view.assessmentSubjects[0].includeSubjects[0].reference.status).toBe('resolved');
+    expect(view.assessmentAssets?.assessmentPlatforms[0].usesComponents[0].reference).toEqual({
+      status: 'unresolved', reason: 'identity-ambiguous',
+    });
+    expect(view.diagnostics.map(({ code, path }) => ({ code, path }))).toEqual([
+      { code: 'OSCAL_AP_COMPONENT_UUID_DUPLICATE', path: '/assessment-plan/assessment-assets/components/1/uuid' },
+      { code: 'OSCAL_AP_COMPONENT_REFERENCE_UNRESOLVED', path: '/assessment-plan/assessment-assets/assessment-platforms/0/uses-components/0/component-uuid' },
+    ]);
+  });
   it('führt offene Subjektarten als nicht auflösbar im aktuellen Kontext', () => {
     const source = makeFullAssessmentPlan();
     Object.assign(source['assessment-plan'], {

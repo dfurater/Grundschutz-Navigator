@@ -173,9 +173,9 @@ src/                              # Anwendungsquellcode
 │   ├── sourceRegistry.mjs            # Verbindlicher Upstream-/Katalogvertrag
 │   ├── sourceRegistry.ts             # Typsicherer Einstieg in sourceRegistry.mjs
 │   ├── statementSegments.ts          # Reine Segmentierung des Anforderungssatzes
-│   ├── __snapshots__/             # Pfadbasierter Versionsdrift des Assessment-Plan-Schemas
-│   ├── oscalAssessmentPlan.ts       # Versionierte Raw-Typen des Assessment Plans
-│   ├── assessmentPlanModel.ts       # Projektion des Prüfplans und explizite SSP-/Katalogbindung
+│   ├── __snapshots__/                # Pfadbasierter Versionsdrift des Assessment-Plan-Schemas
+│   ├── oscalAssessmentPlan.ts        # Versionierte Raw-Typen des Assessment Plans
+│   ├── assessmentPlanModel.ts        # Projektion des Prüfplans und explizite SSP-/Katalogbindung
 │   ├── systemSecurityPlanModel.ts    # Domänenmodell des SSP
 │   ├── systemSecurityPlanSystemModel.ts # Domänenmodell der SSP-Systembeschreibung
 │   ├── taxonomyVocabulary.ts         # Auflösung von Praktiken und Themen

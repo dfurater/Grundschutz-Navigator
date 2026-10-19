@@ -134,7 +134,7 @@ function deriveAssets(body: JsonObject, state: ApDeriveState): AssessmentPlan['a
   const node = objectField(body, 'assessment-assets', AP_BASE_PATH, state);
   if (node === null) return null;
   const p = `${AP_BASE_PATH}/assessment-assets`;
-  indexNodes(state, node, 'components', 'component', p, 'COMPONENT_UUID_DUPLICATE');
+  indexNodes(state, node, 'components', 'component', p, 'COMPONENT_UUID_DUPLICATE', state.assets);
   return {
     components: readObjectArrayField(node, 'components', p, state).map((entry) =>
       componentEntity(entry.node, entry.path, state),
@@ -157,6 +157,9 @@ function deriveAssets(body: JsonObject, state: ApDeriveState): AssessmentPlan['a
                 `${up}/component-uuid`,
                 true,
                 'COMPONENT_REFERENCE_UNRESOLVED',
+                state.assets.get('component')?.has(componentUuid?.toLowerCase() ?? '')
+                  ? state.assets
+                  : state.local,
               ),
             };
           },
@@ -177,6 +180,7 @@ export function deriveAssessmentPlan(
     diagnostics: [],
     options,
     local: new Map(),
+    assets: new Map(),
     ssp: new Map(),
     sspAvailable: false,
   };

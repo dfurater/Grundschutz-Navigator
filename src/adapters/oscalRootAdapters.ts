@@ -14,7 +14,10 @@
 // Root-Erkennung, Versionsbindung und Diagnosevertrag, nicht das Parsing.
 // =============================================================================
 
-import { deriveAssessmentPlan } from '@/adapters/oscalAssessmentPlanAdapter';
+import {
+  ASSESSMENT_PLAN_ROOT_TYPE,
+  deriveAssessmentPlan,
+} from '@/adapters/oscalAssessmentPlanAdapter';
 import type { AssessmentPlan } from '@/domain/assessmentPlanModel';
 import { parseCatalog } from '@/adapters/oscalAdapter';
 import {
@@ -167,8 +170,9 @@ export const sspRootAdapter: OscalRootAdapter<SystemSecurityPlan> = Object.freez
     deriveSystemSecurityPlan(body, context),
 });
 
+/** Assessment-Layer-Adapter; die Ableitung akzeptiert ausschließlich `class-2-local-user`. */
 export const assessmentPlanRootAdapter: OscalRootAdapter<AssessmentPlan> = Object.freeze({
-  rootType: 'assessment-plan',
+  rootType: ASSESSMENT_PLAN_ROOT_TYPE,
   moduleEntryPoint: 'src/adapters/oscalAssessmentPlanAdapter.ts',
   derive: (body: unknown, context: OscalDocumentContext) => deriveAssessmentPlan(body, context),
 });

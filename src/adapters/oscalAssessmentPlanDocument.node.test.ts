@@ -158,6 +158,7 @@ describe('Projektion und kontrollierte Referenzen', () => {
     expect(view.diagnostics).toEqual([]);
     expect(view.localDefinitions.components[0].description).toBe('**Rohmarkup**');
     expect(view.localDefinitions.activities[0].steps).toHaveLength(1);
+    expect(view.tasks[0].tasks.map(({ uuid }) => uuid)).toEqual([AP_UUIDS.child, AP_UUIDS.sibling]);
     expect(view.tasks[0].tasks[0].dependencies[0].reference.status).toBe('resolved');
     expect(view.tasks[0].associatedActivities[0].reference.status).toBe('resolved');
     expect(view.tasks[0].subjects[0].includeSubjects[0].reference.status).toBe('resolved');
@@ -168,14 +169,18 @@ describe('Projektion und kontrollierte Referenzen', () => {
     expect(JSON.stringify(view)).not.toContain('c2Vuc2l0aXZl');
     expect((await validateAssessmentPlanSchema(parse(source))).ok).toBe(true);
   });
-  it.each(['ssp.json', 'https://example.invalid/ssp.json', `#${AP_UUIDS.resource}`])(
+  it.each([
+    ['ssp.json', { kind: 'unresolved', reason: 'relative' }],
+    ['https://example.invalid/ssp.json', { kind: 'external' }],
+    [`#${AP_UUIDS.resource}`, { kind: 'resource', resource: { uuid: AP_UUIDS.resource } }],
+  ] as const)(
     'klassifiziert %s ohne SSP-Aussage oder Laden',
-    (href) => {
+    (href, expected) => {
       const source = makeFullAssessmentPlan();
       source['assessment-plan']['import-ssp'].href = href;
       const stubs = stubNoNetwork();
       const view = parse(source).view;
-      expect(view.importSsp?.reference).toBeDefined();
+      expect(view.importSsp?.reference).toMatchObject(expected);
       expect(view.importSsp?.ssp.status).toBe('not-resolvable-in-context');
       expectNoNetworkCalls(stubs);
     },

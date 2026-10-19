@@ -11,6 +11,7 @@ export const AP_UUIDS = {
   resource: '00000000-0000-4000-8000-000000000008',
   platform: '00000000-0000-4000-8000-000000000009',
   step: '00000000-0000-4000-8000-000000000010',
+  sibling: '00000000-0000-4000-8000-000000000011',
 } as const;
 
 export function makeMinimalAssessmentPlan(version: PinnedOscalVersion = '1.2.2') {
@@ -136,8 +137,14 @@ export function makeFullAssessmentPlan() {
             {
               uuid: AP_UUIDS.child,
               type: 'action',
-              title: 'Teilprüfung',
+              title: 'Zweite Teilprüfung',
               dependencies: [{ 'task-uuid': AP_UUIDS.task }],
+            },
+            {
+              uuid: AP_UUIDS.sibling,
+              type: 'action',
+              title: 'Erste Teilprüfung',
+              dependencies: [{ 'task-uuid': AP_UUIDS.child }],
             },
           ],
         },

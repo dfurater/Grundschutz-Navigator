@@ -21,6 +21,7 @@ export interface ApDeriveState extends RootDeriveFrame {
   readonly options: AssessmentPlanDeriveOptions;
   readonly local: Map<string, Map<string, string[]>>;
   readonly ssp: Map<string, Map<string, string[]>>;
+  readonly assets: Map<string, Map<string, string[]>>;
   sspAvailable: boolean;
 }
 export function diagnose(state: ApDeriveState, code: string, path: string): void {
@@ -145,17 +146,18 @@ export function indexNodes(
   type: string,
   path: string,
   duplicateCode?: string,
+  index: ApDeriveState['local'] = state.local,
 ): void {
   const values = node[key];
   if (!Array.isArray(values)) return;
-  values.forEach((value: unknown, index) => {
+  values.forEach((value: unknown, position) => {
     const uuid = isJsonObject(value) ? readString(value.uuid) : undefined;
     if (
       uuid !== undefined &&
-      addIndex(state.local, type, uuid, `${path}/${key}/${index}`) > 1 &&
+      addIndex(index, type, uuid, `${path}/${key}/${position}`) > 1 &&
       duplicateCode !== undefined
     ) {
-      diagnose(state, duplicateCode, `${path}/${key}/${index}/uuid`);
+      diagnose(state, duplicateCode, `${path}/${key}/${position}/uuid`);
     }
   });
 }
@@ -166,13 +168,14 @@ export function reference(
   path: string,
   external: boolean,
   code: string,
+  localIndex: ApDeriveState['local'] = state.local,
 ): ApReference {
   if (type === undefined || id === undefined) {
     diagnose(state, code, path);
     return { status: 'unresolved', reason: 'identity-missing' };
   }
   const key = type === 'role' ? id : id.toLowerCase();
-  const local = state.local.get(type)?.get(key) ?? [];
+  const local = localIndex.get(type)?.get(key) ?? [];
   if (local.length === 1) return { status: 'resolved', origin: 'local', path: local[0] };
   if (local.length > 1) {
     diagnose(state, code, path);
