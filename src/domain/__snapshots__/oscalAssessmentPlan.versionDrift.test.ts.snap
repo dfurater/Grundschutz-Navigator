@@ -1,0 +1,140 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`Assessment-Plan-Versionsdrift > erfasst die vollständigen Unterschiede an jedem erreichbaren Objektpfad 1`] = `
+[
+  {
+    "paths": [
+      "/assessment-plan/assessment-assets/components[]/protocols[]",
+      "/assessment-plan/local-definitions/components[]/protocols[]",
+    ],
+    "versions": [
+      "{"properties":["name","port-ranges","title","uuid"],"required":["name"],"additionalProperties":false,"variants":[]}",
+      "{"properties":["name","port-ranges","title","uuid"],"required":[],"additionalProperties":false,"variants":[]}",
+      "{"properties":["name","port-ranges","title","uuid"],"required":[],"additionalProperties":false,"variants":[]}",
+      "{"properties":["name","port-ranges","title","uuid"],"required":[],"additionalProperties":false,"variants":[]}",
+    ],
+  },
+  {
+    "paths": [
+      "/assessment-plan/assessment-assets/components[]/protocols[]/port-ranges[]",
+      "/assessment-plan/local-definitions/components[]/protocols[]/port-ranges[]",
+    ],
+    "versions": [
+      "{"properties":["end","start","transport"],"required":[],"additionalProperties":false,"variants":[]}",
+      "{"properties":["end","start","transport"],"required":[],"additionalProperties":false,"variants":[]}",
+      "{"properties":["end","remarks","start","transport"],"required":[],"additionalProperties":false,"variants":[]}",
+      "{"properties":["end","remarks","start","transport"],"required":[],"additionalProperties":false,"variants":[]}",
+    ],
+  },
+  {
+    "paths": [
+      "/assessment-plan/assessment-subjects[]",
+      "/assessment-plan/tasks[]/associated-activities[]/subjects[]",
+      "/assessment-plan/tasks[]/subjects[]",
+    ],
+    "versions": [
+      "{"properties":["description","exclude-subjects","include-all","include-subjects","links","props","remarks","type"],"required":["type"],"additionalProperties":false,"variants":[]}",
+      "{"properties":["description","exclude-subjects","include-all","include-subjects","links","props","remarks","type"],"required":["type"],"additionalProperties":false,"variants":[]}",
+      "{"properties":["description","exclude-subjects","include-all","include-subjects","links","props","remarks","type"],"required":[],"additionalProperties":null,"variants":[{"properties":["description","exclude-subjects","include-all","links","props","remarks","type"],"required":["include-all"],"additionalProperties":false},{"properties":["description","exclude-subjects","include-subjects","links","props","remarks","type"],"required":["include-subjects"],"additionalProperties":false}]}",
+      "{"properties":["description","exclude-subjects","include-all","include-subjects","links","props","remarks","type"],"required":[],"additionalProperties":null,"variants":[{"properties":["description","exclude-subjects","include-all","links","props","remarks","type"],"required":["include-all"],"additionalProperties":false},{"properties":["description","exclude-subjects","include-subjects","links","props","remarks","type"],"required":["include-subjects"],"additionalProperties":false}]}",
+    ],
+  },
+  {
+    "paths": [
+      "/assessment-plan/local-definitions/activities[]/related-controls/control-objective-selections[]",
+      "/assessment-plan/local-definitions/activities[]/steps[]/reviewed-controls/control-objective-selections[]",
+      "/assessment-plan/reviewed-controls/control-objective-selections[]",
+    ],
+    "versions": [
+      "{"properties":["description","exclude-objectives","include-all","include-objectives","links","props","remarks"],"required":[],"additionalProperties":false,"variants":[]}",
+      "{"properties":["description","exclude-objectives","include-all","include-objectives","links","props","remarks"],"required":[],"additionalProperties":false,"variants":[]}",
+      "{"properties":["description","exclude-objectives","include-all","include-objectives","links","props","remarks"],"required":[],"additionalProperties":null,"variants":[{"properties":["description","exclude-objectives","include-all","links","props","remarks"],"required":["include-all"],"additionalProperties":false},{"properties":["description","exclude-objectives","include-objectives","links","props","remarks"],"required":["include-objectives"],"additionalProperties":false}]}",
+      "{"properties":["description","exclude-objectives","include-all","include-objectives","links","props","remarks"],"required":[],"additionalProperties":null,"variants":[{"properties":["description","exclude-objectives","include-all","links","props","remarks"],"required":["include-all"],"additionalProperties":false},{"properties":["description","exclude-objectives","include-objectives","links","props","remarks"],"required":["include-objectives"],"additionalProperties":false}]}",
+    ],
+  },
+  {
+    "paths": [
+      "/assessment-plan/local-definitions/activities[]/related-controls/control-objective-selections[]/exclude-objectives[]",
+      "/assessment-plan/local-definitions/activities[]/related-controls/control-objective-selections[]/include-objectives[]",
+      "/assessment-plan/local-definitions/activities[]/steps[]/reviewed-controls/control-objective-selections[]/exclude-objectives[]",
+      "/assessment-plan/local-definitions/activities[]/steps[]/reviewed-controls/control-objective-selections[]/include-objectives[]",
+      "/assessment-plan/reviewed-controls/control-objective-selections[]/exclude-objectives[]",
+      "/assessment-plan/reviewed-controls/control-objective-selections[]/include-objectives[]",
+    ],
+    "versions": [
+      "{"properties":["objective-id"],"required":["objective-id"],"additionalProperties":false,"variants":[]}",
+      "{"properties":["objective-id"],"required":["objective-id"],"additionalProperties":false,"variants":[]}",
+      "{"properties":["objective-id","remarks"],"required":["objective-id"],"additionalProperties":false,"variants":[]}",
+      "{"properties":["objective-id","remarks"],"required":["objective-id"],"additionalProperties":false,"variants":[]}",
+    ],
+  },
+  {
+    "paths": [
+      "/assessment-plan/local-definitions/activities[]/related-controls/control-selections[]",
+      "/assessment-plan/local-definitions/activities[]/steps[]/reviewed-controls/control-selections[]",
+      "/assessment-plan/reviewed-controls/control-selections[]",
+    ],
+    "versions": [
+      "{"properties":["description","exclude-controls","include-all","include-controls","links","props","remarks"],"required":[],"additionalProperties":false,"variants":[]}",
+      "{"properties":["description","exclude-controls","include-all","include-controls","links","props","remarks"],"required":[],"additionalProperties":false,"variants":[]}",
+      "{"properties":["description","exclude-controls","include-all","include-controls","links","props","remarks"],"required":[],"additionalProperties":null,"variants":[{"properties":["description","exclude-controls","include-all","links","props","remarks"],"required":["include-all"],"additionalProperties":false},{"properties":["description","exclude-controls","include-controls","links","props","remarks"],"required":["include-controls"],"additionalProperties":false}]}",
+      "{"properties":["description","exclude-controls","include-all","include-controls","links","props","remarks"],"required":[],"additionalProperties":null,"variants":[{"properties":["description","exclude-controls","include-all","links","props","remarks"],"required":["include-all"],"additionalProperties":false},{"properties":["description","exclude-controls","include-controls","links","props","remarks"],"required":["include-controls"],"additionalProperties":false}]}",
+    ],
+  },
+  {
+    "paths": [
+      "/assessment-plan/metadata/parties[]",
+    ],
+    "versions": [
+      "{"properties":["addresses","email-addresses","external-ids","links","location-uuids","member-of-organizations","name","props","remarks","short-name","telephone-numbers","type","uuid"],"required":["type","uuid"],"additionalProperties":false,"variants":[]}",
+      "{"properties":["addresses","email-addresses","external-ids","links","location-uuids","member-of-organizations","name","props","remarks","short-name","telephone-numbers","type","uuid"],"required":["type","uuid"],"additionalProperties":false,"variants":[]}",
+      "{"properties":["addresses","email-addresses","external-ids","links","location-uuids","member-of-organizations","name","props","remarks","short-name","telephone-numbers","type","uuid"],"required":[],"additionalProperties":null,"variants":[{"properties":["addresses","email-addresses","external-ids","links","member-of-organizations","name","props","remarks","short-name","telephone-numbers","type","uuid"],"required":[],"additionalProperties":false},{"properties":["email-addresses","external-ids","links","location-uuids","member-of-organizations","name","props","remarks","short-name","telephone-numbers","type","uuid"],"required":[],"additionalProperties":false}]}",
+      "{"properties":["addresses","email-addresses","external-ids","links","location-uuids","member-of-organizations","name","props","remarks","short-name","telephone-numbers","type","uuid"],"required":[],"additionalProperties":null,"variants":[{"properties":["addresses","email-addresses","external-ids","links","member-of-organizations","name","props","remarks","short-name","telephone-numbers","type","uuid"],"required":[],"additionalProperties":false},{"properties":["email-addresses","external-ids","links","location-uuids","member-of-organizations","name","props","remarks","short-name","telephone-numbers","type","uuid"],"required":[],"additionalProperties":false}]}",
+    ],
+  },
+  {
+    "paths": [
+      "/assessment-plan/tasks[]/timing",
+    ],
+    "versions": [
+      "{"properties":["at-frequency","on-date","within-date-range"],"required":[],"additionalProperties":false,"variants":[]}",
+      "{"properties":["at-frequency","on-date","within-date-range"],"required":[],"additionalProperties":false,"variants":[]}",
+      "{"properties":["at-frequency","on-date","within-date-range"],"required":[],"additionalProperties":null,"variants":[{"properties":["on-date"],"required":["on-date"],"additionalProperties":false},{"properties":["within-date-range"],"required":["within-date-range"],"additionalProperties":false},{"properties":["at-frequency"],"required":["at-frequency"],"additionalProperties":false}]}",
+      "{"properties":["at-frequency","on-date","within-date-range"],"required":[],"additionalProperties":null,"variants":[{"properties":["on-date"],"required":["on-date"],"additionalProperties":false},{"properties":["within-date-range"],"required":["within-date-range"],"additionalProperties":false},{"properties":["at-frequency"],"required":["at-frequency"],"additionalProperties":false}]}",
+    ],
+  },
+  {
+    "paths": [
+      "/assessment-plan/tasks[]/timing/at-frequency",
+    ],
+    "versions": [
+      "{"properties":["period","unit"],"required":["period","unit"],"additionalProperties":false,"variants":[]}",
+      "{"properties":["period","unit"],"required":["period","unit"],"additionalProperties":false,"variants":[]}",
+      "{"properties":["period","remarks","unit"],"required":["period","unit"],"additionalProperties":false,"variants":[]}",
+      "{"properties":["period","remarks","unit"],"required":["period","unit"],"additionalProperties":false,"variants":[]}",
+    ],
+  },
+  {
+    "paths": [
+      "/assessment-plan/tasks[]/timing/on-date",
+    ],
+    "versions": [
+      "{"properties":["date"],"required":["date"],"additionalProperties":false,"variants":[]}",
+      "{"properties":["date"],"required":["date"],"additionalProperties":false,"variants":[]}",
+      "{"properties":["date","remarks"],"required":["date"],"additionalProperties":false,"variants":[]}",
+      "{"properties":["date","remarks"],"required":["date"],"additionalProperties":false,"variants":[]}",
+    ],
+  },
+  {
+    "paths": [
+      "/assessment-plan/tasks[]/timing/within-date-range",
+    ],
+    "versions": [
+      "{"properties":["end","start"],"required":["end","start"],"additionalProperties":false,"variants":[]}",
+      "{"properties":["end","start"],"required":["end","start"],"additionalProperties":false,"variants":[]}",
+      "{"properties":["end","remarks","start"],"required":["end","start"],"additionalProperties":false,"variants":[]}",
+      "{"properties":["end","remarks","start"],"required":["end","start"],"additionalProperties":false,"variants":[]}",
+    ],
+  },
+]
+`;

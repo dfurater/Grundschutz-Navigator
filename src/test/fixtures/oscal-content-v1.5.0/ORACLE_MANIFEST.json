@@ -102,6 +102,38 @@
       "remotePath": "examples/ssp/json/oscal_leveraging-example_ssp-min.json",
       "sizeBytes": 9342,
       "sha256": "9bb166c7f0aed30efb753327c04dc5d9f7ecb825c1c27c2c28f5adb134c9751f"
+    },
+    {
+      "artifactKey": "nist-ap-ifa-assessment-plan-example-min",
+      "role": "example",
+      "fileName": "ifa_assessment-plan-example-min.json",
+      "remotePath": "examples/ap/json/ifa_assessment-plan-example-min.json",
+      "sizeBytes": 4548,
+      "sha256": "7013b5a575603f73fec7630806ef273144a8837e7a58452ce2c9c3f9f1793558"
+    },
+    {
+      "artifactKey": "nist-ap-ifa-assessment-plan-example",
+      "role": "example",
+      "fileName": "ifa_assessment-plan-example.json",
+      "remotePath": "examples/ap/json/ifa_assessment-plan-example.json",
+      "sizeBytes": 6404,
+      "sha256": "30b3c50c5c40bae44fa306b4ad4dfe26c36b1b464cab1846c84bce9656cc4988"
+    },
+    {
+      "artifactKey": "nist-ap-ifa-assessment-plan-min",
+      "role": "example",
+      "fileName": "ifa_assessment-plan-min.json",
+      "remotePath": "examples/ap/json/ifa_assessment-plan-min.json",
+      "sizeBytes": 6034,
+      "sha256": "f265b8d28392e374c26a84f960983d3428240ff03d7f9440b49ad11f57985e06"
+    },
+    {
+      "artifactKey": "nist-ap-ifa-assessment-plan",
+      "role": "example",
+      "fileName": "ifa_assessment-plan.json",
+      "remotePath": "examples/ap/json/ifa_assessment-plan.json",
+      "sizeBytes": 8515,
+      "sha256": "66380f4279eb60905f7ec2684b5f885ee1743d648cf6315acaddaaf232d4501d"
     }
   ]
 }

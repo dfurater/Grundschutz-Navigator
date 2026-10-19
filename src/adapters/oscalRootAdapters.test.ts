@@ -63,6 +63,7 @@ describe('Adapter-Registrierung', () => {
       'profile',
       'mapping-collection',
       'system-security-plan',
+      'assessment-plan',
     ]);
     expect(getOscalRootAdapter('catalog')).toBe(catalogRootAdapter);
     expect(getOscalRootAdapter('component-definition')).toBe(componentDefinitionRootAdapter);
@@ -78,14 +79,14 @@ describe('Adapter-Registrierung', () => {
     }
   });
 
-  it('meldet für die drei noch nicht adaptierten Root-Typen keinen Adapter', () => {
+  it('meldet für die zwei noch nicht adaptierten Root-Typen keinen Adapter', () => {
     const unadapted = OSCAL_ROOT_KEYS.filter(
       (rootKey) => !listAdaptedOscalRootTypes().includes(rootKey),
     );
 
     // Die Zahl steht bewusst ausgeschrieben: Ein neuer Modelladapter soll
     // diesen Test rot machen und bewusst nachgezogen werden.
-    expect(unadapted).toHaveLength(3);
+    expect(unadapted).toHaveLength(2);
     for (const rootKey of unadapted) {
       expect(getOscalRootAdapter(rootKey)).toBeNull();
     }
@@ -93,6 +94,16 @@ describe('Adapter-Registrierung', () => {
 });
 
 describe('parseOscalDocument', () => {
+  it('projiziert einen Assessment Plan im Klasse-2-Kontext', () => {
+    const result = parseOscalDocument({ 'assessment-plan': {
+      uuid: '00000000-0000-4000-8000-000000000001',
+      metadata: { title: 'Plan', version: '1', 'last-modified': '2026-10-19T00:00:00Z', 'oscal-version': '1.2.2' },
+      'import-ssp': { href: 'ssp.json' },
+      'reviewed-controls': { 'control-selections': [{ 'include-all': {} }] },
+    } }, { trustClass: 'class-2-local-user' });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.view).toMatchObject({ tasks: [], diagnostics: [] });
+  });
   it('leitet über den registrierten Adapter ab', () => {
     const result = parseOscalDocument(makeCatalogDocument(), context);
 
@@ -117,11 +128,11 @@ describe('parseOscalDocument', () => {
   });
 
   it('unterscheidet „bekannt, aber nicht unterstützt" von „unbekannt"', () => {
-    // Als „bekannt, aber ohne Adapter" dient ein Root aus den drei Modellen
+    // Als „bekannt, aber ohne Adapter" dient ein Root aus den zwei Modellen
     // ohne registrierten Adapter.
     const known = parseOscalDocument(
       {
-        'assessment-plan': {
+        'assessment-results': {
           uuid: 'uuid-ap',
           metadata: {
             title: 'Prüfplan',
@@ -143,9 +154,9 @@ describe('parseOscalDocument', () => {
     if (known.ok || unknown.ok) return;
 
     expect(known.diagnostic.code).toBe(ROOT_DISPATCH_DIAGNOSTIC_CODES.ROOT_TYPE_UNSUPPORTED);
-    expect(known.diagnostic.artifact.rootType).toBe('assessment-plan');
+    expect(known.diagnostic.artifact.rootType).toBe('assessment-results');
     expect(known.diagnostic.artifact.oscalVersion).toBe('1.1.3');
-    expect(known.diagnostic.path).toBe('/assessment-plan');
+    expect(known.diagnostic.path).toBe('/assessment-results');
 
     expect(unknown.diagnostic.code).toBe(VERSION_MATRIX_DIAGNOSTIC_CODES.ROOT_TYPE_UNKNOWN);
     expect(unknown.diagnostic.code).not.toBe(known.diagnostic.code);
