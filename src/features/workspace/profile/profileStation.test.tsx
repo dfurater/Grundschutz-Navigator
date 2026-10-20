@@ -316,6 +316,39 @@ describe('Bearbeiten, Autosave, Speichern und Export', () => {
     expect(JSON.stringify((await readStore((store) => store.getDocument(localId)))?.source)).toContain('"pattern":"ac-*"');
   });
 
+  it('gibt die Navigation erst frei, wenn ein während des Autosave begonnenes Speichern ohne weitere Eingabe bestätigt ist', async () => {
+    const { WorkspaceStore } = await import('@/adapters/workspaceStore');
+    const originalAutosave = WorkspaceStore.prototype.autosaveDraft;
+    const originalSave = WorkspaceStore.prototype.saveDocument;
+    let finishAutosave: () => void = () => {};
+    let finishSave: () => void = () => {};
+    const autosaves = vi.spyOn(WorkspaceStore.prototype, 'autosaveDraft').mockImplementation(function (this: WorkspaceStoreClass, ...args) {
+      if (autosaves.mock.calls.length === 1) {
+        return new Promise((resolve) => { finishAutosave = () => resolve(originalAutosave.call(this, ...args)); });
+      }
+      return originalAutosave.call(this, ...args);
+    });
+    const saves = vi.spyOn(WorkspaceStore.prototype, 'saveDocument').mockImplementation(function (this: WorkspaceStoreClass, ...args) {
+      return new Promise((resolve) => { finishSave = () => resolve(originalSave.call(this, ...args)); });
+    });
+    const { router } = renderArea(buildStationUrl(seeded.verbundId, 'profile'), withGspp());
+    await openNewProfile('Paket');
+    fireEvent.click(within(main()).getByRole('radio', { name: /catalog-gspp/ }));
+    fireEvent.click(within(main()).getByRole('button', { name: 'Profil anlegen' }));
+    await waitFor(() => expect(router.state.location.pathname).toMatch(/\/dokument\//), WAIT);
+    fireEvent.click(await within(main()).findByRole('button', { name: '+ Muster' }));
+    fireEvent.click(within(main()).getByRole('link', { name: /^Profile$/ }));
+    await waitFor(() => expect(autosaves).toHaveBeenCalledTimes(1), WAIT);
+    // Kein weiterer Arbeitsstand: der Autosave endet erfolgreich, während das Speichern noch läuft.
+    fireEvent.click(within(main()).getByRole('button', { name: 'Speichern' }));
+    finishAutosave();
+    await waitFor(() => expect(saves).toHaveBeenCalledTimes(1), WAIT);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(router.state.location.pathname).toMatch(/\/dokument\//);
+    finishSave();
+    await waitFor(() => expect(router.state.location.pathname).not.toMatch(/\/dokument\//), WAIT);
+  });
+
   it('sichert den neuesten Stand, wenn das während der Sicherung begonnene Speichern scheitert', async () => {
     const { WorkspaceStore } = await import('@/adapters/workspaceStore');
     const { StorageFailure, failure } = await import('@/adapters/workspaceStorageFailure');

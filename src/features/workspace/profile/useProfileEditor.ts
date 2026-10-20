@@ -155,6 +155,8 @@ export function useProfileEditor(localId: LocalId): ProfileEditor {
           }
           latest.current = { ...latest.current, draftSavedAt: result.value.savedAt, unsaved: latest.current.working !== snapshot };
           setSaveState({ kind: 'autosaved', at: result.value.savedAt });
+          // Auch ohne offenen Arbeitsstand gilt der Flush erst nach einem während des Autosave begonnenen Speichern als erfolgreich.
+          if (saving.current) return FLUSH_RESTART;
           if (!latest.current.unsaved) return result;
         }
       });
