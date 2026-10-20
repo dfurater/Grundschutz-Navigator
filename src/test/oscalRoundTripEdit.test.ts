@@ -369,6 +369,57 @@ describe('Edit-Lauf: Stufen und Grenzen am Exportartefakt', () => {
   });
 });
 
+describe('Edit-Lauf: Orakel und Versionsgrenze', () => {
+  it('lässt einen Schreibpfad, der den übergebenen Stempel umschreibt, nicht bestehen', async () => {
+    const stamp = { ...STAMP };
+    const edit = titleEdit('catalog');
+    const result = await runEditRoundTrip({
+      fixtureText: JSON.stringify(maximal('catalog')),
+      edit,
+      stamp,
+      exportDocument: (parsed, passed) => {
+        Object.assign(passed, { uuid: 'cccccccc-0000-4000-8000-0000000000e3', lastModified: '2026-10-22T00:00:00.000Z' });
+        return referenceEditor(edit)(parsed, passed);
+      },
+    });
+
+    expect(result.status).toBe('failed');
+    expect(result.identities.findings).toEqual(['document-uuid-not-stamp', 'last-modified-not-stamp']);
+    expect(stamp).toEqual(STAMP);
+  });
+
+  it('lässt einen Schreibpfad, der den Edit-Wert umschreibt, nicht bestehen', async () => {
+    const value: Json = { name: 'neu', value: 'a' };
+    const edit: OscalEditOperation = { op: 'add', path: ['catalog', 'metadata', 'props'], value };
+    const result = await runEditRoundTrip({
+      fixtureText: JSON.stringify(maximal('catalog')),
+      edit,
+      stamp: STAMP,
+      exportDocument: (parsed, stamp) => {
+        value.value = 'b';
+        return referenceEditor(edit)(parsed, stamp);
+      },
+    });
+
+    expect(result.status).toBe('failed');
+    expect(result.graph.missing.map((difference) => difference.path)).toEqual(['$.catalog.metadata.props[2]']);
+  });
+
+  it('weist einen Edit mit Wechsel der OSCAL-Version ab', async () => {
+    const result = await runReference(maximal('catalog'), {
+      op: 'replace',
+      path: ['catalog', 'metadata', 'oscal-version'],
+      value: '1.2.1',
+    });
+
+    expect(result).toMatchObject({
+      status: 'failed',
+      binding: { ok: false, reason: 'export-rebinding-failed', diagnostic: { code: 'OSCAL_EXPORT_VERSION_CHANGED' } },
+      stages: { schemaValidation: { status: 'not-run' } },
+    });
+  });
+});
+
 describe('Edit-Lauf: echter Schreibpfad commitExplicitSave()', () => {
   const stored = makeProfileSource(profileSpecFor('profile-gspp'));
   const edit: OscalEditOperation = {

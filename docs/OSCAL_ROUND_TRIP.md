@@ -68,11 +68,17 @@ Gesamtstatus `passed` oder `failed`.
   `ExplicitSaveStamp` aus [`src/domain/profileSave.ts`](../src/domain/profileSave.ts).
   Der Harnisch hat keine eigene Zeit- oder UUID-Quelle; ein statischer Test im
   Guard-File belegt das.
-* **Schreibpfad** `exportDocument(parsed, stamp)`: erhält eine private Kopie
-  des geparsten Originals. Ein Ergebnis ohne JSON-Darstellung oder eine
+* **Schreibpfad** `exportDocument(parsed, stamp)`: erhält private Kopien des
+  geparsten Originals und des Stempels; Stempel und Edit-Wert für den
+  Vergleich sichert der Harnisch vor dem Aufruf. Ein Ergebnis ohne JSON-Darstellung oder eine
   Ausnahme im Callback ergibt den Bindungsgrund `export-not-serializable`.
 * **Stufen 1–2** laufen wie im No-op-Lauf, **Stufen 3–5** gegen das
   reimportierte Exportartefakt über dieselbe `evaluateStages()`.
+* **Versionsgrenze**: Das reimportierte Exportartefakt muss an dieselbe
+  OSCAL-Version gebunden werden wie die Eingabe. Eine abweichende Version
+  ergibt den Bindungsgrund `export-rebinding-failed` mit
+  `OSCAL_EXPORT_VERSION_CHANGED`, auch wenn die Edit-Operation den Wechsel
+  beschreibt.
 * **Exportgrenzen**: Exportbytes und reimportierter Graph durchlaufen dieselbe
   Byte-Grenze und dieselben Objektgraphgrenzen wie die Eingabe. Ein Verstoß
   ergibt `exportLimit: failed`; Vergleich und Stufen laufen dann nicht.

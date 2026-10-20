@@ -1031,6 +1031,25 @@ function editRunNotCompared(
   });
 }
 
+/** Ergebnisrahmen eines Edit-Laufs, dessen Exportartefakt nicht wie die Eingabe gebunden wird. */
+function editRebindingRejected(
+  diagnostic: OscalDiagnostic,
+  graph: OscalEditGraphReport,
+  identities: OscalRoundTripIdentityReport,
+): OscalEditRunResult {
+  return deepFreeze({
+    mode: 'edit',
+    status: 'failed',
+    rootType: null,
+    resourceLimit: { status: 'passed' },
+    exportLimit: { status: 'passed' },
+    binding: { ok: false, reason: 'export-rebinding-failed', diagnostic },
+    graph,
+    identities,
+    stages: stagesNotRun(),
+  });
+}
+
 /**
  * Führt genau einen Edit-Round-trip aus.
  *
@@ -1044,6 +1063,13 @@ export async function runEditRoundTrip(input: OscalEditRunInput): Promise<OscalE
   const bound = bindFixture(input);
   if (!bound.ok) return editRunNotCompared(bound.resourceLimit, bound.binding, { status: 'not-run' });
   const { source, rootType } = bound.success;
+  // Orakel vor dem Callback sichern: Ein Schreibpfad, der Stempel oder
+  // Edit-Wert per Referenz umschreibt, darf seine eigene Erwartung nicht verschieben.
+  const stamp: ExplicitSaveStamp = Object.freeze({
+    uuid: input.stamp.uuid,
+    lastModified: input.stamp.lastModified,
+  });
+  const editValue = structuredClone(input.edit.value);
 
   const policy = OSCAL_ROOT_UUID_POLICY[rootType];
   const editExpectation = expectedEditDifference(source, input.edit);
@@ -1060,7 +1086,7 @@ export async function runEditRoundTrip(input: OscalEditRunInput): Promise<OscalE
 
   const exportedArtifact = exportAndReimport(
     source,
-    (snapshot) => input.exportDocument(snapshot, input.stamp),
+    (snapshot) => input.exportDocument(snapshot, { ...stamp }),
   );
   if (exportedArtifact === null) {
     const diagnostic = createExportNotSerializableDiagnostic();
@@ -1090,7 +1116,7 @@ export async function runEditRoundTrip(input: OscalEditRunInput): Promise<OscalE
   const presentKeys = new Set(differences.map(differenceKey));
   // Der Edit-Eintrag zählt nur, wenn der Export auch den Edit-Wert trägt.
   const editValueApplied = compareJsonGraphs(
-    input.edit.value,
+    editValue,
     valueAt(imported, editExpectation.segments),
   ).length === 0;
   const unexpected = differences.filter((difference) => !expectedKeys.has(differenceKey(difference)));
@@ -1103,7 +1129,7 @@ export async function runEditRoundTrip(input: OscalEditRunInput): Promise<OscalE
     missing,
   };
 
-  const findings = compareEditIdentities(source, imported, policy, input.stamp, {
+  const findings = compareEditIdentities(source, imported, policy, stamp, {
     rootPath: `$.${rootType}`,
     editPath: editExpectation.difference.path,
   });
@@ -1113,18 +1139,16 @@ export async function runEditRoundTrip(input: OscalEditRunInput): Promise<OscalE
   };
 
   const reBound = rebindExport(imported, input.catalogKey);
-  if (!reBound.ok) {
-    return deepFreeze({
-      mode: 'edit',
-      status: 'failed',
-      rootType: null,
-      resourceLimit: { status: 'passed' },
-      exportLimit: { status: 'passed' },
-      binding: { ok: false, reason: 'export-rebinding-failed', diagnostic: reBound.diagnostic },
-      graph,
-      identities,
-      stages: stagesNotRun(),
-    });
+  if (!reBound.ok) return editRebindingRejected(reBound.diagnostic, graph, identities);
+  // Der Edit-Lauf bleibt innerhalb einer OSCAL-Version; ein Versionswechsel
+  // ist kein Edit, auch wenn die Edit-Operation ihn beschreibt.
+  if (reBound.pin.oscalVersion !== bound.success.pin.oscalVersion) {
+    return editRebindingRejected(createOscalDiagnostic({
+      code: 'OSCAL_EXPORT_VERSION_CHANGED',
+      stage: 'root-dispatch',
+      validator: ROUND_TRIP_HARNESS_VALIDATOR,
+      path: `/${rootType}/metadata/oscal-version`,
+    }), graph, identities);
   }
 
   const stages = await evaluateStages(reBound, input.catalogKey);
