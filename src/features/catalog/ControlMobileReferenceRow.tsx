@@ -14,6 +14,8 @@ const EFFORT_TEXT_COLORS: Record<string, string> = {
 
 interface ControlMobileReferenceRowProps {
   readonly control: Control;
+  readonly rowIndex?: number;
+  readonly onFocus?: (control: Control) => void;
   readonly controlsById: Map<string, Control>;
   readonly selectMode?: boolean;
   readonly checked?: boolean;
@@ -24,6 +26,8 @@ interface ControlMobileReferenceRowProps {
 export const ControlMobileReferenceRow = memo(function ControlMobileReferenceRow({
   control,
   controlsById,
+  rowIndex,
+  onFocus,
   selectMode = false,
   checked = false,
   onSelect,
@@ -46,7 +50,10 @@ export const ControlMobileReferenceRow = memo(function ControlMobileReferenceRow
 
   return (
     <div
-      className={`catalog-mobile-reference-row w-full flex items-stretch gap-0 transition-colors active:bg-[var(--color-surface-subtle)] ${
+      data-row-index={rowIndex}
+      onFocusCapture={() => onFocus?.(control)}
+      style={rowIndex === undefined ? undefined : { contentVisibility: 'visible' }}
+      className={`catalog-mobile-reference-row ${rowIndex === undefined ? '' : 'border-b border-[var(--color-border-subtle)]'} w-full flex items-stretch gap-0 transition-colors active:bg-[var(--color-surface-subtle)] ${
         selectMode && checked
           ? 'bg-[var(--color-accent-soft)]'
           : 'bg-[var(--color-surface-base)] hover:bg-[var(--color-surface-subtle)]'
@@ -88,7 +95,7 @@ export const ControlMobileReferenceRow = memo(function ControlMobileReferenceRow
             <p className="catalog-title-text min-w-0 truncate">{control.title}</p>
           </div>
           {/* Zeile 3: Badges — feste Slots für stabile Positionen beim Scrollen */}
-          <div className="mt-1 flex items-center gap-1">
+          <div className="mt-1 flex min-h-6 items-center gap-1">
             {/* Slot Verbindlichkeit — feste Breite */}
             <div className="w-16 shrink-0 flex items-center">
               <ModalverbBadge value={control.modalverb} className="w-full" />

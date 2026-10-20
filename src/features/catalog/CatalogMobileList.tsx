@@ -1,3 +1,5 @@
+import { useCallback, useMemo, useState } from 'react';
+import { useRowWindow } from '@/hooks/useRowWindow';
 import type { Control } from '@/domain/models';
 import { useOverlayScrollbars } from '@/hooks/useOverlayScrollbars';
 import { CatalogMobileSelectionBar } from './CatalogMobileSelectionBar';
@@ -28,21 +30,52 @@ export function CatalogMobileList({
   onCheckedChange,
   onSelectionDone,
 }: CatalogMobileListProps) {
-  const scrollRef = useOverlayScrollbars<HTMLDivElement>(hasOwnScrollArea);
+  const [focusedId, setFocusedId] = useState<string | null>(null);
+  const pinnedIndex = useMemo(
+    () => controls.findIndex((control) => control.id === focusedId),
+    [controls, focusedId],
+  );
+  const onRowFocus = useCallback((control: Control) => setFocusedId(control.id), []);
+  const { scrollRef, onScroll, rowHeight, slots } = useRowWindow({
+    rowCount: controls.length,
+    pinnedIndex,
+    scrollsDocument: !hasOwnScrollArea,
+    estimatedRowHeight: 88,
+    overscan: 10,
+    fallbackVisibleRowCount: 12,
+    rowIndexAttribute: 'data-row-index',
+  });
+  const overlayScrollbarsRef = useOverlayScrollbars<HTMLDivElement>(hasOwnScrollArea);
+  const setScrollElement = useCallback((element: HTMLDivElement | null) => {
+    scrollRef.current = element;
+    const cleanup = overlayScrollbarsRef(element);
+    return () => {
+      scrollRef.current = null;
+      if (typeof cleanup === 'function') cleanup();
+    };
+  }, [overlayScrollbarsRef, scrollRef]);
   return (
     <div className="desktop:hidden flex-1 min-w-0 flex flex-col md:overflow-hidden">
-      <div ref={scrollRef} className={`flex-1 md:overflow-y-auto divide-y divide-[var(--color-border-subtle)] ${selectMode ? 'pb-safe-selection' : 'pb-safe'}`}>
-        {controls.map((control) => (
-          <ControlMobileReferenceRow
-            key={control.id}
-            control={control}
-            controlsById={controlsById}
-            selectMode={selectMode}
-            checked={checkedIds.has(control.id)}
-            onSelect={onSelect}
-            onCheckedChange={onCheckedChange}
-          />
-        ))}
+      <div ref={setScrollElement} onScroll={onScroll} className={`flex-1 md:overflow-y-auto ${selectMode ? 'pb-safe-selection' : 'pb-safe'}`}>
+        {slots.map((slot) => {
+          if (slot.kind === 'spacer') {
+            return <div key={slot.key} aria-hidden="true" style={{ height: slot.rowCount * rowHeight }} />;
+          }
+          const control = controls[slot.index];
+          return (
+            <ControlMobileReferenceRow
+              key={control.id}
+              control={control}
+              rowIndex={slot.index}
+              onFocus={onRowFocus}
+              controlsById={controlsById}
+              selectMode={selectMode}
+              checked={checkedIds.has(control.id)}
+              onSelect={onSelect}
+              onCheckedChange={onCheckedChange}
+            />
+          );
+        })}
         {controls.length === 0 && (
           <p className="text-sm text-[var(--color-text-secondary)] text-center py-8">
             Keine Kontrollen gefunden
