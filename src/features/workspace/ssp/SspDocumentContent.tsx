@@ -24,7 +24,7 @@ export function SspDocumentContent({ localId }: Readonly<{ localId: LocalId }>) 
     return () => { current = false; };
   }, [documents, localId]);
 
-  if (!result) return <p role="status" className="text-sm text-[var(--color-text-secondary)]">SSP wird geladen…</p>;
+  if (!result) return <output className="text-sm text-[var(--color-text-secondary)]">SSP wird geladen…</output>;
   if (result === 'failed') return <p role="alert" className="text-sm text-[var(--color-danger-text)]">SSP konnte nicht geladen werden. Die Dokumentansicht erneut öffnen.</p>;
   return (
     <>
@@ -41,8 +41,8 @@ export function SspDocumentContent({ localId }: Readonly<{ localId: LocalId }>) 
       </div>
       <section aria-labelledby="ssp-model-diagnostics">
         <h2 id="ssp-model-diagnostics" className="text-base font-semibold text-[var(--color-text-primary)]">Modelldiagnosen</h2>
-        {result.diagnostics.length ? <ul className="divide-y divide-[var(--color-border-subtle)]">{result.diagnostics.slice(0, diagnosticsVisible).map((diagnostic, index) => (
-          <li key={index} className="break-words py-2 font-mono text-xs text-[var(--color-text-secondary)]">{diagnostic.stage} · {diagnostic.code} · {diagnostic.path}</li>
+        {result.diagnostics.length ? <ul className="divide-y divide-[var(--color-border-subtle)]">{result.diagnostics.slice(0, diagnosticsVisible).map(diagnostic => (
+          <li key={diagnostic.signature} className="break-words py-2 font-mono text-xs text-[var(--color-text-secondary)]">{diagnostic.stage} · {diagnostic.code} · {diagnostic.path}</li>
         ))}</ul> : <p className="text-sm text-[var(--color-text-secondary)]">Keine Modelldiagnosen.</p>}
         {diagnosticsVisible < result.diagnostics.length && <Button variant="secondary" className="min-h-touch tabular-nums" onClick={() => setDiagnosticsVisible(count => count + 50)}>Weitere Modelldiagnosen · {diagnosticsVisible} von {result.diagnostics.length}</Button>}
       </section>
