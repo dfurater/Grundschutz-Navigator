@@ -136,27 +136,43 @@ export function alignImportBindings<T extends { readonly pointer: string; readon
   head -= overlap;
   tail -= overlap;
   // Ein Randwert, der auch in einer Mitte steht, kann von dort nachgerückt sein: dann ist auch der Rand mehrdeutig.
-  const inMiddle = (href: string | undefined) =>
-    before.slice(head, before.length - tail).includes(href) || after.slice(head, after.length - tail).includes(href);
+  // Die Werte der Mitten wachsen beim Verkleinern nur; als Menge geführt bleibt das linear.
+  const middle = new Set([...before.slice(head, before.length - tail), ...after.slice(head, after.length - tail)]);
   let narrowed = true;
   while (narrowed) {
     narrowed = false;
-    if (head > 0 && inMiddle(before[head - 1])) { head--; narrowed = true; }
-    if (tail > 0 && inMiddle(before[before.length - tail])) { tail--; narrowed = true; }
+    if (head > 0 && middle.has(before[head - 1])) {
+      head--;
+      middle.add(before[head]).add(after[head]);
+      narrowed = true;
+    }
+    if (tail > 0 && middle.has(before[before.length - tail])) {
+      middle.add(before[before.length - tail]).add(after[after.length - tail]);
+      tail--;
+      narrowed = true;
+    }
   }
   // Position im Entwurf zu einer gespeicherten Position am Anfang oder Ende; die Mitte hat keine.
   const moved = (index: number) => {
     if (index < head) return index;
     return index >= before.length - tail ? index - before.length + after.length : undefined;
   };
-  const unique = (list: readonly (string | undefined)[], href: string) => list.filter((entry) => entry === href).length === 1;
+  const counts = (list: readonly (string | undefined)[]) => {
+    const map = new Map<string | undefined, number>();
+    for (const href of list) map.set(href, (map.get(href) ?? 0) + 1);
+    return map;
+  };
+  const beforeCounts = counts(before);
+  const afterCounts = counts(after);
+  const firstInDraft = new Map<string | undefined, number>();
+  after.forEach((href, index) => { if (!firstInDraft.has(href)) firstInDraft.set(href, index); });
   return bindings.flatMap((binding) => {
     const index = importIndex(binding.pointer);
     if (index === undefined) return [binding];
     const target = moved(index);
     if (target !== undefined) return after[target] === binding.href ? [{ ...binding, pointer: importHrefPointer(target) }] : [];
-    if (!unique(before, binding.href) || !unique(after, binding.href)) return [];
-    const position = after.indexOf(binding.href);
+    if (beforeCounts.get(binding.href) !== 1 || afterCounts.get(binding.href) !== 1) return [];
+    const position = firstInDraft.get(binding.href) ?? -1;
     return position >= head && position < after.length - tail ? [{ ...binding, pointer: importHrefPointer(position) }] : [];
   });
 }

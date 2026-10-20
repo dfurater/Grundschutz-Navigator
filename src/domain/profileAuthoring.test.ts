@@ -128,6 +128,13 @@ describe('Importe hinzufügen und entfernen', () => {
     expect(alignImportBindings([at(0, '#a', 'A'), at(1, '#a', 'B'), at(2, '#c', 'C')], stored, doc('#a', '#c', '#d'))).toEqual([at(1, '#c', 'C')]);
   });
 
+  it('richtet auch sehr viele gleiche href in linearer Zeit aus', () => {
+    const many = Array.from({ length: 150_000 }, () => ({ href: '#a' }));
+    const started = performance.now();
+    expect(alignImportBindings([], { profile: { imports: many } }, { profile: { imports: [...many.slice(1), { href: '#n' }] } })).toEqual([]);
+    expect(performance.now() - started).toBeLessThan(500);
+  });
+
   it('erzeugt keinen Import ohne href', () => {
     const source = addImport(newProfile('1.2.2'), { resourceUuid: SECOND, title: 'Ziel' }).source;
     expect(readProfileImports(source).every((entry) => entry.href?.startsWith('#'))).toBe(true);
