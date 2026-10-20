@@ -77,6 +77,12 @@ export interface OscalRoundTripStatusNotRun {
   readonly status: 'not-run';
 }
 
+/** Status einer Grenzprüfung oder der Serialisierung. */
+export type OscalRoundTripCheckStatus =
+  | OscalRoundTripStatusPassed
+  | OscalRoundTripStatusFailed
+  | OscalRoundTripStatusNotRun;
+
 export type OscalRoundTripBinding =
   | { readonly ok: true; readonly pin: OscalSchemaPin }
   | { readonly ok: false; readonly reason: 'limits-not-run' }
@@ -258,13 +264,9 @@ export interface OscalNoOpRunResult {
    * ist er `null`.
    */
   readonly rootType: string | null;
-  readonly resourceLimit: OscalRoundTripStatusPassed | OscalRoundTripStatusFailed
-  | OscalRoundTripStatusNotRun;
+  readonly resourceLimit: OscalRoundTripCheckStatus;
   readonly binding: OscalRoundTripBinding;
-  readonly serialization:
-  | OscalRoundTripStatusPassed
-  | OscalRoundTripStatusFailed
-  | OscalRoundTripStatusNotRun;
+  readonly serialization: OscalRoundTripCheckStatus;
   readonly graph: OscalRoundTripGraphReport;
   readonly identities: OscalRoundTripIdentityReport;
   readonly stages: OscalRoundTripStages;
@@ -873,8 +875,7 @@ export interface OscalEditRunResult {
   readonly rootType: string | null;
   readonly resourceLimit: OscalRoundTripStatusPassed | OscalRoundTripStatusFailed;
   /** Byte- und Objektgraphgrenzen am Exportartefakt, wie `resourceLimit` an der Eingabe. */
-  readonly exportLimit: OscalRoundTripStatusPassed | OscalRoundTripStatusFailed
-  | OscalRoundTripStatusNotRun;
+  readonly exportLimit: OscalRoundTripCheckStatus;
   readonly binding: OscalRoundTripBinding;
   readonly graph: OscalEditGraphReport;
   readonly identities: OscalRoundTripIdentityReport;
@@ -1015,7 +1016,7 @@ function compareEditIdentities(
 function editRunNotCompared(
   resourceLimit: OscalEditRunResult['resourceLimit'],
   binding: OscalRoundTripBinding,
-  exportLimit: OscalEditRunResult['exportLimit'] = { status: 'not-run' },
+  exportLimit: OscalEditRunResult['exportLimit'],
 ): OscalEditRunResult {
   return deepFreeze({
     mode: 'edit',
@@ -1041,7 +1042,7 @@ function editRunNotCompared(
  */
 export async function runEditRoundTrip(input: OscalEditRunInput): Promise<OscalEditRunResult> {
   const bound = bindFixture(input);
-  if (!bound.ok) return editRunNotCompared(bound.resourceLimit, bound.binding);
+  if (!bound.ok) return editRunNotCompared(bound.resourceLimit, bound.binding, { status: 'not-run' });
   const { source, rootType } = bound.success;
 
   const policy = OSCAL_ROOT_UUID_POLICY[rootType];
@@ -1066,6 +1067,7 @@ export async function runEditRoundTrip(input: OscalEditRunInput): Promise<OscalE
     return editRunNotCompared(
       { status: 'passed' },
       { ok: false, reason: 'export-not-serializable', diagnostic },
+      { status: 'not-run' },
     );
   }
   const { exportBytes, imported } = exportedArtifact;
