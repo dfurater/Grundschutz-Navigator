@@ -26,4 +26,9 @@ export const PAGE_TITLES = {
   imprint: 'Impressum',
   licenses: 'Lizenzen',
   notFound: 'Seite nicht gefunden',
+  workspace: 'Informationsverbünde',
+  verbund: 'Informationsverbund',
+  verbundNotFound: 'Informationsverbund nicht gefunden',
+  workspaceDocument: 'Dokument im Informationsverbund',
+  workspaceDocumentNotFound: 'Dokument nicht gefunden',
 } as const;

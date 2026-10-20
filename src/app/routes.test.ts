@@ -10,6 +10,15 @@ import {
   buildVocabularyEntryPath,
   buildVocabularyNamespacePath,
   resolveControlRoute,
+  STATION_ROUTE_PATTERN,
+  VERBUND_ROUTE_PATTERN,
+  WORKSPACE_DOCUMENT_ROUTE_PATTERN,
+  areaForPath,
+  buildStationUrl,
+  buildVerbundUrl,
+  buildWorkspaceDocumentUrl,
+  buildWorkspaceIndexUrl,
+  isLocalIdentity,
 } from '@/app/routes';
 import type { Control } from '@/domain/models';
 import type { CatalogKey } from '@/domain/sourceRegistry';
@@ -106,5 +115,44 @@ describe('vocabulary routes', () => {
     expect(buildVocabularyNamespacePath('terms')).toBe('/vokabular/terms');
     expect(buildVocabularyEntryPath('terms')).toBe('/vokabular/terms');
     expect(buildVocabularyEntryPath('terms', '')).toBe('/vokabular/terms?wert=');
+  });
+});
+
+describe('Arbeitsroutenraum (ADR-11 §2)', () => {
+  const VERBUND = '0b6a3f1e-9c2d-4e8f-a1b2-c3d4e5f60718';
+  const DOCUMENT = '6f1e2d3c-4b5a-4968-8776-655443322110';
+
+  it('baut Arbeitsrouten ausschließlich aus lokaler Identität und geschlossener Stationsmenge', () => {
+    expect(buildWorkspaceIndexUrl()).toBe('/informationsverbuende');
+    expect(buildVerbundUrl(VERBUND)).toBe(`/informationsverbuende/${VERBUND}`);
+    expect(buildStationUrl(VERBUND, 'assessment')).toBe(`/informationsverbuende/${VERBUND}/station/assessment`);
+    expect(buildWorkspaceDocumentUrl(VERBUND, DOCUMENT)).toBe(`/informationsverbuende/${VERBUND}/dokument/${DOCUMENT}`);
+    expect(VERBUND_ROUTE_PATTERN).toBe('/informationsverbuende/:verbundId');
+    expect(STATION_ROUTE_PATTERN).toBe('/informationsverbuende/:verbundId/station/:station');
+    expect(WORKSPACE_DOCUMENT_ROUTE_PATTERN).toBe('/informationsverbuende/:verbundId/dokument/:localId');
+  });
+
+  it.each([
+    ['Verbundname', () => buildVerbundUrl('Rechenzentrum Nord')],
+    ['leere verbundId', () => buildVerbundUrl('')],
+    ['Pfadsegment in der verbundId', () => buildVerbundUrl(`${VERBUND}/x`)],
+    ['Dokumenttitel als localId', () => buildWorkspaceDocumentUrl(VERBUND, 'Mein SSP')],
+    ['Station außerhalb der Menge', () => buildStationUrl(VERBUND, 'catalog' as never)],
+    ['ungültige verbundId vor gültiger Station', () => buildStationUrl('x', 'ssp')],
+  ])('wirft bei %s, ohne den Wert zu nennen', (_label, build) => {
+    expect(build).toThrow();
+    try { build(); } catch (error) {
+      expect((error as Error).message).not.toMatch(/Rechenzentrum|Mein SSP/);
+    }
+  });
+
+  it('ordnet jeden Pfad genau einem Bereich zu', () => {
+    expect(areaForPath('/informationsverbuende')).toBe('informationsverbuende');
+    expect(areaForPath(`/informationsverbuende/${VERBUND}/station/ssp`)).toBe('informationsverbuende');
+    expect(areaForPath('/informationsverbuendeX')).toBe('katalog');
+    expect(areaForPath('/katalog/gspp')).toBe('katalog');
+    expect(areaForPath('/')).toBe('katalog');
+    expect(isLocalIdentity(VERBUND)).toBe(true);
+    expect(isLocalIdentity('not-a-uuid')).toBe(false);
   });
 });

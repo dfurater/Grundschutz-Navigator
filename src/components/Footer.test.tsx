@@ -119,6 +119,13 @@ describe('Footer', () => {
     expect(informationGroup?.parentElement).toBe(secondaryGroup?.parentElement);
   });
 
+  it('lässt die Integritätsanzeige im Bereich Informationsverbünde weg und behält die Quelle', () => {
+    render(<MemoryRouter><Footer showVerification={false} /></MemoryRouter>);
+
+    expect(screen.getByRole('link', { name: /quelle: bsi stand-der-technik-bibliothek/i })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /verifiziert/i })).not.toBeInTheDocument();
+  });
+
   it('places the non-verified status directly after the source link', () => {
     mockedUseCatalog.mockReturnValue({
       catalog: null,

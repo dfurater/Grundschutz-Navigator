@@ -390,7 +390,7 @@ monolithischen Modellschicht.
 | `mapping-collection` | Control | `src/adapters/oscalMappingAdapter.ts` | registriert |
 | `component-definition` | Implementation | `src/adapters/oscalComponentAdapter.ts` | registriert |
 | `system-security-plan` | Implementation | `src/adapters/oscalSspAdapter.ts` | registriert |
-| `assessment-plan` | Assessment | — | nicht erschlossen |
+| `assessment-plan` | Assessment | `src/adapters/oscalAssessmentPlanAdapter.ts` | registriert |
 | `assessment-results` | Assessment | — | nicht erschlossen |
 | `plan-of-action-and-milestones` | Assessment | — | nicht erschlossen |
 
@@ -750,6 +750,16 @@ Kontrolle **nach Aussage der Definition** umsetzt. Sie ist kein geprüfter
 Compliance-, Audit- oder Zertifizierungsstatus. Der Navigator liest diese
 Aussagen und macht sie navigierbar — er bewertet sie nicht.
 
+Keine Struktur des Modells trägt ein Status-, Reifegrad- oder Umsetzungsfeld:
+weder `component-definition` noch `defined-component`, `capability`,
+`control-implementation`, `implemented-requirement` oder `statement`.
+`implementation-status` existiert nur im SSP. Die `description` einer
+`implemented-requirement` ist laut Schema ein Vorschlag des Anbieters, wie die
+Anforderung umgesetzt werden kann, sobald die Komponente in einem SSP
+eingesetzt wird; die Projektion übernimmt sie als Text. Ob eine Anforderung
+umgesetzt, wirksam oder abgedeckt ist, steht in keinem Feld des Modells, und
+die Projektion leitet es nicht ab.
+
 Der fachliche Nutzen ist Navigierbarkeit („welche Kontrollen adressiert
 Komponente X", „welche Komponenten adressieren Kontrolle Y"). Nach NIST sind
 Component Definitions dafür gedacht, dass ihre Inhalte in einen SSP übernommen
@@ -842,6 +852,47 @@ nie; verworfen wird ausschließlich vorher, im Root-Dispatch.
 Die Leser diagnostizieren einen **vorhandenen** Wert der falschen Form, statt
 ihn still zu `[]` zu machen.
 
+### Lokale Component Definitions (Vertrauensklasse 2)
+
+Eine lokale Datei erreicht die Projektion über die Klasse-2-Importgrenze:
+`importClass2OscalDocument()` prüft im Worker Bytes, Root, Version und Schema
+der deklarierten `metadata.oscal-version` (Stufen 1–3); `source` und `context`
+des Erfolgsergebnisses gehen an `parseComponentDefinitionDocument()`. Das
+Dokument behält `trustClass: 'class-2-local-user'` und erhält keine
+Manifest-Provenienz.
+
+Ein Dokument aus `uuid` und `metadata` ist in allen vier gepinnten Versionen
+schemavalide; `components`, `capabilities` und `import-component-definitions`
+sind optional. Das Schema verlangt `description` an `incorporates-component`
+und an `statement`; ein `statement` im SSP kommt ohne `description` aus.
+
+### Offenes Vokabular `defined-component.type`
+
+Das Schema führt `type` als `anyOf` aus `StringDatatype` und den elf Werten
+in `COMPONENT_TYPE_VALUES` (`src/domain/componentDefinitionModel.ts`); das
+Metaschema deklariert `allow-other="yes"`. Ein anderer Wert ist schemavalide.
+`DefinedComponent.type` trägt den Quellwert unverändert,
+`DefinedComponent.typeVocabulary` die Einordnung `documented` oder `unknown`.
+Ein unbekannter Wert erzeugt keine Diagnose. Fehlt `type`, fehlt auch
+`typeVocabulary`.
+
+### Import-Kante `import-component-definitions`
+
+`import-component-definitions[].href` verbindet zwei Component Definitions.
+Im Informationsverbund verbinden drei Kantenarten Dokumente desselben
+Root-Typs und können deshalb Zykel bilden: `profile-import`,
+`component-import` und `ssp-leveraged-authorization`
+(`leveraged-authorizations/*/links` mit `rel: 'system-security-plan'`).
+`markWorkspaceCycles()` prüft genau diese drei. Der Adapter klassifiziert
+jeden `href` über `src/domain/referenceResolution.ts` und lädt nichts nach. Im
+Informationsverbund wird die Kante zu `component-import`
+(`src/domain/workspaceEdges.ts`): Ein absoluter `href` ist `external`, auch mit
+Bindung; ein relativer ohne Bindung ist `not-evaluable`; eine Bindung auf ein
+Dokument, das über `component-import` zurückführt, auch auf sich selbst,
+markiert `markWorkspaceCycles()` (`src/domain/workspaceGraphContext.ts`) mit
+`OSCAL_GRAPH_IMPORT_CYCLE`. Die Markierung läuft als iterative Tiefensuche und
+terminiert auch bei Zykeln.
+
 ### Testkorpus
 
 Die sechs realen Definitionen liegen nicht im Repository: `npm run fetch-catalog`
@@ -856,6 +907,11 @@ Der Realkorpus ist optional: `oscalComponentDocument.node.test.ts` läuft nur,
 wenn `GSPP_COMPONENT_CORPUS_PATH` auf ein lokal geholtes Verzeichnis zeigt, und
 wird sonst übersprungen. Er prüft Erhaltung und die Byte-Identität gegen
 `contentSha256` aus `upstream-manifest.json`, nie feste Inhaltszahlen.
+
+Den Klasse-2-Lesepfad prüft `oscalComponentDocument.class2.node.test.ts` mit
+synthetischen Fixtures aus derselben Fixture-Datei
+(`makeComponentDefinitionWithoutComponents()`,
+`makeCapabilityOnlyComponentDefinition()`, `makeLocalComponentDefinition()`).
 
 ## System Security Plans (Implementation Layer)
 
@@ -936,11 +992,13 @@ aufgelöst:
 | --- | --- | --- |
 | keine Bindung | `not-resolvable-in-context`, Grund `catalog-not-supplied` | keine |
 | Bindung, ID bekannt | `resolved` mit `catalogKey` und `control` | keine |
+| Transiente Bindung, ID bekannt | `resolved` mit `kind: 'transient'` und `control` aus `WorkspaceCatalog` | keine |
 | Bindung, ID unbekannt | `unresolved`, Grund `control-not-in-catalog` | `OSCAL_SSP_CONTROL_REFERENCE_UNRESOLVED` |
 | `control-id` fehlt | `unresolved`, Grund `control-id-missing` | `OSCAL_SSP_CONTROL_ID_MISSING` |
 
-`statement-id` steht als gelesener Wert im Modell; das `Control`-Read-Model
-führt keine Part-IDs, gegen die sie auflösbar wäre. `inherited[].provided-uuid`
+`SspBaselineBinding` akzeptiert einen Registry-Katalog mit `catalogKey` oder `{ kind: 'transient', catalog: WorkspaceCatalog }`. `buildWorkspaceCatalog()` in `src/domain/workspaceCatalog.ts` projiziert lokale und aufgelöste Kataloge auf Control-IDs und die Part-IDs je Control. Die Projektion verlangt keinen Registry-Schlüssel und keine BSI-Anzeigefelder; doppelte Control- oder Part-IDs ergeben strukturelle Diagnosen.
+
+`statement-id` steht als gelesener Wert im SSP-Modell; `src/domain/workspaceSemanticEdges.ts` löst ihn im Verbundgraphen gegen die gebundene Baseline und das jeweilige Control auf. `inherited[].provided-uuid`
 und `satisfied[].responsibility-uuid` zeigen in das `export` eines anderen SSP
 und stehen als `not-resolvable-in-context` im Modell, ohne Diagnose.
 
@@ -1523,6 +1581,52 @@ isoliert; `selectCatalog` ignoriert nicht ausgelieferte Schlüssel (fail-closed
 beim zuletzt gültigen Katalog). `catalog` ist `catalogDocument.view` des
 aktiven Katalogs. Wer Felder braucht, die das Domänenmodell nicht abbildet,
 geht über `catalogDocument.source`.
+
+## Dokumentgraph eines Informationsverbunds
+
+`src/domain/workspaceGraphModel.ts` definiert den Eingabesnapshot `WorkspaceGraphInput` und den Rückgabewert `WorkspaceGraph`. `buildWorkspaceGraph()` in `src/domain/workspaceGraph.ts` liest lokale `WorkspaceEnvelope`-Mitglieder mit einer gemeinsamen `verbundId`; zulässig sind `catalog`, `profile`, `component-definition`, `system-security-plan`, `assessment-plan`, `assessment-results` und `plan-of-action-and-milestones`. `mapping-collection` ergibt `OSCAL_WORKSPACE_ROOT_NOT_ALLOWED`. Die Mitgliederübersicht führt `localId`, Root-Typ, deklarierte Version, Vertrauensklasse und `savedAt`.
+
+Knoten und Kantenziele besitzen einen `ReferenceGraphDocumentKey` aus `src/domain/referenceGraphModel.ts`: `{ kind: 'local', localId }` oder `{ kind: 'class-1', artifactKey, lifecycle }`. Lokale OSCAL-IDs bleiben im jeweiligen Dokumentkontext. Klasse-1-Ziele stammen aus den übergebenen, bereits hashgeprüften `class1Artifacts`; sie werden nicht zu Mitgliedern oder Store-Inhalten.
+
+`src/domain/workspaceEdges.ts` liest die Dokumentkanten `profile-import`, `ssp-import-profile`, `ssp-leveraged-authorization`, `component-source`, `component-import`, `ap-import-ssp`, `ar-import-ap` und `poam-import-ssp`. Feldpfade und erlaubte Zielroots stehen in [OSCAL_VALIDATION.md](OSCAL_VALIDATION.md#dokumentgraph-eines-informationsverbunds). `workspaceSemanticEdges.ts` ergänzt Control- und Statement-Referenzen je gebundener Baseline sowie Component-UUIDs aus explizit gebundenen Importketten. Ein POA&M ohne `import-ssp` erzeugt keine SSP-Kante.
+
+Eine lokale Bindung adressiert `fromLocalId`, den Referenz-Pointer und den unveränderten `href`. Fragment- und relative Referenzen benötigen ein explizites Ziel; absolute URIs bleiben `external`. Die Zustände sind `resolved`, `resolved-empty`, `missing-source`, `not-evaluable`, `external` und `error`. Ein internes Ressourcenziel mit ausschließlich `uuid` ist `resolved-empty`; ein Profilimport ohne `href` erhält `missing-source` mit `OSCAL_GRAPH_IMPORT_SOURCE_MISSING` in der Stufe `oscal-constraint`. Eine ungebundene Referenz erzeugt keinen Ziel-Fehlt-Befund; eine Bindung, deren gespeicherter `href` vom aktuellen Wert abweicht, ergibt `error` mit `OSCAL_WORKSPACE_BINDING_STALE`. Bindungen werden weder aus Root-UUIDs noch aus `rlinks` abgeleitet.
+
+`src/domain/workspaceProfileResolution.ts` berechnet für jeden Graphaufbau die Profile mit den aktuellen gebundenen Importzielen neu. Ein aufgelöstes Ergebnis enthält `derived: true`, `transient: true`, `specificationStatus: 'work-in-progress'` und den abgeleiteten OSCAL-Katalog unter `source`; es enthält keinen Speicherauftrag. `workspaceCatalog.ts` projiziert die Baseline auf Control-IDs und Part-IDs je Control. SSP- und Component-Referenzen verwenden ausschließlich den Katalog hinter der eigenen Bindung, einschließlich transient aufgelöster Profile.
+
+`src/domain/workspaceMembership.ts` prüft aufnehmbare Klasse-2-Dokumente über die bestehende Eingangsprüfkette. Gleiche Root-UUIDs im selben Verbund ergeben `OSCAL_WORKSPACE_ROOT_UUID_DUPLICATE`; `existingLocalId` und `action: 'replace'` stehen als Entscheidungsdaten neben der redigierten Diagnose. Die explizite Ersetzung verwendet `WorkspaceStore.replaceDocument()` mit der vorhandenen `localId`. Graphaufbau und Resolution verändern kein Mitglieds-`source`; `href` und `link.resource-fragment` bleiben erhalten.
+
+## Assessment Plans (Assessment Layer)
+
+`src/domain/oscalAssessmentPlan.ts` beschreibt den Raw-Körper über `PinnedOscalVersion`. `src/domain/assessmentPlanModel.ts` definiert das Read-Model `AssessmentPlan`: Metadaten, `importSsp`, `reviewedControls`, lokale Definitionen, Bedingungen, Prüfsubjekte, Prüfplattformen und rekursive Aufgaben. Die Aufgaben stehen in Quellreihenfolge. Der Prüfplan führt Planungsdaten; Prüfergebnisse werden im eigenen OSCAL-Root `assessment-results` geführt.
+
+`parseAssessmentPlanDocument(source, context, options)` in `src/adapters/oscalAssessmentPlanDocument.ts` bindet Root und Version über `parseRootDocument()`. `source` und `context` bleiben unverändert neben `view` erhalten. `validateAssessmentPlanSchema()` prüft die Schemazelle aus `metadata.oscal-version`. Die erlaubten Versionen sind 1.1.2, 1.1.3, 1.2.1 und 1.2.2; `$schema` wählt keine Version. Der Adapter akzeptiert ausschließlich `class-2-local-user`; andere Trust-Klassen werfen `AssessmentPlanTrustClassError` mit `OSCAL_AP_TRUST_CLASS_REJECTED`.
+
+Abwesende optionale Listen ergeben leere Arrays. Abwesende Objektbereiche `assessmentAssets` und `timing` ergeben `null`; `localDefinitions` enthält auch ohne Quellknoten seine leeren Listen. `oscalAssessmentPlanReaders.ts` bindet die gemeinsamen Strukturleser an Modelldiagnosen. Vorhandene Felder falscher Form werden diagnostiziert, ohne die Quelle zu reparieren. `oscalAssessmentPlanSelections.ts` liest Control- und Objective-Auswahlen, Prüfsubjekte und Teile. `oscalAssessmentPlanTasks.ts` liest Aktivitäten, Schritte und Aufgaben mit Zeitvorgaben, Abhängigkeiten und Rollenzuweisungen.
+
+### Versionen und Referenzen
+
+`oscalAssessmentPlan.versionDrift.test.ts` entfaltet die vom Root erreichbaren Objektpfade einschließlich Inline-Strukturen und `anyOf`-Zweigen. Sein Snapshot hält Eigenschaften, Pflichtfelder und `additionalProperties` je Zweig fest. Der Test prüft die sieben Driftgruppen ausdrücklich: Subjekt-, Control- und Objective-Auswahl, Timing, neue `remarks`-Felder, den Pflichtstatus von `protocol.name` und Metadaten-Parteien. Ab 1.2.1 erzwingen die JSON-Schemas exklusive Auswahlzweige; `assessment-subject.type` ist dort im JSON-Schema optional. Der Adapter meldet einen fehlenden Subjekttyp als `OSCAL_AP_SUBJECT_TYPE_MISSING`. Die Schemaformen von 1.2.1 und 1.2.2 stimmen in diesen Objektmerkmalen überein.
+
+`importSsp.reference` klassifiziert `href` über `resolveOscalReference()`: Fragmente können Back-matter-Ressourcen treffen, relative Verweise bleiben unaufgelöst, absolute sichere URIs sind extern. Die Klassifikation lädt kein SSP. `importSsp.ssp.status` lautet ohne explizite Bindung `not-resolvable-in-context`.
+
+`options.ssp` nimmt das vollständige Ergebnis von `parseSspDocument()` an (`source`, `view`, `context`). Der Aufrufer ordnet diese Bindung ausdrücklich dem `import-ssp` zu. Der AP-Adapter liest Rollen, Parteien und Orte aus den Metadaten dieses Quellgraphs sowie Komponenten, Inventar, Benutzer und Ressourcen aus dessen SSP-Bereichen. Er akzeptiert für die Bindung ausschließlich `class-2-local-user`. Die Identitätsindizes enthalten strukturelle Pfade. UUID-Vergleiche ignorieren die Groß-/Kleinschreibung der Hexziffern; Rollen-IDs werden exakt verglichen.
+
+Subjekte lösen zuerst gegen lokale Definitionen und danach gegen das explizit gebundene SSP auf. Fehlende externe Ziele bleiben ohne SSP-Bindung `not-resolvable-in-context`; ein bereitgestelltes SSP mit fehlendem Ziel erzeugt eine Modelldiagnose. Offene, vom Adapter nicht erschlossene Subjektarten bleiben mit `subject-type-not-supported` unaufgelöst. Aufgabenabhängigkeiten und Activity-Referenzen lösen ausschließlich im AP auf. Mehrdeutige lokale UUIDs liefern `identity-ambiguous`; der Adapter wählt keinen ersten Treffer. Doppelte Komponenten-, Benutzer-, Inventar-, Activity- und Aufgaben-UUIDs sowie fehlende Aufgaben- und Activity-Ziele erzeugen eigene `OSCAL_AP_*`-Diagnosen.
+
+`assessment-assets.components` besitzt einen eigenen Identitätsindex mit eigener Duplikatprüfung. Prüfsubjekte verwenden diesen Index nicht. `uses-components[].component-uuid` sucht zuerst in diesem Prüfwerkzeugindex, danach in den lokalen Systemkomponenten und im explizit gebundenen SSP. Mehrdeutige Prüfwerkzeug-UUIDs bleiben `identity-ambiguous`, auch wenn eine Systemkomponente dieselbe UUID trägt.
+
+`options.catalog` hat die Form von `ComponentSourceCatalogBinding`. Control-IDs in Control-Auswahlen und lokalen Objectives lösen ausschließlich gegen diese Bindung auf. Ohne Bindung lautet der Grund `catalog-not-supplied`, bei fehlendem Control in einem gebundenen Katalog `control-not-in-catalog`. Objective- und Statement-IDs bleiben als gelesene IDs erhalten.
+
+Rollen einer Aufgabe lösen gegen lokale `metadata.roles` oder das gebundene SSP auf. `party-uuids` der Rollenzuweisungen und `role-ids` lokaler Benutzer werden gegen dieselben lokalen und ausdrücklich gebundenen SSP-Indizes geprüft; fehlende Ziele werden am ursprünglichen Arrayindex diagnostiziert. Ohne SSP erzeugt eine nicht lokal definierte Rolle oder Partei keine Fehlerdiagnose. Mit SSP und fehlender Rolle meldet der Adapter `OSCAL_AP_ROLE_REFERENCE_UNRESOLVED`. Direkte Teile unter `terms-and-conditions` im OSCAL-Namespace werden gegen die Namen `rules-of-engagement`, `disclosures`, `assessment-inclusions`, `assessment-exclusions`, `results-delivery`, `assumptions` und `methodology` geprüft. Verschachtelte Assessment-Teile führen ein offenes Namensvokabular, etwa `item` unter `disclosures` oder `assumptions`; ihre `uuid` bleibt auf jeder Ebene erhalten.
+
+### Quelle, Datenschutz und Testkorpus
+
+Die Ableitung liest ausschließlich die übergebenen Graphen. Sie führt weder Netzwerk-, Datei- noch Storagezugriffe aus. Der vorgesehene Einstieg ist `processClass2OscalBytes()` beziehungsweise die darauf aufbauende Klasse-2-Importgrenze mit Byte-, Tiefen-, Knoten-, Root-, Versions- und Schemaprüfung. Modellinterne Diagnosen verwerfen den Plan nicht und enthalten keine Dokumentwerte; Stufe 4 bleibt `not-checked`.
+
+`props` erscheinen im Read-Model nur ohne `ns` oder mit exakt `OSCAL_NAMESPACE`. Unbekannte Felder und fremde Props bleiben in `source`. Markup wird als Rohstring geführt. Back-matter-Nutzlasten werden weder dekodiert noch in die Projektion übernommen; die Referenzklassifikation führt nur Ressourcenmetadaten. Root- und Aufgaben-UUIDs bleiben unverändert. Bearbeitung und Serialisierung liegen außerhalb des Adapters.
+
+`src/test/fixtures/assessmentPlans.ts` enthält synthetische Minimal- und Vollpläne. Vier originale NIST-AP-Beispiele aus `usnistgov/oscal-content` am Commit `78650f02ad9321bb7b817846f8fbd4f2bcd620de` stehen mit SHA-256 und Größe im `ORACLE_MANIFEST.json` unter `src/test/fixtures/oscal-content-v1.5.0/`. `scripts/sync-oscal-content-oracle.mjs` ist ihr Wartungs-Netzpfad. Alle vier bestehen Stufe 3 gegen die deklarierte Version. Jede Datei enthält eine nicht definierte Activity-UUID in `tasks[0].associated-activities[0]`; der Offline-Test erwartet genau `OSCAL_AP_ACTIVITY_REFERENCE_UNRESOLVED` an diesem strukturellen Pfad. Der No-op-Round-trip-Korpus prüft zusätzlich Assessment Plans in allen vier Matrixzellen.
 
 ## Siehe auch
 

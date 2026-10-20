@@ -268,6 +268,17 @@
   --color-warning: #d97706;
   --color-warning-text: #92400e;
 
+  /* Dokumentgültigkeit lokaler Dokumente (ADR-11 §4): „Entwurf“ in Bernstein,
+     „Gültig“ in Grün. Beides ist eine Aussage über die Schemastruktur, keine
+     Verifikation; die Töne der Integritätsanzeige (success, warning) gelten
+     hier deshalb nicht. */
+  --color-document-draft-bg: var(--color-status-soll-bg);
+  --color-document-draft-text: var(--color-status-soll-text);
+  --color-document-draft-border: var(--color-status-soll-border);
+  --color-document-valid-bg: var(--color-status-kann-bg);
+  --color-document-valid-text: var(--color-status-kann-text);
+  --color-document-valid-border: var(--color-status-kann-border);
+
   /* Scrollbar */
   --color-surface-scrollbar: var(--color-slate-300);
   --color-surface-scrollbar-hover: var(--color-slate-400);
@@ -454,6 +465,12 @@
 
 @utility pb-safe-selection {
   padding-bottom: calc(7rem + env(safe-area-inset-bottom, 0px));
+}
+
+/* Waagerecht scrollende Auswahlzeilen auf Touchgeräten (Stationswahl): Wischen
+   scrollt, eine sichtbare Leiste trüge keine Information. */
+@utility scrollbar-hidden {
+  scrollbar-width: none;
 }
 
 @layer utilities {

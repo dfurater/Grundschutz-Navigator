@@ -13,12 +13,14 @@
 //
 // Modelliert sind der Katalogkörper (GSPP-285), der Körper einer Component
 // Definition (GSPP-248), der Profilkörper (GSPP-240), der Körper einer Mapping
-// Collection (GSPP-245) und der SSP-Körper (GSPP-293). Die übrigen drei Roots
+// Collection (GSPP-245), der SSP-Körper (GSPP-293) und der
+// Assessment-Plan-Körper (GSPP-295). Die übrigen zwei Roots
 // tragen den gemeinsamen Anteil, bis ihr jeweiliger Adapter kommt; eine
 // unionsweite Struktur mit optionalen Feldern aller acht Modelle entsteht
 // bewusst nicht.
 // =============================================================================
 
+import type { RawOscalAssessmentPlan } from '@/domain/oscalAssessmentPlan';
 import type { OscalRootKey } from '@/domain/oscalVersionMatrix';
 import type { RawOscalCatalog, RawOscalMetadata } from '@/domain/models';
 import type { RawOscalComponentDefinition } from '@/domain/oscalComponentDefinition';
@@ -112,7 +114,9 @@ export type RawOscalRootBodyFor<K extends OscalRootKey> = K extends 'catalog'
         ? RawOscalMappingCollection
         : K extends 'system-security-plan'
           ? RawOscalSystemSecurityPlan
-          : RawOscalRootBody;
+          : K extends 'assessment-plan'
+            ? RawOscalAssessmentPlan
+            : RawOscalRootBody;
 
 /**
  * Ein OSCAL-Dokument mit genau dem Root-Key `K`.

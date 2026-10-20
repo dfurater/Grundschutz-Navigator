@@ -1,4 +1,4 @@
-import { act, fireEvent, screen } from '@testing-library/react';
+import { act, fireEvent, screen, within } from '@testing-library/react';
 import { useContext } from 'react';
 import type { RefObject } from 'react';
 import { Link, useNavigate } from 'react-router';
@@ -493,9 +493,9 @@ describe('AppShell', () => {
     expect(screen.getByText('Footer')).not.toHaveClass('hidden');
   });
 
-  // Die Kontextwahl ist der Kopf des Drawers; „Katalog“ war derselbe Link wie
-  // der aktive Katalog, „Suche“ steht im Header (GSPP-476).
-  it('führt im Drawer die Kontextwahl statt einer Sektionsnavigation', () => {
+  // Die Kontextwahl ist der Kopf des Katalog-Explorers, „Suche“ steht im Header
+  // (GSPP-476). Darüber trägt der Drawer den Bereichswechsel (GSPP-577).
+  it('führt im Drawer Bereichswechsel und Kontextwahl statt einer Sektionsnavigation', () => {
     const { container } = renderAppShell(['/']);
 
     fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
@@ -505,7 +505,9 @@ describe('AppShell', () => {
     expect(aside).toContainElement(screen.getByRole('button', { name: 'Menü schließen' }));
     expect(screen.queryByRole('navigation', { name: 'Sektionen' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Suche' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'Katalog' })).not.toBeInTheDocument();
+    const areas = within(aside).getByRole('navigation', { name: 'Bereiche' });
+    expect(within(areas).getByRole('link', { name: 'Katalog' })).toHaveAttribute('aria-current', 'true');
+    expect(within(areas).getByRole('link', { name: 'Informationsverbünde' })).not.toHaveAttribute('aria-current');
     expect(screen.queryByRole('link', { name: 'Datenschutz' })).not.toBeInTheDocument();
     expect(aside.querySelectorAll('svg')).toHaveLength(2);
   });

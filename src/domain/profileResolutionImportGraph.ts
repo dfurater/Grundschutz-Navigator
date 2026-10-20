@@ -12,6 +12,8 @@
 // Dateizugriff.
 // =============================================================================
 
+import { resolveSchemaBinding } from '@/domain/oscalVersionMatrix';
+import type { TrustClass } from '@/domain/oscalDocumentContext';
 import { createOscalDiagnostic, type OscalDiagnostic } from '@/domain/oscalDiagnostics';
 
 export const PROFILE_RESOLUTION_STAGE = 'profile-resolution' as const;
@@ -37,11 +39,15 @@ export const PROFILE_RESOLUTION_DIAGNOSTIC_CODES = Object.freeze({
 
 /** Eine normalisierte Importkante. */
 export interface ProfileResolutionEdge {
+  /** Exact import-object pointer; absent for legacy href-only callers. */
+  readonly importPath?: string;
   readonly href: string;
   readonly artifactKey: string;
 }
 
 export interface ProfileResolutionPlanInput {
+  /** Per-document trust enables the common version binding rules for workspace sources. */
+  readonly trustClassesByArtifactKey?: ReadonlyMap<string, TrustClass>;
   /** Artefaktschlüssel des obersten, steuernden Profils. */
   readonly topProfileArtifactKey: string;
   /** Verifizierte Rohdokumente nach Artefaktschlüssel. */
@@ -81,7 +87,7 @@ function reject(code: string): { readonly ok: false; readonly diagnostic: OscalD
 
 function rootEntry(document: unknown): [string, Record<string, unknown>] | null {
   if (document === null || typeof document !== 'object') return null;
-  const keys = Reflect.ownKeys(document as object);
+  const keys = Reflect.ownKeys(document as object).filter((key) => key !== '$schema');
   if (keys.length !== 1) return null;
   const rootKey = keys[0]!;
   if (typeof rootKey !== 'string') return null;
@@ -95,10 +101,10 @@ function rootEntry(document: unknown): [string, Record<string, unknown>] | null 
   return [rootKey, body as Record<string, unknown>];
 }
 
-function declaredOscalVersion(document: unknown): string | null {
+function declaredOscalVersion(document: unknown, trustClass?: TrustClass): string | null {
   const entry = rootEntry(document);
   if (entry === null) return null;
-  const [, body] = entry;
+  const [rootType, body] = entry;
   // Auch hier nur Deskriptorzugriff — kein Feld eines Dokuments wird gelesen,
   // ohne seine Data-Property-Natur vorher festzustellen.
   const metadataDescriptor = Object.getOwnPropertyDescriptor(body, 'metadata');
@@ -115,19 +121,26 @@ function declaredOscalVersion(document: unknown): string | null {
     versionDescriptor !== undefined && 'value' in versionDescriptor
       ? versionDescriptor.value
       : undefined;
-  return typeof version === 'string' && version.length > 0 ? version : null;
+  if (typeof version !== 'string' || version.length === 0) return null;
+  if (trustClass === undefined) return version;
+  const schemaDescriptor = Object.getOwnPropertyDescriptor(document as object, '$schema');
+  if (schemaDescriptor !== undefined && !('value' in schemaDescriptor)) return null;
+  const binding = resolveSchemaBinding({ rootType, oscalVersion: version,
+    schemaDirective: schemaDescriptor?.value, acceptVersionPrefix: trustClass === 'class-2-local-user' });
+  return binding.ok ? binding.pin.oscalVersion : null;
 }
 
 /** Prüft Root-Typ und Versionsbindung eines Dokuments des Graphen. */
 function admitDocument(
   document: unknown,
   graphVersion: string,
+  trustClass?: TrustClass,
 ): { readonly ok: true; readonly rootType: ProfileResolutionRootType } | { readonly ok: false; readonly diagnostic: OscalDiagnostic } {
   const root = rootEntry(document);
   if (root?.[0] !== 'catalog' && root?.[0] !== 'profile') {
     return reject(PROFILE_RESOLUTION_DIAGNOSTIC_CODES.ROOT_TYPE_MISMATCH);
   }
-  const version = declaredOscalVersion(document);
+  const version = declaredOscalVersion(document, trustClass);
   if (version === null) return reject(PROFILE_RESOLUTION_DIAGNOSTIC_CODES.VERSION_MISSING);
   if (version !== graphVersion) {
     return reject(PROFILE_RESOLUTION_DIAGNOSTIC_CODES.VERSION_MISMATCH);
@@ -155,7 +168,7 @@ export function buildProfileResolutionPlan(
   if (topRoot?.[0] !== 'profile') {
     return reject(PROFILE_RESOLUTION_DIAGNOSTIC_CODES.ROOT_TYPE_MISMATCH);
   }
-  const graphVersion = declaredOscalVersion(topDocument);
+  const graphVersion = declaredOscalVersion(topDocument, input.trustClassesByArtifactKey?.get(topProfileArtifactKey));
   if (graphVersion === null) {
     return reject(PROFILE_RESOLUTION_DIAGNOSTIC_CODES.VERSION_MISSING);
   }
@@ -179,7 +192,7 @@ export function buildProfileResolutionPlan(
     if (document === undefined) {
       return reject(PROFILE_RESOLUTION_DIAGNOSTIC_CODES.TARGET_MISSING);
     }
-    return admitDocument(document, graphVersion);
+    return admitDocument(document, graphVersion, input.trustClassesByArtifactKey?.get(edge.artifactKey));
   };
 
   activePath.add(topProfileArtifactKey);

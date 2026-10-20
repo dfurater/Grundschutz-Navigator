@@ -2,7 +2,7 @@
 // Wartungssync des NIST-Orakelkorpus (GSPP-291, Commit B)
 //
 // Lädt die vier SP 800-53 rev5 Baseline-Profile und ihre von NIST selbst
-// aufgelösten Vergleichskataloge sowie die drei SSP-Beispiele (GSPP-293) aus
+// aufgelösten Vergleichskataloge sowie die drei SSP- und vier Assessment-Plan-Beispiele aus
 // usnistgov/oscal-content am statisch gepinnten Tag v1.5.0 (Commit
 // 78650f02ad9321bb7b817846f8fbd4f2bcd620de) und legt sie mit
 // SHA-256-Manifest unter src/test/fixtures/ ab. Die
@@ -64,6 +64,17 @@ const ARTIFACTS = [
     artifactKey,
     role: 'example',
     remotePath: `${SSP_EXAMPLE_PREFIX}${remoteName}`,
+    fileName,
+  })),
+  ...[
+    'ifa_assessment-plan-example-min.json',
+    'ifa_assessment-plan-example.json',
+    'ifa_assessment-plan-min.json',
+    'ifa_assessment-plan.json',
+  ].map(fileName => ({
+    artifactKey: `nist-ap-${fileName.replace(/\.json$/, '').replaceAll('_', '-')}`,
+    role: 'example',
+    remotePath: `examples/ap/json/${fileName}`,
     fileName,
   })),
 ];

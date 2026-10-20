@@ -117,7 +117,13 @@ export const PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES = Object.freeze({
  */
 const PROFILE_RESOLUTION_TIMESTAMP = '1970-01-01T00:00:00.000Z';
 
+/** Trusted caller-owned state for one graph invocation; never sourced from OSCAL input. */
+export interface ProfileResolutionExecution {
+  readonly resolvedCatalogs: Map<string, { readonly tree: DerivedJsonTree; readonly usage: ProfileResolutionBudgetUsage }>;
+}
+
 export interface ProfileResolutionRequest {
+  readonly execution?: ProfileResolutionExecution;
   readonly plan: ProfileResolutionPlan;
   readonly edgesByArtifactKey: ReadonlyMap<string, readonly ProfileResolutionEdge[]>;
   /** Geparste Profilprojektionen nach Artefaktschlüssel (nur Profilwurzeln). */
@@ -641,17 +647,21 @@ function selectedControlNodes(
  * quadratische ID-Suche, die dieses Issue bereits einmal beseitigt hat. Der
  * Aufbau kostet eine Arbeitseinheit je Kante und ist damit gedeckt.
  */
-function indexEdgesByHref(
+function indexImportEdges(
   input: SingleProfileInput,
   budget: ProfileResolutionBudget,
-): ReadonlyMap<string, ProfileResolutionEdge> {
+): { readonly byHref: ReadonlyMap<string, ProfileResolutionEdge>; readonly byImportPath: ReadonlyMap<string, ProfileResolutionEdge> } {
+  const byImportPath = new Map<string, ProfileResolutionEdge>();
   const byHref = new Map<string, ProfileResolutionEdge>();
   for (const candidate of input.edgesByArtifactKey.get(input.artifactKey) ?? []) {
     budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE);
-    // Erste Kante je href gewinnt — dieselbe Auswahl, die `find` traf.
-    if (!byHref.has(candidate.href)) byHref.set(candidate.href, candidate);
+    if (candidate.importPath !== undefined) {
+      if (!byImportPath.has(candidate.importPath)) byImportPath.set(candidate.importPath, candidate);
+    } else if (!byHref.has(candidate.href)) {
+      byHref.set(candidate.href, candidate);
+    }
   }
-  return byHref;
+  return { byHref, byImportPath };
 }
 
 function collectPhaseOne(
@@ -662,7 +672,7 @@ function collectPhaseOne(
   const inclusions: ControlInclusion[] = [];
   const consumedResourceUuids = new Set<string>();
 
-  const edgeByHref = indexEdgesByHref(input, budget);
+  const edgeIndex = indexImportEdges(input, budget);
 
   for (const profileImport of input.document.view.imports) {
     budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE);
@@ -674,7 +684,7 @@ function collectPhaseOne(
         currentProfileArtifact(input)
       );
     }
-    const edge = edgeByHref.get(href);
+    const edge = edgeIndex.byImportPath.get(profileImport.path) ?? edgeIndex.byHref.get(href);
     if (edge === undefined) {
       return reject(
         PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES.IMPORT_UNMAPPED,
@@ -1186,15 +1196,37 @@ function resolveSingleProfile(input: SingleProfileInput, budget: ProfileResoluti
   };
 }
 
+/** Measures only this profile's work; dependencies are charged separately in plan order. */
+function measureOwnBudget(budget: ProfileResolutionBudget): {
+  readonly budget: ProfileResolutionBudget;
+  readonly usage: () => ProfileResolutionBudgetUsage;
+} {
+  const before = budget.usage();
+  let ownDepth = 0;
+  return {
+    budget: { ...budget, admitNode(depth) { budget.admitNode(depth); ownDepth = Math.max(ownDepth, depth); } },
+    usage() {
+      const after = budget.usage();
+      const workUnitsByCategory = { ...after.workUnitsByCategory };
+      for (const category of Object.values(PROFILE_RESOLUTION_WORK_UNITS)) {
+        workUnitsByCategory[category] -= before.workUnitsByCategory[category];
+      }
+      return { workUnits: after.workUnits - before.workUnits, workUnitsByCategory,
+        nodes: after.nodes - before.nodes, decodedBase64Bytes: after.decodedBase64Bytes - before.decodedBase64Bytes, maxDepth: ownDepth };
+    },
+  };
+}
+
 /**
  * Löst den gesamten Postorder-Plan vorwärts auf: Jedes importierte Profil
  * steht vor allen Importeuren und ist deshalb beim Zugriff bereits fertig.
  *
  * BUDGET: Der Lauf besitzt genau eine Budgetinstanz. Sie entsteht hier, wird
- * nach unten gereicht und nie über Läufe hinweg wiederverwendet. Die
- * öffentliche Signatur trägt bewusst KEINEN Grenzwert- und keinen
- * Disable-Parameter — ein gleichnamiger Wert im Steuerdokument bleibt
- * gewöhnlicher Dokumentinhalt und erreicht das Budget nicht.
+ * nach unten gereicht und nie über Verbundläufe hinweg wiederverwendet.
+ * Optionale Execution-Daten kommen ausschließlich vom aufrufenden Domain-Code;
+ * sie teilen validierte Zwischenergebnisse innerhalb eines Verbundlaufs.
+ * Jede angeforderte Profilauflösung besitzt ihr eigenes unverändertes Budget.
+ * Dokumentinhalt erreicht weder diese Execution-Daten noch Budgetgrenzen.
  *
  * FANGSTELLE: Das `try` hier ist die einzige im ganzen Auflösungsweg. Ein
  * Budgetabbruch verlässt die Tiefe als `ProfileResolutionBudgetExceeded` und
@@ -1216,14 +1248,20 @@ export async function resolveProfile(
       budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE);
       const document = request.profileViews.get(artifactKey);
       if (document === undefined) continue;
-
+      const cached = request.execution?.resolvedCatalogs.get(artifactKey);
+      if (cached !== undefined) {
+        budget.replayCachedUsage(cached.usage);
+        resolvedByArtifact.set(artifactKey, cached.tree);
+        continue;
+      }
+      const measured = measureOwnBudget(budget);
       const outcome = resolveSingleProfile({
         artifactKey,
         document,
         plan,
         edgesByArtifactKey: request.edgesByArtifactKey,
         resolvedByArtifact,
-      }, budget);
+      }, measured.budget);
       if (!outcome.ok) return outcome;
       const validated = await processClass2OscalValue(outcome.tree, {
         trustClass: 'class-2-local-user',
@@ -1239,6 +1277,7 @@ export async function resolveProfile(
         };
       }
       resolvedByArtifact.set(artifactKey, outcome.tree);
+      request.execution?.resolvedCatalogs.set(artifactKey, { tree: outcome.tree, usage: measured.usage() });
     }
 
     const topLevel = plan.topProfileArtifactKey;

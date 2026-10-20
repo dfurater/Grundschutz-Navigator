@@ -442,6 +442,97 @@ export function makeComponentDefinitionWithoutComponents(
   return { 'component-definition': makeSyntheticBody(oscalVersion) };
 }
 
+/** Die externe `source` und der externe Import der lokalen Klasse-2-Fixtures. */
+export const LOCAL_COMPONENT_EXTERNAL_HREFS = Object.freeze({
+  source: 'https://example.invalid/kataloge/basis-catalog.json',
+  import: 'https://example.invalid/komponenten/basis-component_definition.json',
+});
+
+const LOCAL_COMPONENT_UUID = makeUuid('lokale-komponente', 1);
+const LOCAL_CAPABILITY_UUID = makeUuid('lokale-komponente', 2);
+
+function localImplementation(seed: string, controlIds: readonly string[]): JsonObject {
+  return {
+    uuid: makeUuid(seed, 0),
+    source: LOCAL_COMPONENT_EXTERNAL_HREFS.source,
+    description: 'Synthetische Umsetzungsbeschreibung.',
+    'implemented-requirements': controlIds.map((controlId, index) => ({
+      uuid: makeUuid(seed, index + 1),
+      'control-id': controlId,
+      description: 'Synthetische Anforderungsbeschreibung.',
+    })),
+  };
+}
+
+/**
+ * Synthetische lokale Definition (Klasse 2), deren Zuordnungen ausschließlich
+ * auf einer Capability liegen; `components` fehlt.
+ */
+export function makeCapabilityOnlyComponentDefinition(): JsonObject {
+  return {
+    'component-definition': makeSyntheticBody('1.2.2', {
+      capabilities: [{
+        uuid: LOCAL_CAPABILITY_UUID,
+        name: 'zugangsverwaltung',
+        description: 'Synthetische Capability.',
+        'control-implementations': [localImplementation('capability-umsetzung', ['GC.1.1', 'GC.1.2'])],
+      }],
+    }),
+  };
+}
+
+/**
+ * Synthetische lokale Definition (Klasse 2) mit einer Komponente vom Typ
+ * `type`, `protocols`, einem Statement, einer inkorporierenden Capability,
+ * einem `prop` mit fremdem `ns`, einem eigenen `link.rel` sowie externer
+ * `source` und externem Import. Schemavalide gegen OSCAL 1.2.2.
+ */
+export function makeLocalComponentDefinition(type = 'software'): JsonObject {
+  const implementation = localImplementation('komponenten-umsetzung', ['GC.2.1']);
+  const [requirement] = implementation['implemented-requirements'] as JsonObject[];
+  requirement.statements = [{
+    'statement-id': 'GC.2.1_smt',
+    uuid: makeUuid('komponenten-umsetzung', 9),
+    description: 'Synthetische Teilaussage.',
+  }];
+  return {
+    'component-definition': makeSyntheticBody('1.2.2', {
+      'import-component-definitions': [{ href: LOCAL_COMPONENT_EXTERNAL_HREFS.import }],
+      components: [{
+        uuid: LOCAL_COMPONENT_UUID,
+        type,
+        title: 'Verzeichnisdienst',
+        description: 'Synthetische Komponente.',
+        // OSCAL lässt keine freien Zusatzfelder zu (`additionalProperties:
+        // false`); Erweiterungen laufen über `props` mit eigenem `ns`.
+        props: [{
+          name: 'betreiber',
+          value: 'intern',
+          ns: 'https://example.invalid/ns',
+          class: 'lokal',
+          remarks: 'Erweiterung ohne Projektion.',
+        }],
+        links: [{ href: '#betriebshandbuch', rel: 'lokales-handbuch' }],
+        protocols: [{
+          uuid: makeUuid('lokale-komponente', 3),
+          name: 'ldaps',
+          'port-ranges': [{ start: 636, end: 636, transport: 'TCP' }],
+        }],
+        'control-implementations': [implementation],
+      }],
+      capabilities: [{
+        uuid: LOCAL_CAPABILITY_UUID,
+        name: 'verzeichnis',
+        description: 'Synthetische Capability.',
+        'incorporates-components': [{
+          'component-uuid': LOCAL_COMPONENT_UUID,
+          description: 'Inkorporierte Komponente.',
+        }],
+      }],
+    }),
+  };
+}
+
 /**
  * Derselbe Feldinhalt, zwei Versionen: `import-component-definitions[0].remarks`
  * ist ab 1.2.1 gültig und darunter schemawidrig.

@@ -46,7 +46,10 @@ import type { DeriveState } from '@/adapters/oscalComponentReaders';
 import { readRootMetadata } from '@/domain/oscalRootDispatch';
 import { openRootDerive } from '@/adapters/oscalRootDocumentParse';
 import { readString, type JsonObject } from '@/domain/jsonGuards';
-import { COMPONENT_DEFINITION_ROOT_TYPE } from '@/domain/componentDefinitionModel';
+import {
+  COMPONENT_DEFINITION_ROOT_TYPE,
+  COMPONENT_TYPE_VALUES,
+} from '@/domain/componentDefinitionModel';
 import type {
   ComponentCapability,
   ComponentControlImplementation,
@@ -58,6 +61,7 @@ import type {
   ComponentImplementationSource,
   ComponentImplementedRequirement,
   ComponentImplementedStatement,
+  ComponentTypeVocabulary,
   DefinedComponent,
 } from '@/domain/componentDefinitionModel';
 import type { OscalDocumentContext } from '@/domain/models';
@@ -245,16 +249,27 @@ function deriveImports(
   );
 }
 
+const DOCUMENTED_COMPONENT_TYPES: ReadonlySet<string> = new Set(COMPONENT_TYPE_VALUES);
+
+// Ein unbekannter Typ ist schemavalide (`allow-other="yes"`) und deshalb keine
+// Diagnose; die Kennzeichnung hält ihn nur von dokumentierten Werten getrennt.
+function classifyComponentType(type: string | undefined): ComponentTypeVocabulary | undefined {
+  if (type === undefined) return undefined;
+  return DOCUMENTED_COMPONENT_TYPES.has(type) ? 'documented' : 'unknown';
+}
+
 function deriveComponents(body: JsonObject, state: DeriveState): readonly DefinedComponent[] {
   const basePath = `/${COMPONENT_DEFINITION_ROOT_TYPE}`;
   return readObjectArrayField(body, 'components', basePath, state).map(
     ({ node: component, path }) => {
       const uuid = readString(component.uuid);
       registerUuid(uuid, path, state);
+      const type = readString(component.type);
 
       return {
         uuid,
-        type: readString(component.type),
+        type,
+        typeVocabulary: classifyComponentType(type),
         title: readString(component.title),
         description: readString(component.description),
         purpose: readString(component.purpose),

@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { createBrowserRouter } from 'react-router';
 import { RouterProvider } from 'react-router/dom';
 import { CatalogProvider } from '@/state/CatalogContext';
+import { WorkspaceProvider } from '@/state/WorkspaceContext';
 import { AppShell } from '@/app/AppShell';
 import { createAppRoutes } from '@/app/appRoutes';
 import { preloadInitialPage } from '@/app/initialPage';
@@ -19,7 +20,9 @@ const routerBasename =
 // geladene Chunks aus (12 statt 2 JS-Anfragen je Einstieg, gemessen GSPP-506).
 void preloadInitialPage(globalThis.location.pathname, routerBasename).then(() => {
   const router = createBrowserRouter(
-    createAppRoutes(<CatalogProvider><AppShell /></CatalogProvider>),
+    // Der Speicher der Informationsverbünde öffnet erst beim ersten Betreten
+    // des Bereichs (`activate` in `useShellArea`), nie auf dem Katalogpfad.
+    createAppRoutes(<CatalogProvider><WorkspaceProvider><AppShell /></WorkspaceProvider></CatalogProvider>),
     { basename: routerBasename },
   );
   createRoot(document.getElementById('root')!).render(
