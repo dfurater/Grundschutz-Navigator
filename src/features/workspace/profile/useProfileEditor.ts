@@ -135,17 +135,21 @@ export function useProfileEditor(localId: LocalId): ProfileEditor {
     clearTimeout(timer.current);
     while (saving.current) await savingDone.current;
     const run = chain.current.then(async () => {
-      const state = latest.current;
-      if (!state.unsaved || !state.envelope || saving.current) return { ok: true as const, value: undefined };
-      const snapshot = state.working;
-      const result = await documents.autosaveDraft(localId, state.envelope.savedAt, state.draftSavedAt, snapshot);
-      if (!result.ok) {
-        setSaveState({ kind: 'failed' });
-        return result;
+      // Eingaben, die während einer Sicherung entstehen, gehören in denselben Flush:
+      // Erfolg erst, wenn kein Arbeitsstand mehr offen ist; ein Fehler bleibt Fehler.
+      for (;;) {
+        const state = latest.current;
+        if (!state.unsaved || !state.envelope || saving.current) return { ok: true as const, value: undefined };
+        const snapshot = state.working;
+        const result = await documents.autosaveDraft(localId, state.envelope.savedAt, state.draftSavedAt, snapshot);
+        if (!result.ok) {
+          setSaveState({ kind: 'failed' });
+          return result;
+        }
+        latest.current = { ...latest.current, draftSavedAt: result.value.savedAt, unsaved: latest.current.working !== snapshot };
+        setSaveState({ kind: 'autosaved', at: result.value.savedAt });
+        if (!latest.current.unsaved || saving.current) return result;
       }
-      latest.current = { ...latest.current, draftSavedAt: result.value.savedAt, unsaved: latest.current.working !== snapshot };
-      setSaveState({ kind: 'autosaved', at: result.value.savedAt });
-      return result;
     });
     chain.current = run.catch(() => undefined);
     return run;

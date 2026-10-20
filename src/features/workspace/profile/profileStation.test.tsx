@@ -253,6 +253,61 @@ describe('Bearbeiten, Autosave, Speichern und Export', () => {
     expect(await readStore((store) => store.getDraft(localId))).toBeDefined();
   });
 
+  it('sichert eine Eingabe, die während der Navigationssicherung entsteht, vor dem Routenwechsel', async () => {
+    const { WorkspaceStore } = await import('@/adapters/workspaceStore');
+    const saved: unknown[] = [];
+    let finishFirst: () => void = () => {};
+    const autosave = vi.spyOn(WorkspaceStore.prototype, 'autosaveDraft').mockImplementation((localId, _savedAt, _draftSavedAt, source) => {
+      saved.push(source);
+      if (saved.length === 1) {
+        return new Promise((resolve) => {
+          finishFirst = () => resolve({ ok: true, value: { localId, source, savedAt: '2026-10-20T00:00:01.000Z' } });
+        });
+      }
+      return Promise.resolve({ ok: true, value: { localId, source, savedAt: '2026-10-20T00:00:02.000Z' } });
+    });
+    const { router } = renderArea(buildStationUrl(seeded.verbundId, 'profile'), withGspp());
+    await openNewProfile('Paket');
+    fireEvent.click(within(main()).getByRole('radio', { name: /catalog-gspp/ }));
+    fireEvent.click(within(main()).getByRole('button', { name: 'Profil anlegen' }));
+    await waitFor(() => expect(router.state.location.pathname).toMatch(/\/dokument\//), WAIT);
+    fireEvent.click(await within(main()).findByRole('button', { name: '+ Muster' }));
+    fireEvent.click(within(main()).getByRole('link', { name: /^Profile$/ }));
+    await waitFor(() => expect(autosave).toHaveBeenCalledTimes(1), WAIT);
+    fireEvent.change(within(main()).getByRole('textbox', { name: 'Muster 1' }), { target: { value: 'ac-*' } });
+    finishFirst();
+    await waitFor(() => expect(router.state.location.pathname).not.toMatch(/\/dokument\//), WAIT);
+    expect(JSON.stringify(saved.at(-1))).toContain('"pattern":"ac-*"');
+  });
+
+  it('bleibt bei einem Fehler der letzten Sicherung während der Navigation auf der Dokumentroute', async () => {
+    const { WorkspaceStore } = await import('@/adapters/workspaceStore');
+    const { StorageFailure, failure } = await import('@/adapters/workspaceStorageFailure');
+    let finishFirst: () => void = () => {};
+    const autosave = vi.spyOn(WorkspaceStore.prototype, 'autosaveDraft').mockImplementation((localId, _savedAt, _draftSavedAt, source) => {
+      if (autosave.mock.calls.length === 1) {
+        return new Promise((resolve) => {
+          finishFirst = () => resolve({ ok: true, value: { localId, source, savedAt: '2026-10-20T00:00:01.000Z' } });
+        });
+      }
+      return Promise.resolve(failure(new StorageFailure('WORKSPACE_STORAGE_FAILED')));
+    });
+    const { router } = renderArea(buildStationUrl(seeded.verbundId, 'profile'), withGspp());
+    await openNewProfile('Paket');
+    fireEvent.click(within(main()).getByRole('radio', { name: /catalog-gspp/ }));
+    fireEvent.click(within(main()).getByRole('button', { name: 'Profil anlegen' }));
+    await waitFor(() => expect(router.state.location.pathname).toMatch(/\/dokument\//), WAIT);
+    fireEvent.click(await within(main()).findByRole('button', { name: '+ Muster' }));
+    fireEvent.click(within(main()).getByRole('link', { name: /^Profile$/ }));
+    await waitFor(() => expect(autosave).toHaveBeenCalledTimes(1), WAIT);
+    fireEvent.change(within(main()).getByRole('textbox', { name: 'Muster 1' }), { target: { value: 'ac-*' } });
+    finishFirst();
+    await waitFor(() => expect(autosave).toHaveBeenCalledTimes(2), WAIT);
+    expect(await within(main()).findByText('Sicherung fehlgeschlagen', undefined, WAIT)).toBeInTheDocument();
+    expect(router.state.location.pathname).toMatch(/\/dokument\//);
+    expect(within(main()).getByRole('textbox', { name: 'Muster 1' })).toHaveValue('ac-*');
+  });
+
   it('sichert offene Eingaben sofort, wenn der Editor innerhalb des Bereichs verlassen wird', async () => {
     const { localId } = await createdProfile();
     fireEvent.click(await within(main()).findByRole('button', { name: '+ Muster' }));
