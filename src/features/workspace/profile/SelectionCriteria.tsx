@@ -94,7 +94,9 @@ export function SelectionCriteria({ title, oscalKey, view, ids, actions, childLa
   childLabel?: string;
 }>) {
   const [showAll, setShowAll] = useState(false);
-  const shown = showAll ? view.withIds : view.withIds.slice(0, ID_LIMIT);
+  // In diesem Formular hinzugefügte IDs bleiben sichtbar, auch jenseits der ersten Einträge.
+  const [added, setAdded] = useState<ReadonlySet<string>>(() => new Set());
+  const shown = showAll ? view.withIds : view.withIds.filter((id, index) => index < ID_LIMIT || added.has(id));
   return (
     <section aria-label={title} className="space-y-3">
       <h3 className={`${SECTION_LABEL} flex items-baseline gap-2`}>{title} <OscalKey>{oscalKey}</OscalKey></h3>
@@ -116,7 +118,7 @@ export function SelectionCriteria({ title, oscalKey, view, ids, actions, childLa
               </button>
             </li>
           )}
-          <li><AddId onAdd={(id) => actions.setId(id, true)} /></li>
+          <li><AddId onAdd={(id) => { actions.setId(id, true); setAdded((current) => new Set(current).add(id)); }} /></li>
         </ul>
       </div>
       <div className="space-y-1.5">
