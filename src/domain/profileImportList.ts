@@ -117,8 +117,9 @@ function importHrefs(source: unknown): (string | undefined)[] {
  * Richtet gespeicherte Import-Bindungen an einem Entwurf aus, dessen Importe
  * sich gegenüber dem gespeicherten Dokument verschoben haben können.
  * Gemeinsamer Anfang und gemeinsames Ende der `href`-Folgen behalten ihre
- * Bindungen an der jeweils neuen Position; überlappen beide, ist die
- * Überlappung mehrdeutig und gehört zur Mitte. In der Mitte folgt ein `href`
+ * Bindungen an der jeweils neuen Position; eine Überlappung beider und jeder
+ * Randwert, der auch in einer Mitte vorkommt, gelten als mehrdeutig und gehören
+ * zur Mitte. In der Mitte folgt ein `href`
  * nur dann seiner Bindung, wenn er in beiden Fassungen eindeutig ist, sonst
  * bleibt der Import ungebunden statt fremd gebunden.
  */
@@ -134,6 +135,15 @@ export function alignImportBindings<T extends { readonly pointer: string; readon
   const overlap = Math.max(0, head + tail - shorter);
   head -= overlap;
   tail -= overlap;
+  // Ein Randwert, der auch in einer Mitte steht, kann von dort nachgerückt sein: dann ist auch der Rand mehrdeutig.
+  const inMiddle = (href: string | undefined) =>
+    before.slice(head, before.length - tail).includes(href) || after.slice(head, after.length - tail).includes(href);
+  let narrowed = true;
+  while (narrowed) {
+    narrowed = false;
+    if (head > 0 && inMiddle(before[head - 1])) { head--; narrowed = true; }
+    if (tail > 0 && inMiddle(before[before.length - tail])) { tail--; narrowed = true; }
+  }
   // Position im Entwurf zu einer gespeicherten Position am Anfang oder Ende; die Mitte hat keine.
   const moved = (index: number) => {
     if (index < head) return index;

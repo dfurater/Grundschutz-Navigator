@@ -557,7 +557,8 @@ Bindung des entfernten Imports und rückt die folgenden nach; während eines
 expliziten Speicherns ist Entfernen gesperrt. `alignImportBindings()` richtet
 beim Öffnen eines Entwurfs die gespeicherten Bindungen an dessen Importen aus:
 Gemeinsamer Anfang und gemeinsames Ende der `href`-Folgen behalten ihre
-Bindungen an der neuen Position, eine Überlappung beider gilt als mehrdeutig.
+Bindungen an der neuen Position; eine Überlappung beider und jeder Randwert,
+der auch dazwischen vorkommt, gelten als mehrdeutig.
 Dazwischen folgt ein `href` seiner Bindung nur, wenn er im Entwurf und im
 gespeicherten Dokument eindeutig ist; sonst bleibt der Import ungebunden.
 

@@ -123,6 +123,9 @@ describe('Importe hinzufügen und entfernen', () => {
     // Mehrdeutig: Welches von zwei gleichen Duplikaten entfernt wurde, ist nicht entscheidbar.
     expect(alignImportBindings([at(0, '#a', 'A')], doc('#a', '#a'), doc('#a'))).toEqual([]);
     expect(alignImportBindings([at(0, '#a', 'A'), at(1, '#a', 'B'), at(2, '#c', 'C')], stored, doc('#a', '#c'))).toEqual([at(1, '#c', 'C')]);
+    // Entfernen plus Anhängen: Der verbliebene Duplikat-Import ist nicht zuzuordnen, der eindeutige folgt.
+    expect(alignImportBindings([at(0, '#a', 'A'), at(1, '#a', 'B'), at(2, '#b', 'C')], doc('#a', '#a', '#b'), doc('#a', '#b', '#n'))).toEqual([at(1, '#b', 'C')]);
+    expect(alignImportBindings([at(0, '#a', 'A'), at(1, '#a', 'B'), at(2, '#c', 'C')], stored, doc('#a', '#c', '#d'))).toEqual([at(1, '#c', 'C')]);
   });
 
   it('erzeugt keinen Import ohne href', () => {
