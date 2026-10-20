@@ -19,6 +19,7 @@ import {
 export const MAX_SEARCH_CACHE_ENTRIES = 3;
 
 const EMPTY_PRACTICES: Practice[] = [];
+const TOKEN_PATTERN = /[\p{L}\p{N}]+/gu;
 
 interface SearchCacheEntry {
   catalogKey: string;
@@ -75,26 +76,31 @@ function createSearchDocuments(
       practicesById.get(control.practiceId),
     );
 
+    const metadataText = [
+      control.tags.join(' '),
+      control.taxonomy.flatMap((prop) => [prop.name, prop.value]).join(' '),
+      control.modalverb ?? '',
+      control.statementProps.ergebnis ?? '',
+      control.statementProps.praezisierung ?? '',
+      control.statementProps.handlungsworte ?? '',
+      control.statementProps.dokumentation ?? '',
+      control.statementProps.zielobjektKategorien.join(' '),
+      control.threats.join(' '),
+      practiceVocabulary?.entry.columns['auch bekannt als'] ?? '',
+      ...vocabularyTexts,
+    ].join(' ');
+    const contentText = [control.statement, control.guidance].join(' ');
+
     return {
       control,
       numericId,
       controlIdText: control.id,
       titleText: control.title,
       linkText: getControlLinkSearchText(control.links),
-      metadataText: [
-        control.tags.join(' '),
-        control.taxonomy.flatMap((prop) => [prop.name, prop.value]).join(' '),
-        control.modalverb ?? '',
-        control.statementProps.ergebnis ?? '',
-        control.statementProps.praezisierung ?? '',
-        control.statementProps.handlungsworte ?? '',
-        control.statementProps.dokumentation ?? '',
-        control.statementProps.zielobjektKategorien.join(' '),
-        control.threats.join(' '),
-        practiceVocabulary?.entry.columns['auch bekannt als'] ?? '',
-        ...vocabularyTexts,
-      ].join(' '),
-      contentText: [control.statement, control.guidance].join(' '),
+      metadataText,
+      contentText,
+      metadataTokens: normalizeSearchValue(metadataText).match(TOKEN_PATTERN) ?? [],
+      contentTokens: normalizeSearchValue(contentText).match(TOKEN_PATTERN) ?? [],
       vocabularyIdentifiers: collectControlVocabularyIdentifiers(resolved),
       normalizedControlId: normalizeSearchValue(control.id),
       normalizedTitle: normalizeSearchValue(control.title),

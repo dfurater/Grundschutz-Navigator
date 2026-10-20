@@ -11,7 +11,6 @@ export interface SearchResult {
 const NATURAL_LANGUAGE_PREFIX_MIN_LENGTH = 6;
 const NATURAL_LANGUAGE_METADATA_PREFIX_WEIGHT = 0.75;
 const NATURAL_LANGUAGE_CONTENT_PREFIX_WEIGHT = 0.5;
-const TOKEN_PATTERN = /[\p{L}\p{N}]+/gu;
 
 export interface SearchIndexes {
   controlIds: Index;
@@ -29,6 +28,8 @@ export interface SearchDocument {
   linkText: string;
   metadataText: string;
   contentText: string;
+  metadataTokens: readonly string[];
+  contentTokens: readonly string[];
   /** Eigene Kennungen der aufgelösten Vokabular-Einträge dieses Controls */
   vocabularyIdentifiers: string[];
   normalizedControlId: string;
@@ -68,10 +69,8 @@ function shouldUseNaturalLanguagePrefixSearch(normalizedQuery: string) {
   );
 }
 
-function hasNaturalLanguagePrefixMatch(text: string, normalizedQuery: string) {
-  const normalizedTokens = normalizeSearchValue(text).match(TOKEN_PATTERN) ?? [];
-
-  return normalizedTokens.some((token) => token.startsWith(normalizedQuery));
+function hasNaturalLanguagePrefixMatch(tokens: readonly string[], normalizedQuery: string) {
+  return tokens.some((token) => token.startsWith(normalizedQuery));
 }
 
 function resolveIdentifierQuery(query: string, view: SearchView): SearchResult[] {
@@ -150,7 +149,7 @@ function rankTextQuery(query: string, view: SearchView): SearchResult[] {
     searchDocuments.forEach((document) => {
       if (
         hasNaturalLanguagePrefixMatch(
-          document.metadataText,
+          document.metadataTokens,
           normalizedQuery,
         )
       ) {
@@ -167,7 +166,7 @@ function rankTextQuery(query: string, view: SearchView): SearchResult[] {
 
       if (
         hasNaturalLanguagePrefixMatch(
-          document.contentText,
+          document.contentTokens,
           normalizedQuery,
         )
       ) {
