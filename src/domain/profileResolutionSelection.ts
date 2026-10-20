@@ -25,7 +25,9 @@ import {
   PROFILE_RESOLUTION_VALIDATOR,
 } from './profileResolutionImportGraph';
 import {
+  createProfileResolutionBudget,
   PROFILE_RESOLUTION_WORK_UNITS,
+  ProfileResolutionBudgetExceeded,
   type ProfileResolutionBudget,
   type ProfileResolutionWorkUnit,
 } from './profileResolutionBudget';
@@ -342,6 +344,21 @@ function matchGlob(
     patternIndex += 1;
   }
   return patternIndex === pattern.length;
+}
+
+/**
+ * Zahl der IDs eines Importziels, die ein Glob-Muster trifft — derselbe
+ * Abgleich wie in der Auflösung, mit eigenem Budget je Aufruf. `null`, wenn
+ * das Arbeitsbudget erschöpft ist.
+ */
+export function countGlobMatches(pattern: string, ids: readonly string[]): number | null {
+  const budget = createProfileResolutionBudget();
+  try {
+    return ids.filter((id) => matchGlob(pattern, id, budget)).length;
+  } catch (error) {
+    if (error instanceof ProfileResolutionBudgetExceeded) return null;
+    throw error;
+  }
 }
 
 type MatchOutcome =

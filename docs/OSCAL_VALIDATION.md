@@ -23,7 +23,7 @@ objektorientierte Prüfkette
 ([`oscalObjectPipeline.ts`](../src/domain/oscalObjectPipeline.ts)); dort laufen
 Ressourcenlimits (Tiefe 64, Knotenzahl 1 000 000, arithmetische Base64-Summe
 4 MiB), die Strukturinvariante, `dispatchOscalDocument()` und die Schemastufe
-in einer Einheit. `src/adapters/workspaceStore.ts` speichert eigene Dokumente nach diesem Eingang; Speicher- und Backup-Vertrag stehen in [PERSISTENCE.md](PERSISTENCE.md). Die Anwendung besitzt keine Import-UI und keine Klasse-2-Anzeige.
+in einer Einheit. `src/adapters/workspaceStore.ts` speichert eigene Dokumente nach diesem Eingang; Speicher- und Backup-Vertrag stehen in [PERSISTENCE.md](PERSISTENCE.md). Die Station Profile nimmt Profil-Dateien über diesen Eingang auf (`src/features/workspace/profile/ProfileFileImport.tsx`); der Bereich Informationsverbünde zeigt Klasse-2-Dokumente mit dem Label „Eigene Daten · kein Integritätsnachweis“.
 
 **Stufe 2.**
 `dispatchOscalDocument()` in

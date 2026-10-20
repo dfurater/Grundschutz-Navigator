@@ -148,6 +148,10 @@ src/                              # Anwendungsquellcode
 │   ├── oscalVersionMatrix.mjs        # Root-Typ × OSCAL-Version × gepinntes Schema
 │   ├── oscalVersionMatrix.ts         # Typsicherer Einstieg in oscalVersionMatrix.mjs
 │   ├── placeholderNamespace.ts       # Erkennt BSI-Platzhalter als Prop-Namensraum
+│   ├── profileAuthoring.ts           # Lesemodell und gezielte Patches der Profil-Importe
+│   ├── profileExport.ts              # Validierter Profil-Export aus dem Builder-Graphen
+│   ├── profileHints.ts               # Hinweise auf schemagültige, aber wirkungslose Profilkonstrukte
+│   ├── profileImportList.ts          # Neuanlage eines Profils, Importe hinzufügen und entfernen
 │   ├── profileModel.ts               # Domänenmodell des Profile
 │   ├── profileResolutionBudget.ts    # Laufendes Arbeits- und Ausgabebudget
 │   ├── profileResolutionBudgetLimits.d.mts # Typ der Arbeitsgrenze
@@ -158,6 +162,8 @@ src/                              # Anwendungsquellcode
 │   ├── profileResolutionMembers.ts   # Deskriptorbasierte Mitgliederzugriffe für Merge und Modify
 │   ├── profileResolutionModify.ts    # Phase 3: Modify
 │   ├── profileResolutionSelection.ts # Phase 1: Selektion
+│   ├── profileSave.ts                # Explizites Speichern mit change-on-write
+│   ├── profileTargetControls.ts      # Anforderungen eines Importziels nach Praktik und Gruppe
 │   ├── projectProps.ts               # Registry der projekteigenen OSCAL-Props
 │   ├── referenceGraph.ts             # Referenzgraph über alle vier Root-Typen (Stufe 5)
 │   ├── referenceGraphContext.ts      # Auswertungskontext und Kantenablage
@@ -227,6 +233,7 @@ src/                              # Anwendungsquellcode
 │   ├── oscalSspDocument.ts           # Verlustfreier Dokumenteinstieg SSP
 │   ├── oscalSspReaders.ts            # Knotenleser, Referenzprüfungen und Diagnosen des SSP-Adapters
 │   ├── oscalSspSystem.ts             # SSP-Projektion von system-characteristics und system-implementation
+│   ├── profileWorkbench.ts           # Client des Profile-Workers für Verbundansicht, Analyse und Export
 │   ├── workspaceBackup.ts            # Begrenzter Backup-Einstieg über einen Modul-Worker
 │   ├── workspaceBackupContract.ts    # Redigierte Backup-Diagnosen und Workerfrist
 │   ├── workspaceBackupProcessing.ts  # Backup-Validierung und Klasse-2-Dokumentprüfung
@@ -251,7 +258,9 @@ src/                              # Anwendungsquellcode
 │   ├── catalogParseWorker.ts         # Typisierter Client des Katalog-Parser-Workers
 │   ├── catalogParsing.ts             # Parsepipeline für Worker und Main-Thread-Fallback
 │   ├── catalogReducer.ts             # Zustand der Katalogsammlung
+│   ├── workspaceDocuments.ts         # Dokumentoperationen der Stationen über den Speicher
 │   ├── workspaceNotices.ts           # Benannte Speichermeldungen und Quota-Schwelle
+│   ├── workspaceProfileAnalysis.ts   # Schnappschuss und Ableitung der Profilanalyse
 │   └── workspaceVerbundView.ts       # Verbundansicht aus Speicher und Dokumentgraph
 ├── hooks/                        # Wiederverwendbare React Hooks
 │   ├── breakpointQueries.ts          # Media Queries der Breakpoints: rem-Grenzen und Desktop-Bedingung mit Eingabemöglichkeit
@@ -342,13 +351,29 @@ src/                              # Anwendungsquellcode
 │   │   └── display.ts                    # Offizielle Stufen, Beschriftungen, Tooltips
 │   └── workspace/                    # Bereich Informationsverbünde
 │       ├── DocumentMarks.tsx             # Herkunftslabel und Statuswort lokaler Dokumente
-│       ├── DocumentReferenceDetail.tsx   # Referenzkanten eines Dokuments mit Feld, Pflicht und Zustand
+│       ├── DocumentReferenceDetail.tsx   # Dokumentroute: Referenzkanten, für Profile die Bearbeitungsansicht
+│       ├── ReferenceEdges.tsx            # Referenzkanten eines Dokuments mit Feld, Pflicht und Zustand
 │       ├── StationSidebar.tsx            # Stationen-Seitenleiste eines Verbunds
 │       ├── StationStrip.tsx              # Waagerechte Stationswahl außerhalb des Desktops
 │       ├── VerbundOverviewPage.tsx       # Verbünde anlegen, umbenennen, mit Bestätigung löschen, sichern
 │       ├── VerbundPage.tsx               # Orientierung, Dokumentliste mit Stationsfilter, Diagnosen
 │       ├── WorkspaceNotices.tsx          # Speichermeldungen mit Export bzw. Neu laden
-│       └── WorkspaceStatePage.tsx        # Lade-, Nicht-gefunden- und Fehlerzustand im Bereich
+│       ├── WorkspaceStatePage.tsx        # Lade-, Nicht-gefunden- und Fehlerzustand im Bereich
+│       └── profile/                      # Profile-Station
+│           ├── ImportCard.tsx                # Ein Import: Ziel, Zweigwahl, Auswahl und Ausschlüsse
+│           ├── ImportTargetPicker.tsx        # Importziele nach Herkunft, andere Version ausgegraut
+│           ├── ImportsTab.tsx                # Reiter Importe mit „Import hinzufügen“
+│           ├── NewProfileForm.tsx            # Neuanlage: Titel, dann Importziel
+│           ├── PackagePanel.tsx              # Anforderungspaket, Speicherstand, Export und Speichern
+│           ├── ProfileDiagnostics.tsx        # Aufklappbare Diagnoseleiste der Hauptspalte
+│           ├── ProfileEditorPage.tsx         # Bearbeitungsansicht eines Profils auf der Dokumentroute
+│           ├── ProfileFileImport.tsx         # Profil-Datei über das Klasse-2-Importgate aufnehmen
+│           ├── ProfileMarks.tsx              # Herkunftsmarke, OSCAL-Schlüssel, Tabellen-Checkbox, Aufwand
+│           ├── RequirementSelection.tsx      # Auswahl einzelner Anforderungen mit Kontextwahl
+│           ├── SelectionCriteria.tsx         # Einzel-IDs und Glob-Muster eines Selektorbereichs
+│           ├── useImportTargets.ts           # Wählbare Importziele des Verbunds und der Auslieferung
+│           ├── useProfileAnalysis.ts         # Verzögerte Analyse des Arbeitsstands
+│           └── useProfileEditor.ts           # Arbeitsstand, Autosave, Speichern und Export
 ├── components/                   # Wiederverwendbare UI-Komponenten
 │   ├── AreaSwitch.tsx                # Bereichswechsel Katalog / Informationsverbünde
 │   ├── BackdropTint.tsx              # Abdunklung hinter mobilen Bottom Sheets und Bestätigungsdialogen als Kind-Element
@@ -392,6 +417,8 @@ src/                              # Anwendungsquellcode
 ├── workers/                      # Modul-Worker
 │   ├── catalogParser.worker.ts       # Klasse-1-Katalogparser
 │   ├── oscalImport.worker.ts         # Klasse-2-Import
+│   ├── profileWorkbench.worker.ts    # Verbundansicht, Profilanalyse und Exportprüfung mit Schemastufe
+│   ├── profileWorkbenchRequests.ts   # Anfragearten des Profile-Workers
 │   └── workspaceBackup.worker.ts     # Backup-Eingangsprüfung
 ├── test/                         # Testinfrastruktur (siehe docs/OSCAL_ROUND_TRIP.md)
 │   ├── browser/                      # Chromium-Browser-Lane
@@ -633,6 +660,7 @@ Sammlungsbezogene Felder:
 - `entryCatalogKey` — der ausgezeichnete Einstiegskatalog
 - `activeCatalogKey` — der aktuell ausgewählte Katalog
 - `selectCatalog(catalogKey)` — wählt einen ausgelieferten Katalog aus und stößt ihn bei Bedarf an. `AppShell` ruft das aus dem Routen-`catalogKey` auf.
+- `requestCatalog(catalogKey)` — lädt einen ausgelieferten Katalog, ohne die Auswahl zu ändern, je Katalog höchstens einmal. Die Profile-Station fordert damit die BSI-Kataloge ihrer Importziele an.
 
 Projektionen des **aktiven** Katalogs:
 
@@ -648,7 +676,7 @@ Projektionen des **aktiven** Katalogs:
 
 ### WorkspaceContext (`src/state/WorkspaceContext.tsx`)
 
-`WorkspaceProvider` steht in `src/main.tsx` neben `CatalogProvider` und hält den Zustand des Bereichs Informationsverbünde. Der Speicher öffnet erst, wenn `useShellArea()` beim ersten Betreten des Bereichs `activate()` aufruft; `WorkspaceStore` und die Verbundansicht laden als eigene Chunks, der Katalogpfad lädt beide nicht. Der Provider hält die Verbundliste, die Ansicht des Verbunds aus der Route (`loadVerbundView()` in `src/state/workspaceVerbundView.ts`: Envelopemetadaten, `metadata.title`, Kanten und Diagnosen aus `buildWorkspaceGraph()`; die Quellgraphen werden danach entlassen), die benannten Speichermeldungen und die Autosave-Registrierung (`registerAutosave`, `flushAutosaves`). Jeder Schreibvorgang läuft über den Speicher und lädt Liste und Ansicht danach neu; nach dem Löschen eines Verbunds verwirft der Provider dessen Ansicht. Scheitert das Öffnen, gilt die Verbundansicht als `failed` und zeigt die Meldung mit „Neu laden“.
+`WorkspaceProvider` steht in `src/main.tsx` neben `CatalogProvider` und hält den Zustand des Bereichs Informationsverbünde. Der Speicher öffnet erst, wenn `useShellArea()` beim ersten Betreten des Bereichs `activate()` aufruft; `WorkspaceStore` und die Verbundansicht laden als eigene Chunks, der Katalogpfad lädt beide nicht. Der Provider hält die Verbundliste, die Ansicht des Verbunds aus der Route (`loadVerbundView()` in `src/state/workspaceVerbundView.ts`: Envelopemetadaten, `metadata.title`, Kanten und Diagnosen aus `buildWorkspaceGraph()`, abgeleitet von `deriveVerbundView()` im Modul-Worker `src/workers/profileWorkbench.worker.ts`; die Quellgraphen werden danach entlassen), die benannten Speichermeldungen, die Autosave-Registrierung (`registerAutosave`, `flushAutosaves`) und die Dokumentoperationen der Stationen (`documents`, `src/state/workspaceDocuments.ts`: `addDocument`, `getDocument`, `getDraft`, `listBindings`, `saveDocument`, `autosaveDraft`, `setBinding`, `deleteDocument` des Speichers sowie `analyzeProfile` und `checkProfileSchema`). Jeder Schreibvorgang außer `autosaveDraft` läuft über den Speicher und lädt Liste und Ansicht danach neu; `autosaveDraft` schreibt nur den Entwurf, den die Verbundansicht nicht liest. Importziele ungespeicherter Profil-Importe hält der Provider nur im Arbeitsspeicher des Tabs (`importTargets`); das explizite Speichern schreibt sie als Bindungen. nach dem Löschen eines Verbunds verwirft der Provider dessen Ansicht. Scheitert das Öffnen, gilt die Verbundansicht als `failed` und zeigt die Meldung mit „Neu laden“.
 
 Bindungen auf BSI-Artefakte löst der Dokumentgraph gegen die Kataloge auf, die `CatalogContext` bereits geladen hat: Der Provider übergibt Quellgraphen von Katalogen mit `lifecycle: 'supported'` und bestandener Hashprüfung (`verification.valid`) lesend als Klasse-1-Artefakte, und `loadVerbundView()` reicht nur die weiter, auf die eine Bindung des Verbunds zeigt. Nichts davon gelangt in den Speicher. Passt der Verweis zu einer Bindung auf einen nicht geladenen oder nicht verifizierten Katalog, erscheint die Kante als „BSI-Katalog in dieser Sitzung nicht geladen“; ihre Graphdiagnose `OSCAL_GRAPH_TARGET_NOT_FOUND` entfällt in Kante und Diagnoseliste, ebenso die gleichlautende Diagnose der Profilauflösung. Eine veraltete (`OSCAL_WORKSPACE_BINDING_STALE`) oder mehrdeutige Bindung bleibt ein Fehler, auch wenn ihr Ziel ein nicht geladener Katalog ist.
 
@@ -737,15 +765,28 @@ Der Arbeitsroutenraum umfasst vier Routenformen; ihre Muster und Builder stehen 
 | `/informationsverbuende` | Übersicht: Verbünde anlegen, umbenennen, mit Bestätigung löschen, Sicherung exportieren | `VerbundOverviewPage` |
 | `/informationsverbuende/:verbundId` | Verbund mit Orientierung, allen Dokumenten und Diagnosen | `VerbundPage` |
 | `/informationsverbuende/:verbundId/station/:station` | Dokumentliste gefiltert auf den Root-Typ einer Station | `VerbundPage` |
-| `/informationsverbuende/:verbundId/dokument/:localId` | Referenzkanten eines Dokuments mit Feld, Pflicht und Zustand | `DocumentReferenceDetailPage` |
+| `/informationsverbuende/:verbundId/dokument/:localId` | Referenzkanten eines Dokuments mit Feld, Pflicht und Zustand; für Root `profile` die Bearbeitungsansicht der Profile-Station | `DocumentReferenceDetailPage` |
 
 `verbundId` und `localId` sind die vom Speicher vergebenen UUIDs (`docs/PERSISTENCE.md` §5); `station` stammt aus der geschlossenen Menge `profile`, `ssp`, `assessment`, `poam` (`WORKSPACE_STATIONS` in `src/domain/workspaceStations.ts`). Die Builder werfen bei jedem anderen Wert, ohne ihn in die Fehlermeldung zu übernehmen. Eine Route mit unbekannter oder ungültiger Identität, einer unbekannten Station oder einem Dokument eines anderen Verbunds zeigt einen eigenen Nicht-gefunden-Zustand (`WorkspaceStatePage`). Die Seiten setzen feste Titel aus `PAGE_TITLES`; Verbundname, Dokumenttitel und andere Dokumentwerte erscheinen nur im Seiteninhalt, nie in Route, Verlaufszustand oder `document.title`. Eingaben im Bereich schreiben nichts in die URL; die Kopfzeilensuche bleibt die Katalogsuche auf `/suche`.
 
-Den Bereichswechsel trägt `AreaSwitch` (`src/components/AreaSwitch.tsx`): auf dem Desktop rechts im App-Kopf, außerhalb des Desktops in der ersten Zeile der Navigationsschublade. Beide Ziele sind Links in einer `nav` „Bereiche“; der aktive Bereich trägt `aria-current="true"`. „Katalog“ führt auf `buildCatalogUrl()` des aktiven Katalogs, „Informationsverbünde“ auf die Übersicht. `useShellArea()` (`src/app/useShellArea.ts`) hält mit `useBlocker()` jede Router-Navigation vom Bereich Informationsverbünde in den Katalogbereich an und ruft vorher `flushAutosaves()` auf: Bereichswechsel, Station Catalog der Stationen-Seitenleiste, Kopfzeilensuche, Lupe, Suchkürzel, Markenlink sowie Zurück und Vor im Browserverlauf. Scheitert ein registriertes Autosave, bleibt die Arbeitsroute stehen und die Speichermeldung erscheint. Jeder angehaltene Navigationsversuch ruft `flushAutosaves()` selbst auf, nach dem Ende des vorigen Aufrufs; nur der jüngste Versuch führt die Navigation aus oder setzt den Blocker zurück. Ein Versuch, den ein neues Ziel oder eine Navigation innerhalb des Bereichs ersetzt hat, bleibt nach dem Speichern ohne Wirkung auf den Router. Das Schließen oder Neuladen des Tabs läuft nicht über den Router und speichert nicht.
+Den Bereichswechsel trägt `AreaSwitch` (`src/components/AreaSwitch.tsx`): auf dem Desktop rechts im App-Kopf, außerhalb des Desktops in der ersten Zeile der Navigationsschublade. Beide Ziele sind Links in einer `nav` „Bereiche“; der aktive Bereich trägt `aria-current="true"`. „Katalog“ führt auf `buildCatalogUrl()` des aktiven Katalogs, „Informationsverbünde“ auf die Übersicht. `useShellArea()` (`src/app/useShellArea.ts`) hält mit `useBlocker()` jede Router-Navigation vom Bereich Informationsverbünde in den Katalogbereich an und ruft vorher `flushAutosaves()` auf: Bereichswechsel, Station Catalog der Stationen-Seitenleiste, Kopfzeilensuche, Lupe, Suchkürzel, Markenlink sowie Zurück und Vor im Browserverlauf. Dasselbe gilt für jede Navigation weg von einer Dokumentroute (`WORKSPACE_DOCUMENT_ROUTE_PATTERN`), auch innerhalb des Bereichs. Scheitert ein registriertes Autosave, bleibt die Arbeitsroute stehen und die Speichermeldung erscheint. Jeder angehaltene Navigationsversuch ruft `flushAutosaves()` selbst auf, nach dem Ende des vorigen Aufrufs; nur der jüngste Versuch führt die Navigation aus oder setzt den Blocker zurück. Ein Versuch, den ein neues Ziel oder eine Navigation innerhalb des Bereichs ersetzt hat, bleibt nach dem Speichern ohne Wirkung auf den Router. Das Schließen oder Neuladen des Tabs läuft nicht über den Router und speichert nicht.
 
 Die Shell teilt Kopf, Suche, Schublade und Footer zwischen beiden Bereichen. `ShellSidebar` (`src/app/ShellSidebar.tsx`) zeigt im Katalogbereich den Katalog-Explorer und im Bereich Informationsverbünde die `StationSidebar` des Verbunds aus der Route; die Übersicht hat keine Arbeitsnavigation, das `<aside>` ist dort auf dem Desktop ausgeblendet. Die Stationen tragen den OSCAL-Modellnamen als Titel und die Erklärzeile aus ADR-11, sind ohne Reihenfolge erreichbar und zeigen die Dokumentanzahl; eine leere Station ist eine Lücke ohne Sperre. Außerhalb des Desktops trägt die Verbundseite zusätzlich die waagerecht scrollende `StationStrip`. Im Bereich Informationsverbünde blendet der Footer die Integritätsanzeige des Katalogs aus (`showVerification`).
 
 Katalog- und Arbeitsbereich teilen keine Seitenkomponenten: Code unter `src/features/workspace/` liest Klasse-2-Daten ausschließlich über `useWorkspace()`, Katalogseiten ausschließlich über `useCatalog()`. Jedes lokale Dokument trägt das Label „Eigene Daten · kein Integritätsnachweis“ und das Statuswort „Entwurf“ (`documentState` `draft`) oder „Gültig“ (`imported`, `export-ready`; beide setzen beim Speichern ein schemagültiges Dokument voraus). Die Dokumentliste ordnet nach Root-Typ entlang der Stationen, dann nach Titel; `assessment-plan` und `assessment-results` stehen als zwei Dokumente, `component-definition` und lokale `catalog` nur in der ungefilterten Liste. Die Dokumentdetailansicht zeigt jede Kante aus `buildWorkspaceGraph()` mit JSON Pointer, Pflicht (`DOCUMENT_REFERENCE_REQUIREMENT` für die acht Dokumentverweise, sonst „keine Angabe“) und Zustand; ein externer `href` steht als Text mit „extern, nicht aufgelöst“ und ist kein Link.
+
+### Profile-Station
+
+Die Station Profile (`src/features/workspace/profile/`) legt Profile an, nimmt Profil-Dateien auf, bearbeitet ihre Importe und exportiert sie. Sie nutzt ausschließlich die Routen der Tabelle oben und den Speicher über `useWorkspace().documents`; einen eigenen Store oder eine eigene Route hat sie nicht.
+
+- **Station:** `VerbundPage` zeigt an der Station `profile` „Neues Profil“ (`NewProfileForm`: Titel, dann Importziel aus „BSI-geprüft“ und „Eigene Daten · kein Integritätsnachweis“) und „Profil-Datei einlesen“ (`ProfileFileImport`, über `importClass2OscalDocument()`; ein anderes Root-Modell als `profile` wird nicht aufgenommen).
+- **Bearbeitungsansicht:** `DocumentReferenceDetailPage` rendert für Root `profile` `ProfileEditorPage`. Auf dem Desktop liegen Werkzeugleiste (51 px), die Reiter „Importe“ und „Referenzen“, die scrollende Hauptspalte und am Fuß die aufklappbare Diagnoseleiste in der Hauptspalte; rechts steht das Panel „Anforderungspaket“ (360 px) mit Speicherstand, „Export“ (Secondary) und „Speichern“ (Primary). Außerhalb des Desktops steht der Kopf über den Reitern, Diagnoseleiste und eine feste Leiste mit „Paket“ und „Speichern“ am unteren Rand; „Paket“ öffnet das Anforderungspaket mit „Export“ als `BottomSheet`.
+- **Arbeitsstand:** `useProfileEditor()` liest Dokument, Entwurf und Bindungen beim Öffnen, wendet jede Änderung als Patch aus `src/domain/profileAuthoring.ts` oder `src/domain/profileImportList.ts` auf eine Kopie an und sichert sie 800 ms nach der letzten Änderung über `autosaveDraft()`. Der Editor registriert diese Sicherung mit `registerAutosave()`; jede Navigation weg von der Dokumentroute speichert einen offenen Entwurf deshalb vor dem Routenwechsel und bleibt bei einem Fehler auf der Route.
+- **Analyse:** `useProfileAnalysis()` leitet 250 ms nach der letzten Änderung Schema-, Referenz- und Resolutionsbefund, Hinweise und die Anforderungen jedes gebundenen Importziels ab. `profileAnalysisSnapshot()` liest dafür im Main Thread den Verbund mit eingesetztem Arbeitsstand; `deriveProfileAnalysis()` läuft in `src/workers/profileWorkbench.worker.ts`. Gebundene BSI-Kataloge fordert die Station über `requestCatalog()` an; der Graph erhält sie erst mit bestandener Hashprüfung.
+- **Worker:** Schemastufe und Profile Resolution kompilieren Ajv-Validatoren zur Laufzeit; die CSP des Dokuments (`script-src 'self'`) erlaubt das im Main Thread nicht. Verbundansicht, Profilanalyse und Profil-Export laufen deshalb in `src/workers/profileWorkbench.worker.ts` (Anfragearten `view`, `analyze`, `export` in `src/workers/profileWorkbenchRequests.ts`). `src/adapters/profileWorkbench.ts` startet je Anfrage einen Modul-Worker, beendet ihn nach Antwort, Fehler oder 30 Sekunden (`PROFILE_WORKBENCH_TIMEOUT_MS`) und meldet einen Ausfall fail-closed. Nur ohne `Worker`-API läuft dieselbe Ableitung im Main Thread. Der Worker beantwortet genau eine Nachricht mit leerem oder eigenem Origin. Sein einziger Netzbezug ist der Modulabruf des Schema-Chunks derselben Origin; er löst keine Dokumentverweise auf und führt keine Speicher- oder Dateioperation aus.
+- **Speichern und Export:** „Speichern“ schreibt über `saveDocument()` die Quelle aus `commitExplicitSave()` mit dem vollständigen ausgehenden Bindungssatz. Besteht die Quelle die Schemaprüfung über das Klasse-2-Importgate, wird das Dokument `export-ready` („Gültig“), sonst `draft`. „Export“ ist nur bei `export-ready` ohne ungespeicherte Änderung bedienbar und lädt die Datei `profile.json` herunter, die `exportProfileDocument()` im Worker erzeugt. „Profil löschen…“ löscht nach Bestätigung über `deleteDocument()` Dokument, Entwurf und Bindungen.
+
+Das Statuswort der Bearbeitungsansicht ist „Entwurf“, solange das Dokument `draft` ist oder der Arbeitsstand vom gespeicherten Dokument abweicht, sonst „Gültig“. Die Seite setzt den festen Titel `PAGE_TITLES.workspaceDocument`; Profiltitel, Dokument-UUID und `href` erscheinen nur im Seiteninhalt.
 
 ## Katalog-Browser-Grenzen
 

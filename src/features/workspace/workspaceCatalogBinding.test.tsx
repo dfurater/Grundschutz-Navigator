@@ -1,5 +1,5 @@
 import 'fake-indexeddb/auto';
-import { waitFor, within } from '@testing-library/react';
+import { fireEvent, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildVerbundUrl, buildWorkspaceDocumentUrl } from '@/app/routes';
 import { WorkspaceStore } from '@/adapters/workspaceStore';
@@ -53,6 +53,12 @@ describe('Bindung an einen BSI-Katalog', () => {
     } finally { store.close(); }
   }
 
+  /** Ein Profile öffnet die Bearbeitungsansicht; die Kanten stehen im Reiter Referenzen. */
+  async function openReferences() {
+    fireEvent.click(await within(main()).findByRole('tab', { name: /^Referenzen/ }));
+    return within(main()).findByRole('region', { name: 'Referenzkanten' });
+  }
+
   function withLoadedCatalog(valid: boolean): CatalogState {
     const loaded = {
       catalogKey: 'gspp',
@@ -65,7 +71,7 @@ describe('Bindung an einen BSI-Katalog', () => {
   it('löst die Bindung gegen den geladenen, verifizierten Katalog auf', async () => {
     const profile = await bindProfileToCatalog();
     renderArea(buildWorkspaceDocumentUrl(seeded.verbundId, profile.localId), withLoadedCatalog(true));
-    const edges = await within(main()).findByRole('region', { name: 'Referenzkanten' });
+    const edges = await openReferences();
     await waitFor(() => expect(edges.querySelector('[data-edge-state="resolved"]')).toHaveTextContent('/profile/imports/0/href'));
     expect(edges).not.toHaveTextContent('OSCAL_GRAPH_TARGET_NOT_FOUND');
   });
@@ -76,7 +82,7 @@ describe('Bindung an einen BSI-Katalog', () => {
   ])('meldet einen %s Katalog als Sitzungszustand statt als Fehler', async (_label, catalogs) => {
     const profile = await bindProfileToCatalog();
     renderArea(buildWorkspaceDocumentUrl(seeded.verbundId, profile.localId), catalogs);
-    const edges = await within(main()).findByRole('region', { name: 'Referenzkanten' });
+    const edges = await openReferences();
     expect(edges).toHaveTextContent('BSI-Katalog in dieser Sitzung nicht geladen');
     expect(edges).not.toHaveTextContent('OSCAL_GRAPH_TARGET_NOT_FOUND');
     expect(edges.querySelector('[data-edge-state="error"]')).toBeNull();
@@ -93,7 +99,7 @@ describe('Bindung an einen BSI-Katalog', () => {
   it('meldet eine veraltete Bindung als Fehler, auch wenn ihr Katalog nicht geladen ist', async () => {
     const profile = await bindProfileToCatalog('anderer-katalog.json');
     renderArea(buildWorkspaceDocumentUrl(seeded.verbundId, profile.localId), EMPTY_CATALOG_STATE);
-    const edges = await within(main()).findByRole('region', { name: 'Referenzkanten' });
+    const edges = await openReferences();
     await waitFor(() => expect(edges.querySelector('[data-edge-state="error"]')).toHaveTextContent('OSCAL_WORKSPACE_BINDING_STALE'));
     expect(edges).not.toHaveTextContent('BSI-Katalog in dieser Sitzung nicht geladen');
   });

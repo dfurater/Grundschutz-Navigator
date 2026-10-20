@@ -29,8 +29,10 @@ Ergebnis:
    die artefaktscharfe Registry-Erwartung (`OSCAL_ROOT_TYPE_MISMATCH`) und
    ordnet Diagnosen dem Artefaktschlüssel zu.
 3. **Export und Reimport** — Ohne `exportDocument` ist der Export die
-   Identität; das Projekt hat keinen Exportpfad. Ein Serializer wird als
-   `exportDocument` eingereicht, der No-op-Pfad bleibt dabei unverändert.
+   Identität. Ein Serializer wird als `exportDocument` eingereicht, der
+   No-op-Pfad bleibt dabei unverändert; `src/domain/profileExport.test.ts`
+   reicht so den Profil-Export (`toDerivedProfileTree()` aus
+   `src/domain/profileExport.ts`) ein.
    Geprüft wird das **reimportierte Exportartefakt**.
    Ein Exportergebnis ohne JSON-Darstellung — `JSON.stringify` liefert kein
    Textergebnis (`undefined`, Funktion, Symbol), wirft (BigInt, zirkuläre
