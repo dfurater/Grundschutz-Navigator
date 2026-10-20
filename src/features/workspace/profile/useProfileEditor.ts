@@ -102,6 +102,8 @@ export function useProfileEditor(localId: LocalId): ProfileEditor {
   const chain = useRef<Promise<unknown>>(Promise.resolve());
   // Während eines expliziten Speicherns schreibt der Autosave nicht; das Speichern plant ihn danach neu.
   const saving = useRef(false);
+  // Löst sich, wenn das laufende explizite Speichern endet; ein Flush wartet darauf, statt Erfolg zu melden.
+  const savingDone = useRef<Promise<void>>(Promise.resolve());
   // Der Speicherzugang wechselt seine Identität etwa mit jedem geladenen Katalog;
   // das Öffnen liest ihn über die Referenz, damit es den Arbeitsstand nicht zurücksetzt.
   const documentsRef = useRef(documents);
@@ -129,8 +131,9 @@ export function useProfileEditor(localId: LocalId): ProfileEditor {
   }, [localId]);
 
   /** Sichert den Arbeitsstand als Entwurf; Aufrufe laufen nacheinander. */
-  const flush = useCallback(() => {
+  const flush = useCallback(async () => {
     clearTimeout(timer.current);
+    while (saving.current) await savingDone.current;
     const run = chain.current.then(async () => {
       const state = latest.current;
       if (!state.unsaved || !state.envelope || saving.current) return { ok: true as const, value: undefined };
@@ -200,15 +203,23 @@ export function useProfileEditor(localId: LocalId): ProfileEditor {
     setBusy(true);
     setMessage(undefined);
     saving.current = true;
-    await chain.current;
-    clearTimeout(timer.current);
+    let release = () => {};
+    savingDone.current = new Promise<void>((resolve) => { release = resolve; });
     const snapshot = state.working;
-    const { source } = commitExplicitSave(state.envelope.source, snapshot, { uuid: crypto.randomUUID(), lastModified: new Date().toISOString() });
-    const schema = await documents.checkProfileSchema(source);
-    const documentState = schema.status === 'passed' ? 'export-ready' : 'draft';
-    const input = { source, context: { trustClass: 'class-2-local-user' as const }, rootType: 'profile' as const, oscalVersion };
-    const result = await documents.saveDocument(localId, state.envelope.savedAt, latest.current.draftSavedAt, input, bindings, documentState);
-    saving.current = false;
+    let documentState: 'export-ready' | 'draft';
+    let result: Awaited<ReturnType<typeof documents.saveDocument>>;
+    try {
+      await chain.current;
+      clearTimeout(timer.current);
+      const { source } = commitExplicitSave(state.envelope.source, snapshot, { uuid: crypto.randomUUID(), lastModified: new Date().toISOString() });
+      const schema = await documents.checkProfileSchema(source);
+      documentState = schema.status === 'passed' ? 'export-ready' : 'draft';
+      const input = { source, context: { trustClass: 'class-2-local-user' as const }, rootType: 'profile' as const, oscalVersion };
+      result = await documents.saveDocument(localId, state.envelope.savedAt, latest.current.draftSavedAt, input, bindings, documentState);
+    } finally {
+      saving.current = false;
+      release();
+    }
     setBusy(false);
     if (!result.ok) {
       setMessage('save-failed');
@@ -257,8 +268,10 @@ export function useProfileEditor(localId: LocalId): ProfileEditor {
     setBusy(false);
     if (!result.ok) {
       // Das Dokument besteht weiter: offene Eingaben bleiben ungesichert markiert.
-      latest.current = { ...latest.current, unsaved };
-      if (unsaved) schedule();
+      // Eingaben während der Löschung haben `unsaved` bereits gesetzt; beide Marken bleiben erhalten.
+      const stillUnsaved = unsaved || latest.current.unsaved;
+      latest.current = { ...latest.current, unsaved: stillUnsaved };
+      if (stillUnsaved) schedule();
       setMessage('delete-failed');
     }
     return result.ok;

@@ -212,6 +212,47 @@ describe('Bearbeiten, Autosave, Speichern und Export', () => {
     await waitFor(async () => expect(await readStore((store) => store.getDraft(localId))).toBeDefined(), WAIT);
   });
 
+  it('sichert Eingaben, die während einer scheiternden Löschung entstehen', async () => {
+    const { WorkspaceStore } = await import('@/adapters/workspaceStore');
+    const { StorageFailure, failure } = await import('@/adapters/workspaceStorageFailure');
+    let rejectDelete: () => void = () => {};
+    const deleting = vi.spyOn(WorkspaceStore.prototype, 'deleteDocument').mockImplementation(() => new Promise((resolve) => {
+      rejectDelete = () => resolve(failure(new StorageFailure('WORKSPACE_STORAGE_FAILED')));
+    }));
+    const { localId } = await createdProfile();
+    const addPattern = await within(main()).findByRole('button', { name: '+ Muster' });
+    fireEvent.click(within(main()).getByRole('button', { name: 'Profil löschen…' }));
+    fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Endgültig löschen' }));
+    await waitFor(() => expect(deleting).toHaveBeenCalled(), WAIT);
+    fireEvent.click(addPattern);
+    rejectDelete();
+    expect(await within(main()).findByText('Das Profil wurde nicht gelöscht.', undefined, WAIT)).toBeInTheDocument();
+    await waitFor(async () => expect(await readStore((store) => store.getDraft(localId))).toBeDefined(), WAIT);
+  });
+
+  it('verlässt die Dokumentroute erst, wenn die Sicherung eines laufenden Speicherns bestätigt ist', async () => {
+    const { WorkspaceStore } = await import('@/adapters/workspaceStore');
+    const { StorageFailure, failure } = await import('@/adapters/workspaceStorageFailure');
+    let failSave: () => void = () => {};
+    vi.spyOn(WorkspaceStore.prototype, 'saveDocument').mockImplementation(() => new Promise((resolve) => {
+      failSave = () => resolve(failure(new StorageFailure('WORKSPACE_STORAGE_FAILED')));
+    }));
+    const { router } = renderArea(buildStationUrl(seeded.verbundId, 'profile'), withGspp());
+    await openNewProfile('Paket');
+    fireEvent.click(within(main()).getByRole('radio', { name: /catalog-gspp/ }));
+    fireEvent.click(within(main()).getByRole('button', { name: 'Profil anlegen' }));
+    await waitFor(() => expect(router.state.location.pathname).toMatch(/\/dokument\//), WAIT);
+    const localId = router.state.location.pathname.split('/').at(-1) as LocalId;
+    fireEvent.click(await within(main()).findByRole('button', { name: '+ Muster' }));
+    fireEvent.click(within(main()).getByRole('button', { name: 'Speichern' }));
+    fireEvent.click(within(main()).getByRole('link', { name: /^Profile$/ }));
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(router.state.location.pathname).toMatch(/\/dokument\//);
+    failSave();
+    await waitFor(() => expect(router.state.location.pathname).not.toMatch(/\/dokument\//), WAIT);
+    expect(await readStore((store) => store.getDraft(localId))).toBeDefined();
+  });
+
   it('sichert offene Eingaben sofort, wenn der Editor innerhalb des Bereichs verlassen wird', async () => {
     const { localId } = await createdProfile();
     fireEvent.click(await within(main()).findByRole('button', { name: '+ Muster' }));

@@ -191,18 +191,21 @@ export function setImportMode(source: unknown, index: number, mode: 'all' | 'con
 export function setSelectedControls(source: unknown, index: number, scope: ProfileSelectionScope, controlIds: readonly string[], selected: boolean): unknown {
   if (controlIds.includes('')) throw new ProfilePatchError('PROFILE_CONTROL_ID_INVALID');
   return patchImport(source, index, (entry) => {
-    for (const controlId of controlIds) {
-      const selectors = readArray(entry[selectorKey(scope)]).filter(isJsonObject);
-      const present = selectors.some((selector) => readArray(selector['with-ids']).includes(controlId));
-      if (selected && !present) {
+    // Einmal über die Selektoren und die IDs: lineare statt quadratische Arbeit bei großen Gruppen.
+    const selectors = readArray(entry[selectorKey(scope)]).filter(isJsonObject);
+    if (selected) {
+      const present = new Set(selectors.flatMap((selector) => readArray(selector['with-ids'])));
+      const added = [...new Set(controlIds)].filter((controlId) => !present.has(controlId));
+      if (added.length > 0) {
         const first = firstSelector(entry, scope);
-        first['with-ids'] = [...readArray(first['with-ids']), controlId];
-      } else if (!selected) {
-        for (const selector of selectors) {
-          if (!Array.isArray(selector['with-ids'])) continue;
-          selector['with-ids'] = selector['with-ids'].filter((id) => id !== controlId);
-          dropEmpty(selector, 'with-ids');
-        }
+        first['with-ids'] = [...readArray(first['with-ids']), ...added];
+      }
+    } else {
+      const removed = new Set(controlIds);
+      for (const selector of selectors) {
+        if (!Array.isArray(selector['with-ids'])) continue;
+        selector['with-ids'] = selector['with-ids'].filter((id) => !removed.has(id));
+        dropEmpty(selector, 'with-ids');
       }
     }
     if (!selected && scope === 'exclude') tidyExclude(entry);

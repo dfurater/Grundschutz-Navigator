@@ -68,6 +68,17 @@ describe('Import-Formular entlang der Schemastruktur', () => {
     expect(Object.hasOwn((source as { profile: { imports: object[] } }).profile.imports[0], 'exclude-controls')).toBe(false);
   });
 
+  it('wählt große Gruppen in linearer Zeit, ohne Duplikate, und wählt sie wieder ab', () => {
+    const ids = Array.from({ length: 60_000 }, (_, i) => `ID-${i}`);
+    const started = performance.now();
+    let source = setSelectedControls(newProfile('1.2.2'), 0, 'include', [...ids, ids[0]], true);
+    source = setSelectedControls(source, 0, 'include', ids, true);
+    expect(readProfileImports(source)[0].include.withIds).toHaveLength(ids.length);
+    source = setSelectedControls(source, 0, 'include', ids.slice(0, 59_000), false);
+    expect(readProfileImports(source)[0].include.withIds).toEqual(ids.slice(59_000));
+    expect(performance.now() - started).toBeLessThan(2_000);
+  });
+
   it('akzeptiert für with-child-controls nur yes und no', async () => {
     const source = setWithChildControls(setImportMode(newProfile('1.2.2'), 0, 'controls', '1.2.2'), 0, 'include', 'yes');
     expect(readProfileImports(source)[0].include.withChildControls).toBe('yes');
