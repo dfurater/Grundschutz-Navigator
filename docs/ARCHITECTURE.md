@@ -910,6 +910,8 @@ Damit die Indizes einen Unmount der `SearchPage` überdauern und für unverände
 
 Der Cache liegt als Modul-eigenes `Map<string, SearchCacheEntry>` in `src/features/search/useSearch.ts` (`clearSearchCache`, `getSearchCacheSize`, `getSearchCacheKeys`, `getSearchCacheEntry` für Tests) und ist strikt UI-seitig — kein zusätzlicher Speicher im `CatalogContext` und kein Persistenz- oder Netzwerkzugriff.
 
+`createSearchDocuments` berechnet normalisierte Metadaten- und Inhaltstoken einmalig beim Aufbau des Katalog-Sucheintrags. Die Präfixsuche in `rankSearchResults` vergleicht die normalisierte Anfrage mit diesen Token; die Rohtexte bleiben für die FlexSearch-Indizes erhalten.
+
 Die Bewertung einer Anfrage liegt getrennt davon in `rankSearchResults` (`src/features/search/searchRanking.ts`): eine reine Funktion ohne React und ohne Cache-Zugriff, die eine schmale, unveränderliche `SearchView` auf Suchdokumente, Indizes und Kennungsauflösung erhält. Der Cache-Eintrag erfüllt diese Sicht strukturell; `useSearch` ruft die Funktion memoisiert auf. Kennungsklassifikation, Gewichte, Präfixsuche und Gleichstandsregeln sind dort direkt testbar (`searchRanking.test.ts`), Cache-Invalidierung, LRU und Katalogtrennung über die Hook-Tests.
 
 ## Filter-System
