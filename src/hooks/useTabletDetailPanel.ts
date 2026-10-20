@@ -19,6 +19,8 @@ export interface UseTabletDetailPanelOptions {
   /** Die Liste ist gerendert, nicht Lade-, Fehler- oder Nicht-gefunden-Ansicht. */
   readonly listReady: boolean;
   readonly onClose: () => void;
+  /** Eine gefensterte Liste rendert und fokussiert ein fehlendes Rückkehrziel. */
+  readonly onRestoreRowFocus?: (controlId: string) => boolean;
 }
 
 /**
@@ -33,7 +35,7 @@ export interface UseTabletDetailPanelOptions {
  * schließt nur aus dem Panel oder vom `body`, damit Sheets und die
  * Navigationsschublade mit eigenem Escape-Handler Vorrang behalten.
  */
-export function useTabletDetailPanel({ enabled, controlId, scopeKey, listReady, onClose }: UseTabletDetailPanelOptions): void {
+export function useTabletDetailPanel({ enabled, controlId, scopeKey, listReady, onClose, onRestoreRowFocus }: UseTabletDetailPanelOptions): void {
   // Öffnungssitzung: Zeile und Bereich, aus denen das Panel geöffnet wurde;
   // `null`, solange nur die Liste sichtbar ist.
   const sessionRef = useRef<{ rowControlId: string; scopeKey: string | null } | null>(null);
@@ -92,6 +94,11 @@ export function useTabletDetailPanel({ enabled, controlId, scopeKey, listReady, 
     const row = sessionCatalog === null || sessionCatalog === currentCatalog
       ? document.querySelector<HTMLElement>(controlRowSelector(session.rowControlId))
       : null;
+    if (row === null && (sessionCatalog === null || sessionCatalog === currentCatalog)
+      && onRestoreRowFocus?.(session.rowControlId)) {
+      sessionRef.current = null;
+      return;
+    }
     const returnTarget = row
       ?? document.querySelector<HTMLElement>(SCOPE_HEADING_SELECTOR);
     if (returnTarget?.closest('[hidden],[inert]') !== null) {

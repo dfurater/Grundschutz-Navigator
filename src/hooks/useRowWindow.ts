@@ -89,6 +89,8 @@ export function measureRowPitch(rows: ArrayLike<HTMLElement>, rowIndexAttribute:
 export interface UseRowWindowOptions {
   rowCount: number;
   pinnedIndex: number;
+  /** Unterhalb md scrollt bei mobilen Listen das Dokument. */
+  scrollsDocument?: boolean;
   /** Startwert bis zur ersten Messung einer gerenderten Zeile. */
   estimatedRowHeight: number;
   overscan: number;
@@ -113,6 +115,7 @@ interface Viewport {
 export function useRowWindow({
   rowCount,
   pinnedIndex,
+  scrollsDocument = false,
   estimatedRowHeight,
   overscan,
   fallbackVisibleRowCount,
@@ -125,11 +128,17 @@ export function useRowWindow({
   const syncViewport = useCallback(() => {
     const element = scrollRef.current;
     if (!element) return;
-    const next = { scrollTop: element.scrollTop, height: element.clientHeight };
+    // Verborgene Detail-Ursprungslisten behalten ihr letztes Fenster.
+    if (scrollsDocument && element.getClientRects().length === 0) return;
+    const next = scrollsDocument
+      ? { scrollTop: Math.max(0, -element.getBoundingClientRect().top), height: globalThis.innerHeight }
+      : { scrollTop: element.scrollTop, height: element.clientHeight };
     setViewport((current) =>
       current.scrollTop === next.scrollTop && current.height === next.height ? current : next,
     );
-  }, []);
+  }, [scrollsDocument]);
+
+  useGlobalEventListener('window', 'scroll', syncViewport, scrollsDocument);
 
   // Nach jedem Render abgleichen: Schrumpft die Liste (Filter), klemmt der
   // Browser scrollTop, ohne dass React davon zwingend ein Scroll-Event sieht.
@@ -159,7 +168,7 @@ export function useRowWindow({
     'window',
     'resize',
     syncViewport,
-    typeof ResizeObserver === 'undefined',
+    scrollsDocument || typeof ResizeObserver === 'undefined',
   );
 
   const visibleRowCount = viewport.height > 0
