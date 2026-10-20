@@ -199,7 +199,7 @@ Schlägt der Katalog-Fetch einschließlich Body-Lesen fehl, beendet `loadCatalog
 
 ### Mehrere Kataloge — Isolation der Prüfung
 
-Der Kontext hält eine Katalogsammlung (`catalogs: ReadonlyMap<CatalogKey, LoadedCatalogState>`). Der Einstiegskatalog wird eager geladen; jeder weitere erst bei Auswahl über `selectCatalog(catalogKey)`. Jeder Katalog durchläuft `verifyArtifactIntegrity` gegen seine eigenen Metadaten; Provenance, Verifikationsergebnis, Vertrauensklasse und Fehlerzustand hängen am einzelnen Katalog:
+Der Kontext hält eine Katalogsammlung (`catalogs: ReadonlyMap<CatalogKey, LoadedCatalogState>`). Der Einstiegskatalog wird eager geladen; jeder weitere erst bei Auswahl über `selectCatalog(catalogKey)` oder auf Anforderung über `requestCatalog(catalogKey)`. Jeder Katalog durchläuft `verifyArtifactIntegrity` gegen seine eigenen Metadaten; Provenance, Verifikationsergebnis, Vertrauensklasse und Fehlerzustand hängen am einzelnen Katalog:
 
 - Ein Katalog mit abweichendem Hash oder fehlenden Metadaten trägt `class-1-unverified-public` und bleibt sichtbar.
 - Kein anderer geladener Katalog verliert dadurch seine Vertrauensklasse; kein Katalog wird still als verifiziert dargestellt.

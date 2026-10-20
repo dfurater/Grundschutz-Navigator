@@ -742,6 +742,12 @@ export interface CatalogState {
    * fail-closed beim zuletzt gültigen Katalog.
    */
   selectCatalog: (catalogKey: CatalogKey) => void;
+  /**
+   * Lädt einen ausgelieferten Katalog, ohne die Auswahl zu ändern. Ein nicht
+   * ausgelieferter `catalogKey` wird ignoriert; ein bereits angeforderter
+   * Katalog wird nicht erneut geladen. Fehlt in Testzuständen ohne Provider.
+   */
+  requestCatalog?: (catalogKey: CatalogKey) => void;
 
   /* Projektionen des aktiven Katalogs — unveränderte Zugriffsform. */
   catalogDocument: CatalogDocument | null;

@@ -149,8 +149,15 @@ export function DatenschutzPage() {
         <p className="catalog-prose-text text-sm text-slate-700 leading-relaxed">
           Im Bereich Informationsverbünde können Sie einen Informationsverbund
           mit allen zugehörigen Dokumenten vollständig löschen und eine
-          Sicherungsdatei aller gespeicherten Daten exportieren. Über die
-          technische Schnittstelle lassen sich zudem einzelne Dokumente oder
+          Sicherungsdatei aller gespeicherten Daten exportieren. An der Station
+          Profile legen Sie Profile an oder nehmen eine Profil-Datei auf; die
+          Datei wird ausschließlich in Ihrem Browser geprüft und nicht
+          hochgeladen. Änderungen an einem Profil sichert die Anwendung
+          automatisch als Entwurf in diesem Browser, bis Sie sie ausdrücklich
+          speichern. Ein gespeichertes, gültiges Profil können Sie als
+          OSCAL-JSON-Datei auf Ihr Gerät exportieren, und Sie können ein
+          einzelnes Profil samt Entwurf vollständig löschen. Über die technische
+          Schnittstelle lassen sich zudem andere einzelne Dokumente oder
           sämtliche gespeicherten Daten vollständig löschen; Bedienelemente dafür
           sind derzeit nicht verfügbar. Über die Browser-Einstellungen können
           Sie sämtliche lokalen Daten dieser Anwendung entfernen.

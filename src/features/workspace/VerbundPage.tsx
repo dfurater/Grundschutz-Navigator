@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { PageTitle } from '@/app/PageTitle';
 import { PAGE_TITLES } from '@/app/pageTitles';
@@ -10,6 +11,11 @@ import { FOCUS_RING, OriginLabel, ValidityBadge } from '@/features/workspace/Doc
 import { WorkspaceNotices } from '@/features/workspace/WorkspaceNotices';
 import { StationStrip } from '@/features/workspace/StationStrip';
 import { WorkspaceStatePage, useRoutedVerbund } from '@/features/workspace/WorkspaceStatePage';
+import { Button } from '@/components/Button';
+import type { VerbundId } from '@/domain/workspaceModel';
+import { useWorkspace } from '@/hooks/useWorkspace';
+import { NewProfileForm } from '@/features/workspace/profile/NewProfileForm';
+import { ProfileFileImport } from '@/features/workspace/profile/ProfileFileImport';
 
 const PANEL = 'rounded-md border border-[var(--color-border-default)] bg-[var(--color-surface-base)]';
 const PANEL_LABEL = 'px-4 pt-3 text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)]';
@@ -81,6 +87,19 @@ function Diagnostics({ diagnostics }: Readonly<{ diagnostics: VerbundView['diagn
   );
 }
 
+/** Aktionen der Station Profile: Neuanlage über das Importziel und Aufnahme einer Profil-Datei. */
+function ProfileStationActions({ view }: Readonly<{ view: VerbundView }>) {
+  const { writable } = useWorkspace();
+  const [creating, setCreating] = useState(false);
+  if (creating) return <NewProfileForm view={view} onCancel={() => setCreating(false)} />;
+  return (
+    <div className="flex flex-wrap items-center gap-2 px-4 pt-3">
+      <Button className="min-h-touch desktop:min-h-0" disabled={!writable} onClick={() => setCreating(true)}>Neues Profil</Button>
+      <ProfileFileImport verbundId={view.verbund.verbundId as VerbundId} />
+    </div>
+  );
+}
+
 function VerbundContent({ view, station }: Readonly<{ view: VerbundView; station: WorkspaceStation | undefined }>) {
   const { verbund, documents, diagnostics } = view;
   const shown = station
@@ -114,6 +133,7 @@ function VerbundContent({ view, station }: Readonly<{ view: VerbundView; station
           {station ? `Station ${STATION_DEFINITIONS[station].title}` : 'Alle Dokumente'}
         </h2>
         {station && <p className="px-4 text-xs text-[var(--color-text-secondary)]">{STATION_DEFINITIONS[station].explanation}</p>}
+        {station === 'profile' && <ProfileStationActions view={view} />}
         {shown.length === 0 ? (
           <p className="px-4 pb-3 pt-2 text-sm text-[var(--color-text-secondary)]">
             {station ? 'An dieser Station liegt noch kein Dokument.' : 'Dieser Informationsverbund enthält noch kein Dokument.'}

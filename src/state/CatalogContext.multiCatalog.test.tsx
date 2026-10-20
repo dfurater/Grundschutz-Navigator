@@ -314,6 +314,34 @@ describe('CatalogProvider — mehrere Kataloge', () => {
     expect(result.current.catalog?.catalogKey).toBe('wlan');
   });
 
+  it('lädt einen angeforderten Katalog genau einmal, ohne die Auswahl zu ändern', async () => {
+    const fetchSpy = mockArtifacts({
+      [ENTRY_DATA_URL]: entryCatalogJson,
+      [SECOND_DATA_URL]: secondCatalogJson,
+    });
+
+    const { result } = renderProvider();
+    await waitForEntryCatalog(result);
+
+    act(() => {
+      result.current.requestCatalog?.('wlan');
+      result.current.requestCatalog?.('mindeststandard-tls' as never);
+    });
+    await waitFor(() => {
+      expect(result.current.catalogs.get('wlan')?.catalog).not.toBeNull();
+    });
+    expect(result.current.activeCatalogKey).toBe('gspp');
+    act(() => {
+      result.current.requestCatalog?.('wlan');
+      result.current.selectCatalog('wlan');
+    });
+
+    expect(
+      fetchSpy.mock.calls.map(([url]) => String(url)).filter((url) => url === SECOND_DATA_URL),
+    ).toHaveLength(1);
+    expect(result.current.catalogs.has('mindeststandard-tls' as never)).toBe(false);
+  });
+
   it('teilt die beim Start laufende Metadatenanfrage zwischen Verzeichnis und Einstiegskatalog', async () => {
     const fetchSpy = mockArtifacts({
       [ENTRY_DATA_URL]: entryCatalogJson,

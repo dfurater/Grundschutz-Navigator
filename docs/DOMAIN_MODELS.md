@@ -444,10 +444,8 @@ der Projektion drückt ein aufgelöstes Control-Set aus; `Profile`,
   aber nicht gegen Control-IDs abgeglichen.
 * **Keine Auflösung relativer oder externer Quellen.** Ein `import.href` wird
   klassifiziert, nicht geladen — kein Netz-, kein Dateizugriff.
-* **Kein Profile Authoring und keine Persistenz**
-  ([GSPP-292](https://linear.app/grundschutz-plus-plus/issue/GSPP-292)).
-* **Keine UI** und keine Aussage über Vollständigkeit oder Konformität eines
-  Profils jenseits des geprüften Umfangs.
+* **Keine Aussage** über Vollständigkeit oder Konformität eines Profils
+  jenseits des geprüften Umfangs.
 
 ### Zwei Kanten bis zur Quelldatei
 
@@ -511,6 +509,67 @@ Das WLAN-Profil trägt am Snapshot 290 `alters` über 58 eindeutige `control-id`
 bis zu fünf Einträge je Control. `ProfileModify.alters` ist eine Liste in
 Quellreihenfolge, und `altersByControlId` bildet auf **Listen** ab; ein
 `Map.set()` je `control-id` verlöre dort den Großteil der Anweisungen.
+
+### Profile Authoring (Vertrauensklasse 2)
+
+Lokale Profile entstehen und ändern sich ausschließlich über gezielte Patches
+auf eine Kopie der gespeicherten Quelle; die Projektion dieses Abschnitts ist
+dafür nicht beteiligt.
+
+| Datei | Rolle |
+| --- | --- |
+| `src/domain/profileImportList.ts` | `createProfileSource()`, `addImport()`, `removeImport()`, `importHrefPointer()` |
+| `src/domain/profileAuthoring.ts` | Lesemodell `readProfileImports()` und Patches der Selektion |
+| `src/domain/profileHints.ts` | Hinweise auf schemagültige Konstrukte ohne Wirkung |
+| `src/domain/profileSave.ts` | `commitExplicitSave()` und `respectsChangeOnWrite()` |
+| `src/domain/profileTargetControls.ts` | Anforderungen eines Importziels nach Praktik und Gruppe |
+| `src/domain/profileExport.ts` | Validierter Export aus dem Builder-Graphen |
+
+**Neuanlage.** Ein Profile verlangt `uuid`, `metadata` mit `oscal-version`
+und mindestens einen `import`; ein leeres Profil gibt es nicht. Die
+Neuanlage beginnt deshalb mit dem Importziel. `createProfileSource()` erzeugt
+`metadata` mit Titel, `last-modified`, `version` `1.0` und der
+`oscal-version` des Ziels, einen Import `{ "href": "#<uuid>", "include-all":
+{} }` und eine `back-matter.resource` mit dieser `uuid` und dem Titel des
+Ziels. Der Speicher nimmt das Profil im Zustand `draft` auf; `setBinding()`
+bindet `/profile/imports/0/href` an das Ziel (`class-1` mit `artifactKey` oder
+`local` mit `localId` desselben Verbunds). Scheitert die Bindung, löscht der
+Vorgang das neue Dokument wieder.
+
+**Importe.** Jeder Import, den die Anwendung schreibt, trägt ein `href` der
+Form `#<uuid>` auf eine eigene `back-matter.resource`; das Metaschema verlangt
+`href` in allen gepinnten Versionen, das JSON-Schema 1.2.x nicht. Ein
+importiertes Profil mit Import ohne `href` bleibt unverändert; der
+Dokumentgraph meldet `OSCAL_GRAPH_IMPORT_SOURCE_MISSING`. Die Zweigwahl setzt
+genau eines von `include-controls` und `include-all` und entfernt das andere;
+ein 1.1.x-Import ohne beide bleibt gültig, bis der Nutzer einen Zweig wählt.
+`with-child-controls` nimmt nur `yes` und `no` an. Leere Listen entfallen,
+weil `with-ids`, `matching` und `exclude-controls` `minItems: 1` tragen; ein
+leerer Einschlussselektor `{}` bleibt stehen und ist ein Hinweis. Ein neues
+`matching` beginnt ohne `pattern`. Die Trefferzahl eines `pattern` zählt
+`countGlobMatches()` als Glob gegen die `control/@id` genau eines
+Importziels. Kein Patch ändert `metadata.oscal-version`; „Import hinzufügen“
+bietet nur Ziele derselben Version an.
+
+**Hinweise.** `collectProfileHints()` meldet Selektoren ohne `with-ids` und
+`matching`, `matching` ohne `pattern`, ein leeres `modify`, `alter` ohne
+`adds` und `removes` und `remove` ohne `by-*`-Kriterium mit Code und JSON
+Pointer. Ein Hinweis verhindert weder Aufnahme noch Speichern.
+
+**UUID und `last-modified`.** Autosave schreibt den Arbeitsstand als Entwurf
+und lässt beide Felder unverändert. Explizites Speichern vergibt über
+`commitExplicitSave()` eine neue Dokument-UUID und setzt `last-modified`, wenn
+sich der Inhalt ohne diese beiden Felder und unabhängig von der
+Schlüsselreihenfolge geändert hat; sonst bleiben beide unverändert.
+`respectsChangeOnWrite()` prüft beide Richtungen.
+
+**Export.** `exportProfileDocument()` nimmt nur `export-ready` an, baut die
+gespeicherte Quelle über `createOscalDerivedGraph()` nach, prüft sie mit
+`processClass2OscalValue()` gegen das gepinnte Schema ihrer `oscal-version`
+und jedes `#`-Fragment eines `import.href` über `resolveOscalReference()` auf
+eine `back-matter.resource`. Die Constraint-Stufe ist `not-checked`. Die
+Ausgabe ist reines OSCAL-JSON ohne Envelope-Feld und ohne Bindung. Ein Graph
+ohne Builder-Herkunft scheitert mit `OSCAL_OBJECT_UNPROVENANCED`.
 
 ### Testkorpus
 
@@ -1561,6 +1620,7 @@ interface CatalogState {
   entryCatalogKey: CatalogKey;
   activeCatalogKey: CatalogKey;
   selectCatalog: (catalogKey: CatalogKey) => void;
+  requestCatalog?: (catalogKey: CatalogKey) => void;
 
   // Projektionen des aktiven Katalogs
   catalogDocument: CatalogDocument | null;
@@ -1578,7 +1638,8 @@ interface CatalogState {
 
 Jeder Katalog trägt Provenienz, Verifikationsergebnis und Fehlerzustand
 isoliert; `selectCatalog` ignoriert nicht ausgelieferte Schlüssel (fail-closed
-beim zuletzt gültigen Katalog). `catalog` ist `catalogDocument.view` des
+beim zuletzt gültigen Katalog). `requestCatalog` lädt einen ausgelieferten
+Katalog, ohne die Auswahl zu ändern, je Katalog höchstens einmal. `catalog` ist `catalogDocument.view` des
 aktiven Katalogs. Wer Felder braucht, die das Domänenmodell nicht abbildet,
 geht über `catalogDocument.source`.
 

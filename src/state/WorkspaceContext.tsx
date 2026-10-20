@@ -5,11 +5,12 @@ import { isLocalIdentity } from '@/app/routes';
 import type { CatalogState } from '@/domain/models';
 import { getCatalogByKey } from '@/domain/sourceRegistry';
 import type { WorkspaceClass1Artifact } from '@/domain/workspaceGraphModel';
-import type { VerbundId, WorkspaceResult, WorkspaceVerbund } from '@/domain/workspaceModel';
+import type { BindingTarget, LocalId, VerbundId, WorkspaceResult, WorkspaceVerbund } from '@/domain/workspaceModel';
 import { CatalogContext } from '@/state/CatalogContext';
 import {
   noticeForDiagnostic, quotaNearlyExhausted, withNotice, withoutNotice, type WorkspaceNotice,
 } from '@/state/workspaceNotices';
+import { createWorkspaceDocuments, type WorkspaceDocuments } from '@/state/workspaceDocuments';
 import type { VerbundView, WorkspacePort } from '@/state/workspaceVerbundView';
 
 export type OpenWorkspace = () => Promise<WorkspaceResult<WorkspacePort>>;
@@ -72,9 +73,12 @@ export interface WorkspaceContextValue {
   readonly registerAutosave: (flush: AutosaveFlush) => () => void;
   /** Speichert alle registrierten Entwürfe; `false`, wenn einer nicht gespeichert werden konnte. */
   readonly flushAutosaves: () => Promise<boolean>;
+  /** Dokumentoperationen der Stationen (GSPP-292). */
+  readonly documents: WorkspaceDocuments;
 }
 
 const unavailable = () => Promise.resolve(storageFailed());
+const unavailableWrite = <T,>(): Promise<WorkspaceResult<T>> => Promise.resolve(storageFailed());
 
 export const WorkspaceContext = createContext<WorkspaceContextValue>({
   status: 'idle',
@@ -91,6 +95,7 @@ export const WorkspaceContext = createContext<WorkspaceContextValue>({
   exportBackup: unavailable,
   registerAutosave: () => () => undefined,
   flushAutosaves: () => Promise.resolve(true),
+  documents: createWorkspaceDocuments({ port: null, write: unavailableWrite, quiet: unavailableWrite, class1: [], targets: new Map() }),
 });
 
 export function WorkspaceProvider({ open = openWorkspaceStore, children }: Readonly<{
@@ -108,6 +113,8 @@ export function WorkspaceProvider({ open = openWorkspaceStore, children }: Reado
   const openRef = useRef(open);
   const startedRef = useRef(false);
   const autosaves = useRef(new Set<AutosaveFlush>());
+  // Ein stabiles Objekt je Provider, nur im Arbeitsspeicher dieses Tabs.
+  const [importTargets] = useState(() => new Map<LocalId, Map<string, BindingTarget>>());
   const { catalogs } = useContext(CatalogContext);
   const class1 = useMemo(() => verifiedCatalogArtifacts(catalogs), [catalogs]);
 
@@ -203,6 +210,18 @@ export function WorkspaceProvider({ open = openWorkspaceStore, children }: Reado
     return result;
   }, [port, report]);
 
+  const quiet = useCallback(async <T,>(operation: (store: WorkspacePort) => Promise<WorkspaceResult<T>>): Promise<WorkspaceResult<T>> => {
+    if (!port) return storageFailed();
+    const result = await operation(port).catch(storageFailed);
+    if (!result.ok) report(result.diagnostic);
+    return result;
+  }, [port, report]);
+
+  const documents = useMemo(
+    () => createWorkspaceDocuments({ port, write, quiet, class1, targets: importTargets }),
+    [port, write, quiet, class1, importTargets],
+  );
+
   const registerAutosave = useCallback((flush: AutosaveFlush) => {
     autosaves.current.add(flush);
     return () => { autosaves.current.delete(flush); };
@@ -238,9 +257,15 @@ export function WorkspaceProvider({ open = openWorkspaceStore, children }: Reado
     createVerbund: (name) => write((store) => store.createVerbund(name)),
     renameVerbund: (verbundId, name) => write((store) => store.renameVerbund(verbundId, name)),
     deleteVerbund: async (verbundId) => {
+      // Auch ungespeicherte Importziele sind Dokumentinhalt (`href`); sie fallen mit dem Verbund.
+      const listed = port ? await port.listDocuments(verbundId) : undefined;
+      const members = listed?.ok ? listed.value : [];
       const result = await write((store) => store.deleteVerbund(verbundId));
       // Keine Restkopie der gelöschten Inhalte im Tab, auch nicht für Browser-Zurück.
-      if (result.ok) setLoaded((current) => current?.verbundId === verbundId ? null : current);
+      if (result.ok) {
+        setLoaded((current) => current?.verbundId === verbundId ? null : current);
+        for (const member of members) importTargets.delete(member.localId);
+      }
       return result;
     },
     exportBackup: async () => {
@@ -251,7 +276,8 @@ export function WorkspaceProvider({ open = openWorkspaceStore, children }: Reado
     },
     registerAutosave,
     flushAutosaves,
-  }), [status, verbuende, writable, notices, verbund, activate, checkSchema, write, port, report, registerAutosave, flushAutosaves]);
+    documents,
+  }), [status, verbuende, writable, notices, verbund, activate, checkSchema, write, port, report, registerAutosave, flushAutosaves, documents, importTargets]);
 
   return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>;
 }

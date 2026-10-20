@@ -275,17 +275,17 @@ export function CatalogProvider({
     };
   }, [descriptors, joinProvenanceRequest]);
 
-  // Bedarfsgerechtes Nachladen: nur der per Route ausgewählte Katalog.
-  const activeCatalogKey = state.activeCatalogKey;
-  useEffect(() => {
-    if (activeCatalogKey === entryCatalogKey) return;
+  // Bedarfsgerechtes Nachladen: der per Route ausgewählte Katalog und jeder
+  // ausdrücklich angeforderte, je Katalog höchstens einmal.
+  const loadCatalog = useCallback((catalogKey: CatalogKey) => {
+    if (catalogKey === entryCatalogKey) return;
 
-    const descriptor = descriptorByKey.get(activeCatalogKey);
+    const descriptor = descriptorByKey.get(catalogKey);
     if (!descriptor) return;
-    if (requestedKeysRef.current.has(activeCatalogKey)) return;
-    requestedKeysRef.current.add(activeCatalogKey);
+    if (requestedKeysRef.current.has(catalogKey)) return;
+    requestedKeysRef.current.add(catalogKey);
 
-    dispatch({ type: 'CATALOG_LOAD_START', catalogKey: activeCatalogKey });
+    dispatch({ type: 'CATALOG_LOAD_START', catalogKey });
 
     loadCatalogArtifacts(descriptor, () => false, startProvenanceRequest)
       .then((result) => {
@@ -305,7 +305,12 @@ export function CatalogProvider({
           error: toCatalogErrorMessage(error),
         });
       });
-  }, [activeCatalogKey, entryCatalogKey, descriptorByKey, startProvenanceRequest]);
+  }, [entryCatalogKey, descriptorByKey, startProvenanceRequest]);
+
+  const activeCatalogKey = state.activeCatalogKey;
+  useEffect(() => {
+    loadCatalog(activeCatalogKey);
+  }, [activeCatalogKey, loadCatalog]);
 
   const selectCatalog = useCallback(
     (catalogKey: CatalogKey) => {
@@ -323,13 +328,14 @@ export function CatalogProvider({
       : descriptors.map(({ catalogKey }) => ({ catalogKey, title: catalogKey }));
     return {
       ...projected,
+      requestCatalog: loadCatalog,
       catalogDirectory: entries.map((entry) => (
         entry.catalogKey === state.activeCatalogKey && projected.catalogDocument
           ? { ...entry, title: projected.catalogDocument.view.metadata.title }
           : entry
       )),
     };
-  }, [state, selectCatalog, descriptors, directory]);
+  }, [state, selectCatalog, loadCatalog, descriptors, directory]);
 
   return (
     <CatalogContext.Provider value={value}>{children}</CatalogContext.Provider>

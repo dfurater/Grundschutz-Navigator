@@ -154,6 +154,8 @@ describe('Verbundseite und Stationen', () => {
 describe('Dokumentdetail', () => {
   it('zeigt jede Referenzkante mit Feld, Pflicht und Zustand; ein externer href ist kein Link', async () => {
     renderArea(buildWorkspaceDocumentUrl(seeded.verbundId, seeded.profile.localId));
+    // Ein Profile öffnet die Bearbeitungsansicht; die Kanten stehen im Reiter Referenzen.
+    fireEvent.click(await within(main()).findByRole('tab', { name: /^Referenzen/ }));
     const edges = await within(main()).findByRole('region', { name: 'Referenzkanten' });
     const external = edges.querySelector('[data-edge-state="external"]') as HTMLElement;
     expect(external).toHaveTextContent('/profile/imports/0/href');
@@ -216,7 +218,7 @@ describe('Arbeitsroutenraum: Nicht-gefunden, Reload und Zurück', () => {
     expect(main().textContent).toBe(firstText);
 
     fireEvent.click(within(main()).getByRole('link', { name: new RegExp(`^Profile${SENTINEL_TITLE}`) }));
-    await within(main()).findByRole('region', { name: 'Referenzkanten' });
+    await within(main()).findByRole('tablist', { name: 'Bereiche des Profils' });
     await act(() => router.navigate(-1));
     await within(main()).findByText('1 von 5 Dokumenten');
     expect(router.state.location.pathname).toBe(station);
