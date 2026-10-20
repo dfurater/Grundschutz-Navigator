@@ -1632,6 +1632,7 @@ interface CatalogState {
   activeCatalogKey: CatalogKey;
   selectCatalog: (catalogKey: CatalogKey) => void;
   requestCatalog?: (catalogKey: CatalogKey) => void;
+  retryCatalog?: (catalogKey: CatalogKey) => void;
 
   // Projektionen des aktiven Katalogs
   catalogDocument: CatalogDocument | null;
@@ -1650,7 +1651,7 @@ interface CatalogState {
 Jeder Katalog trägt Provenienz, Verifikationsergebnis und Fehlerzustand
 isoliert; `selectCatalog` ignoriert nicht ausgelieferte Schlüssel (fail-closed
 beim zuletzt gültigen Katalog). `requestCatalog` lädt einen ausgelieferten
-Katalog, ohne die Auswahl zu ändern, je Katalog höchstens einmal. `catalog` ist `catalogDocument.view` des
+Katalog, ohne die Auswahl zu ändern, je Katalog höchstens einmal. `retryCatalog` wiederholt einen Katalog mit Fehlerzustand und startet dabei genau einen neuen Request. `catalog` ist `catalogDocument.view` des
 aktiven Katalogs. Wer Felder braucht, die das Domänenmodell nicht abbildet,
 geht über `catalogDocument.source`.
 

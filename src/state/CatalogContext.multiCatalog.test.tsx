@@ -548,6 +548,74 @@ describe('CatalogProvider — mehrere Kataloge', () => {
     );
   });
 
+  it('wiederholt einen fehlgeschlagenen Katalog nach einem Wechsel genau einmal', async () => {
+    let secondRequests = 0;
+    let releaseRetry: (response: Response) => void = () => {};
+    const retryResponse = new Promise<Response>((resolve) => {
+      releaseRetry = resolve;
+    });
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      if (url === ENTRY_DATA_URL) return jsonResponse(entryCatalogJson);
+      if (url === SECOND_DATA_URL) {
+        secondRequests += 1;
+        if (secondRequests === 1) {
+          return new Response(null, { status: 503, statusText: 'Service Unavailable' });
+        }
+        return retryResponse;
+      }
+      return new Response(null, { status: 404, statusText: 'Not Found' });
+    });
+
+    const { result } = renderProvider();
+    await waitForEntryCatalog(result);
+
+    act(() => {
+      result.current.selectCatalog('wlan');
+    });
+    await waitFor(() => {
+      expect(result.current.catalogs.get('wlan')?.error).not.toBeNull();
+    });
+    expect(result.current.catalogs.get('gspp')?.error).toBeNull();
+
+    act(() => {
+      result.current.selectCatalog('gspp');
+    });
+    expect(result.current.activeCatalogKey).toBe('gspp');
+
+    act(() => {
+      result.current.retryCatalog?.('wlan');
+      // Ein zweiter Aufruf im selben Tick darf keinen parallelen Request starten.
+      result.current.retryCatalog?.('wlan');
+    });
+
+    await waitFor(() => {
+      expect(result.current.catalogs.get('wlan')?.loading).toBe(true);
+    });
+    expect(
+      fetchSpy.mock.calls.map(([url]) => String(url)).filter((url) => url === SECOND_DATA_URL),
+    ).toHaveLength(2);
+
+    await act(async () => {
+      releaseRetry(jsonResponse(secondCatalogJson));
+    });
+
+    await waitFor(() => {
+      expect(result.current.catalogs.get('wlan')?.catalog).not.toBeNull();
+      expect(result.current.catalogs.get('wlan')?.error).toBeNull();
+    });
+    expect(
+      fetchSpy.mock.calls.map(([url]) => String(url)).filter((url) => url === SECOND_DATA_URL),
+    ).toHaveLength(2);
+
+    act(() => {
+      result.current.selectCatalog('wlan');
+    });
+    await waitFor(() => {
+      expect(result.current.catalog?.metadata.title).toBe('Zweitkatalog');
+    });
+  });
+
   it('ignoriert die Auswahl eines nicht ausgelieferten Katalogs', async () => {
     mockArtifacts({ [ENTRY_DATA_URL]: entryCatalogJson });
 

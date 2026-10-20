@@ -125,6 +125,7 @@ export function CatalogProvider({
 
   // Verhindert doppelte Nachlade-Requests bei StrictMode-Effektläufen und Re-Renders.
   const requestedKeysRef = useRef<Set<CatalogKey>>(new Set());
+  const loadingKeysRef = useRef<Set<CatalogKey>>(new Set());
   useEffect(() => {
     requestedKeysRef.current = new Set();
   }, [descriptorByKey]);
@@ -139,8 +140,14 @@ export function CatalogProvider({
   const entryCatalogKey = entryDescriptor.catalogKey;
 
   // Einstiegskatalog und Vokabulare: der eager Ladepfad für vollständige Daten.
-  useEffect(() => {
+  const cancelEntryLoadRef = useRef<(() => void) | null>(null);
+
+  const startEntryLoad = useCallback(() => {
+    cancelEntryLoadRef.current?.();
     let cancelled = false;
+    cancelEntryLoadRef.current = () => {
+      cancelled = true;
+    };
     const isCancelled = () => cancelled;
 
     async function loadEntryCatalog() {
@@ -172,6 +179,7 @@ export function CatalogProvider({
         if (cancelled) return;
 
         if (!catalogFetch.ok) {
+          requestedKeysRef.current.delete(entryCatalogKey);
           dispatch({
             type: 'CATALOG_LOAD_ERROR',
             catalogKey: entryCatalogKey,
@@ -228,6 +236,7 @@ export function CatalogProvider({
         });
       } catch (err) {
         if (!cancelled) {
+          requestedKeysRef.current.delete(entryCatalogKey);
           dispatch({
             type: 'CATALOG_LOAD_ERROR',
             catalogKey: entryCatalogKey,
@@ -238,10 +247,6 @@ export function CatalogProvider({
     }
 
     void loadEntryCatalog();
-
-    return () => {
-      cancelled = true;
-    };
   }, [
     entryCatalogKey,
     entryDataUrl,
@@ -250,6 +255,11 @@ export function CatalogProvider({
     upstreamSourcesMetadataUrl,
     startProvenanceRequest,
   ]);
+
+  useEffect(() => {
+    startEntryLoad();
+    return () => cancelEntryLoadRef.current?.();
+  }, [startEntryLoad]);
 
   const [directory, setDirectory] = useState<{
     descriptors: readonly SupportedCatalogDescriptor[];
@@ -277,13 +287,10 @@ export function CatalogProvider({
 
   // Bedarfsgerechtes Nachladen: der per Route ausgewählte Katalog und jeder
   // ausdrücklich angeforderte, je Katalog höchstens einmal.
-  const loadCatalog = useCallback((catalogKey: CatalogKey) => {
-    if (catalogKey === entryCatalogKey) return;
-
-    const descriptor = descriptorByKey.get(catalogKey);
-    if (!descriptor) return;
-    if (requestedKeysRef.current.has(catalogKey)) return;
-    requestedKeysRef.current.add(catalogKey);
+  const startCatalogLoad = useCallback((descriptor: SupportedCatalogDescriptor) => {
+    const { catalogKey } = descriptor;
+    if (loadingKeysRef.current.has(catalogKey)) return;
+    loadingKeysRef.current.add(catalogKey);
 
     dispatch({ type: 'CATALOG_LOAD_START', catalogKey });
 
@@ -292,7 +299,7 @@ export function CatalogProvider({
         if (!result) return;
         dispatch({
           type: 'CATALOG_LOAD_SUCCESS',
-          catalogKey: descriptor.catalogKey,
+          catalogKey,
           ...result,
         });
       })
@@ -301,11 +308,24 @@ export function CatalogProvider({
         // die übrigen bleiben unberührt nutzbar.
         dispatch({
           type: 'CATALOG_LOAD_ERROR',
-          catalogKey: descriptor.catalogKey,
+          catalogKey,
           error: toCatalogErrorMessage(error),
         });
+      })
+      .finally(() => {
+        loadingKeysRef.current.delete(catalogKey);
       });
-  }, [entryCatalogKey, descriptorByKey, startProvenanceRequest]);
+  }, [startProvenanceRequest]);
+
+  const loadCatalog = useCallback((catalogKey: CatalogKey) => {
+    if (catalogKey === entryCatalogKey) return;
+
+    const descriptor = descriptorByKey.get(catalogKey);
+    if (!descriptor) return;
+    if (requestedKeysRef.current.has(catalogKey)) return;
+    requestedKeysRef.current.add(catalogKey);
+    startCatalogLoad(descriptor);
+  }, [entryCatalogKey, descriptorByKey, startCatalogLoad]);
 
   const activeCatalogKey = state.activeCatalogKey;
   useEffect(() => {
@@ -320,6 +340,25 @@ export function CatalogProvider({
     [descriptorByKey],
   );
 
+  // Nur ein Fehler ist wiederholbar; der In-Flight-Merker des Ladepfads hält
+  // parallele Requests desselben Katalogs aus.
+  const retryCatalog = useCallback(
+    (catalogKey: CatalogKey) => {
+      if (!state.catalogs.get(catalogKey)?.error) return;
+
+      if (catalogKey === entryCatalogKey) {
+        if (requestedKeysRef.current.has(catalogKey)) return;
+        requestedKeysRef.current.add(catalogKey);
+        startEntryLoad();
+        return;
+      }
+
+      const descriptor = descriptorByKey.get(catalogKey);
+      if (descriptor) startCatalogLoad(descriptor);
+    },
+    [descriptorByKey, entryCatalogKey, startCatalogLoad, startEntryLoad, state.catalogs],
+  );
+
   const value = useMemo(() => {
     const projected = projectPublicState(state, selectCatalog);
     // Ein Ergebnis einer früheren Deskriptormenge darf neue URLs nicht benennen.
@@ -329,13 +368,14 @@ export function CatalogProvider({
     return {
       ...projected,
       requestCatalog: loadCatalog,
+      retryCatalog,
       catalogDirectory: entries.map((entry) => (
         entry.catalogKey === state.activeCatalogKey && projected.catalogDocument
           ? { ...entry, title: projected.catalogDocument.view.metadata.title }
           : entry
       )),
     };
-  }, [state, selectCatalog, loadCatalog, descriptors, directory]);
+  }, [state, selectCatalog, loadCatalog, retryCatalog, descriptors, directory]);
 
   return (
     <CatalogContext.Provider value={value}>{children}</CatalogContext.Provider>

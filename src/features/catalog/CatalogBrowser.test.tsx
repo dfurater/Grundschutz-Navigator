@@ -1072,6 +1072,26 @@ describe('CatalogBrowser mobile focus restoration', () => {
     expect(screen.getByRole('button', { name: control.title })).toHaveFocus();
   });
 
+  it('bietet im Fehlerzustand einen erneuten Ladeversuch für den aktiven Katalog an', () => {
+    const retryCatalog = vi.fn();
+    mockedUseCatalog.mockReturnValue({
+      ...catalogCollectionDefaults(),
+      activeCatalogKey: 'wlan',
+      catalog: null,
+      loading: false,
+      error: 'Netzwerkfehler',
+      retryCatalog,
+      vocabularyRegistry: null,
+    } as unknown as ReturnType<typeof useCatalog>);
+
+    renderCatalogBrowser('/katalog/wlan');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Erneut versuchen' }));
+
+    expect(retryCatalog).toHaveBeenCalledWith('wlan');
+    expect(retryCatalog).toHaveBeenCalledTimes(1);
+  });
+
   it.each([
     { loading: true, error: null, message: 'Katalog wird geladen…' },
     { loading: false, error: 'Netzwerkfehler', message: 'Fehler beim Laden' },
