@@ -101,13 +101,30 @@ describe('deriveEvidenceReadModel', () => {
           observation(OBS_B, { expires: '2026-12-31T00:00:00Z' }),
           observation(OBS_FOREIGN, { expires: '2026-06-01T00:00:00Z' }),
           observation(RES_EMPTY, { collected: 'kein-datum' }),
+          observation(RES_EMPTY, { collected: undefined }),
+          observation(RES_EMPTY, { expires: 'kein-datum' }),
+          observation(RES_EMPTY, { expires: '2026-12-31T00:00:00' }),
+          observation(RES_EMPTY, { expires: '2026-12-31' }),
+          observation(RES_EMPTY, { expires: '2026-06-01T00:00:00.000001Z' }),
+          observation(RES_EMPTY, { expires: '2026-06-01T00:00:00.000000+00:00' }),
         ],
       }),
       'plan-of-action-and-milestones',
     );
     const validity = model.observations.map((entry) => entry.validity);
-    expect(validity).toEqual(['no-expiry-declared', 'current', 'expired', 'not-evaluable']);
-    expect(validity.map(blocksPositiveFinding)).toEqual([false, false, true, true]);
+    expect(validity).toEqual([
+      'no-expiry-declared',
+      'current',
+      'expired',
+      'not-evaluable',
+      'not-evaluable',
+      'not-evaluable',
+      'not-evaluable',
+      'not-evaluable',
+      'current',
+      'expired',
+    ]);
+    expect(validity.map(blocksPositiveFinding)).toEqual([false, false, true, true, true, true, true, true, false, true]);
   });
 
   it('erhält undokumentierte methods und types als Rohwert', () => {
@@ -136,13 +153,18 @@ describe('deriveEvidenceReadModel', () => {
               { description: 'd', href: `#${RES_FILE}` },
               { description: 'd', href: EXTERNAL_HREF },
               { description: 'd', href: 'file:///etc/passwd' },
-              { description: 'd', links: [{ href: `#${RES_EMPTY}`, 'resource-fragment': 'seite-2' }] },
+              { description: 'd', links: [{ href: `#${RES_EMPTY}`, 'resource-fragment': 'seite-2' }, { text: 'ohne href' }, { href: 'nachweise/datei.pdf' }] },
             ],
-            subjects: [{ 'subject-uuid': RES_FILE, type: 'resource' }],
+            subjects: [
+              { 'subject-uuid': RES_FILE, type: 'resource' },
+              { 'subject-uuid': OBS_B, type: 'component' },
+              { 'subject-uuid': OBS_FOREIGN, type: 'component' },
+            ],
           }),
         ],
       }),
       'plan-of-action-and-milestones',
+      new Set([OBS_B]),
     );
     const [descriptive, local, external, unsafe, linked] = model.observations[0].evidence;
 
@@ -150,9 +172,13 @@ describe('deriveEvidenceReadModel', () => {
     expect(local.href).toMatchObject({ kind: 'resource', resource: { uuid: RES_FILE, content: 'available' } });
     expect(external.href?.kind).toBe('external');
     expect(unsafe.href).toMatchObject({ kind: 'unresolved', reason: 'unsafe-protocol' });
+    expect(linked.links).toHaveLength(2);
     expect(linked.links[0]).toMatchObject({ kind: 'resource', resourceFragment: 'seite-2', resource: { content: 'empty' } });
-    expect(model.observations[0].subjects).toEqual([
-      expect.objectContaining({ uuid: RES_FILE, type: 'resource', state: 'resolved' }),
+    expect(linked.links[1]).toMatchObject({ kind: 'unresolved', reason: 'relative' });
+    expect(model.observations[0].subjects.map((subject) => subject.state)).toEqual([
+      'resolved',
+      'resolved-in-context',
+      'not-resolvable-in-context',
     ]);
     expect(model.diagnostics).toEqual([]);
     expectNoNetworkCalls(network);
@@ -183,7 +209,7 @@ describe('deriveEvidenceReadModel', () => {
     expect(withContext.diagnostics).toEqual([]);
   });
 
-  it('meldet fehlende dokumentinterne Ziele in Assessment Results redigiert', () => {
+  it('meldet fehlende dokumentinterne Ziele in Assessment Results redigiert, auch bei passendem Kontext', () => {
     const model = derive(
       assessmentResults([
         {
@@ -192,6 +218,7 @@ describe('deriveEvidenceReadModel', () => {
         },
       ]),
       'assessment-results',
+      new Set([OBS_FOREIGN]),
     );
     expect(model.observationReferences[0].state).toBe('missing-in-document');
     expect(model.diagnostics.map((diagnostic) => [diagnostic.code, diagnostic.path])).toEqual([

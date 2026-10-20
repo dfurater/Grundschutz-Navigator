@@ -110,12 +110,22 @@ function vocabulary(value: unknown, documented: ReadonlySet<string>): Vocabulary
     .map((entry) => ({ value: entry, status: documented.has(entry) ? 'documented' : 'undocumented' }));
 }
 
+/** OSCAL `dateTime-with-timezone`: ohne Offset wäre der Zeitpunkt von der Gerätezeitzone abhängig. */
+const DATE_TIME_WITH_TIMEZONE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
+
+function parseTimestamp(value: string | undefined): number {
+  return value !== undefined && DATE_TIME_WITH_TIMEZONE.test(value) ? Date.parse(value) : Number.NaN;
+}
+
 function validityOf(collected: string | undefined, expires: string | undefined, at: Date): EvidenceValidity {
-  if (collected === undefined || Number.isNaN(Date.parse(collected))) return 'not-evaluable';
+  if (Number.isNaN(parseTimestamp(collected))) return 'not-evaluable';
   if (expires === undefined) return 'no-expiry-declared';
-  const expiresAt = Date.parse(expires);
+  const expiresAt = parseTimestamp(expires);
   if (Number.isNaN(expiresAt)) return 'not-evaluable';
-  return expiresAt > at.getTime() ? 'current' : 'expired';
+  if (expiresAt !== at.getTime()) return expiresAt > at.getTime() ? 'current' : 'expired';
+  // `Date.parse` kappt unter der Millisekunde; ein Rest > 0 liegt noch nach `at`.
+  const subMillisecond = /\.\d{3}(\d+)/.exec(expires)?.[1] ?? '';
+  return /[1-9]/.test(subMillisecond) ? 'current' : 'expired';
 }
 
 /** OSCAL-UUIDs erlauben beide Schreibweisen der Hexziffern. */
@@ -232,9 +242,12 @@ export function deriveEvidenceReadModel(input: EvidenceReadModelInput): Evidence
     };
   });
 
-  // Im POA&M ist `observation-uuid` eine fachliche UUID-Übernahme, in AR dokumentintern.
-  const missingObservationCode = rootType === 'assessment-results' ? 'OSCAL_EVIDENCE_OBSERVATION_NOT_FOUND' : null;
-  const referrerKeys = rootType === 'assessment-results' ? ['findings', 'risks'] : ['poam-items', 'findings', 'risks'];
+  // In AR ist `observation-uuid` dokumentintern, der Kontext darf ein fehlendes Ziel nicht verdecken.
+  // Im POA&M ist sie eine fachliche UUID-Übernahme aus Assessment Results.
+  const isAssessmentResults = rootType === 'assessment-results';
+  const observationContext = isAssessmentResults ? new Set<string>() : contextUuids;
+  const missingObservationCode = isAssessmentResults ? 'OSCAL_EVIDENCE_OBSERVATION_NOT_FOUND' : null;
+  const referrerKeys = isAssessmentResults ? ['findings', 'risks'] : ['poam-items', 'findings', 'risks'];
   const observationReferences = containers.flatMap((container) =>
     referrerKeys.flatMap((key) =>
       objectsAt(container.node, key, container.path).flatMap((referrer) =>
@@ -242,7 +255,7 @@ export function deriveEvidenceReadModel(input: EvidenceReadModelInput): Evidence
           const uuid = readString(node['observation-uuid']);
           if (uuid === undefined) return [];
           const uuidPath = `${path}/observation-uuid`;
-          return [{ path: uuidPath, uuid, state: uuidState(uuid, uuidPath, observationUuids, contextUuids, missingObservationCode) }];
+          return [{ path: uuidPath, uuid, state: uuidState(uuid, uuidPath, observationUuids, observationContext, missingObservationCode) }];
         }),
       ),
     ),
