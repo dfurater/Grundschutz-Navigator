@@ -14,6 +14,10 @@ export const PROFILE_AUTOSAVE_DELAY_MS = 800;
 
 const IMPORT_POINTER = /^\/profile\/imports\/\d+\/href$/;
 
+// Meldet, dass ein explizites Speichern begonnen hat; es wird außerhalb der Kette
+// abgewartet, weil `save()` selbst auf `chain.current` wartet.
+const FLUSH_RESTART = Symbol('flush-restart');
+
 export type ProfileSaveState =
   | { readonly kind: 'stored' }
   | { readonly kind: 'pending' }
@@ -133,26 +137,31 @@ export function useProfileEditor(localId: LocalId): ProfileEditor {
   /** Sichert den Arbeitsstand als Entwurf; Aufrufe laufen nacheinander. */
   const flush = useCallback(async () => {
     clearTimeout(timer.current);
-    while (saving.current) await savingDone.current;
-    const run = chain.current.then(async () => {
-      // Eingaben, die während einer Sicherung entstehen, gehören in denselben Flush:
-      // Erfolg erst, wenn kein Arbeitsstand mehr offen ist; ein Fehler bleibt Fehler.
-      for (;;) {
-        const state = latest.current;
-        if (!state.unsaved || !state.envelope || saving.current) return { ok: true as const, value: undefined };
-        const snapshot = state.working;
-        const result = await documents.autosaveDraft(localId, state.envelope.savedAt, state.draftSavedAt, snapshot);
-        if (!result.ok) {
-          setSaveState({ kind: 'failed' });
-          return result;
+    for (;;) {
+      while (saving.current) await savingDone.current;
+      const run = chain.current.then(async () => {
+        // Eingaben, die während einer Sicherung entstehen, gehören in denselben Flush:
+        // Erfolg erst, wenn kein Arbeitsstand mehr offen ist; ein Fehler bleibt Fehler.
+        for (;;) {
+          // Ein jetzt beginnendes Speichern schreibt den neuesten Stand selbst; Erfolg erst nach seinem Ende.
+          if (saving.current) return FLUSH_RESTART;
+          const state = latest.current;
+          if (!state.unsaved || !state.envelope) return { ok: true as const, value: undefined };
+          const snapshot = state.working;
+          const result = await documents.autosaveDraft(localId, state.envelope.savedAt, state.draftSavedAt, snapshot);
+          if (!result.ok) {
+            setSaveState({ kind: 'failed' });
+            return result;
+          }
+          latest.current = { ...latest.current, draftSavedAt: result.value.savedAt, unsaved: latest.current.working !== snapshot };
+          setSaveState({ kind: 'autosaved', at: result.value.savedAt });
+          if (!latest.current.unsaved) return result;
         }
-        latest.current = { ...latest.current, draftSavedAt: result.value.savedAt, unsaved: latest.current.working !== snapshot };
-        setSaveState({ kind: 'autosaved', at: result.value.savedAt });
-        if (!latest.current.unsaved || saving.current) return result;
-      }
-    });
-    chain.current = run.catch(() => undefined);
-    return run;
+      });
+      chain.current = run.catch(() => undefined);
+      const result = await run;
+      if (result !== FLUSH_RESTART) return result;
+    }
   }, [documents, localId]);
 
   useEffect(() => registerAutosave(flush), [registerAutosave, flush]);

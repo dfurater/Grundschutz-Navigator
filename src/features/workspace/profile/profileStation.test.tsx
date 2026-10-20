@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildStationUrl, buildWorkspaceDocumentUrl } from '@/app/routes';
 import { downloadBlob } from '@/adapters/browserDownload';
 import type { CatalogState, LoadedCatalogState } from '@/domain/models';
+import type { WorkspaceStore as WorkspaceStoreClass } from '@/adapters/workspaceStore';
 import type { OscalRootKey, PinnedOscalVersion } from '@/domain/oscalVersionMatrix';
 import type { CatalogKey } from '@/domain/sourceRegistry';
 import type { DocumentState, LocalId, VerbundId, WorkspaceEnvelope } from '@/domain/workspaceModel';
@@ -278,6 +279,76 @@ describe('Bearbeiten, Autosave, Speichern und Export', () => {
     finishFirst();
     await waitFor(() => expect(router.state.location.pathname).not.toMatch(/\/dokument\//), WAIT);
     expect(JSON.stringify(saved.at(-1))).toContain('"pattern":"ac-*"');
+  });
+
+  it('gibt die Navigation erst frei, wenn ein während der Sicherung begonnenes Speichern bestätigt ist', async () => {
+    const { WorkspaceStore } = await import('@/adapters/workspaceStore');
+    const originalAutosave = WorkspaceStore.prototype.autosaveDraft;
+    const originalSave = WorkspaceStore.prototype.saveDocument;
+    let finishAutosave: () => void = () => {};
+    let finishSave: () => void = () => {};
+    const autosaves = vi.spyOn(WorkspaceStore.prototype, 'autosaveDraft').mockImplementation(function (this: WorkspaceStoreClass, ...args) {
+      if (autosaves.mock.calls.length === 1) {
+        return new Promise((resolve) => { finishAutosave = () => resolve(originalAutosave.call(this, ...args)); });
+      }
+      return originalAutosave.call(this, ...args);
+    });
+    const saves = vi.spyOn(WorkspaceStore.prototype, 'saveDocument').mockImplementation(function (this: WorkspaceStoreClass, ...args) {
+      return new Promise((resolve) => { finishSave = () => resolve(originalSave.call(this, ...args)); });
+    });
+    const { router } = renderArea(buildStationUrl(seeded.verbundId, 'profile'), withGspp());
+    await openNewProfile('Paket');
+    fireEvent.click(within(main()).getByRole('radio', { name: /catalog-gspp/ }));
+    fireEvent.click(within(main()).getByRole('button', { name: 'Profil anlegen' }));
+    await waitFor(() => expect(router.state.location.pathname).toMatch(/\/dokument\//), WAIT);
+    const localId = router.state.location.pathname.split('/').at(-1) as LocalId;
+    fireEvent.click(await within(main()).findByRole('button', { name: '+ Muster' }));
+    fireEvent.click(within(main()).getByRole('link', { name: /^Profile$/ }));
+    await waitFor(() => expect(autosaves).toHaveBeenCalledTimes(1), WAIT);
+    fireEvent.change(within(main()).getByRole('textbox', { name: 'Muster 1' }), { target: { value: 'ac-*' } });
+    fireEvent.click(within(main()).getByRole('button', { name: 'Speichern' }));
+    finishAutosave();
+    await waitFor(() => expect(saves).toHaveBeenCalledTimes(1), WAIT);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(router.state.location.pathname).toMatch(/\/dokument\//);
+    finishSave();
+    await waitFor(() => expect(router.state.location.pathname).not.toMatch(/\/dokument\//), WAIT);
+    expect(JSON.stringify((await readStore((store) => store.getDocument(localId)))?.source)).toContain('"pattern":"ac-*"');
+  });
+
+  it('sichert den neuesten Stand, wenn das während der Sicherung begonnene Speichern scheitert', async () => {
+    const { WorkspaceStore } = await import('@/adapters/workspaceStore');
+    const { StorageFailure, failure } = await import('@/adapters/workspaceStorageFailure');
+    const originalAutosave = WorkspaceStore.prototype.autosaveDraft;
+    let finishAutosave: () => void = () => {};
+    let finishSave: () => void = () => {};
+    const autosaves = vi.spyOn(WorkspaceStore.prototype, 'autosaveDraft').mockImplementation(function (this: WorkspaceStoreClass, ...args) {
+      if (autosaves.mock.calls.length === 1) {
+        return new Promise((resolve) => { finishAutosave = () => resolve(originalAutosave.call(this, ...args)); });
+      }
+      return originalAutosave.call(this, ...args);
+    });
+    const saves = vi.spyOn(WorkspaceStore.prototype, 'saveDocument').mockImplementation(() => new Promise((resolve) => {
+      finishSave = () => resolve(failure(new StorageFailure('WORKSPACE_STORAGE_FAILED')));
+    }));
+    const { router } = renderArea(buildStationUrl(seeded.verbundId, 'profile'), withGspp());
+    await openNewProfile('Paket');
+    fireEvent.click(within(main()).getByRole('radio', { name: /catalog-gspp/ }));
+    fireEvent.click(within(main()).getByRole('button', { name: 'Profil anlegen' }));
+    await waitFor(() => expect(router.state.location.pathname).toMatch(/\/dokument\//), WAIT);
+    const localId = router.state.location.pathname.split('/').at(-1) as LocalId;
+    fireEvent.click(await within(main()).findByRole('button', { name: '+ Muster' }));
+    fireEvent.click(within(main()).getByRole('link', { name: /^Profile$/ }));
+    await waitFor(() => expect(autosaves).toHaveBeenCalledTimes(1), WAIT);
+    fireEvent.change(within(main()).getByRole('textbox', { name: 'Muster 1' }), { target: { value: 'ac-*' } });
+    fireEvent.click(within(main()).getByRole('button', { name: 'Speichern' }));
+    finishAutosave();
+    await waitFor(() => expect(saves).toHaveBeenCalledTimes(1), WAIT);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(router.state.location.pathname).toMatch(/\/dokument\//);
+    finishSave();
+    await waitFor(() => expect(router.state.location.pathname).not.toMatch(/\/dokument\//), WAIT);
+    await waitFor(async () => expect(JSON.stringify((await readStore((store) => store.getDraft(localId)))?.source)).toContain('"pattern":"ac-*"'), WAIT);
   });
 
   it('bleibt bei einem Fehler der letzten Sicherung während der Navigation auf der Dokumentroute', async () => {
