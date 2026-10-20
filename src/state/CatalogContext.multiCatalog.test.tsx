@@ -11,6 +11,7 @@
 // dass die Promotion den Initial-Load nicht vergrößert hat.
 // =============================================================================
 
+import { StrictMode } from 'react';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CatalogProvider, type SupportedCatalogDescriptor } from './CatalogContext';
@@ -149,16 +150,19 @@ function mockArtifacts(responses: Record<string, unknown>) {
   });
 }
 
-function renderProvider() {
-  const wrapper = ({ children }: { children: React.ReactNode }) => (
-    <CatalogProvider
-      supportedCatalogs={descriptors}
-      vocabulariesUrl="/data/vocabularies.json"
-      upstreamSourcesMetadataUrl="/data/upstream-sources-metadata.json"
-    >
-      {children}
-    </CatalogProvider>
-  );
+function renderProvider(strict = false) {
+  const wrapper = ({ children }: { children: React.ReactNode }) => {
+    const provider = (
+      <CatalogProvider
+        supportedCatalogs={descriptors}
+        vocabulariesUrl="/data/vocabularies.json"
+        upstreamSourcesMetadataUrl="/data/upstream-sources-metadata.json"
+      >
+        {children}
+      </CatalogProvider>
+    );
+    return strict ? <StrictMode>{provider}</StrictMode> : provider;
+  };
 
   return renderHook(() => useCatalog(), { wrapper });
 }
@@ -547,6 +551,47 @@ describe('CatalogProvider — mehrere Kataloge', () => {
       'class-1-verified-public',
     );
   });
+
+  it.each([false, true])(
+    'wiederholt einen fehlgeschlagenen Einstiegskatalog genau einmal (StrictMode: %s)',
+    async (strict) => {
+      let failEntry = true;
+      let entryRequests = 0;
+      vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+        const url = String(input);
+        if (url === ENTRY_DATA_URL) {
+          entryRequests += 1;
+          if (failEntry) {
+            return new Response(null, { status: 503, statusText: 'Service Unavailable' });
+          }
+          return jsonResponse(entryCatalogJson);
+        }
+        return new Response(null, { status: 404, statusText: 'Not Found' });
+      });
+
+      const { result } = renderProvider(strict);
+
+      await waitFor(() => {
+        expect(result.current.loading).toBe(false);
+        expect(result.current.error).not.toBeNull();
+      });
+      expect(result.current.catalog).toBeNull();
+
+      failEntry = false;
+      const requestsBeforeRetry = entryRequests;
+      act(() => {
+        result.current.retryCatalog?.(result.current.entryCatalogKey);
+        // Ein zweiter Aufruf im selben Tick darf keinen parallelen Request starten.
+        result.current.retryCatalog?.(result.current.entryCatalogKey);
+      });
+
+      await waitFor(() => {
+        expect(result.current.catalog?.controlsById.has('GC.1.1')).toBe(true);
+      });
+      expect(result.current.error).toBeNull();
+      expect(entryRequests - requestsBeforeRetry).toBe(1);
+    },
+  );
 
   it('wiederholt einen fehlgeschlagenen Katalog nach einem Wechsel genau einmal', async () => {
     let secondRequests = 0;
