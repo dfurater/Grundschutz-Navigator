@@ -134,6 +134,8 @@ Indizes gehören zu ihrem Store und werden mit ihm geschrieben. **Regelform stat
 
 ## 4. Dokumentzustände
 
+`addDocument()` akzeptiert als fünftes Argument ein optionales `AbortSignal`. Ein Abbruch nach der Eingangsprüfung oder vor dem ersten Dokument-Schreibauftrag liefert `WORKSPACE_OPERATION_CANCELLED` und erhält den gespeicherten Bestand. Die SSP-Dateiaufnahme bricht dieses Signal beim Verlassen der Station ab; der Workspace meldet den bewussten Abbruch nicht als Speicherfehler.
+
 Ein `profile` braucht mindestens einen `import`, ein `system-security-plan` braucht `import-profile`, `system-characteristics`, `system-implementation` und `control-implementation`. Es gibt kein gültiges leeres Profil; ein Gate, das nur „valide oder abgelehnt" kennt, blockierte jedes Authoring.
 
 | Zustand | Bedeutung | Validierung |

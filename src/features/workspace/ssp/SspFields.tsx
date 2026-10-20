@@ -27,7 +27,7 @@ const LABELS: Readonly<Record<string, string>> = {
 };
 
 /** Aufklappen rendert erst den angeforderten Teil des Feldbaums. */
-export function SspSection({ title, children }: Readonly<{ title: string; children: ReactNode }>) {
+export function SspSection({ title, children }: Readonly<{ title: ReactNode; children: ReactNode }>) {
   const [open, setOpen] = useState(false);
   return (
     <details open={open} onToggle={event => setOpen(event.currentTarget.open)} className="min-w-0 border-b border-[var(--color-border-subtle)] last:border-b-0">
@@ -41,37 +41,46 @@ function scalar(value: unknown): value is string | number {
   return typeof value === 'string' || typeof value === 'number';
 }
 
-function SspList({ items }: Readonly<{ items: readonly unknown[] }>) {
+function identifier(field: string): boolean {
+  return /uuid|Ids?$|^id$|href/i.test(field);
+}
+
+function itemTitle(item: unknown, index: number): ReactNode {
+  const title = isJsonObject(item) ? item.title ?? item.controlId ?? item.statementId : undefined;
+  return <><span className="tabular-nums">{index + 1}</span>{typeof title === 'string' && <span className={isJsonObject(item) && item.title === undefined ? 'font-mono' : undefined}> · {title}</span>}</>;
+}
+
+function SspList({ items, field }: Readonly<{ items: readonly unknown[]; field: string }>) {
   const [visible, setVisible] = useState(50);
   return <>
     <ul className="min-w-0 divide-y divide-[var(--color-border-subtle)]">
       {items.slice(0, visible).map((item: unknown, index) => (
         <li key={index} className="min-w-0">
-          {scalar(item) ? <SspFields value={item} /> : (
-            <SspSection title={`${index + 1}${isJsonObject(item) && typeof (item.title ?? item.controlId ?? item.statementId) === 'string' ? ` · ${String(item.title ?? item.controlId ?? item.statementId)}` : ''}`}>
+          {scalar(item) ? <SspFields value={item} field={field} /> : (
+            <SspSection title={itemTitle(item, index)}>
               <SspFields value={item} />
             </SspSection>
           )}
         </li>
       ))}
     </ul>
-    {visible < items.length && <Button variant="secondary" className="min-h-touch" onClick={() => setVisible(count => count + 50)}>Weitere Einträge · {visible} von {items.length}</Button>}
+    {visible < items.length && <Button variant="secondary" className="min-h-touch tabular-nums" onClick={() => setVisible(count => count + 50)}>Weitere Einträge · {visible} von {items.length}</Button>}
   </>;
 }
 
 /** Rendert ausschließlich die erlaubten Projektionsfelder als Text, auch hrefs und Markup. */
-export function SspFields({ value }: Readonly<{ value: unknown }>) {
-  if (scalar(value)) return <p className="whitespace-pre-wrap break-words text-sm text-[var(--color-text-secondary)]">{value}</p>;
-  if (Array.isArray(value)) return <SspList items={value} />;
+export function SspFields({ value, field = '' }: Readonly<{ value: unknown; field?: string }>) {
+  if (scalar(value)) return <p className={`whitespace-pre-wrap break-words text-sm text-[var(--color-text-secondary)] ${identifier(field) ? 'font-mono' : ''}`}>{value}</p>;
+  if (Array.isArray(value)) return <SspList items={value} field={field} />;
   if (!isJsonObject(value)) return null;
   return <div className="min-w-0 divide-y divide-[var(--color-border-subtle)]">{Object.entries(value).map(([key, child]) => {
     if (!Object.hasOwn(LABELS, key) || child == null || (Array.isArray(child) && !child.length)) return null;
-    const label = LABELS[key];
+    const label = key === 'status' && typeof child === 'string' ? 'Verweiszustand' : LABELS[key];
     return scalar(child) ? (
       <dl key={key} className="py-2">
         <dt className="text-xs text-[var(--color-text-muted)]">{label}</dt>
-        <dd className={`whitespace-pre-wrap break-words text-sm text-[var(--color-text-primary)] ${/uuid|Id$|^id$|href/i.test(key) ? 'font-mono' : ''}`}>{child}</dd>
+        <dd className={`whitespace-pre-wrap break-words text-sm text-[var(--color-text-primary)] ${identifier(key) ? 'font-mono' : ''}`}>{key === 'status' && child === 'not-resolvable-in-context' ? 'nicht auflösbar im aktuellen Kontext' : child}</dd>
       </dl>
-    ) : <SspSection key={key} title={`${label}${Array.isArray(child) ? ` · ${child.length}` : ''}`}><SspFields value={child} /></SspSection>;
+    ) : <SspSection key={key} title={<>{label}{Array.isArray(child) && <span className="tabular-nums"> · {child.length}</span>}</>}><SspFields value={child} field={key} /></SspSection>;
   })}</div>;
 }

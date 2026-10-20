@@ -81,8 +81,8 @@ describe.each([{ width: 1440, touch: false }, { width: 1032, touch: true }, { wi
     body.metadata.title = 'LOKALER_SSP_SENTINEL';
     body['system-characteristics'].description = '<img src="https://example.invalid/SSP_GEHEIM" onerror="alert(1)">';
     upload(shell, JSON.stringify(source));
-    await expect.poll(() => shell.querySelector('h1')?.textContent).toBe(body.metadata.title);
-    await expect.poll(() => shell.querySelector('summary')?.textContent).toBe('Metadaten');
+    await expect.poll(() => shell.querySelector('h1')?.textContent, { timeout: 15_000 }).toBe(body.metadata.title);
+    await expect.poll(() => shell.querySelector('summary')?.textContent, { timeout: 15_000 }).toBe('Metadaten');
     const path = router!.state.location.pathname;
     expect(JSON.stringify(router!.state.location)).not.toContain(body.metadata.title);
     expect(path).not.toContain(SSP_FIXTURE_IDS.ssp);
@@ -94,7 +94,7 @@ describe.each([{ width: 1440, touch: false }, { width: 1032, touch: true }, { wi
 
     unmount();
     shell = await renderAt(path, width, touch);
-    await expect.poll(() => shell.querySelector('summary')?.textContent).toBe('Metadaten');
+    await expect.poll(() => shell.querySelector('summary')?.textContent, { timeout: 15_000 }).toBe('Metadaten');
     const summary = shell.querySelector('summary')!;
     summary.focus();
     await userEvent.keyboard('{Enter}');

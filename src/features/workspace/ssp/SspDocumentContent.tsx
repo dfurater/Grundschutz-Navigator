@@ -4,11 +4,13 @@ import type { LocalId } from '@/domain/workspaceModel';
 import type { SystemSecurityPlan } from '@/domain/systemSecurityPlanModel';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { SspFields, SspSection } from '@/features/workspace/ssp/SspFields';
+import { Button } from '@/components/Button';
 
 /** Hält nur die Projektion des ausgewählten SSP; der geladene Quellgraph wird danach entlassen. */
 export function SspDocumentContent({ localId }: Readonly<{ localId: LocalId }>) {
   const { documents } = useWorkspace();
   const [result, setResult] = useState<SystemSecurityPlan | 'failed' | null>(null);
+  const [diagnosticsVisible, setDiagnosticsVisible] = useState(50);
   useEffect(() => {
     let current = true;
     void documents.getDocument(localId).then(loaded => {
@@ -39,9 +41,10 @@ export function SspDocumentContent({ localId }: Readonly<{ localId: LocalId }>) 
       </div>
       <section aria-labelledby="ssp-model-diagnostics">
         <h2 id="ssp-model-diagnostics" className="text-base font-semibold text-[var(--color-text-primary)]">Modelldiagnosen</h2>
-        {result.diagnostics.length ? <ul className="divide-y divide-[var(--color-border-subtle)]">{result.diagnostics.map((diagnostic, index) => (
+        {result.diagnostics.length ? <ul className="divide-y divide-[var(--color-border-subtle)]">{result.diagnostics.slice(0, diagnosticsVisible).map((diagnostic, index) => (
           <li key={index} className="break-words py-2 font-mono text-xs text-[var(--color-text-secondary)]">{diagnostic.stage} · {diagnostic.code} · {diagnostic.path}</li>
         ))}</ul> : <p className="text-sm text-[var(--color-text-secondary)]">Keine Modelldiagnosen.</p>}
+        {diagnosticsVisible < result.diagnostics.length && <Button variant="secondary" className="min-h-touch tabular-nums" onClick={() => setDiagnosticsVisible(count => count + 50)}>Weitere Modelldiagnosen · {diagnosticsVisible} von {result.diagnostics.length}</Button>}
       </section>
     </>
   );

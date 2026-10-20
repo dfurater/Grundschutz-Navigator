@@ -104,4 +104,36 @@ describe('SSP-Station', () => {
     expect(router.state.location.pathname).toBe(buildStationUrl(seeded.otherVerbundId, 'ssp'));
     expect(await readStore(store => store.listDocuments(seeded.verbundId))).toHaveLength(5);
   });
+
+  it('beginnt nach einem Stationswechsel auch nach der zweiten Schemaprüfung keine Speicherung', async () => {
+    const gate = await import('@/adapters/oscalImportGate');
+    const original = gate.importClass2OscalDocument;
+    let finish!: () => void;
+    let checks = 0;
+    const waiting = new Promise<void>(resolve => { finish = resolve; });
+    vi.spyOn(gate, 'importClass2OscalDocument').mockImplementation(async (...args) => {
+      if (++checks === 2) await waiting;
+      return original(...args);
+    });
+    const { router } = renderWorkspaceArea(buildStationUrl(seeded.verbundId, 'ssp'));
+    await upload(new File([JSON.stringify(makeFullSsp())], 'lokal.json'));
+    await waitFor(() => expect(checks).toBe(2));
+    await act(() => router.navigate(buildStationUrl(seeded.otherVerbundId, 'ssp')));
+    await act(async () => { finish(); await waiting; });
+    await waitFor(async () => expect(await readStore(store => store.listDocuments(seeded.verbundId))).toHaveLength(5));
+    expect(router.state.location.pathname).toBe(buildStationUrl(seeded.otherVerbundId, 'ssp'));
+  });
+
+  it('begrenzt auch Modelldiagnosen beim Öffnen der Dokumentseite', async () => {
+    const source = JSON.parse(JSON.stringify(makeFullSsp()));
+    source['system-security-plan']['system-implementation'].users[0]['role-ids'] = Array.from({ length: 121 }, (_, i) => `unknown-${i}`);
+    const doc = await readStore(store => store.addDocument(seeded.verbundId, {
+      source, rootType: 'system-security-plan', oscalVersion: '1.2.2', context: { trustClass: 'class-2-local-user' },
+    }));
+    renderWorkspaceArea(buildWorkspaceDocumentUrl(seeded.verbundId, doc.localId));
+    const diagnostics = await within(main()).findByRole('region', { name: 'Modelldiagnosen' });
+    expect(within(diagnostics).getAllByRole('listitem')).toHaveLength(50);
+    fireEvent.click(within(diagnostics).getByRole('button', { name: /Weitere Modelldiagnosen/ }));
+    expect(within(diagnostics).getAllByRole('listitem')).toHaveLength(100);
+  });
 });

@@ -13,4 +13,22 @@ describe('große SSP-Listen', () => {
     expect(screen.getByText('Wert 120')).toBeInTheDocument();
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
+
+  it('nennt den Auflösungszustand einer externen UUID keinen Betriebsstatus', () => {
+    render(<SspFields value={{ uuid: '66666666-0000-4000-8000-000000000015', status: 'not-resolvable-in-context' }} />);
+    expect(screen.queryByText('Betriebsstatus')).not.toBeInTheDocument();
+    expect(screen.getByText('Verweiszustand')).toBeInTheDocument();
+    expect(screen.getByText('nicht auflösbar im aktuellen Kontext')).toBeInTheDocument();
+  });
+
+  it('trägt Kennungsschrift in UUID-Listen und Anforderungstitel weiter', async () => {
+    const { container } = render(<SspFields value={{ partyUuids: ['ID-PARTY'], implementedRequirements: [{ controlId: 'AC-1' }] }} />);
+    for (const detail of container.querySelectorAll('details')) {
+      detail.open = true;
+      fireEvent(detail, new Event('toggle'));
+    }
+    expect(screen.getByText('ID-PARTY')).toHaveClass('font-mono');
+    expect(screen.getByText(/· AC-1/)).toHaveClass('font-mono');
+    expect(screen.getByText('1', { selector: 'span' })).toHaveClass('tabular-nums');
+  });
 });

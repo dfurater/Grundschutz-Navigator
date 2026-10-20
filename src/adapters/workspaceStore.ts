@@ -144,13 +144,15 @@ export class WorkspaceStore {
   }
 
   /** `outgoing` binds the new document in the same transaction; an invalid binding stores nothing. */
-  async addDocument(verbundId: VerbundId, input: Class2OscalImportedDocument, state: DocumentState = 'imported', outgoing: readonly Omit<WorkspaceBinding, 'fromLocalId'>[] = []): Promise<WorkspaceResult<WorkspaceEnvelope>> {
+  async addDocument(verbundId: VerbundId, input: Class2OscalImportedDocument, state: DocumentState = 'imported', outgoing: readonly Omit<WorkspaceBinding, 'fromLocalId'>[] = [], signal?: AbortSignal): Promise<WorkspaceResult<WorkspaceEnvelope>> {
     try {
       assertState(state);
       const bindingSnapshot = structuredClone(outgoing);
       const { document } = await snapshotDocument(input, state);
+      if (signal?.aborted) reject('WORKSPACE_OPERATION_CANCELLED');
       return this.write(async stamp => {
         if (!await this.verbuende.get(verbundId)) reject('WORKSPACE_VERBUND_NOT_FOUND');
+        if (signal?.aborted) reject('WORKSPACE_OPERATION_CANCELLED');
         const envelope: WorkspaceEnvelope = {
           localId: crypto.randomUUID() as LocalId, verbundId, storageSchemaVersion: STORAGE_SCHEMA_VERSION,
           source: document.source, rootType: document.rootType, oscalVersion: document.oscalVersion,
