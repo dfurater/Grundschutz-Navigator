@@ -81,6 +81,22 @@ async function runReference(document: Json, edit: OscalEditOperation, corrupt?: 
   });
 }
 
+describe('Edit-Lauf: Root-UUID-Politik', () => {
+  it('entspricht PERSISTENCE.md §5 und ADR-9 Festlegung 4', () => {
+    // Der Referenz-Editor liest dieselbe Konstante; nur diese ausgeschriebene Tabelle fängt einen Politikfehler.
+    expect(OSCAL_ROOT_UUID_POLICY).toEqual({
+      catalog: 'reassign',
+      profile: 'reassign',
+      'component-definition': 'reassign',
+      'mapping-collection': 'reassign',
+      'system-security-plan': 'keep',
+      'assessment-plan': 'keep',
+      'assessment-results': 'keep',
+      'plan-of-action-and-milestones': 'keep',
+    });
+  });
+});
+
 describe('Edit-Lauf: Positivfälle je Root @ 1.2.2', () => {
   it.each(REASSIGN_ROOTS)('%s: neue UUID gleich Stempel, last-modified gleich Stempel', async (root) => {
     const result = await runReference(maximal(root), titleEdit(root));
