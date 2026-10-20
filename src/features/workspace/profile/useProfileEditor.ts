@@ -60,6 +60,10 @@ function targetOf(entry: ProfileImportView, stored: readonly WorkspaceBinding[],
     ?? (assigned?.href === entry.href ? assigned.target : undefined);
 }
 
+function sameTarget(a: BindingTarget, b: BindingTarget): boolean {
+  return a.kind === 'local' ? b.kind === 'local' && a.localId === b.localId : b.kind === 'class-1' && a.artifactKey === b.artifactKey;
+}
+
 /** Ungespeicherte Zuordnungen nach dem Entfernen eines Imports, an denselben Pointern wie `shiftImportBindings`. */
 function shiftPending(pending: Map<string, PendingImportTarget>, removed: number): void {
   const shifted = shiftImportBindings([...pending].map(([pointer, value]) => ({ pointer, ...value })), removed);
@@ -177,6 +181,8 @@ export function useProfileEditor(localId: LocalId): ProfileEditor {
   }, [change, pending]);
 
   const removeImportAt = useCallback((index: number) => {
+    // Während des Speicherns gesperrt: Der Abschluss schreibt die Bindungen des gespeicherten Stands.
+    if (saving.current) return;
     change((source) => removeImport(source, index));
     setStored((current) => shiftImportBindings(current, index));
     shiftPending(pending, index);
@@ -209,7 +215,11 @@ export function useProfileEditor(localId: LocalId): ProfileEditor {
       if (latest.current.unsaved) schedule();
       return;
     }
-    for (const binding of bindings) if (pending.get(binding.pointer)?.href === binding.href) pending.delete(binding.pointer);
+    // Nur Zuordnungen, die genau so gespeichert wurden; eine während des Speicherns geänderte bleibt offen.
+    for (const binding of bindings) {
+      const assigned = pending.get(binding.pointer);
+      if (assigned?.href === binding.href && sameTarget(assigned.target, binding.target)) pending.delete(binding.pointer);
+    }
     setPendingTargets(new Map(pending));
     setEnvelope(result.value);
     setStored(bindings);

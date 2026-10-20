@@ -115,20 +115,38 @@ function importHrefs(source: unknown): (string | undefined)[] {
 
 /**
  * Richtet gespeicherte Import-Bindungen an einem Entwurf aus, dessen Importe
- * sich gegenüber dem gespeicherten Dokument verschoben haben können. Ein im
- * Entwurf eindeutiger `href` folgt seiner eindeutigen Bindung; ein mehrfach
- * vorkommender behält seine Bindung nur bei unveränderter `href`-Folge, sonst
+ * sich gegenüber dem gespeicherten Dokument verschoben haben können.
+ * Gemeinsamer Anfang und gemeinsames Ende der `href`-Folgen behalten ihre
+ * Bindungen an der jeweils neuen Position; überlappen beide, ist die
+ * Überlappung mehrdeutig und gehört zur Mitte. In der Mitte folgt ein `href`
+ * nur dann seiner Bindung, wenn er in beiden Fassungen eindeutig ist, sonst
  * bleibt der Import ungebunden statt fremd gebunden.
  */
 export function alignImportBindings<T extends { readonly pointer: string; readonly href: string }>(bindings: readonly T[], stored: unknown, draft: unknown): T[] {
   const before = importHrefs(stored);
   const after = importHrefs(draft);
   if (before.length === after.length && before.every((href, index) => href === after[index])) return [...bindings];
-  const others = bindings.filter((binding) => importIndex(binding.pointer) === undefined);
-  const aligned = after.flatMap((href, index) => {
-    if (href === undefined || after.filter((entry) => entry === href).length > 1) return [];
-    const matches = bindings.filter((binding) => importIndex(binding.pointer) !== undefined && binding.href === href);
-    return matches.length === 1 ? [{ ...matches[0], pointer: importHrefPointer(index) }] : [];
+  const shorter = Math.min(before.length, after.length);
+  let head = 0;
+  while (head < shorter && before[head] === after[head]) head++;
+  let tail = 0;
+  while (tail < shorter && before[before.length - 1 - tail] === after[after.length - 1 - tail]) tail++;
+  const overlap = Math.max(0, head + tail - shorter);
+  head -= overlap;
+  tail -= overlap;
+  // Position im Entwurf zu einer gespeicherten Position am Anfang oder Ende; die Mitte hat keine.
+  const moved = (index: number) => {
+    if (index < head) return index;
+    return index >= before.length - tail ? index - before.length + after.length : undefined;
+  };
+  const unique = (list: readonly (string | undefined)[], href: string) => list.filter((entry) => entry === href).length === 1;
+  return bindings.flatMap((binding) => {
+    const index = importIndex(binding.pointer);
+    if (index === undefined) return [binding];
+    const target = moved(index);
+    if (target !== undefined) return after[target] === binding.href ? [{ ...binding, pointer: importHrefPointer(target) }] : [];
+    if (!unique(before, binding.href) || !unique(after, binding.href)) return [];
+    const position = after.indexOf(binding.href);
+    return position >= head && position < after.length - tail ? [{ ...binding, pointer: importHrefPointer(position) }] : [];
   });
-  return [...others, ...aligned];
 }

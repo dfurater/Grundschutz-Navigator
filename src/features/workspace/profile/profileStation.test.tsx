@@ -115,8 +115,9 @@ describe('Neuanlage über das Importziel', () => {
   it('zeigt „BSI-geprüft“ nur für einen Katalog mit bestandener Hashprüfung', async () => {
     renderArea(buildStationUrl(seeded.verbundId, 'profile'), withGspp(false));
     await openNewProfile('Paket');
-    const gspp = (await within(main()).findByRole('radio', { name: /catalog-gspp/ })).closest('label')!;
-    expect(gspp).toHaveTextContent('BSI-Katalog · nicht verifiziert');
+    const radio = await within(main()).findByRole('radio', { name: /catalog-gspp/ });
+    expect(radio.closest('label')!).toHaveTextContent('BSI-Katalog · nicht verifiziert');
+    expect(radio).toBeDisabled();
     expect(main()).not.toHaveTextContent('BSI-geprüft');
   });
 

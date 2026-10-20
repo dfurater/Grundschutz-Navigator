@@ -113,12 +113,16 @@ describe('Importe hinzufügen und entfernen', () => {
     const other = { pointer: '/profile/other', href: 'x', target: 'o' };
     expect(shiftImportBindings([at(0, '#a', 'A'), at(1, '#a', 'B'), other], 0)).toEqual([at(0, '#a', 'B'), other]);
 
-    const stored = { profile: { imports: [{ href: '#a' }, { href: '#a' }, { href: '#c' }] } };
-    const unchanged = alignImportBindings([at(0, '#a', 'A'), at(1, '#a', 'B')], stored, structuredClone(stored));
-    expect(unchanged).toEqual([at(0, '#a', 'A'), at(1, '#a', 'B')]);
-    const shifted = { profile: { imports: [{ href: '#a' }, { href: '#c' }] } };
-    // Der doppelte href bleibt ungebunden; der eindeutige folgt seiner Bindung an den neuen Pointer.
-    expect(alignImportBindings([at(0, '#a', 'A'), at(1, '#a', 'B'), at(2, '#c', 'C'), other], stored, shifted)).toEqual([other, at(1, '#c', 'C')]);
+    const doc = (...hrefs: string[]) => ({ profile: { imports: hrefs.map((href) => ({ href })) } });
+    const stored = doc('#a', '#a', '#c');
+    expect(alignImportBindings([at(0, '#a', 'A'), at(1, '#a', 'B')], stored, doc('#a', '#a', '#c'))).toEqual([at(0, '#a', 'A'), at(1, '#a', 'B')]);
+    // Angehängt: Anfang unverändert, beide Duplikate behalten ihre Ziele.
+    expect(alignImportBindings([at(0, '#a', 'A'), at(1, '#a', 'B')], doc('#a', '#a'), doc('#a', '#a', '#d'))).toEqual([at(0, '#a', 'A'), at(1, '#a', 'B')]);
+    // Vorn entfernt: Das Ende rückt nach, ein eindeutiger href folgt seiner Bindung.
+    expect(alignImportBindings([at(0, '#x', 'X'), at(1, '#a', 'A'), at(2, '#c', 'C'), other], doc('#x', '#a', '#c'), doc('#a', '#c'))).toEqual([at(0, '#a', 'A'), at(1, '#c', 'C'), other]);
+    // Mehrdeutig: Welches von zwei gleichen Duplikaten entfernt wurde, ist nicht entscheidbar.
+    expect(alignImportBindings([at(0, '#a', 'A')], doc('#a', '#a'), doc('#a'))).toEqual([]);
+    expect(alignImportBindings([at(0, '#a', 'A'), at(1, '#a', 'B'), at(2, '#c', 'C')], stored, doc('#a', '#c'))).toEqual([at(1, '#c', 'C')]);
   });
 
   it('erzeugt keinen Import ohne href', () => {

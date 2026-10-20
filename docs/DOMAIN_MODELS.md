@@ -553,10 +553,13 @@ leerer Einschlussselektor `{}` bleibt stehen und ist ein Hinweis. Ein neues
 Importziels. Kein Patch ändert `metadata.oscal-version`; „Import hinzufügen“
 bietet nur Ziele derselben Version an. Eine Import-Bindung gilt für genau den
 Pointer ihres Imports: `shiftImportBindings()` verwirft beim Entfernen die
-Bindung des entfernten Imports und rückt die folgenden nach, und
-`alignImportBindings()` richtet beim Öffnen eines Entwurfs die gespeicherten
-Bindungen an dessen Importen aus; ein mehrfach vorkommender `href` bleibt nach
-einer Verschiebung ungebunden.
+Bindung des entfernten Imports und rückt die folgenden nach; während eines
+expliziten Speicherns ist Entfernen gesperrt. `alignImportBindings()` richtet
+beim Öffnen eines Entwurfs die gespeicherten Bindungen an dessen Importen aus:
+Gemeinsamer Anfang und gemeinsames Ende der `href`-Folgen behalten ihre
+Bindungen an der neuen Position, eine Überlappung beider gilt als mehrdeutig.
+Dazwischen folgt ein `href` seiner Bindung nur, wenn er im Entwurf und im
+gespeicherten Dokument eindeutig ist; sonst bleibt der Import ungebunden.
 
 **Hinweise.** `collectProfileHints()` meldet Selektoren ohne `with-ids` und
 `matching`, `matching` ohne `pattern`, ein leeres `modify`, `alter` ohne

@@ -25,7 +25,8 @@ function TargetMenu({ id, options, oscalVersion, onPick }: Readonly<{
       <legend className={`${SECTION_LABEL} float-left w-full px-4 pb-1`}>Importziel</legend>
       <ul>
         {options.map((option) => {
-          const disabled = option.oscalVersion !== oscalVersion;
+          // Ein Katalog mit fehlgeschlagener Hashprüfung wird nie aufgelöst und ist deshalb kein wählbares Ziel.
+          const disabled = option.oscalVersion !== oscalVersion || option.verification === 'invalid';
           return (
             <li key={option.key}>
               <button
@@ -107,7 +108,7 @@ export function ImportsTab({ editor, analysis, analyzedBindings, options, oscalV
             edge={analysis?.imports.find((edge) => edge.path === pointer)}
             controls={matches ? analysis?.targets.get(pointer) : undefined}
             details={catalogDetails(catalogs, target)}
-            canRemove={editor.imports.length > 1}
+            canRemove={editor.imports.length > 1 && !editor.busy}
             onChange={editor.change}
             onRemove={() => editor.removeImportAt(entry.index)}
             onAssign={() => setPicking(entry.index)}

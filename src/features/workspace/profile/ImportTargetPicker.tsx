@@ -67,7 +67,7 @@ export function ImportTargetPicker({ name, options, selected, requiredVersion, o
                 option={option}
                 name={name}
                 checked={selected === option.key}
-                disabled={requiredVersion !== undefined && option.oscalVersion !== requiredVersion}
+                disabled={option.verification === 'invalid' || (requiredVersion !== undefined && option.oscalVersion !== requiredVersion)}
                 onSelect={onSelect}
               />
             ))}
