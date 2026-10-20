@@ -28,6 +28,28 @@ import type { OscalRootMetadataView } from '@/domain/oscalRootDocument';
 /** Der JSON-Root-Key dieses Modells. Er ist kein Versionsschalter. */
 export const COMPONENT_DEFINITION_ROOT_TYPE = 'component-definition' as const;
 
+/**
+ * Die dokumentierten Werte von `defined-component.type`, in allen vier
+ * gepinnten Versionen gleich. Das Vokabular ist offen (`allow-other="yes"`,
+ * im Schema `anyOf` mit `StringDatatype`): Ein anderer Wert ist schemavalide.
+ */
+export const COMPONENT_TYPE_VALUES = Object.freeze([
+  'interconnection',
+  'software',
+  'hardware',
+  'service',
+  'policy',
+  'physical',
+  'process-procedure',
+  'plan',
+  'guidance',
+  'standard',
+  'validation',
+] as const);
+
+/** Ob ein `type`-Wert zu {@link COMPONENT_TYPE_VALUES} gehört. */
+export type ComponentTypeVocabulary = 'documented' | 'unknown';
+
 /* ------------------------------------------------------------------ */
 /*  View-Typen                                                         */
 /* ------------------------------------------------------------------ */
@@ -138,7 +160,10 @@ export interface ComponentControlImplementation {
 
 export interface DefinedComponent {
   readonly uuid?: string;
+  /** Der unveränderte Quellwert; ein unbekannter Wert wird nicht ersetzt. */
   readonly type?: string;
+  /** Nur gesetzt, wenn `type` als String vorliegt; keine Diagnose bei `unknown`. */
+  readonly typeVocabulary?: ComponentTypeVocabulary;
   readonly title?: string;
   readonly description?: string;
   readonly purpose?: string;

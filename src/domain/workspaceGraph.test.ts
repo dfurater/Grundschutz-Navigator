@@ -106,6 +106,26 @@ describe('Verbundgraph', () => {
     }
   });
 
+  it('bricht einen selbstreferenzierenden Component-Import ab und löst ungebundene oder externe Importe nicht auf', async () => {
+    const network = { fetch: vi.fn(), xhr: vi.fn() };
+    vi.stubGlobal('fetch', network.fetch);
+    vi.stubGlobal('XMLHttpRequest', network.xhr);
+    const a = member('component-definition', 'a');
+    const pointer = '/component-definition/import-component-definitions/0/href';
+    const kinds = (edges: readonly { kind: string }[]) => edges.filter(e => e.kind === 'component-import');
+    body(a)['import-component-definitions'] = [{ href: 'selbst.json' }];
+    const self = await buildWorkspaceGraph({ members: [a], bindings: [bind(a, pointer, a)] });
+    expect(kinds(self.edges)).toEqual([expect.objectContaining({ state: 'error', diagnostic: expect.objectContaining({ code: 'OSCAL_GRAPH_IMPORT_CYCLE' }) })]);
+    const unbound = await buildWorkspaceGraph({ members: [a], bindings: [] });
+    expect(kinds(unbound.edges)).toEqual([{ kind: 'component-import', from: expect.anything(), path: pointer, state: 'not-evaluable' }]);
+    const binding = bind(a, pointer, a);
+    body(a)['import-component-definitions'] = [{ href: 'https://example.invalid/basis.json' }];
+    const external = await buildWorkspaceGraph({ members: [a], bindings: [{ ...binding, href: 'https://example.invalid/basis.json' }] });
+    expect(kinds(external.edges)).toEqual([{ kind: 'component-import', from: expect.anything(), path: pointer, state: 'external' }]);
+    expect(network.fetch).not.toHaveBeenCalled();
+    expect(network.xhr).not.toHaveBeenCalled();
+  });
+
   it('weist gemischte Verbünde und mapping-collection ab', async () => {
     const a = member('catalog', 'a');
     const b = { ...member('catalog', 'b'), verbundId: 'other' as VerbundId };

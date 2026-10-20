@@ -750,6 +750,16 @@ Kontrolle **nach Aussage der Definition** umsetzt. Sie ist kein geprüfter
 Compliance-, Audit- oder Zertifizierungsstatus. Der Navigator liest diese
 Aussagen und macht sie navigierbar — er bewertet sie nicht.
 
+Keine Struktur des Modells trägt ein Status-, Reifegrad- oder Umsetzungsfeld:
+weder `component-definition` noch `defined-component`, `capability`,
+`control-implementation`, `implemented-requirement` oder `statement`.
+`implementation-status` existiert nur im SSP. Die `description` einer
+`implemented-requirement` ist laut Schema ein Vorschlag des Anbieters, wie die
+Anforderung umgesetzt werden kann, sobald die Komponente in einem SSP
+eingesetzt wird; die Projektion übernimmt sie als Text. Ob eine Anforderung
+umgesetzt, wirksam oder abgedeckt ist, steht in keinem Feld des Modells, und
+die Projektion leitet es nicht ab.
+
 Der fachliche Nutzen ist Navigierbarkeit („welche Kontrollen adressiert
 Komponente X", „welche Komponenten adressieren Kontrolle Y"). Nach NIST sind
 Component Definitions dafür gedacht, dass ihre Inhalte in einen SSP übernommen
@@ -842,6 +852,47 @@ nie; verworfen wird ausschließlich vorher, im Root-Dispatch.
 Die Leser diagnostizieren einen **vorhandenen** Wert der falschen Form, statt
 ihn still zu `[]` zu machen.
 
+### Lokale Component Definitions (Vertrauensklasse 2)
+
+Eine lokale Datei erreicht die Projektion über die Klasse-2-Importgrenze:
+`importClass2OscalDocument()` prüft im Worker Bytes, Root, Version und Schema
+der deklarierten `metadata.oscal-version` (Stufen 1–3); `source` und `context`
+des Erfolgsergebnisses gehen an `parseComponentDefinitionDocument()`. Das
+Dokument behält `trustClass: 'class-2-local-user'` und erhält keine
+Manifest-Provenienz.
+
+Ein Dokument aus `uuid` und `metadata` ist in allen vier gepinnten Versionen
+schemavalide; `components`, `capabilities` und `import-component-definitions`
+sind optional. Das Schema verlangt `description` an `incorporates-component`
+und an `statement`; ein `statement` im SSP kommt ohne `description` aus.
+
+### Offenes Vokabular `defined-component.type`
+
+Das Schema führt `type` als `anyOf` aus `StringDatatype` und den elf Werten
+in `COMPONENT_TYPE_VALUES` (`src/domain/componentDefinitionModel.ts`); das
+Metaschema deklariert `allow-other="yes"`. Ein anderer Wert ist schemavalide.
+`DefinedComponent.type` trägt den Quellwert unverändert,
+`DefinedComponent.typeVocabulary` die Einordnung `documented` oder `unknown`.
+Ein unbekannter Wert erzeugt keine Diagnose. Fehlt `type`, fehlt auch
+`typeVocabulary`.
+
+### Import-Kante `import-component-definitions`
+
+`import-component-definitions[].href` verbindet zwei Component Definitions.
+Im Informationsverbund verbinden drei Kantenarten Dokumente desselben
+Root-Typs und können deshalb Zykel bilden: `profile-import`,
+`component-import` und `ssp-leveraged-authorization`
+(`leveraged-authorizations/*/links` mit `rel: 'system-security-plan'`).
+`markWorkspaceCycles()` prüft genau diese drei. Der Adapter klassifiziert
+jeden `href` über `src/domain/referenceResolution.ts` und lädt nichts nach. Im
+Informationsverbund wird die Kante zu `component-import`
+(`src/domain/workspaceEdges.ts`): Ein absoluter `href` ist `external`, auch mit
+Bindung; ein relativer ohne Bindung ist `not-evaluable`; eine Bindung auf ein
+Dokument, das über `component-import` zurückführt, auch auf sich selbst,
+markiert `markWorkspaceCycles()` (`src/domain/workspaceGraphContext.ts`) mit
+`OSCAL_GRAPH_IMPORT_CYCLE`. Die Markierung läuft als iterative Tiefensuche und
+terminiert auch bei Zykeln.
+
 ### Testkorpus
 
 Die sechs realen Definitionen liegen nicht im Repository: `npm run fetch-catalog`
@@ -856,6 +907,11 @@ Der Realkorpus ist optional: `oscalComponentDocument.node.test.ts` läuft nur,
 wenn `GSPP_COMPONENT_CORPUS_PATH` auf ein lokal geholtes Verzeichnis zeigt, und
 wird sonst übersprungen. Er prüft Erhaltung und die Byte-Identität gegen
 `contentSha256` aus `upstream-manifest.json`, nie feste Inhaltszahlen.
+
+Den Klasse-2-Lesepfad prüft `oscalComponentDocument.class2.node.test.ts` mit
+synthetischen Fixtures aus derselben Fixture-Datei
+(`makeComponentDefinitionWithoutComponents()`,
+`makeCapabilityOnlyComponentDefinition()`, `makeLocalComponentDefinition()`).
 
 ## System Security Plans (Implementation Layer)
 
