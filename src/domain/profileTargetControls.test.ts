@@ -6,13 +6,13 @@ describe('Anforderungen eines Importziels', () => {
     const index = buildTargetControlIndex({
       catalog: {
         controls: [{ id: 'ROOT.1', title: 'Wurzel' }],
-        groups: [{
+        groups: [42, {
           id: 'GC', title: 'Governance',
           controls: [{ id: 'GC.0', title: 'Direkt' }],
           groups: [{
             id: 'GC.1', title: 'Grundlagen',
             controls: [{ id: 'GC.1.1', title: 'Eins', controls: [{ id: 'GC.1.1.1', title: 'Kind' }] }],
-            groups: [{ id: 'GC.1.X', controls: [{ id: 'GC.1.9', title: 'Tief' }, { title: 'ohne id' }] }],
+            groups: [{ id: 'GC.1.X', controls: [{ id: 'GC.1.9', title: 'Tief' }, { title: 'ohne id' }] }, 'kein Objekt', null],
           }],
         }],
       },

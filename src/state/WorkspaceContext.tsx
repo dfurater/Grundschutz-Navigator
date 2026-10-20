@@ -258,8 +258,13 @@ export function WorkspaceProvider({ open = openWorkspaceStore, children }: Reado
     renameVerbund: (verbundId, name) => write((store) => store.renameVerbund(verbundId, name)),
     deleteVerbund: async (verbundId) => {
       // Auch ungespeicherte Importziele sind Dokumentinhalt (`href`); sie fallen mit dem Verbund.
-      const listed = port ? await port.listDocuments(verbundId) : undefined;
-      const members = listed?.ok ? listed.value : [];
+      // Ohne Mitgliederliste keine Löschung: Sonst blieben deren ungespeicherte Importziele im Tab zurück.
+      const listed = port ? await port.listDocuments(verbundId) : storageFailed();
+      if (!listed.ok) {
+        report(listed.diagnostic);
+        return listed;
+      }
+      const members = listed.value;
       const result = await write((store) => store.deleteVerbund(verbundId));
       // Keine Restkopie der gelöschten Inhalte im Tab, auch nicht für Browser-Zurück.
       if (result.ok) {

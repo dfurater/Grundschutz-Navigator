@@ -59,6 +59,12 @@ function criteriaActions(index: number, scope: ProfileSelectionScope, onChange: 
   };
 }
 
+function unmatched(withIds: readonly string[], controls: TargetControlIndex | undefined): readonly string[] {
+  if (!controls) return withIds;
+  const known = new Set(controls.ids);
+  return withIds.filter((id) => !known.has(id));
+}
+
 export function ImportCard({ entry, position, oscalVersion, target, edge, controls, details, canRemove, onChange, onRemove, onAssign }: Readonly<{
   entry: ProfileImportView;
   position: number;
@@ -125,7 +131,8 @@ export function ImportCard({ entry, position, oscalVersion, target, edge, contro
           {controls
             ? <RequirementSelection index={controls} selected={selected} details={details} onChange={(changed, checked) => onChange((source) => setSelectedControls(source, entry.index, 'include', changed, checked))} />
             : <p className="text-sm text-[var(--color-text-secondary)]">Die Anforderungen des Importziels stehen zur Auswahl, sobald das Ziel gebunden und geladen ist.</p>}
-          <SelectionCriteria title="Weitere Auswahl" oscalKey="include-controls" view={entry.include} ids={ids} actions={{ ...criteriaActions(entry.index, 'include', onChange), setWithChildControls: undefined }} showIds={false} />
+          {/* Einzel-IDs ohne Treffer im Importziel bleiben sichtbar und einzeln entfernbar. */}
+          <SelectionCriteria title="Weitere Auswahl" oscalKey="include-controls" view={{ ...entry.include, withIds: unmatched(entry.include.withIds, controls) }} ids={ids} actions={{ ...criteriaActions(entry.index, 'include', onChange), setWithChildControls: undefined }} />
         </div>
       )}
       {(entry.mode === 'all' || entry.mode === 'controls') && (

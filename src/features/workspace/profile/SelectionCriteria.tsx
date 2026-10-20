@@ -82,34 +82,31 @@ function AddId({ onAdd }: Readonly<{ onAdd: (id: string) => void }>) {
  * als Glob gegen `control/@id` genau dieses Importziels gezählt, nie als
  * regulärer Ausdruck.
  */
-export function SelectionCriteria({ title, oscalKey, view, ids, actions, showIds = true, childLabel }: Readonly<{
+export function SelectionCriteria({ title, oscalKey, view, ids, actions, childLabel }: Readonly<{
   title: string;
   oscalKey: string;
   view: ProfileSelectorView;
   ids: readonly string[];
   actions: SelectionCriteriaActions;
-  showIds?: boolean;
   childLabel?: string;
 }>) {
   return (
     <section aria-label={title} className="space-y-3">
       <h3 className={`${SECTION_LABEL} flex items-baseline gap-2`}>{title} <OscalKey>{oscalKey}</OscalKey></h3>
-      {showIds && (
-        <div className="space-y-1.5">
-          <p className="flex items-baseline gap-2 text-sm text-[var(--color-text-primary)]">Einzelne Anforderungen <OscalKey>with-ids</OscalKey></p>
-          <ul className="flex flex-wrap items-center gap-1.5">
-            {view.withIds.map((id) => (
-              <li key={id} className="inline-flex items-center gap-1 rounded border border-[var(--color-border-default)] bg-[var(--color-surface-subtle)] pl-2 font-mono text-xs text-[var(--color-text-primary)]">
-                {id}
-                <button type="button" className={ICON_BUTTON} aria-label={`${id} entfernen`} onClick={() => actions.setId(id, false)}>
-                  <IconX className="h-3 w-3" />
-                </button>
-              </li>
-            ))}
-            <li><AddId onAdd={(id) => actions.setId(id, true)} /></li>
-          </ul>
-        </div>
-      )}
+      <div className="space-y-1.5">
+        <p className="flex items-baseline gap-2 text-sm text-[var(--color-text-primary)]">Einzelne Anforderungen <OscalKey>with-ids</OscalKey></p>
+        <ul className="flex flex-wrap items-center gap-1.5">
+          {view.withIds.map((id) => (
+            <li key={id} className="inline-flex items-center gap-1 rounded border border-[var(--color-border-default)] bg-[var(--color-surface-subtle)] pl-2 font-mono text-xs text-[var(--color-text-primary)]">
+              {id}
+              <button type="button" className={ICON_BUTTON} aria-label={`${id} entfernen`} onClick={() => actions.setId(id, false)}>
+                <IconX className="h-3 w-3" />
+              </button>
+            </li>
+          ))}
+          <li><AddId onAdd={(id) => actions.setId(id, true)} /></li>
+        </ul>
+      </div>
       <div className="space-y-1.5">
         <p className="flex items-baseline gap-2 text-sm text-[var(--color-text-primary)]">Muster <OscalKey>matching</OscalKey></p>
         <ul className="space-y-2">

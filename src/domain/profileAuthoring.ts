@@ -67,11 +67,15 @@ function body(source: unknown): JsonObject | undefined {
 
 function selectorView(selectors: readonly unknown[]): ProfileSelectorView {
   const withIds: string[] = [];
+  const seen = new Set<string>();
   const patterns: ProfilePatternView[] = [];
   selectors.forEach((selector, index) => {
     if (!isJsonObject(selector)) return;
     for (const entry of readArray(selector['with-ids'])) {
-      if (typeof entry === 'string' && !withIds.includes(entry)) withIds.push(entry);
+      if (typeof entry === 'string' && !seen.has(entry)) {
+        seen.add(entry);
+        withIds.push(entry);
+      }
     }
     readArray(selector.matching).forEach((matching, item) => {
       patterns.push({ selector: index, item, pattern: isJsonObject(matching) ? readString(matching.pattern) : undefined });

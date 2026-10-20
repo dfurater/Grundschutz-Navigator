@@ -7,11 +7,12 @@ export const CLASS_1_ORIGIN_LABEL = 'BSI-geprüft';
 
 const MARK = 'inline-flex items-center gap-1 whitespace-nowrap rounded border px-2 py-0.5 text-xs font-medium leading-4';
 
-export type CatalogVerification = 'valid' | 'invalid' | 'pending';
+export type CatalogVerification = 'valid' | 'invalid' | 'pending' | 'unavailable';
 
 const UNVERIFIED_LABELS: Readonly<Record<Exclude<CatalogVerification, 'valid'>, string>> = {
   invalid: 'BSI-Katalog · nicht verifiziert',
   pending: 'BSI-Katalog · Prüfung offen',
+  unavailable: 'BSI-Katalog · nicht ladbar',
 };
 
 /** „BSI-geprüft“ steht nur bei bestandener Hashprüfung; Herkunft allein trägt kein Siegel. */

@@ -23,9 +23,14 @@ export interface ImportTargetOption {
   readonly verification?: CatalogVerification;
 }
 
-function verificationOf(valid: boolean | undefined): CatalogVerification {
-  if (valid === undefined) return 'pending';
-  return valid ? 'valid' : 'invalid';
+function verificationOf(valid: boolean | undefined, error: string | null | undefined): CatalogVerification {
+  if (valid !== undefined) return valid ? 'valid' : 'invalid';
+  return error ? 'unavailable' : 'pending';
+}
+
+/** Ein Katalog mit fehlgeschlagener Hashprüfung oder Ladefehler wird nie aufgelöst und ist kein wählbares Ziel. */
+export function selectableTarget(option: ImportTargetOption): boolean {
+  return option.verification !== 'invalid' && option.verification !== 'unavailable';
 }
 
 export function targetKey(target: BindingTarget): string {
@@ -75,7 +80,7 @@ export function useImportTargets(view: VerbundView, excludeLocalId?: LocalId): r
         rootType: 'catalog',
         oscalVersion: entry.oscalVersion,
         count: loaded?.catalog?.controls.length,
-        verification: verificationOf(loaded?.verification?.valid),
+        verification: verificationOf(loaded?.verification?.valid, loaded?.error),
       };
     }),
     ...locals.map((document): ImportTargetOption => {

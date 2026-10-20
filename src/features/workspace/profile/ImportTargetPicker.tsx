@@ -1,7 +1,7 @@
 import { ROOT_TYPE_LABELS } from '@/domain/workspaceStations';
 import { FOCUS_RING } from '@/features/workspace/DocumentMarks';
 import { OriginMark, formatCount } from '@/features/workspace/profile/ProfileMarks';
-import type { ImportTargetOption } from '@/features/workspace/profile/useImportTargets';
+import { selectableTarget, type ImportTargetOption } from '@/features/workspace/profile/useImportTargets';
 
 function OptionRow({ option, name, checked, disabled, onSelect }: Readonly<{
   option: ImportTargetOption;
@@ -67,7 +67,7 @@ export function ImportTargetPicker({ name, options, selected, requiredVersion, o
                 option={option}
                 name={name}
                 checked={selected === option.key}
-                disabled={option.verification === 'invalid' || (requiredVersion !== undefined && option.oscalVersion !== requiredVersion)}
+                disabled={!selectableTarget(option) || (requiredVersion !== undefined && option.oscalVersion !== requiredVersion)}
                 onSelect={onSelect}
               />
             ))}

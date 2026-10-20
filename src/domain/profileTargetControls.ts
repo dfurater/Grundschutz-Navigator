@@ -52,7 +52,8 @@ function groupControls(group: JsonObject): TargetControl[] {
   const controls: TargetControl[] = [];
   collectControls(readArray(group.controls), 0, undefined, controls);
   for (const nested of readArray(group.groups)) {
-    if (isJsonObject(nested)) controls.push(...groupControls(nested));
+    // Einzeln anhängen: Eine Argumentliste mit sehr vielen Controls sprengt den Aufrufstapel.
+    if (isJsonObject(nested)) for (const control of groupControls(nested)) controls.push(control);
   }
   return controls;
 }

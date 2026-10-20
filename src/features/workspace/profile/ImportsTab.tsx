@@ -10,7 +10,7 @@ import type { ProfileAnalysis } from '@/state/workspaceProfileAnalysis';
 import { FOCUS_RING } from '@/features/workspace/DocumentMarks';
 import { ImportCard } from '@/features/workspace/profile/ImportCard';
 import { SECTION_LABEL } from '@/features/workspace/profile/ProfileMarks';
-import { targetKey, type ImportTargetOption } from '@/features/workspace/profile/useImportTargets';
+import { selectableTarget, targetKey, type ImportTargetOption } from '@/features/workspace/profile/useImportTargets';
 import type { ProfileEditor } from '@/features/workspace/profile/useProfileEditor';
 
 /** Auswahlliste der Importziele; ein Ziel mit anderer `oscal-version` ist ausgegraut. */
@@ -25,8 +25,7 @@ function TargetMenu({ id, options, oscalVersion, onPick }: Readonly<{
       <legend className={`${SECTION_LABEL} float-left w-full px-4 pb-1`}>Importziel</legend>
       <ul>
         {options.map((option) => {
-          // Ein Katalog mit fehlgeschlagener Hashprüfung wird nie aufgelöst und ist deshalb kein wählbares Ziel.
-          const disabled = option.oscalVersion !== oscalVersion || option.verification === 'invalid';
+          const disabled = option.oscalVersion !== oscalVersion || !selectableTarget(option);
           return (
             <li key={option.key}>
               <button

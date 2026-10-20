@@ -121,6 +121,15 @@ describe('Neuanlage über das Importziel', () => {
     expect(main()).not.toHaveTextContent('BSI-geprüft');
   });
 
+  it('zeigt einen Katalog mit Ladefehler als nicht ladbar und nicht wählbar', async () => {
+    const failed = { catalogKey: 'gspp', catalogDocument: null, catalog: null, verification: null, error: 'Netzfehler' } as unknown as LoadedCatalogState;
+    renderArea(buildStationUrl(seeded.verbundId, 'profile'), { ...EMPTY_CATALOG_STATE, catalogs: new Map<CatalogKey, LoadedCatalogState>([['gspp', failed]]) });
+    await openNewProfile('Paket');
+    const radio = await within(main()).findByRole('radio', { name: /catalog-gspp/ });
+    expect(radio.closest('label')!).toHaveTextContent('BSI-Katalog · nicht ladbar');
+    expect(radio).toBeDisabled();
+  });
+
   it('bindet ein Ziel des eigenen Verbunds lokal und bietet kein Ziel eines anderen Verbunds an', async () => {
     const catalog = await add(seeded.verbundId, local('catalog', '1.2.2', 'Zusatzkatalog'));
     await add(seeded.otherVerbundId, local('catalog', '1.2.2', 'Fremder Katalog'));

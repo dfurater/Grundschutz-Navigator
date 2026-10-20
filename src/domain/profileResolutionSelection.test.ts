@@ -5,7 +5,7 @@ import {
   indexCatalogControls,
   PROFILE_RESOLUTION_SELECTION_DIAGNOSTIC_CODES,
   resolveSelectionIds,
-  type ImportSelectionRequest,
+  type ImportSelectionRequest, countGlobMatches
 } from './profileResolutionSelection';
 
 /**
@@ -409,5 +409,13 @@ describe('Selektion Phase 1 — Fail-closed', () => {
         PROFILE_RESOLUTION_SELECTION_DIAGNOSTIC_CODES.WITH_CHILD_CONTROLS_INVALID,
       );
     }
+  });
+});
+
+describe('countGlobMatches', () => {
+  it('zählt Treffer eines Glob-Musters und meldet ein erschöpftes Budget mit null', () => {
+    expect(countGlobMatches('A.*', ['A.1', 'A.2', 'B.1'])).toBe(2);
+    // 20 000 IDs zu je 1 000 Zeichen gegen „*b“: rund 20 Mio. Glob-Zustände über der Arbeitsgrenze.
+    expect(countGlobMatches('*b', Array.from({ length: 20_000 }, () => 'a'.repeat(1_000)))).toBeNull();
   });
 });
