@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { downloadBlob } from '@/adapters/browserDownload';
 import { readProfileImports, type ProfileImportView } from '@/domain/profileAuthoring';
-import { importHrefPointer } from '@/domain/profileImportList';
+import { alignImportBindings, importHrefPointer, removeImport, shiftImportBindings } from '@/domain/profileImportList';
 import { exportProfileInWorker } from '@/adapters/profileWorkbench';
 import { isPinnedOscalVersion } from '@/domain/oscalVersionMatrix';
 import { commitExplicitSave, sameProfileContent } from '@/domain/profileSave';
 import type { BindingTarget, LocalId, WorkspaceBinding, WorkspaceEnvelope } from '@/domain/workspaceModel';
 import { useWorkspace } from '@/hooks/useWorkspace';
+import type { PendingImportTarget } from '@/state/workspaceDocuments';
 
 /** Wartezeit nach der letzten Änderung, bevor der Entwurf automatisch gesichert wird. */
 export const PROFILE_AUTOSAVE_DELAY_MS = 800;
@@ -36,8 +37,10 @@ export interface ProfileEditor {
   readonly bindings: readonly WorkspaceBinding[];
   readonly targetFor: (entry: ProfileImportView) => BindingTarget | undefined;
   readonly change: (patch: (source: unknown) => unknown) => void;
+  /** Entfernt einen Import; die Bindungen der folgenden Importe rücken mit. */
+  readonly removeImportAt: (index: number) => void;
   /** Ändert die Quelle und ordnet einem `href` ein Importziel zu. */
-  readonly changeWithTarget: (patch: (source: unknown) => { source: unknown; href: string }, target: BindingTarget) => void;
+  readonly changeWithTarget: (patch: (source: unknown) => { source: unknown; href: string; index: number }, target: BindingTarget) => void;
   readonly save: () => Promise<void>;
   readonly exportDocument: () => Promise<void>;
   /** Löscht das Dokument samt Entwurf und Bindungen; ein offener Autosave entfällt. */
@@ -45,22 +48,26 @@ export interface ProfileEditor {
 }
 
 /**
- * Ziel eines Imports: die gespeicherte Bindung an genau seinem Pointer, dann
- * eine ungespeicherte Zuordnung, dann eine eindeutige gespeicherte Bindung
- * desselben `href` (der Import ist nach dem Entfernen eines früheren nachgerückt).
+ * Ziel eines Imports: die Bindung an genau seinem Pointer, sonst eine
+ * ungespeicherte Zuordnung. `stored` ist stets an den Pointern des
+ * Arbeitsstands ausgerichtet (`alignImportBindings`, `shiftImportBindings`).
  */
-function targetOf(entry: ProfileImportView, stored: readonly WorkspaceBinding[], pending: ReadonlyMap<string, BindingTarget>): BindingTarget | undefined {
+function targetOf(entry: ProfileImportView, stored: readonly WorkspaceBinding[], pending: ReadonlyMap<string, PendingImportTarget>): BindingTarget | undefined {
   if (entry.href === undefined) return undefined;
   const pointer = importHrefPointer(entry.index);
-  const exact = stored.find((binding) => binding.pointer === pointer && binding.href === entry.href);
-  if (exact) return exact.target;
-  const assigned = pending.get(entry.href);
-  if (assigned) return assigned;
-  const sameHref = stored.filter((binding) => IMPORT_POINTER.test(binding.pointer) && binding.href === entry.href);
-  return sameHref.length === 1 ? sameHref[0].target : undefined;
+  const assigned = pending.get(pointer);
+  return stored.find((binding) => binding.pointer === pointer && binding.href === entry.href)?.target
+    ?? (assigned?.href === entry.href ? assigned.target : undefined);
 }
 
-function editorBindings(localId: LocalId, imports: readonly ProfileImportView[], stored: readonly WorkspaceBinding[], pending: ReadonlyMap<string, BindingTarget>): WorkspaceBinding[] {
+/** Ungespeicherte Zuordnungen nach dem Entfernen eines Imports, an denselben Pointern wie `shiftImportBindings`. */
+function shiftPending(pending: Map<string, PendingImportTarget>, removed: number): void {
+  const shifted = shiftImportBindings([...pending].map(([pointer, value]) => ({ pointer, ...value })), removed);
+  pending.clear();
+  for (const { pointer, href, target } of shifted) pending.set(pointer, { href, target });
+}
+
+function editorBindings(localId: LocalId, imports: readonly ProfileImportView[], stored: readonly WorkspaceBinding[], pending: ReadonlyMap<string, PendingImportTarget>): WorkspaceBinding[] {
   const others = stored.filter((binding) => !IMPORT_POINTER.test(binding.pointer));
   const own = imports.flatMap((entry) => {
     const target = targetOf(entry, stored, pending);
@@ -82,7 +89,7 @@ export function useProfileEditor(localId: LocalId): ProfileEditor {
   const [stored, setStored] = useState<readonly WorkspaceBinding[]>([]);
   const pending = documents.importTargets(localId);
   // Spiegel der Map aus dem Arbeitsbereich, damit neue Zuordnungen neu rendern.
-  const [pendingTargets, setPendingTargets] = useState<ReadonlyMap<string, BindingTarget>>(() => new Map(pending));
+  const [pendingTargets, setPendingTargets] = useState<ReadonlyMap<string, PendingImportTarget>>(() => new Map(pending));
   const [saveState, setSaveState] = useState<ProfileSaveState>({ kind: 'stored' });
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<ProfileEditorMessage>();
@@ -109,7 +116,8 @@ export function useProfileEditor(localId: LocalId): ProfileEditor {
       latest.current = { working: source, envelope: document.value, draftSavedAt: draft.value?.savedAt ?? null, unsaved: false };
       setEnvelope(document.value);
       setWorking(source);
-      setStored(bindings.value.filter((binding) => binding.fromLocalId === localId));
+      const own = bindings.value.filter((binding) => binding.fromLocalId === localId);
+      setStored(draft.value ? alignImportBindings(own, document.value.source, draft.value.source) : own);
       setSaveState(draft.value ? { kind: 'autosaved', at: draft.value.savedAt } : { kind: 'stored' });
       setStatus('ready');
     });
@@ -159,12 +167,19 @@ export function useProfileEditor(localId: LocalId): ProfileEditor {
     schedule();
   }, [schedule]);
 
-  const changeWithTarget = useCallback((patch: (source: unknown) => { source: unknown; href: string }, target: BindingTarget) => {
+  const changeWithTarget = useCallback((patch: (source: unknown) => { source: unknown; href: string; index: number }, target: BindingTarget) => {
     change((source) => {
       const result = patch(source);
-      pending.set(result.href, target);
+      pending.set(importHrefPointer(result.index), { href: result.href, target });
       return result.source;
     });
+    setPendingTargets(new Map(pending));
+  }, [change, pending]);
+
+  const removeImportAt = useCallback((index: number) => {
+    change((source) => removeImport(source, index));
+    setStored((current) => shiftImportBindings(current, index));
+    shiftPending(pending, index);
     setPendingTargets(new Map(pending));
   }, [change, pending]);
 
@@ -194,7 +209,7 @@ export function useProfileEditor(localId: LocalId): ProfileEditor {
       if (latest.current.unsaved) schedule();
       return;
     }
-    for (const binding of bindings) pending.delete(binding.href);
+    for (const binding of bindings) if (pending.get(binding.pointer)?.href === binding.href) pending.delete(binding.pointer);
     setPendingTargets(new Map(pending));
     setEnvelope(result.value);
     setStored(bindings);
@@ -242,6 +257,6 @@ export function useProfileEditor(localId: LocalId): ProfileEditor {
   return {
     status, envelope, working, imports, dirty, saveState, busy, message, bindings,
     targetFor: (entry) => targetOf(entry, stored, pendingTargets),
-    change, changeWithTarget, save, exportDocument, remove,
+    change, changeWithTarget, removeImportAt, save, exportDocument, remove,
   };
 }

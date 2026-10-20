@@ -5,12 +5,12 @@ import { isLocalIdentity } from '@/app/routes';
 import type { CatalogState } from '@/domain/models';
 import { getCatalogByKey } from '@/domain/sourceRegistry';
 import type { WorkspaceClass1Artifact } from '@/domain/workspaceGraphModel';
-import type { BindingTarget, LocalId, VerbundId, WorkspaceResult, WorkspaceVerbund } from '@/domain/workspaceModel';
+import type { LocalId, VerbundId, WorkspaceResult, WorkspaceVerbund } from '@/domain/workspaceModel';
 import { CatalogContext } from '@/state/CatalogContext';
 import {
   noticeForDiagnostic, quotaNearlyExhausted, withNotice, withoutNotice, type WorkspaceNotice,
 } from '@/state/workspaceNotices';
-import { createWorkspaceDocuments, type WorkspaceDocuments } from '@/state/workspaceDocuments';
+import { createWorkspaceDocuments, type PendingImportTarget, type WorkspaceDocuments } from '@/state/workspaceDocuments';
 import type { VerbundView, WorkspacePort } from '@/state/workspaceVerbundView';
 
 export type OpenWorkspace = () => Promise<WorkspaceResult<WorkspacePort>>;
@@ -114,7 +114,7 @@ export function WorkspaceProvider({ open = openWorkspaceStore, children }: Reado
   const startedRef = useRef(false);
   const autosaves = useRef(new Set<AutosaveFlush>());
   // Ein stabiles Objekt je Provider, nur im Arbeitsspeicher dieses Tabs.
-  const [importTargets] = useState(() => new Map<LocalId, Map<string, BindingTarget>>());
+  const [importTargets] = useState(() => new Map<LocalId, Map<string, PendingImportTarget>>());
   const { catalogs } = useContext(CatalogContext);
   const class1 = useMemo(() => verifiedCatalogArtifacts(catalogs), [catalogs]);
 

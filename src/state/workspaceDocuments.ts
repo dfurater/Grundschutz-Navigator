@@ -13,6 +13,12 @@ import type { WorkspacePort } from '@/state/workspaceVerbundView';
 
 type Port<K extends keyof WorkspacePort> = WorkspacePort[K];
 
+/** Ungespeicherte Zuordnung eines Imports; der `href` prüft, dass der Import an dem Pointer noch derselbe ist. */
+export interface PendingImportTarget {
+  readonly href: string;
+  readonly target: BindingTarget;
+}
+
 export interface WorkspaceDocuments {
   readonly getDocument: Port<'getDocument'>;
   readonly getDraft: Port<'getDraft'>;
@@ -28,11 +34,11 @@ export interface WorkspaceDocuments {
   /** Schemaprüfung einer ungespeicherten Quelle; entscheidet beim Speichern über `export-ready`. */
   readonly checkProfileSchema: (source: unknown) => Promise<ProfileSchemaCheck>;
   /**
-   * Importziele ungespeicherter Importe je Dokument, nach `href`. Sie leben nur
+   * Importziele ungespeicherter Importe je Dokument, nach JSON Pointer des `href`. Sie leben nur
    * im Arbeitsspeicher dieses Tabs und werden beim expliziten Speichern zu
    * Bindungen; nichts davon gelangt in einen Browserspeicher.
    */
-  readonly importTargets: (localId: LocalId) => Map<string, BindingTarget>;
+  readonly importTargets: (localId: LocalId) => Map<string, PendingImportTarget>;
 }
 
 type Write = <T>(operation: (store: WorkspacePort) => Promise<WorkspaceResult<T>>) => Promise<WorkspaceResult<T>>;
@@ -68,7 +74,7 @@ export function createWorkspaceDocuments({ port, write, quiet, class1, targets }
   /** Schreibt ohne Neuladen; Fehler erscheinen als Speichermeldung. */
   quiet: Write;
   class1: readonly WorkspaceClass1Artifact[];
-  targets: Map<LocalId, Map<string, BindingTarget>>;
+  targets: Map<LocalId, Map<string, PendingImportTarget>>;
 }>): WorkspaceDocuments {
   const read = <T,>(operation: (store: WorkspacePort) => Promise<WorkspaceResult<T>>): Promise<WorkspaceResult<T>> =>
     port ? operation(port).catch(storageFailed) : Promise.resolve(storageFailed());

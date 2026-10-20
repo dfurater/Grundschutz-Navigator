@@ -2,7 +2,7 @@ import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { useEffect } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { AppShell } from '@/app/AppShell';
-import { areaForPath, buildVerbundUrl, buildWorkspaceIndexUrl } from '@/app/routes';
+import { areaForPath, buildVerbundUrl, buildWorkspaceDocumentUrl, buildWorkspaceIndexUrl } from '@/app/routes';
 import { StorageFailure, failure } from '@/adapters/workspaceStorageFailure';
 import type { WorkspaceResult } from '@/domain/workspaceModel';
 import { useWorkspace } from '@/hooks/useWorkspace';
@@ -43,9 +43,9 @@ const LEAVE_PATHS: readonly (readonly [string, (router: Router) => void | Promis
   ['Zurück', (router) => act(() => router.navigate(-1))],
 ];
 
-function renderLeaving(flush: AutosaveFlush) {
+function renderLeaving(flush: AutosaveFlush, from = buildWorkspaceIndexUrl()) {
   // Der Katalogeintrag davor ist das Ziel von „Zurück“.
-  return renderAppShell(['/katalog/gspp', buildWorkspaceIndexUrl()], {
+  return renderAppShell(['/katalog/gspp', from], {
     initialIndex: 1,
     shell: () => (
       <CatalogContext.Provider value={catalogState}>
@@ -84,6 +84,23 @@ describe('Autosave beim Wechsel in den Katalog', () => {
     await notice('In einem anderen Tab geändert');
     expect(flush).toHaveBeenCalledTimes(1);
     expect(router.state.location.pathname).toBe(buildWorkspaceIndexUrl());
+  });
+});
+
+describe('Autosave beim Verlassen einer Dokumentroute im Bereich', () => {
+  const documentUrl = buildWorkspaceDocumentUrl(VERBUND.verbundId, '0e1d2c3b-4a59-4687-8796-a5b4c3d2e1f0');
+
+  it('speichert vor dem Wechsel zur Verbundseite und bleibt bei einem Fehler auf der Dokumentroute', async () => {
+    const flush = vi.fn<AutosaveFlush>(() => fail('WORKSPACE_SAVE_CONFLICT'));
+    const { router } = renderLeaving(flush, documentUrl);
+    await screen.findByRole('heading', { level: 1, name: 'Dokument nicht gefunden' });
+    await act(() => router.navigate(buildVerbundUrl(VERBUND.verbundId)));
+    await notice('In einem anderen Tab geändert');
+    expect(router.state.location.pathname).toBe(documentUrl);
+
+    flush.mockImplementation(() => Promise.resolve({ ok: true as const, value: undefined }));
+    await act(() => router.navigate(buildVerbundUrl(VERBUND.verbundId)));
+    await waitFor(() => expect(router.state.location.pathname).toBe(buildVerbundUrl(VERBUND.verbundId)));
   });
 });
 

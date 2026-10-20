@@ -18,6 +18,8 @@ export function useProfileAnalysis(verbundId: VerbundId, localId: LocalId, sourc
   readonly current: boolean;
   /** Die letzte Ableitung ist gescheitert; es gibt dann keinen (veralteten) Befund. */
   readonly failed: boolean;
+  /** Die Bindungen, mit denen `analysis` abgeleitet wurde. */
+  readonly analyzedBindings: readonly WorkspaceBinding[];
 } {
   const { documents } = useWorkspace();
   const { requestCatalog } = useContext(CatalogContext);
@@ -46,5 +48,5 @@ export function useProfileAnalysis(verbundId: VerbundId, localId: LocalId, sourc
     };
   }, [documents, verbundId, localId, source, bindings]);
 
-  return { analysis: state.analysis, failed: state.failed, current: state.source === source && state.bindings === bindings };
+  return { analysis: state.analysis, failed: state.failed, analyzedBindings: state.bindings, current: state.source === source && state.bindings === bindings };
 }

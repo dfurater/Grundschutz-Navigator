@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   addPattern, importModesFor, readProfileImports, removePattern, setImportMode, setPattern, setSelectedControl, setSelectedControls, setWithChildControls, ProfilePatchError,
 } from '@/domain/profileAuthoring';
-import { addImport, createProfileSource, removeImport } from '@/domain/profileImportList';
+import { addImport, alignImportBindings, createProfileSource, removeImport, shiftImportBindings } from '@/domain/profileImportList';
 import { processClass2OscalBytes } from '@/domain/oscalClass2Import';
 import { makeProfileSource, profileSpecFor } from '@/test/fixtures/profiles';
 import type { PinnedOscalVersion } from '@/domain/oscalVersionMatrix';
@@ -106,6 +106,19 @@ describe('Importe hinzufügen und entfernen', () => {
     const removed = removeImport(added.source, 0);
     expect(readProfileImports(removed).map((entry) => entry.href)).toEqual([`#${SECOND}`]);
     expect(() => removeImport(removed, 0)).toThrow('PROFILE_IMPORTS_REQUIRED');
+  });
+
+  it('verschiebt Bindungen beim Entfernen und richtet sie an einem verschobenen Entwurf aus', () => {
+    const at = (index: number, href: string, target: string) => ({ pointer: `/profile/imports/${index}/href`, href, target });
+    const other = { pointer: '/profile/other', href: 'x', target: 'o' };
+    expect(shiftImportBindings([at(0, '#a', 'A'), at(1, '#a', 'B'), other], 0)).toEqual([at(0, '#a', 'B'), other]);
+
+    const stored = { profile: { imports: [{ href: '#a' }, { href: '#a' }, { href: '#c' }] } };
+    const unchanged = alignImportBindings([at(0, '#a', 'A'), at(1, '#a', 'B')], stored, structuredClone(stored));
+    expect(unchanged).toEqual([at(0, '#a', 'A'), at(1, '#a', 'B')]);
+    const shifted = { profile: { imports: [{ href: '#a' }, { href: '#c' }] } };
+    // Der doppelte href bleibt ungebunden; der eindeutige folgt seiner Bindung an den neuen Pointer.
+    expect(alignImportBindings([at(0, '#a', 'A'), at(1, '#a', 'B'), at(2, '#c', 'C'), other], stored, shifted)).toEqual([other, at(1, '#c', 'C')]);
   });
 
   it('erzeugt keinen Import ohne href', () => {

@@ -328,6 +328,64 @@ describe('Fremddokumente bleiben erhalten', () => {
     ]);
   });
 
+  it('gibt die Bindung eines entfernten Imports nicht an den nachrückenden weiter', async () => {
+    const first = await add(seeded.verbundId, local('catalog', '1.2.2', 'Katalog A'));
+    const second = await add(seeded.verbundId, local('catalog', '1.2.2', 'Katalog B'));
+    const profile = await add(seeded.verbundId, local('profile', '1.2.2', 'Doppelt', (body) => {
+      const [entry] = body.imports as Record<string, unknown>[];
+      body.imports = [entry, { href: entry.href, 'include-all': {} }];
+    }));
+    const href = profileBody(profile).imports[0].href as string;
+    for (const [index, target] of [[0, first], [1, second]] as const) {
+      const current = (await readStore((store) => store.getDocument(profile.localId)))!;
+      await readStore((store) => store.setBinding({ fromLocalId: profile.localId, pointer: `/profile/imports/${index}/href`, href, target: { kind: 'local', localId: target.localId } }, current.savedAt));
+    }
+    renderArea(buildWorkspaceDocumentUrl(seeded.verbundId, profile.localId), withGspp());
+    fireEvent.click(await within(main()).findByRole('button', { name: 'Import 1 entfernen' }, WAIT));
+    fireEvent.click(within(main()).getByRole('button', { name: 'Speichern' }));
+    await waitFor(async () => expect(profileBody(await readStore((store) => store.getDocument(profile.localId))).imports).toHaveLength(1), WAIT);
+    const bindings = (await readStore((store) => store.listBindings())).filter((binding) => binding.fromLocalId === profile.localId);
+    expect(bindings.map((binding) => [binding.pointer, binding.target])).toEqual([['/profile/imports/0/href', { kind: 'local', localId: second.localId }]]);
+  });
+
+  it('ordnet ein Importziel nur dem gewählten von zwei ungebundenen Importen gleichen href zu', async () => {
+    const catalog = await add(seeded.verbundId, local('catalog', '1.2.2', 'Katalog A'));
+    const profile = await add(seeded.verbundId, local('profile', '1.2.2', 'Ungebunden', (body) => {
+      const [entry] = body.imports as Record<string, unknown>[];
+      body.imports = [entry, { href: entry.href, 'include-all': {} }];
+    }));
+    renderArea(buildWorkspaceDocumentUrl(seeded.verbundId, profile.localId), withGspp());
+    const [assign] = await within(main()).findAllByRole('button', { name: 'Importziel zuordnen' }, WAIT);
+    fireEvent.click(assign);
+    fireEvent.click(within(within(main()).getByRole('group', { name: 'Importziel' })).getByRole('button', { name: /Katalog A/ }));
+    fireEvent.click(within(main()).getByRole('button', { name: 'Speichern' }));
+    await waitFor(async () => expect((await readStore((store) => store.getDocument(profile.localId)))?.documentState).toBe('export-ready'), WAIT);
+    const bindings = (await readStore((store) => store.listBindings())).filter((binding) => binding.fromLocalId === profile.localId);
+    expect(bindings.map((binding) => [binding.pointer, binding.target])).toEqual([['/profile/imports/0/href', { kind: 'local', localId: catalog.localId }]]);
+  });
+
+  it('zeigt nach dem Entfernen eines Imports keine Anforderungen des alten Ziels beim nachrückenden', async () => {
+    const first = await add(seeded.verbundId, local('catalog', '1.2.2', 'Katalog A'));
+    const second = await add(seeded.verbundId, local('catalog', '1.2.2', 'Katalog B', (body) => {
+      ((body.groups as Record<string, unknown>[])[0].controls as Record<string, unknown>[])[0].id = 'zz-9';
+    }));
+    const otherHref = '#0c0c0c0c-0000-4000-8000-000000000001';
+    const profile = await add(seeded.verbundId, local('profile', '1.2.2', 'Zwei Ziele', (body) => {
+      const [entry] = body.imports as Record<string, unknown>[];
+      body.imports = [entry, { href: otherHref, 'include-controls': [{ 'with-ids': ['zz-9'] }] }];
+    }));
+    const href = profileBody(profile).imports[0].href as string;
+    for (const [index, target, pointerHref] of [[0, first, href], [1, second, otherHref]] as const) {
+      const current = (await readStore((store) => store.getDocument(profile.localId)))!;
+      await readStore((store) => store.setBinding({ fromLocalId: profile.localId, pointer: `/profile/imports/${index}/href`, href: pointerHref, target: { kind: 'local', localId: target.localId } }, current.savedAt));
+    }
+    renderArea(buildWorkspaceDocumentUrl(seeded.verbundId, profile.localId), withGspp());
+    await within(main()).findByRole('checkbox', { name: 'zz-9 auswählen' }, WAIT);
+    fireEvent.click(within(main()).getByRole('button', { name: 'Import 1 entfernen' }));
+    expect(within(main()).queryByRole('checkbox', { name: 'ac-1 auswählen' })).not.toBeInTheDocument();
+    expect(await within(main()).findByRole('checkbox', { name: 'zz-9 auswählen' }, WAIT)).toBeChecked();
+  });
+
   it('bricht einen zirkulären Import mit Fehler ab', async () => {
     const first = await add(seeded.verbundId, local('profile', '1.2.2', 'Erstes'));
     const second = await add(seeded.verbundId, local('profile', '1.2.2', 'Zweites'));

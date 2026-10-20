@@ -127,7 +127,7 @@ export function ProfileEditorPage({ view, document }: Readonly<{ view: VerbundVi
   const desktop = useMediaQuery(DESKTOP_QUERY);
   const localId = document.localId as LocalId;
   const editor = useProfileEditor(localId);
-  const { analysis, current, failed } = useProfileAnalysis(view.verbund.verbundId as VerbundId, localId, editor.working, editor.bindings);
+  const { analysis, current, failed, analyzedBindings } = useProfileAnalysis(view.verbund.verbundId as VerbundId, localId, editor.working, editor.bindings);
   const options = useImportTargets(view, localId);
   const [tab, setTab] = useState<Tab>('imports');
   const [sheet, setSheet] = useState(false);
@@ -160,7 +160,7 @@ export function ProfileEditorPage({ view, document }: Readonly<{ view: VerbundVi
           <WorkspaceNotices />
           {editor.message && <output className="block text-sm text-[var(--color-text-primary)]">{MESSAGES[editor.message]}</output>}
           <div role="tabpanel" id={ids.imports} aria-labelledby={`${ids.imports}-tab`} hidden={tab !== 'imports'}>
-            <ImportsTab editor={editor} analysis={analysis} options={options} oscalVersion={oscalVersion} />
+            <ImportsTab editor={editor} analysis={analysis} analyzedBindings={analyzedBindings} options={options} oscalVersion={oscalVersion} />
           </div>
           <div role="tabpanel" id={ids.references} aria-labelledby={`${ids.references}-tab`} hidden={tab !== 'references'}>
             <ReferenceEdges view={view} document={document} />

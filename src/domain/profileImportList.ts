@@ -91,3 +91,44 @@ export function createProfileSource(input: NewProfileInput): { source: JsonObjec
 export function importHrefPointer(index: number): string {
   return `/profile/imports/${index}/href`;
 }
+
+const IMPORT_POINTER = /^\/profile\/imports\/(\d+)\/href$/;
+
+function importIndex(pointer: string): number | undefined {
+  const match = IMPORT_POINTER.exec(pointer);
+  return match ? Number(match[1]) : undefined;
+}
+
+/** Bindungen nach `removeImport(index)`: Die Bindung des entfernten Imports entfällt, die folgenden rücken nach. */
+export function shiftImportBindings<T extends { readonly pointer: string }>(bindings: readonly T[], removed: number): T[] {
+  return bindings.flatMap((binding) => {
+    const index = importIndex(binding.pointer);
+    if (index === undefined || index < removed) return [binding];
+    return index === removed ? [] : [{ ...binding, pointer: importHrefPointer(index - 1) }];
+  });
+}
+
+function importHrefs(source: unknown): (string | undefined)[] {
+  const imports = isJsonObject(source) && isJsonObject(source.profile) ? readArray(source.profile.imports) : [];
+  return imports.map((entry) => isJsonObject(entry) && typeof entry.href === 'string' ? entry.href : undefined);
+}
+
+/**
+ * Richtet gespeicherte Import-Bindungen an einem Entwurf aus, dessen Importe
+ * sich gegenüber dem gespeicherten Dokument verschoben haben können. Ein im
+ * Entwurf eindeutiger `href` folgt seiner eindeutigen Bindung; ein mehrfach
+ * vorkommender behält seine Bindung nur bei unveränderter `href`-Folge, sonst
+ * bleibt der Import ungebunden statt fremd gebunden.
+ */
+export function alignImportBindings<T extends { readonly pointer: string; readonly href: string }>(bindings: readonly T[], stored: unknown, draft: unknown): T[] {
+  const before = importHrefs(stored);
+  const after = importHrefs(draft);
+  if (before.length === after.length && before.every((href, index) => href === after[index])) return [...bindings];
+  const others = bindings.filter((binding) => importIndex(binding.pointer) === undefined);
+  const aligned = after.flatMap((href, index) => {
+    if (href === undefined || after.filter((entry) => entry === href).length > 1) return [];
+    const matches = bindings.filter((binding) => importIndex(binding.pointer) !== undefined && binding.href === href);
+    return matches.length === 1 ? [{ ...matches[0], pointer: importHrefPointer(index) }] : [];
+  });
+  return [...others, ...aligned];
+}

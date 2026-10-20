@@ -551,7 +551,12 @@ leerer Einschlussselektor `{}` bleibt stehen und ist ein Hinweis. Ein neues
 `matching` beginnt ohne `pattern`. Die Trefferzahl eines `pattern` zählt
 `countGlobMatches()` als Glob gegen die `control/@id` genau eines
 Importziels. Kein Patch ändert `metadata.oscal-version`; „Import hinzufügen“
-bietet nur Ziele derselben Version an.
+bietet nur Ziele derselben Version an. Eine Import-Bindung gilt für genau den
+Pointer ihres Imports: `shiftImportBindings()` verwirft beim Entfernen die
+Bindung des entfernten Imports und rückt die folgenden nach, und
+`alignImportBindings()` richtet beim Öffnen eines Entwurfs die gespeicherten
+Bindungen an dessen Importen aus; ein mehrfach vorkommender `href` bleibt nach
+einer Verschiebung ungebunden.
 
 **Hinweise.** `collectProfileHints()` meldet Selektoren ohne `with-ids` und
 `matching`, `matching` ohne `pattern`, ein leeres `modify`, `alter` ohne

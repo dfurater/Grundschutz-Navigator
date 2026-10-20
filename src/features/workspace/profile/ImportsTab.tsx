@@ -1,10 +1,10 @@
 import { useContext, useId, useState } from 'react';
 import { Button } from '@/components/Button';
 import type { CatalogState, Control } from '@/domain/models';
-import { addImport, importHrefPointer, removeImport } from '@/domain/profileImportList';
+import { addImport, importHrefPointer } from '@/domain/profileImportList';
 import { SUPPORTED_CATALOGS, type CatalogKey } from '@/domain/sourceRegistry';
 import { ROOT_TYPE_LABELS } from '@/domain/workspaceStations';
-import type { BindingTarget } from '@/domain/workspaceModel';
+import type { BindingTarget, WorkspaceBinding } from '@/domain/workspaceModel';
 import { CatalogContext } from '@/state/CatalogContext';
 import type { ProfileAnalysis } from '@/state/workspaceProfileAnalysis';
 import { FOCUS_RING } from '@/features/workspace/DocumentMarks';
@@ -54,9 +54,10 @@ function catalogDetails(catalogs: CatalogState['catalogs'], target: BindingTarge
   return entry ? catalogs.get(entry.catalogKey as CatalogKey)?.catalog?.controlsById : undefined;
 }
 
-export function ImportsTab({ editor, analysis, options, oscalVersion }: Readonly<{
+export function ImportsTab({ editor, analysis, analyzedBindings, options, oscalVersion }: Readonly<{
   editor: ProfileEditor;
   analysis: ProfileAnalysis | null;
+  analyzedBindings: readonly WorkspaceBinding[];
   options: readonly ImportTargetOption[];
   oscalVersion: string;
 }>) {
@@ -69,7 +70,7 @@ export function ImportsTab({ editor, analysis, options, oscalVersion }: Readonly
     setPicking(undefined);
     if (typeof assigning === 'number') {
       const href = editor.imports.find((entry) => entry.index === assigning)?.href;
-      if (href !== undefined) editor.changeWithTarget((source) => ({ source, href }), option.target);
+      if (href !== undefined) editor.changeWithTarget((source) => ({ source, href, index: assigning }), option.target);
       return;
     }
     editor.changeWithTarget((source) => addImport(source, { resourceUuid: crypto.randomUUID(), title: option.title }), option.target);
@@ -92,6 +93,10 @@ export function ImportsTab({ editor, analysis, options, oscalVersion }: Readonly
       </div>
       {editor.imports.map((entry, position) => {
         const target = editor.targetFor(entry);
+        const pointer = importHrefPointer(entry.index);
+        // Nach dem Entfernen eines Imports gehört der Analyseeintrag an diesem Pointer bis zur nächsten Ableitung einem anderen Ziel.
+        const analyzed = analyzedBindings.find((binding) => binding.pointer === pointer && binding.href === entry.href);
+        const matches = target !== undefined && analyzed !== undefined && targetKey(analyzed.target) === targetKey(target);
         return (
           <ImportCard
             key={`${entry.index}|${entry.href ?? ''}`}
@@ -99,12 +104,12 @@ export function ImportsTab({ editor, analysis, options, oscalVersion }: Readonly
             position={position + 1}
             oscalVersion={oscalVersion}
             target={optionFor(target)}
-            edge={analysis?.imports.find((edge) => edge.path === importHrefPointer(entry.index))}
-            controls={analysis?.targets.get(importHrefPointer(entry.index))}
+            edge={analysis?.imports.find((edge) => edge.path === pointer)}
+            controls={matches ? analysis?.targets.get(pointer) : undefined}
             details={catalogDetails(catalogs, target)}
             canRemove={editor.imports.length > 1}
             onChange={editor.change}
-            onRemove={() => editor.change((source) => removeImport(source, entry.index))}
+            onRemove={() => editor.removeImportAt(entry.index)}
             onAssign={() => setPicking(entry.index)}
           />
         );

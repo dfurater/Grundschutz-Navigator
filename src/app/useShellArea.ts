@@ -31,9 +31,13 @@ function routedWorkspace(pathname: string) {
   };
 }
 
-/** Jede Navigation aus dem Bereich Informationsverbünde in den Katalogbereich. */
+/**
+ * Jede Navigation aus dem Bereich Informationsverbünde in den Katalogbereich
+ * und jede Navigation weg von einer Dokumentroute, auf der ein Editor offen sein kann.
+ */
 const leavesWorkspace = (currentPath: string, nextPath: string) =>
-  areaForPath(currentPath) === 'informationsverbuende' && areaForPath(nextPath) === 'katalog';
+  (areaForPath(currentPath) === 'informationsverbuende' && areaForPath(nextPath) === 'katalog')
+  || (matchPath(WORKSPACE_DOCUMENT_ROUTE_PATTERN, currentPath) !== null && currentPath !== nextPath);
 
 /**
  * Hält jeden Übertritt in den Katalogbereich an, bis die registrierten Autosaves
