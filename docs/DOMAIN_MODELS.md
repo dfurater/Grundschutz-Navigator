@@ -1026,6 +1026,8 @@ Der Weg eines SSP in die Anwendung ist die Klasse-2-Importgrenze:
 `parseSspDocument()`. Stufe 4 bleibt `not-checked`; die Referenzprüfungen
 unten sind Modelldiagnosen des Adapters.
 
+Die SSP-Station (`src/features/workspace/ssp/`) nimmt ausschließlich schema-geprüfte SSP-JSON-Dateien auf. `SspDocumentContent` lädt das ausgewählte Dokument über den Workspace-Port und zeigt die Projektion von `parseSspDocument()` mit Modelldiagnosen. `SspFields` beschränkt den lesenden Feldbaum auf fachliche Projektionsfelder; aufgelöste Referenzobjekte und strukturelle Diagnosepfade stehen außerhalb dieses Baums. Fremde `props` und nicht projizierte Inhalte bleiben in `source` erhalten. Der Import und die Anzeige ändern weder Root-UUID noch `metadata.last-modified`.
+
 ### Umsetzungsstatus je Komponente
 
 `implementation-status` sitzt in OSCAL an `by-component` — pro Komponente je

@@ -359,21 +359,25 @@ src/                              # Anwendungsquellcode
 │       ├── VerbundPage.tsx               # Orientierung, Dokumentliste mit Stationsfilter, Diagnosen
 │       ├── WorkspaceNotices.tsx          # Speichermeldungen mit Export bzw. Neu laden
 │       ├── WorkspaceStatePage.tsx        # Lade-, Nicht-gefunden- und Fehlerzustand im Bereich
-│       └── profile/                      # Profile-Station
-│           ├── ImportCard.tsx                # Ein Import: Ziel, Zweigwahl, Auswahl und Ausschlüsse
-│           ├── ImportTargetPicker.tsx        # Importziele nach Herkunft, andere Version ausgegraut
-│           ├── ImportsTab.tsx                # Reiter Importe mit „Import hinzufügen“
-│           ├── NewProfileForm.tsx            # Neuanlage: Titel, dann Importziel
-│           ├── PackagePanel.tsx              # Anforderungspaket, Speicherstand, Export und Speichern
-│           ├── ProfileDiagnostics.tsx        # Aufklappbare Diagnoseleiste der Hauptspalte
-│           ├── ProfileEditorPage.tsx         # Bearbeitungsansicht eines Profils auf der Dokumentroute
-│           ├── ProfileFileImport.tsx         # Profil-Datei über das Klasse-2-Importgate aufnehmen
-│           ├── ProfileMarks.tsx              # Herkunftsmarke, OSCAL-Schlüssel, Tabellen-Checkbox, Aufwand
-│           ├── RequirementSelection.tsx      # Auswahl einzelner Anforderungen mit Kontextwahl
-│           ├── SelectionCriteria.tsx         # Einzel-IDs und Glob-Muster eines Selektorbereichs
-│           ├── useImportTargets.ts           # Wählbare Importziele des Verbunds und der Auslieferung
-│           ├── useProfileAnalysis.ts         # Verzögerte Analyse des Arbeitsstands
-│           └── useProfileEditor.ts           # Arbeitsstand, Autosave, Speichern und Export
+│       ├── profile/                      # Profile-Station
+│       │   ├── ImportCard.tsx                # Ein Import: Ziel, Zweigwahl, Auswahl und Ausschlüsse
+│       │   ├── ImportTargetPicker.tsx        # Importziele nach Herkunft, andere Version ausgegraut
+│       │   ├── ImportsTab.tsx                # Reiter Importe mit „Import hinzufügen“
+│       │   ├── NewProfileForm.tsx            # Neuanlage: Titel, dann Importziel
+│       │   ├── PackagePanel.tsx              # Anforderungspaket, Speicherstand, Export und Speichern
+│       │   ├── ProfileDiagnostics.tsx        # Aufklappbare Diagnoseleiste der Hauptspalte
+│       │   ├── ProfileEditorPage.tsx         # Bearbeitungsansicht eines Profils auf der Dokumentroute
+│       │   ├── ProfileFileImport.tsx         # Profil-Datei über das Klasse-2-Importgate aufnehmen
+│       │   ├── ProfileMarks.tsx              # Herkunftsmarke, OSCAL-Schlüssel, Tabellen-Checkbox, Aufwand
+│       │   ├── RequirementSelection.tsx      # Auswahl einzelner Anforderungen mit Kontextwahl
+│       │   ├── SelectionCriteria.tsx         # Einzel-IDs und Glob-Muster eines Selektorbereichs
+│       │   ├── useImportTargets.ts           # Wählbare Importziele des Verbunds und der Auslieferung
+│       │   ├── useProfileAnalysis.ts         # Verzögerte Analyse des Arbeitsstands
+│       │   └── useProfileEditor.ts           # Arbeitsstand, Autosave, Speichern und Export
+│       └── ssp/                          # SSP-Import und lesende Station
+│           ├── SspDocumentContent.tsx         # Ausgewähltes SSP ableiten, Inhalte und Modelldiagnosen lesen
+│           ├── SspFields.tsx                  # Inaktive Textfelder und aufklappbare Listen der Projektion
+│           └── SspFileImport.tsx              # SSP-Datei über das Klasse-2-Importgate aufnehmen
 ├── components/                   # Wiederverwendbare UI-Komponenten
 │   ├── AreaSwitch.tsx                # Bereichswechsel Katalog / Informationsverbünde
 │   ├── BackdropTint.tsx              # Abdunklung hinter mobilen Bottom Sheets und Bestätigungsdialogen als Kind-Element
@@ -766,7 +770,7 @@ Der Arbeitsroutenraum umfasst vier Routenformen; ihre Muster und Builder stehen 
 | `/informationsverbuende` | Übersicht: Verbünde anlegen, umbenennen, mit Bestätigung löschen, Sicherung exportieren | `VerbundOverviewPage` |
 | `/informationsverbuende/:verbundId` | Verbund mit Orientierung, allen Dokumenten und Diagnosen | `VerbundPage` |
 | `/informationsverbuende/:verbundId/station/:station` | Dokumentliste gefiltert auf den Root-Typ einer Station | `VerbundPage` |
-| `/informationsverbuende/:verbundId/dokument/:localId` | Referenzkanten eines Dokuments mit Feld, Pflicht und Zustand; für Root `profile` die Bearbeitungsansicht der Profile-Station | `DocumentReferenceDetailPage` |
+| `/informationsverbuende/:verbundId/dokument/:localId` | Referenzkanten eines Dokuments mit Feld, Pflicht und Zustand; für Root `profile` die Bearbeitungsansicht, für SSPs zusätzlich die lesende Inhaltsansicht | `DocumentReferenceDetailPage` |
 
 `verbundId` und `localId` sind die vom Speicher vergebenen UUIDs (`docs/PERSISTENCE.md` §5); `station` stammt aus der geschlossenen Menge `profile`, `ssp`, `assessment`, `poam` (`WORKSPACE_STATIONS` in `src/domain/workspaceStations.ts`). Die Builder werfen bei jedem anderen Wert, ohne ihn in die Fehlermeldung zu übernehmen. Eine Route mit unbekannter oder ungültiger Identität, einer unbekannten Station oder einem Dokument eines anderen Verbunds zeigt einen eigenen Nicht-gefunden-Zustand (`WorkspaceStatePage`). Die Seiten setzen feste Titel aus `PAGE_TITLES`; Verbundname, Dokumenttitel und andere Dokumentwerte erscheinen nur im Seiteninhalt, nie in Route, Verlaufszustand oder `document.title`. Eingaben im Bereich schreiben nichts in die URL; die Kopfzeilensuche bleibt die Katalogsuche auf `/suche`.
 
@@ -775,6 +779,14 @@ Den Bereichswechsel trägt `AreaSwitch` (`src/components/AreaSwitch.tsx`): auf d
 Die Shell teilt Kopf, Suche, Schublade und Footer zwischen beiden Bereichen. `ShellSidebar` (`src/app/ShellSidebar.tsx`) zeigt im Katalogbereich den Katalog-Explorer und im Bereich Informationsverbünde die `StationSidebar` des Verbunds aus der Route; die Übersicht hat keine Arbeitsnavigation, das `<aside>` ist dort auf dem Desktop ausgeblendet. Die Stationen tragen den OSCAL-Modellnamen als Titel und die Erklärzeile aus ADR-11, sind ohne Reihenfolge erreichbar und zeigen die Dokumentanzahl; eine leere Station ist eine Lücke ohne Sperre. Außerhalb des Desktops trägt die Verbundseite zusätzlich die waagerecht scrollende `StationStrip`. Im Bereich Informationsverbünde blendet der Footer die Integritätsanzeige des Katalogs aus (`showVerification`).
 
 Katalog- und Arbeitsbereich teilen keine Seitenkomponenten: Code unter `src/features/workspace/` liest Klasse-2-Daten ausschließlich über `useWorkspace()`, Katalogseiten ausschließlich über `useCatalog()`. Jedes lokale Dokument trägt das Label „Eigene Daten · kein Integritätsnachweis“ und das Statuswort „Entwurf“ (`documentState` `draft`) oder „Gültig“ (`imported`, `export-ready`; beide setzen beim Speichern ein schemagültiges Dokument voraus). Die Dokumentliste ordnet nach Root-Typ entlang der Stationen, dann nach Titel; `assessment-plan` und `assessment-results` stehen als zwei Dokumente, `component-definition` und lokale `catalog` nur in der ungefilterten Liste. Die Dokumentdetailansicht zeigt jede Kante aus `buildWorkspaceGraph()` mit JSON Pointer, Pflicht (`DOCUMENT_REFERENCE_REQUIREMENT` für die acht Dokumentverweise, sonst „keine Angabe“) und Zustand; ein externer `href` steht als Text mit „extern, nicht aufgelöst“ und ist kein Link.
+
+### SSP-Station
+
+`VerbundPage` bietet an der Station `ssp` „SSP-Datei einlesen“ (`src/features/workspace/ssp/SspFileImport.tsx`). Die Dateigröße wird vor `arrayBuffer()` geprüft; `importClass2OscalDocument()` prüft Bytes, Root, Version und Schema im Klasse-2-Worker. Nur `system-security-plan` wird über `useWorkspace().documents.addDocument()` als `imported` aufgenommen; die Quelle bleibt unverändert. Nach einem Verbundwechsel oder Verlassen der Station darf ein ausstehender Import weder eine neue Aufnahme beginnen noch die aktuelle Route steuern. Eine bereits laufende Speichertransaktion bleibt atomar.
+
+`DocumentReferenceDetailPage` ergänzt für SSPs `SspDocumentContent`: Die Ansicht lädt das ausgewählte Dokument, hält die mit `parseSspDocument()` abgeleitete Projektion und entlässt den Quellgraphen. Metadaten, Baseline, Systemmerkmale, Systemimplementierung und Anforderungsumsetzung sind aufklappbar. `SspFields` rendert ausschließlich erlaubte Projektionsfelder als Text; Referenzobjekte und interne Pfade gehören nicht zum Feldbaum. Listen zeigen zunächst 50 Einträge und lassen weitere in Schritten von 50 anzeigen. Geschlossene Gruppen halten ihren Feldinhalt nicht im DOM. UUIDs und `href` bleiben inaktiv; Markup wird nicht als HTML interpretiert, Back-Matter-base64 wird nicht aktiviert.
+
+Die SSP-Detailprojektion erhält keinen Baseline-Katalog und kennzeichnet ihre Anforderungsbezüge als „nicht auflösbar im aktuellen Kontext“. Die vorhandene Referenzansicht zeigt die separat berechneten Graphkanten und Bindungszustände. Modelldiagnosen erscheinen mit Stufe, Code und strukturellem Pfad. Importablehnungen zeigen Stufe und Code ohne Dateiname oder Inhalt; Speicherfehler erscheinen über die Workspace-Meldung. Herkunftslabel und feste Dokumentseitentitel stammen aus der gemeinsamen Dokumentansicht. Die SSP-Station bietet Import und Lesen; Neuanlage, Bearbeitung und OSCAL-Export sind dort nicht bedienbar.
 
 ### Profile-Station
 

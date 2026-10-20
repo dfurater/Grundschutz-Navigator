@@ -16,6 +16,7 @@ import type { VerbundId } from '@/domain/workspaceModel';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { NewProfileForm } from '@/features/workspace/profile/NewProfileForm';
 import { ProfileFileImport } from '@/features/workspace/profile/ProfileFileImport';
+import { SspFileImport } from '@/features/workspace/ssp/SspFileImport';
 
 const PANEL = 'rounded-md border border-[var(--color-border-default)] bg-[var(--color-surface-base)]';
 const PANEL_LABEL = 'px-4 pt-3 text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)]';
@@ -134,6 +135,7 @@ function VerbundContent({ view, station }: Readonly<{ view: VerbundView; station
         </h2>
         {station && <p className="px-4 text-xs text-[var(--color-text-secondary)]">{STATION_DEFINITIONS[station].explanation}</p>}
         {station === 'profile' && <ProfileStationActions view={view} />}
+        {station === 'ssp' && <SspFileImport key={verbund.verbundId} verbundId={verbund.verbundId} />}
         {shown.length === 0 ? (
           <p className="px-4 pb-3 pt-2 text-sm text-[var(--color-text-secondary)]">
             {station ? 'An dieser Station liegt noch kein Dokument.' : 'Dieser Informationsverbund enthält noch kein Dokument.'}
