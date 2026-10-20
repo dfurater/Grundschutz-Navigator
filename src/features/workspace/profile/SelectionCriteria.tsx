@@ -7,6 +7,9 @@ import { FOCUS_RING } from '@/features/workspace/DocumentMarks';
 import { INPUT, OscalKey, SECTION_LABEL, formatCount } from '@/features/workspace/profile/ProfileMarks';
 
 const ICON_BUTTON = `inline-flex min-h-touch min-w-touch items-center justify-center rounded-md text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-subtle)] hover:text-[var(--color-text-primary)] desktop:min-h-8 desktop:min-w-8 ${FOCUS_RING}`;
+/** Höchstzahl der Einzel-IDs, die ohne ausdrückliches „Alle anzeigen“ gerendert werden. */
+const ID_LIMIT = 50;
+
 const ADD_BUTTON = `inline-flex min-h-touch items-center gap-1 rounded-md px-2 text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-subtle)] hover:text-[var(--color-text-primary)] desktop:min-h-8 ${FOCUS_RING}`;
 
 export interface SelectionCriteriaActions {
@@ -90,13 +93,15 @@ export function SelectionCriteria({ title, oscalKey, view, ids, actions, childLa
   actions: SelectionCriteriaActions;
   childLabel?: string;
 }>) {
+  const [showAll, setShowAll] = useState(false);
+  const shown = showAll ? view.withIds : view.withIds.slice(0, ID_LIMIT);
   return (
     <section aria-label={title} className="space-y-3">
       <h3 className={`${SECTION_LABEL} flex items-baseline gap-2`}>{title} <OscalKey>{oscalKey}</OscalKey></h3>
       <div className="space-y-1.5">
         <p className="flex items-baseline gap-2 text-sm text-[var(--color-text-primary)]">Einzelne Anforderungen <OscalKey>with-ids</OscalKey></p>
         <ul className="flex flex-wrap items-center gap-1.5">
-          {view.withIds.map((id) => (
+          {shown.map((id) => (
             <li key={id} className="inline-flex items-center gap-1 rounded border border-[var(--color-border-default)] bg-[var(--color-surface-subtle)] pl-2 font-mono text-xs text-[var(--color-text-primary)]">
               {id}
               <button type="button" className={ICON_BUTTON} aria-label={`${id} entfernen`} onClick={() => actions.setId(id, false)}>
@@ -104,6 +109,13 @@ export function SelectionCriteria({ title, oscalKey, view, ids, actions, childLa
               </button>
             </li>
           ))}
+          {shown.length < view.withIds.length && (
+            <li>
+              <button type="button" className={ADD_BUTTON} onClick={() => setShowAll(true)}>
+                Alle <span className="tabular-nums">{formatCount(view.withIds.length)}</span> anzeigen
+              </button>
+            </li>
+          )}
           <li><AddId onAdd={(id) => actions.setId(id, true)} /></li>
         </ul>
       </div>
