@@ -1,13 +1,17 @@
 # OSCAL-Round-trip-Harnisch
 
-Der modellübergreifende No-op-Round-trip-Harnisch beweist je OSCAL-Dokument,
-dass ein Round-trip **ohne fachlichen Schreibvorgang nichts verändert** —
-weder auf der Serialisierung noch auf dem geparsten Graphen. Er ist das
-Freigabegate für jeden Import-, Authoring- und Export-Slice.
+Der modellübergreifende Round-trip-Harnisch kennt zwei Laufarten. Der
+No-op-Lauf beweist je OSCAL-Dokument, dass ein Round-trip **ohne fachlichen
+Schreibvorgang nichts verändert** — weder auf der Serialisierung noch auf dem
+geparsten Graphen. Der Edit-Lauf beweist, dass ein Schreibvorgang **genau**
+die Edit-Operation, `metadata.last-modified` und — je nach Root — die
+Dokument-`uuid` ändert. Der Harnisch ist das Freigabegate für jeden Import-,
+Authoring- und Export-Slice.
 
 * Implementierung: [`src/test/oscalRoundTrip.ts`](../src/test/oscalRoundTrip.ts)
 * Graphvergleich: [`src/test/oscalGraphCompare.ts`](../src/test/oscalGraphCompare.ts)
 * Korpus: [`src/test/fixtures/oscalRoundTripCorpus.ts`](../src/test/fixtures/oscalRoundTripCorpus.ts)
+* Edit-Lauf-Tests: [`src/test/oscalRoundTripEdit.test.ts`](../src/test/oscalRoundTripEdit.test.ts)
 * Stufenbegriffe und Vertragskette: [OSCAL_VALIDATION.md](OSCAL_VALIDATION.md)
 
 ## Die No-op-Laufart
@@ -48,8 +52,56 @@ Ergebnis:
    das **reimportierte Exportartefakt**, nie die Eingabe: Nur so gelten die
    Status für das Dokument, das den Prozess tatsächlich verlässt.
 
-Die Edit-Laufart (`change-on-write`: neue Dokument-`uuid`, neuer
-`last-modified`-Zeitstempel) ist **nicht** Teil dieses Moduls.
+## Die Edit-Laufart
+
+`runEditRoundTrip()` nimmt den Fixture als JSON-Quelltext, eine Edit-Operation,
+einen injizierten Stempel und den Schreibpfad unter Test entgegen und liefert
+ein eingefrorenes, deterministisches Ergebnis mit `mode: 'edit'` und einem
+Gesamtstatus `passed` oder `failed`.
+
+* **Edit-Operation** (`OscalEditOperation`): Pfad als Segmentliste ab dem
+  Root-Schlüssel, `replace` eines vorhandenen Blattwerts oder `add` eines
+  Elements am Ende eines vorhandenen Arrays, dazu der Wert. Der Harnisch wendet
+  die Operation nicht selbst an; sie beschreibt, was der Schreibpfad ändern
+  muss. Eine Operation, die nicht zum Fixture passt, wirft einen `TypeError`.
+* **Injizierter Stempel** `{ uuid, lastModified }` im Format von
+  `ExplicitSaveStamp` aus [`src/domain/profileSave.ts`](../src/domain/profileSave.ts).
+  Der Harnisch hat keine eigene Zeit- oder UUID-Quelle; ein statischer Test im
+  Guard-File belegt das.
+* **Schreibpfad** `exportDocument(parsed, stamp)`: erhält eine private Kopie
+  des geparsten Originals. Ein Ergebnis ohne JSON-Darstellung oder eine
+  Ausnahme im Callback ergibt den Bindungsgrund `export-not-serializable`.
+* **Stufen 1–2** laufen wie im No-op-Lauf, **Stufen 3–5** gegen das
+  reimportierte Exportartefakt über dieselbe `evaluateStages()`.
+
+**Erwartete Differenzmenge.** `compareJsonGraphs()` zwischen Original und
+reimportiertem Export muss genau diese Einträge liefern:
+
+* den Eintrag der Edit-Operation (`value-changed` bei `replace`, `item-added`
+  bei `add`), wobei der Export am Zielpfad den Edit-Wert tragen muss,
+* `value-changed` an `metadata.last-modified`,
+* `value-changed` an der Dokument-`uuid` bei den `reassign`-Roots.
+
+Differenzen außerhalb dieser Menge meldet `graph.unexpected`, fehlende
+erwartete Einträge `graph.missing`. Umsortierte, entfernte oder zusätzliche
+Array-Elemente erscheinen über die Indexpfade außerhalb der erwarteten Menge.
+Die byte-identische Serialisierungsgleichheit gilt im Edit-Lauf nicht.
+
+**Root-UUID-Politik.** `OSCAL_ROOT_UUID_POLICY` in `src/test/oscalRoundTrip.ts`
+bildet die [Root-UUID-Politik in PERSISTENCE.md §5](PERSISTENCE.md#root-uuid-politik-je-root-modell) ab; sie ist die einzige Stelle, an
+der der Harnisch Wissen über Roots führt.
+
+| Lauf | Dokument-`uuid` | `metadata.last-modified` |
+| --- | --- | --- |
+| No-op | unverändert | unverändert |
+| Edit, `reassign`: `catalog`, `profile`, `component-definition`, `mapping-collection` | gleich Stempel-`uuid`, verschieden vom Original | gleich Stempel, verschieden vom Original |
+| Edit, `keep`: `system-security-plan`, `assessment-plan`, `assessment-results`, `plan-of-action-and-milestones` | unverändert | gleich Stempel, verschieden vom Original |
+
+**Schreibpfade im Test.** Der `profile`-Lauf bindet `commitExplicitSave()` aus
+`src/domain/profileSave.ts` als echten Schreibpfad ein. Für alle Roots prüft
+ein testeigener Referenz-Editor in `src/test/oscalRoundTripEdit.test.ts` den
+Harnisch am Maximaldokument @ 1.2.2; er belegt den Harnisch, nicht den Export
+eines Adapters.
 
 ## Zwei Vergleichsebenen
 
@@ -79,8 +131,18 @@ selbst; der Graphvergleich ordnet Integer-artige Schlüssel deshalb kanonisch.
 Getrennt vom Inhaltsvergleich prüft der Harnisch:
 
 * Dokument-`uuid` und `metadata.last-modified` bleiben beim No-op unverändert
-  — genau die Felder, die ein fachlicher Schreibvorgang ändern **muss**
-  (`identifier-persistence="change-on-write"` bzw. Speicherzeitpunkt).
+  (Befunde `document-uuid-changed`, `last-modified-changed`).
+* Im Edit-Lauf folgt die Dokument-`uuid` der Root-UUID-Politik (Befunde
+  `document-uuid-not-reassigned`, `document-uuid-not-stamp` bei `reassign`,
+  `document-uuid-changed` bei `keep`), und `metadata.last-modified` ist gleich
+  dem Stempel und verschieden vom Original (`last-modified-not-updated`,
+  `last-modified-not-stamp`).
+* Im Edit-Lauf bleibt die Menge der Paare (Pfad, Wert) aller `uuid`-Felder
+  unterhalb der Root-Ebene gleich; ausgenommen ist nur der Teilbaum der
+  Edit-Operation (Befund `subobject-uuid-changed`). Das schützt fachliche
+  Unterobjekte wie `implemented-requirement`, `by-component`, `risk`,
+  `observation`, `finding`, `metadata.actions` und `back-matter`-Ressourcen,
+  auf deren UUIDs `#<uuid>`-Fragmente zeigen.
 * `control/@id` ist nur lokal eindeutig: Controls werden ausschließlich als
   Paar `(catalogKey, controlId)` adressiert. `collectScopedIdentities()` und
   `buildScopedIdentityIndex()` erzwingen das; ein Negativtest mit kollidierender
@@ -175,10 +237,11 @@ Guard-File).
 
 ## Adapter-Freigaberegel
 
-Ein Root-Modell-Adapter gilt erst dann als „Import unterstützt“ beziehungsweise
-„Export unterstützt“, wenn er im Harnisch mit dem No-op-Lauf grün ist. Die CI
-erzwingt das, indem der Harnisch regulär läuft — ein neuer Adapter ohne grünen
-No-op-Lauf fällt in der nächsten Korpusänderung auf.
+Ein Root-Modell-Adapter gilt erst dann als „Import unterstützt“, wenn er im
+Harnisch mit dem No-op-Lauf grün ist, und erst dann als „Export unterstützt“,
+wenn er mit dem No-op-Lauf und dem Edit-Lauf grün ist. Die CI erzwingt das,
+indem der Harnisch regulär läuft — ein neuer Adapter ohne grüne Läufe fällt in
+der nächsten Korpusänderung auf.
 
 ## Normative Verankerung
 
@@ -201,4 +264,5 @@ hinaus: Sie macht Verlustfreiheit beweisbar und nimmt jedem Export-Slice den
 Auslegungsspielraum. Sie ist keine NIST-Vorgabe und darf nicht als solche
 zitiert werden. Ebenfalls Projektentscheidungen: die zweite Vergleichsebene,
 Umfang und Zuschnitt des Korpus, die Aufteilung in Kernfälle und QA-Lane, die
-Adapter-Freigaberegel sowie der `not-checked`-Status der Constraint-Stufe.
+Form der Edit-Operation, die Adapter-Freigaberegel sowie der
+`not-checked`-Status der Constraint-Stufe.

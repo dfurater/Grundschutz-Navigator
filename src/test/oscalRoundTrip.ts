@@ -1,9 +1,11 @@
 // =============================================================================
-// Modellübergreifender No-op-Round-trip-Harnisch (GSPP-298, ADR-2)
+// Modellübergreifender Round-trip-Harnisch (GSPP-298, GSPP-368, ADR-2)
 //
-// Testwerkzeug, keine Produktionsschnittstelle. Ein Lauf beweist für ein
+// Testwerkzeug, keine Produktionsschnittstelle. Ein No-op-Lauf beweist für ein
 // OSCAL-Dokument: Ein Round-trip ohne fachlichen Schreibvorgang verändert
-// nichts — weder auf der Serialisierung noch auf dem geparsten Graphen.
+// nichts — weder auf der Serialisierung noch auf dem geparsten Graphen. Ein
+// Edit-Lauf beweist: Ein Schreibvorgang ändert genau die Edit-Operation,
+// `metadata.last-modified` und — je nach Root-UUID-Politik — die Dokument-UUID.
 //
 // Der Harnisch definiert nichts Neues, was der Validierungsvertrag bereits
 // entscheidet: Strukturinvariante samt Ressourcenlimits kommen aus
@@ -20,7 +22,6 @@
 import { deepFreeze } from '@/test/oscalStructure';
 import { isJsonObject } from '@/domain/jsonGuards';
 import type { OscalDiagnostic } from '@/domain/oscalDiagnostics';
-import type { OscalDocumentContext } from '@/domain/models';
 import { enforceClass2ObjectGraphInvariants } from '@/domain/oscalObjectGraph';
 import {
   CLASS_2_IMPORT_LIMITS,
@@ -41,8 +42,13 @@ import {
 import { validateAgainstPinnedSchema } from '@/domain/oscalSchemaValidation';
 import { createOscalDiagnostic } from '@/domain/oscalDiagnostics';
 import type { CatalogKey } from '@/domain/sourceRegistry';
-import type { OscalSchemaPin } from '@/domain/oscalVersionMatrix';
-import { compareJsonGraphs, type JsonGraphDifference } from './oscalGraphCompare';
+import type { OscalRootKey, OscalSchemaPin } from '@/domain/oscalVersionMatrix';
+import type { ExplicitSaveStamp } from '@/domain/profileSave';
+import {
+  classifyJsonValueKind,
+  compareJsonGraphs,
+  type JsonGraphDifference,
+} from './oscalGraphCompare';
 
 /**
  * Vertrauensklasse des Harnischs. Die Fixtures sind projekteigene Testdaten;
@@ -57,7 +63,7 @@ const ROUND_TRIP_HARNESS_VALIDATOR = Object.freeze({
   version: '1',
 });
 
-/** Die Laufart dieses Moduls. */
+/** Die Laufart des No-op-Laufs; der Edit-Lauf meldet `mode: 'edit'`. */
 export type OscalRoundTripRunMode = 'no-op';
 
 export interface OscalRoundTripStatusPassed {
@@ -508,36 +514,69 @@ export function formatRoundTripDifferences(
   );
 }
 
-/** Ergebnisrahmen eines Laufs, dessen Kette vor Stufe 2 endet. */
-function rejectionBeforeBinding(
-  resourceLimit: OscalRoundTripStatusFailed,
-): OscalNoOpRunResult {
-  return deepFreeze({
-    mode: 'no-op',
-    rootType: null,
-    resourceLimit,
-    binding: { ok: false, reason: 'limits-not-run' },
-    serialization: { status: 'not-run' },
-    graph: { status: 'not-run', differences: [] },
-    identities: { status: 'not-run', findings: [] },
-    stages: stagesNotRun(),
-  });
-}
+/** Ergebnis der Stufen 1–2 für den Fixture: gebunden oder mit Abweisungsrahmen. */
+type FixtureBinding =
+  | { readonly ok: true; readonly success: OscalRootDispatchSuccess }
+  | {
+    readonly ok: false;
+    readonly resourceLimit: OscalRoundTripStatusPassed | OscalRoundTripStatusFailed;
+    readonly binding: OscalRoundTripBinding;
+  };
 
-/** Ergebnisrahmen eines Laufs, den Stufe 2 abgewiesen hat. */
-function dispatchRejectionResult(
-  diagnostic: OscalDiagnostic,
-): OscalNoOpRunResult {
-  return deepFreeze({
-    mode: 'no-op',
-    rootType: null,
-    resourceLimit: { status: 'passed' },
-    binding: { ok: false, reason: 'dispatch-rejected', diagnostic },
-    serialization: { status: 'not-run' },
-    graph: { status: 'not-run', differences: [] },
-    identities: { status: 'not-run', findings: [] },
-    stages: stagesNotRun(),
+/**
+ * Stufen 1–2 beider Laufarten. Reihenfolge nach docs/OSCAL_VALIDATION.md:
+ * Bytelimit vor dem Parsen, strukturelle Limits auf dem geparsten Wert, dann
+ * Root-Erkennung und Versionsbindung.
+ */
+function bindFixture(
+  input: Pick<OscalNoOpRunInput, 'fixtureText' | 'upstreamPath' | 'catalogKey'>,
+): FixtureBinding {
+  // Stufe 1a — Byte-Eingangsgrenze vor dem Parsen.
+  if (utf8ByteLength(input.fixtureText) > CLASS_2_IMPORT_LIMITS.maxBytes) {
+    return {
+      ok: false,
+      resourceLimit: { status: 'failed', diagnostic: createClass2ByteLimitDiagnostic() },
+      binding: { ok: false, reason: 'limits-not-run' },
+    };
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(input.fixtureText);
+  } catch {
+    // Ein nicht parsbarer Fixture ist ein Fehler des Testautors, kein
+    // Dokumentbefund: Stufe 1 (Token-Scanner) gehört zur Importpipeline,
+    // nicht zum Harnisch.
+    throw new SyntaxError('Fixture ist kein wohlgeformtes JSON');
+  }
+
+  // Stufe 1b — Strukturinvariante samt Ressourcenlimits auf dem geparsten
+  // Wert, aus der gemeinsamen objektorientierten Einheit (ADR-8 Festlegung 1+3).
+  const limitViolation = enforceClass2ObjectGraphInvariants(parsed);
+  if (limitViolation !== null) {
+    return {
+      ok: false,
+      resourceLimit: { status: 'failed', diagnostic: limitViolation },
+      binding: { ok: false, reason: 'limits-not-run' },
+    };
+  }
+
+  // Stufe 2 — Root-Erkennung und Versionsbindung, bezogen statt nachgebaut.
+  // Die Katalogidentität wird mitgeführt und in Stufe 5 konsumiert; ein
+  // optionaler Registry-Pfad erzwingt die artefaktscharfe Root-Erwartung.
+  const dispatched = dispatchOscalDocument(parsed, {
+    trustClass: HARNESS_TRUST_CLASS,
+    ...(input.upstreamPath !== undefined ? { upstreamPath: input.upstreamPath } : {}),
+    ...(input.catalogKey !== undefined ? { catalogKey: input.catalogKey } : {}),
   });
+  if (!dispatched.ok) {
+    return {
+      ok: false,
+      resourceLimit: { status: 'passed' },
+      binding: { ok: false, reason: 'dispatch-rejected', diagnostic: dispatched.diagnostic },
+    };
+  }
+  return { ok: true, success: dispatched };
 }
 
 /** Diagnose für ein Exportergebnis ohne JSON-Darstellung — ohne Dokumentwerte. */
@@ -564,6 +603,44 @@ function serializeExportArtifact(exported: unknown): string | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * Export, Serialisierung und Reimport — oder `null`, wenn der Export keine
+ * JSON-Darstellung besitzt oder der Callback ausfällt. Der Callback erhält
+ * eine private Kopie des geparsten Originals: Eine In-place-Mutation dürfte
+ * sonst die Vergleichsbasis verschieben — Quellbytes, Graphvergleich und
+ * Identitäten werden aus dem Original erhoben und würden
+ * mutiert-gegen-mutiert vergleichen (Greptile-Befund). Ein Serializer, der
+ * ausfällt, statt ein Artefakt zu liefern, ist derselbe Serialisierungsfehler
+ * wie eine Rückgabe ohne JSON-Darstellung — berichtet, nicht geworfen.
+ */
+function exportAndReimport(
+  source: unknown,
+  exportDocument: (snapshot: unknown) => unknown,
+): { readonly exportBytes: string; readonly imported: unknown } | null {
+  let exported: unknown;
+  try {
+    exported = exportDocument(structuredClone(source));
+  } catch {
+    return null;
+  }
+  const exportBytes = serializeExportArtifact(exported);
+  return exportBytes === null ? null : { exportBytes, imported: JSON.parse(exportBytes) };
+}
+
+/**
+ * Erneute Bindung des reimportierten Exportartefakts: Ein Export darf das
+ * Modell wechseln — Root-, Versions-, Schema- und Berichtskontext folgen dem
+ * Exportartefakt. Der Eingabe-upstreamPath sichert allein die Quellbindung
+ * und wird bewusst NICHT mitgeführt; er beschreibt die Registry-Erwartung an
+ * das Quelldokument, nicht an abgeleitete Ausgaben.
+ */
+function rebindExport(imported: unknown, catalogKey: CatalogKey | undefined) {
+  return dispatchOscalDocument(imported, {
+    trustClass: HARNESS_TRUST_CLASS,
+    ...(catalogKey !== undefined ? { catalogKey } : {}),
+  });
 }
 
 /**
@@ -641,37 +718,20 @@ async function successfulNoOpResult(
   success: OscalRootDispatchSuccess,
 ): Promise<OscalNoOpRunResult> {
   // Export — Identität als Vorgabe, einspeisbar für künftige Serializer.
-  // Der Callback erhält eine private Kopie des geparsten Originals: Eine
-  // In-place-Mutation dürfte sonst die Vergleichsbasis verschieben —
-  // Quellbytes, Graphvergleich und Identitäten werden aus dem Original
-  // erhoben und würden mutiert-gegen-mutiert vergleichen (Greptile-Befund).
-  const sourceSnapshot = structuredClone(success.source);
-  let exported: unknown;
-  try {
-    exported = input.exportDocument
-      ? input.exportDocument(sourceSnapshot)
-      : success.source;
-  } catch {
-    // Ein Serializer, der ausfällt, statt ein Artefakt zu liefern, ist
-    // derselbe Serialisierungsfehler wie eine Rückgabe ohne
-    // JSON-Darstellung — berichtet, nicht geworfen (Greptile-Befund).
+  const exportedArtifact = exportAndReimport(
+    success.source,
+    input.exportDocument ?? ((snapshot) => snapshot),
+  );
+  if (exportedArtifact === null) {
     return nonSerializableExportResult();
   }
+  const { exportBytes, imported } = exportedArtifact;
 
-  // Ebene 1 — byte-identische Serialisierung. Ein Exportergebnis ohne
-  // JSON-Darstellung — stringify liefert kein Textergebnis oder wirft — ist
-  // ein Serialisierungsfehler des eingespeisten Exports und wird berichtet,
-  // nicht als Ausnahme geworfen. Die Eingabeseite ist sicher: Sie stammt
-  // aus JSON.parse und besitzt stets eine JSON-Darstellung.
-  const sourceBytes = JSON.stringify(success.source);
-  const exportBytes = serializeExportArtifact(exported);
-  if (exportBytes === null) {
-    return nonSerializableExportResult();
-  }
-  const serializationEqual = exportBytes === sourceBytes;
+  // Ebene 1 — byte-identische Serialisierung. Die Eingabeseite ist sicher:
+  // Sie stammt aus JSON.parse und besitzt stets eine JSON-Darstellung.
+  const serializationEqual = exportBytes === JSON.stringify(success.source);
 
   // Ebene 2 — geparster Graph mit Object.is-Semantik.
-  const imported = JSON.parse(exportBytes);
   const differences = compareJsonGraphs(success.source, imported);
 
   const identityFindings = compareIdentities(
@@ -679,17 +739,8 @@ async function successfulNoOpResult(
     readDocumentIdentities(imported),
   );
 
-  // Stufen 3–5 gegen die **erneut gebundene** Exportartefakt-Bindung: Ein
-  // Export darf das Modell wechseln — Root-, Versions-, Schema- und
-  // Berichtskontext folgen dem Exportartefakt. Der Eingabe-upstreamPath
-  // sichert allein die Quellbindung und wird bewusst NICHT mitgeführt; er
-  // beschreibt die Registry-Erwartung an das Quelldokument, nicht an
-  // abgeleitete Ausgaben.
-  const exportContext: OscalDocumentContext = {
-    trustClass: HARNESS_TRUST_CLASS,
-    ...(input.catalogKey !== undefined ? { catalogKey: input.catalogKey } : {}),
-  };
-  const reBound = dispatchOscalDocument(imported, exportContext);
+  // Stufen 3–5 gegen die **erneut gebundene** Exportartefakt-Bindung.
+  const reBound = rebindExport(imported, input.catalogKey);
   if (!reBound.ok) {
     // Kettenregel: Ohne erfolgreiche Bindung laufen keine Validierungsstufen.
     // Die Diagnose bleibt als Bindungsfehler erhalten; die Vergleichsebenen
@@ -737,48 +788,337 @@ async function successfulNoOpResult(
 /**
  * Führt genau einen No-op-Round-trip aus.
  *
- * Reihenfolge nach docs/OSCAL_VALIDATION.md: Bytelimit vor dem Parsen,
- * strukturelle Limits auf dem geparsten Wert, dann Root-Erkennung und
- * Versionsbindung. Erst nach bestandener Bindung laufen Export, beide
+ * Erst nach bestandener Bindung (`bindFixture()`) laufen Export, beide
  * Vergleichsebenen und die Identitätsprüfung.
  */
 export async function runNoOpRoundTrip(input: OscalNoOpRunInput): Promise<OscalNoOpRunResult> {
-  // Stufe 1a — Byte-Eingangsgrenze vor dem Parsen.
-  if (utf8ByteLength(input.fixtureText) > CLASS_2_IMPORT_LIMITS.maxBytes) {
-    return rejectionBeforeBinding({
+  const bound = bindFixture(input);
+  if (!bound.ok) {
+    return deepFreeze({
+      mode: 'no-op',
+      rootType: null,
+      resourceLimit: bound.resourceLimit,
+      binding: bound.binding,
+      serialization: { status: 'not-run' },
+      graph: { status: 'not-run', differences: [] },
+      identities: { status: 'not-run', findings: [] },
+      stages: stagesNotRun(),
+    });
+  }
+  return successfulNoOpResult(input, bound.success);
+}
+
+// =============================================================================
+// Edit-Laufart (GSPP-368)
+// =============================================================================
+
+/**
+ * Root-UUID-Politik des Edit-Laufs (docs/PERSISTENCE.md §5, ADR-9
+ * Festlegung 4): `reassign` vergibt die Dokument-UUID bei jedem Schreiben neu
+ * (change-on-write), `keep` führt sie je Subjekt über Revisionen hinweg.
+ * Die einzige Stelle, an der der Harnisch Wissen über Roots führt.
+ */
+export const OSCAL_ROOT_UUID_POLICY: Readonly<Record<OscalRootKey, 'reassign' | 'keep'>> =
+  Object.freeze({
+    catalog: 'reassign',
+    profile: 'reassign',
+    'component-definition': 'reassign',
+    'mapping-collection': 'reassign',
+    'system-security-plan': 'keep',
+    'assessment-plan': 'keep',
+    'assessment-results': 'keep',
+    'plan-of-action-and-milestones': 'keep',
+  });
+
+export type OscalEditPathSegment = string | number;
+
+/**
+ * Die fachliche Änderung eines Edit-Laufs. Der Pfad beginnt beim Root-Schlüssel
+ * (`['catalog', 'metadata', 'title']`). `replace` ersetzt einen vorhandenen
+ * Blattwert, `add` hängt ein Element an ein vorhandenes Array an.
+ */
+export type OscalEditOperation =
+  | {
+    readonly op: 'replace';
+    readonly path: readonly OscalEditPathSegment[];
+    readonly value: string | number | boolean | null;
+  }
+  | { readonly op: 'add'; readonly path: readonly OscalEditPathSegment[]; readonly value: unknown };
+
+export interface OscalEditRunInput {
+  /** Der Fixture als JSON-Quelltext, wie im No-op-Lauf. */
+  readonly fixtureText: string;
+  /** Die Änderung, die `exportDocument` anwenden soll; der Harnisch wendet sie nicht an. */
+  readonly edit: OscalEditOperation;
+  /** Injizierter Stempel; `lastModified` ISO 8601 mit Zeitzone. */
+  readonly stamp: ExplicitSaveStamp;
+  /** Der Schreibpfad unter Test; erhält eine private Kopie des geparsten Originals. */
+  readonly exportDocument: (parsed: unknown, stamp: ExplicitSaveStamp) => unknown;
+  readonly upstreamPath?: string;
+  readonly catalogKey?: CatalogKey;
+}
+
+export interface OscalEditGraphReport {
+  readonly status: OscalRoundTripOutcome;
+  /** Differenzen außerhalb der erwarteten Menge. */
+  readonly unexpected: readonly JsonGraphDifference[];
+  /** Erwartete Einträge, die der Export nicht (oder nicht mit dem Edit-Wert) trägt. */
+  readonly missing: readonly JsonGraphDifference[];
+}
+
+export interface OscalEditRunResult {
+  readonly mode: 'edit';
+  /** `passed` genau dann, wenn Bindung, Graph, Identitäten, Stufe 3 und Stufe 5 bestehen. */
+  readonly status: 'passed' | 'failed';
+  readonly rootType: string | null;
+  readonly resourceLimit: OscalRoundTripStatusPassed | OscalRoundTripStatusFailed;
+  readonly binding: OscalRoundTripBinding;
+  readonly graph: OscalEditGraphReport;
+  readonly identities: OscalRoundTripIdentityReport;
+  readonly stages: OscalRoundTripStages;
+}
+
+const FINDING_DOCUMENT_UUID_NOT_REASSIGNED = 'document-uuid-not-reassigned';
+const FINDING_DOCUMENT_UUID_NOT_STAMP = 'document-uuid-not-stamp';
+const FINDING_LAST_MODIFIED_NOT_UPDATED = 'last-modified-not-updated';
+const FINDING_LAST_MODIFIED_NOT_STAMP = 'last-modified-not-stamp';
+const FINDING_SUBOBJECT_UUID_CHANGED = 'subobject-uuid-changed';
+
+/** Pfad in der Schreibweise von `compareJsonGraphs()`. */
+function toGraphPath(segments: readonly OscalEditPathSegment[]): string {
+  return `$${segments.map((segment) =>
+    typeof segment === 'number' ? `[${segment}]` : `.${segment}`).join('')}`;
+}
+
+function valueAt(root: unknown, segments: readonly OscalEditPathSegment[]): unknown {
+  let current = root;
+  for (const segment of segments) {
+    if (typeof segment === 'number') {
+      if (!Array.isArray(current)) return undefined;
+      current = current[segment];
+    } else {
+      if (!isJsonObject(current) || !Object.hasOwn(current, segment)) return undefined;
+      current = current[segment];
+    }
+  }
+  return current;
+}
+
+/**
+ * Der Differenzeintrag, den die Edit-Operation am Original erzeugen muss,
+ * samt Pfadsegmenten des geänderten Werts. Eine Operation, die nicht zum
+ * Fixture passt, ist ein Fehler des Testautors und wird geworfen.
+ */
+function expectedEditDifference(
+  source: unknown,
+  edit: OscalEditOperation,
+): { readonly difference: JsonGraphDifference; readonly segments: readonly OscalEditPathSegment[] } {
+  const target = valueAt(source, edit.path);
+  if (edit.op === 'replace') {
+    const kind = classifyJsonValueKind(target);
+    if (kind === 'object' || kind === 'array' || kind === 'undefined-absent') {
+      throw new TypeError('Edit-Operation replace verweist auf keinen Blattwert des Fixtures');
+    }
+    return {
+      difference: {
+        path: toGraphPath(edit.path),
+        kind: 'value-changed',
+        leftKind: kind,
+        rightKind: classifyJsonValueKind(edit.value),
+      },
+      segments: edit.path,
+    };
+  }
+  if (!Array.isArray(target)) {
+    throw new TypeError('Edit-Operation add verweist auf kein Array des Fixtures');
+  }
+  const segments = [...edit.path, target.length];
+  return {
+    difference: {
+      path: toGraphPath(segments),
+      kind: 'item-added',
+      leftKind: 'undefined-absent',
+      rightKind: classifyJsonValueKind(edit.value),
+    },
+    segments,
+  };
+}
+
+function differenceKey(difference: Pick<JsonGraphDifference, 'path' | 'kind'>): string {
+  return `${difference.kind}\u0000${difference.path}`;
+}
+
+/**
+ * Paare (Pfad, Wert) aller `uuid`-Felder unterhalb der Root-Ebene. Der
+ * Teilbaum der Edit-Operation ist ausgenommen: Ein angehängtes Element darf
+ * eigene UUIDs mitbringen.
+ */
+function collectSubobjectUuids(
+  value: unknown,
+  path: string,
+  exclusions: { readonly rootPath: string; readonly editPath: string },
+  out: Set<string>,
+): void {
+  if (path === exclusions.editPath
+    || path.startsWith(`${exclusions.editPath}.`)
+    || path.startsWith(`${exclusions.editPath}[`)) return;
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => collectSubobjectUuids(item, `${path}[${index}]`, exclusions, out));
+    return;
+  }
+  if (!isJsonObject(value)) return;
+  if (typeof value.uuid === 'string' && path !== exclusions.rootPath) {
+    out.add(`${path}.uuid\u0000${value.uuid}`);
+  }
+  for (const [key, child] of Object.entries(value)) {
+    collectSubobjectUuids(child, `${path}.${key}`, exclusions, out);
+  }
+}
+
+function sameSet(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
+  return a.size === b.size && [...a].every((entry) => b.has(entry));
+}
+
+function compareEditIdentities(
+  source: unknown,
+  imported: unknown,
+  policy: 'reassign' | 'keep',
+  stamp: ExplicitSaveStamp,
+  exclusions: { readonly rootPath: string; readonly editPath: string },
+): string[] {
+  const before = readDocumentIdentities(source);
+  const after = readDocumentIdentities(imported);
+  const findings: string[] = [];
+
+  if (policy === 'keep') {
+    if (after.documentUuid !== before.documentUuid) findings.push(FINDING_DOCUMENT_UUID_CHANGED);
+  } else {
+    if (after.documentUuid === before.documentUuid) findings.push(FINDING_DOCUMENT_UUID_NOT_REASSIGNED);
+    if (after.documentUuid !== stamp.uuid) findings.push(FINDING_DOCUMENT_UUID_NOT_STAMP);
+  }
+  if (after.lastModified === before.lastModified) findings.push(FINDING_LAST_MODIFIED_NOT_UPDATED);
+  if (after.lastModified !== stamp.lastModified) findings.push(FINDING_LAST_MODIFIED_NOT_STAMP);
+
+  const beforeUuids = new Set<string>();
+  const afterUuids = new Set<string>();
+  collectSubobjectUuids(source, '$', exclusions, beforeUuids);
+  collectSubobjectUuids(imported, '$', exclusions, afterUuids);
+  if (!sameSet(beforeUuids, afterUuids)) findings.push(FINDING_SUBOBJECT_UUID_CHANGED);
+
+  return findings;
+}
+
+function editRunNotCompared(
+  resourceLimit: OscalEditRunResult['resourceLimit'],
+  binding: OscalRoundTripBinding,
+): OscalEditRunResult {
+  return deepFreeze({
+    mode: 'edit',
+    status: 'failed',
+    rootType: null,
+    resourceLimit,
+    binding,
+    graph: { status: 'not-run', unexpected: [], missing: [] },
+    identities: { status: 'not-run', findings: [] },
+    stages: stagesNotRun(),
+  });
+}
+
+/**
+ * Führt genau einen Edit-Round-trip aus.
+ *
+ * Stufen 1–2 wie im No-op-Lauf. Danach exportiert der Schreibpfad unter Test
+ * eine private Kopie mit dem injizierten Stempel; verglichen wird gegen die
+ * erwartete Differenzmenge — Edit-Eintrag, `metadata.last-modified` und bei
+ * `reassign`-Roots die Dokument-UUID. Die Identitätsprüfung läuft getrennt
+ * davon, die Stufen 3–5 gegen das reimportierte Exportartefakt.
+ */
+export async function runEditRoundTrip(input: OscalEditRunInput): Promise<OscalEditRunResult> {
+  const bound = bindFixture(input);
+  if (!bound.ok) return editRunNotCompared(bound.resourceLimit, bound.binding);
+  const { source, rootType } = bound.success;
+
+  const policy = OSCAL_ROOT_UUID_POLICY[rootType];
+  const editExpectation = expectedEditDifference(source, input.edit);
+  const expected: JsonGraphDifference[] = [editExpectation.difference];
+  if (policy === 'reassign') {
+    expected.push({ path: `$.${rootType}.uuid`, kind: 'value-changed', leftKind: 'string', rightKind: 'string' });
+  }
+  expected.push({
+    path: `$.${rootType}.metadata.last-modified`,
+    kind: 'value-changed',
+    leftKind: 'string',
+    rightKind: 'string',
+  });
+
+  const exportedArtifact = exportAndReimport(
+    source,
+    (snapshot) => input.exportDocument(snapshot, input.stamp),
+  );
+  if (exportedArtifact === null) {
+    const diagnostic = createExportNotSerializableDiagnostic();
+    return editRunNotCompared(
+      { status: 'passed' },
+      { ok: false, reason: 'export-not-serializable', diagnostic },
+    );
+  }
+  const { imported } = exportedArtifact;
+
+  const differences = compareJsonGraphs(source, imported);
+  const expectedKeys = new Set(expected.map(differenceKey));
+  const presentKeys = new Set(differences.map(differenceKey));
+  // Der Edit-Eintrag zählt nur, wenn der Export auch den Edit-Wert trägt.
+  const editValueApplied = compareJsonGraphs(
+    input.edit.value,
+    valueAt(imported, editExpectation.segments),
+  ).length === 0;
+  const unexpected = differences.filter((difference) => !expectedKeys.has(differenceKey(difference)));
+  const missing = expected.filter((difference) =>
+    !presentKeys.has(differenceKey(difference))
+    || (difference === editExpectation.difference && !editValueApplied));
+  const graph: OscalEditGraphReport = {
+    status: unexpected.length === 0 && missing.length === 0 ? 'passed' : 'failed',
+    unexpected,
+    missing,
+  };
+
+  const findings = compareEditIdentities(source, imported, policy, input.stamp, {
+    rootPath: `$.${rootType}`,
+    editPath: editExpectation.difference.path,
+  });
+  const identities: OscalRoundTripIdentityReport = {
+    status: findings.length === 0 ? 'passed' : 'failed',
+    findings,
+  };
+
+  const reBound = rebindExport(imported, input.catalogKey);
+  if (!reBound.ok) {
+    return deepFreeze({
+      mode: 'edit',
       status: 'failed',
-      diagnostic: createClass2ByteLimitDiagnostic(),
+      rootType: null,
+      resourceLimit: { status: 'passed' },
+      binding: { ok: false, reason: 'export-rebinding-failed', diagnostic: reBound.diagnostic },
+      graph,
+      identities,
+      stages: stagesNotRun(),
     });
   }
 
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(input.fixtureText);
-  } catch {
-    // Ein nicht parsbarer Fixture ist ein Fehler des Testautors, kein
-    // Dokumentbefund: Stufe 1 (Token-Scanner) gehört zur Importpipeline,
-    // nicht zum Harnisch.
-    throw new SyntaxError('Fixture ist kein wohlgeformtes JSON');
-  }
+  const stages = await evaluateStages(reBound, input.catalogKey);
+  const passed = graph.status === 'passed'
+    && identities.status === 'passed'
+    && stages.schemaValidation.status === 'passed'
+    && stages.references.status !== 'failed';
 
-  // Stufe 1b — Strukturinvariante samt Ressourcenlimits auf dem geparsten
-  // Wert, aus der gemeinsamen objektorientierten Einheit (ADR-8 Festlegung 1+3).
-  const limitViolation = enforceClass2ObjectGraphInvariants(parsed);
-  if (limitViolation !== null) {
-    return rejectionBeforeBinding({ status: 'failed', diagnostic: limitViolation });
-  }
-
-  // Stufe 2 — Root-Erkennung und Versionsbindung, bezogen statt nachgebaut.
-  // Die Katalogidentität wird mitgeführt und in Stufe 5 konsumiert; ein
-  // optionaler Registry-Pfad erzwingt die artefaktscharfe Root-Erwartung.
-  const dispatched = dispatchOscalDocument(parsed, {
-    trustClass: HARNESS_TRUST_CLASS,
-    ...(input.upstreamPath !== undefined ? { upstreamPath: input.upstreamPath } : {}),
-    ...(input.catalogKey !== undefined ? { catalogKey: input.catalogKey } : {}),
+  return deepFreeze({
+    mode: 'edit',
+    status: passed ? 'passed' : 'failed',
+    rootType: reBound.rootType,
+    resourceLimit: { status: 'passed' },
+    binding: { ok: true, pin: reBound.pin },
+    graph,
+    identities,
+    stages,
   });
-  if (!dispatched.ok) {
-    return dispatchRejectionResult(dispatched.diagnostic);
-  }
-
-  return successfulNoOpResult(input, dispatched);
 }
