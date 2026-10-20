@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { CLASS_2_IMPORT_LIMITS } from '@/domain/oscalImportContract';
 import type { OscalRootKey } from '@/domain/oscalVersionMatrix';
 import { setSelectedControl } from '@/domain/profileAuthoring';
 import { commitExplicitSave, type ExplicitSaveStamp } from '@/domain/profileSave';
@@ -324,6 +325,47 @@ describe('Edit-Lauf: erwartete Differenzmenge', () => {
       graph: { status: 'not-run' },
       stages: { schemaValidation: { status: 'not-run' } },
     });
+  });
+});
+
+describe('Edit-Lauf: Stufen und Grenzen am Exportartefakt', () => {
+  it.each([
+    ['Stufe 3', { op: 'replace', path: ['catalog', 'metadata', 'title'], value: null }, 'schemaValidation'],
+    ['Stufe 5', { op: 'replace', path: ['catalog', 'metadata', 'links', 0, 'href'], value: 'javascript:beispiel' }, 'references'],
+  ] as const)('setzt den Gesamtstatus auf failed, wenn nur %s scheitert', async (_name, edit, stage) => {
+    const result = await runReference(maximal('catalog'), edit);
+
+    expect(result.graph.status).toBe('passed');
+    expect(result.identities.status).toBe('passed');
+    expect(result.stages[stage].status).toBe('failed');
+    expect(result.status).toBe('failed');
+  });
+
+  it('weist einen Export oberhalb der Byte-Grenze ab', async () => {
+    const result = await runReference(maximal('catalog'), {
+      op: 'replace',
+      path: ['catalog', 'metadata', 'remarks'],
+      value: 'x'.repeat(CLASS_2_IMPORT_LIMITS.maxBytes),
+    });
+
+    expect(result).toMatchObject({
+      status: 'failed',
+      exportLimit: { status: 'failed' },
+      graph: { status: 'not-run' },
+      stages: { schemaValidation: { status: 'not-run' } },
+    });
+  });
+
+  it('weist einen Export oberhalb der Objektgraph-Grenze ab', async () => {
+    let nested: unknown = 'Blatt';
+    for (let depth = 0; depth <= CLASS_2_IMPORT_LIMITS.maxDepth; depth += 1) nested = [nested];
+    const result = await runReference(maximal('catalog'), {
+      op: 'add',
+      path: ['catalog', 'metadata', 'props'],
+      value: { name: 'tief', value: 'x', remarks: nested },
+    });
+
+    expect(result).toMatchObject({ status: 'failed', exportLimit: { status: 'failed' } });
   });
 });
 

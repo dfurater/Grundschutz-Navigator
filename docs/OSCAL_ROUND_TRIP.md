@@ -73,6 +73,11 @@ Gesamtstatus `passed` oder `failed`.
   Ausnahme im Callback ergibt den Bindungsgrund `export-not-serializable`.
 * **Stufen 1–2** laufen wie im No-op-Lauf, **Stufen 3–5** gegen das
   reimportierte Exportartefakt über dieselbe `evaluateStages()`.
+* **Exportgrenzen**: Exportbytes und reimportierter Graph durchlaufen dieselbe
+  Byte-Grenze und dieselben Objektgraphgrenzen wie die Eingabe. Ein Verstoß
+  ergibt `exportLimit: failed`; Vergleich und Stufen laufen dann nicht.
+* **Gesamtstatus** `passed` verlangt bestandene Exportgrenzen, Graph,
+  Identitäten und Stufe 3; Stufe 5 darf nicht `failed` sein.
 
 **Erwartete Differenzmenge.** `compareJsonGraphs()` zwischen Original und
 reimportiertem Export muss genau diese Einträge liefern:

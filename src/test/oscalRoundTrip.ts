@@ -872,6 +872,9 @@ export interface OscalEditRunResult {
   readonly status: 'passed' | 'failed';
   readonly rootType: string | null;
   readonly resourceLimit: OscalRoundTripStatusPassed | OscalRoundTripStatusFailed;
+  /** Byte- und Objektgraphgrenzen am Exportartefakt, wie `resourceLimit` an der Eingabe. */
+  readonly exportLimit: OscalRoundTripStatusPassed | OscalRoundTripStatusFailed
+  | OscalRoundTripStatusNotRun;
   readonly binding: OscalRoundTripBinding;
   readonly graph: OscalEditGraphReport;
   readonly identities: OscalRoundTripIdentityReport;
@@ -886,8 +889,9 @@ const FINDING_SUBOBJECT_UUID_CHANGED = 'subobject-uuid-changed';
 
 /** Pfad in der Schreibweise von `compareJsonGraphs()`. */
 function toGraphPath(segments: readonly OscalEditPathSegment[]): string {
-  return `$${segments.map((segment) =>
-    typeof segment === 'number' ? `[${segment}]` : `.${segment}`).join('')}`;
+  return segments
+    .map((segment) => (typeof segment === 'number' ? `[${segment}]` : `.${segment}`))
+    .reduce((path, segment) => path + segment, '$');
 }
 
 function valueAt(root: unknown, segments: readonly OscalEditPathSegment[]): unknown {
@@ -1011,12 +1015,14 @@ function compareEditIdentities(
 function editRunNotCompared(
   resourceLimit: OscalEditRunResult['resourceLimit'],
   binding: OscalRoundTripBinding,
+  exportLimit: OscalEditRunResult['exportLimit'] = { status: 'not-run' },
 ): OscalEditRunResult {
   return deepFreeze({
     mode: 'edit',
     status: 'failed',
     rootType: null,
     resourceLimit,
+    exportLimit,
     binding,
     graph: { status: 'not-run', unexpected: [], missing: [] },
     identities: { status: 'not-run', findings: [] },
@@ -1062,7 +1068,20 @@ export async function runEditRoundTrip(input: OscalEditRunInput): Promise<OscalE
       { ok: false, reason: 'export-not-serializable', diagnostic },
     );
   }
-  const { imported } = exportedArtifact;
+  const { exportBytes, imported } = exportedArtifact;
+
+  // Das Exportartefakt muss wieder einlesbar sein: dieselben Grenzen wie an
+  // der Eingabe, sonst bestätigte der Lauf einen nicht importierbaren Export.
+  const exportLimitViolation = utf8ByteLength(exportBytes) > CLASS_2_IMPORT_LIMITS.maxBytes
+    ? createClass2ByteLimitDiagnostic()
+    : enforceClass2ObjectGraphInvariants(imported);
+  if (exportLimitViolation !== null) {
+    return editRunNotCompared(
+      { status: 'passed' },
+      { ok: false, reason: 'limits-not-run' },
+      { status: 'failed', diagnostic: exportLimitViolation },
+    );
+  }
 
   const differences = compareJsonGraphs(source, imported);
   const expectedKeys = new Set(expected.map(differenceKey));
@@ -1098,6 +1117,7 @@ export async function runEditRoundTrip(input: OscalEditRunInput): Promise<OscalE
       status: 'failed',
       rootType: null,
       resourceLimit: { status: 'passed' },
+      exportLimit: { status: 'passed' },
       binding: { ok: false, reason: 'export-rebinding-failed', diagnostic: reBound.diagnostic },
       graph,
       identities,
@@ -1116,6 +1136,7 @@ export async function runEditRoundTrip(input: OscalEditRunInput): Promise<OscalE
     status: passed ? 'passed' : 'failed',
     rootType: reBound.rootType,
     resourceLimit: { status: 'passed' },
+    exportLimit: { status: 'passed' },
     binding: { ok: true, pin: reBound.pin },
     graph,
     identities,
