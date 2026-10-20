@@ -110,6 +110,51 @@ describe('rankSearchResults', () => {
   });
 
   describe('Textpfad', () => {
+    it('prepares normalized metadata and content tokens when building the view', () => {
+      const view = buildView([makeControl({
+        tags: ['  MÜLLER\tCafé', 'Überprüfung'],
+        statement: '  ÄNDERUNG\nRésumé  ',
+        guidance: 'Öffnung – Straße 123',
+      })]);
+
+      expect(view.searchDocuments[0]).toMatchObject({
+        metadataTokens: ['muller', 'cafe', 'uberprufung'],
+        contentTokens: ['anderung', 'resume', 'offnung', 'straße', '123'],
+      });
+      expect(buildView([makeControl({ statement: '' })]).searchDocuments[0]).toMatchObject({
+        metadataTokens: [],
+        contentTokens: [],
+      });
+    });
+
+    it.each(['Müller', 'muller', 'MÜLLER'])('preserves metadata and content prefix ranking for %s', (query) => {
+      const view = buildView([
+        makeControl({ id: 'GC.1.1', statement: 'Müllerbericht' }),
+        makeControl({ id: 'GC.1.2', tags: ['Müllerverfahren'], statement: '' }),
+      ]);
+
+      expect(rankedIds(query, view)).toEqual(['GC.1.2', 'GC.1.1']);
+    });
+
+    it('reuses prepared tokens without reading raw document text during ranking', () => {
+      const view = buildView([
+        makeControl({ id: 'GC.1.1', statement: 'Datensicherungskonzept' }),
+        makeControl({ id: 'GC.1.2', tags: ['Datensicherungsplan'], statement: '' }),
+      ]);
+      const expected = rankedIds('datensich', view);
+      expect(expected).toEqual(['GC.1.2', 'GC.1.1']);
+      for (const document of view.searchDocuments) {
+        for (const field of ['metadataText', 'contentText']) {
+          Object.defineProperty(document, field, {
+            get() { throw new Error('Ranking must reuse prepared tokens'); },
+          });
+        }
+      }
+
+      expect(rankedIds('datensich', view)).toEqual(expected);
+      expect(rankedIds('DATENSICH', view)).toEqual(expected);
+    });
+
     it('puts an exact control id ahead of every other match', () => {
       const view = buildView([
         makeControl({ id: 'GC.1.10', title: 'GC.1.1 erweitert' }),
