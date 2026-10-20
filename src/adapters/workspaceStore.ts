@@ -143,9 +143,11 @@ export class WorkspaceStore {
     });
   }
 
-  async addDocument(verbundId: VerbundId, input: Class2OscalImportedDocument, state: DocumentState = 'imported'): Promise<WorkspaceResult<WorkspaceEnvelope>> {
+  /** `outgoing` binds the new document in the same transaction; an invalid binding stores nothing. */
+  async addDocument(verbundId: VerbundId, input: Class2OscalImportedDocument, state: DocumentState = 'imported', outgoing: readonly Omit<WorkspaceBinding, 'fromLocalId'>[] = []): Promise<WorkspaceResult<WorkspaceEnvelope>> {
     try {
       assertState(state);
+      const bindingSnapshot = structuredClone(outgoing);
       const { document } = await snapshotDocument(input, state);
       return this.write(async stamp => {
         if (!await this.verbuende.get(verbundId)) reject('WORKSPACE_VERBUND_NOT_FOUND');
@@ -156,6 +158,7 @@ export class WorkspaceStore {
         };
         if ((document.source as Record<string, { uuid?: string }>)[document.rootType]?.uuid === envelope.localId) reject('WORKSPACE_DOCUMENT_INVALID');
         await this.documents.add(envelope);
+        for (const binding of bindingSnapshot) await this.putBinding({ ...binding, fromLocalId: envelope.localId });
         return envelope;
       });
     } catch (error) { return failure(error); }

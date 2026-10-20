@@ -40,6 +40,13 @@ describe('Validierter Profil-Export', () => {
     expect(await exportProfileDocument(ready(dangling))).toEqual({ ok: false, code: PROFILE_EXPORT_CODES.referenceUnresolved, path: '/profile/imports/0/href' });
   });
 
+  it('weist ein href-Fragment auf eine mehrfach vergebene Ressourcen-UUID ab', async () => {
+    const doubled = structuredClone(NEW) as { profile: { 'back-matter': { resources: { uuid: string }[] } } };
+    const [resource] = doubled.profile['back-matter'].resources;
+    doubled.profile['back-matter'].resources.push({ ...resource, uuid: resource.uuid.toUpperCase() });
+    expect(await exportProfileDocument(ready(doubled))).toEqual({ ok: false, code: PROFILE_EXPORT_CODES.referenceAmbiguous, path: '/profile/imports/0/href' });
+  });
+
   it('lehnt einen Graphen ohne Builder-Herkunft mit OSCAL_OBJECT_UNPROVENANCED ab', async () => {
     expect(await validateProfileExportTree(structuredClone(NEW))).toMatchObject({ ok: false, code: 'OSCAL_OBJECT_UNPROVENANCED' });
   });

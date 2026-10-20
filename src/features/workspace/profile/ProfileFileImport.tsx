@@ -2,6 +2,7 @@ import { useId, useRef, useState, type ChangeEvent } from 'react';
 import { useNavigate } from 'react-router';
 import { buildWorkspaceDocumentUrl } from '@/app/routes';
 import { Button } from '@/components/Button';
+import { CLASS_2_IMPORT_LIMITS, createClass2ByteLimitDiagnostic } from '@/domain/oscalImportContract';
 import type { VerbundId } from '@/domain/workspaceModel';
 import { useWorkspace } from '@/hooks/useWorkspace';
 
@@ -19,23 +20,33 @@ export function ProfileFileImport({ verbundId }: Readonly<{ verbundId: VerbundId
   const [busy, setBusy] = useState(false);
   const [rejected, setRejected] = useState<string>();
 
-  const read = async (event: ChangeEvent<HTMLInputElement>) => {
+  /** Liefert den Ablehnungscode oder die `localId` des aufgenommenen Profils. */
+  const admit = async (file: File): Promise<{ rejected: string } | { localId: string } | null> => {
+    // Vor dem Lesen: Eine übergroße Datei wird nie in den Speicher geladen.
+    if (file.size > CLASS_2_IMPORT_LIMITS.maxBytes) return { rejected: createClass2ByteLimitDiagnostic().code };
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const { importClass2OscalDocument } = await import('@/adapters/oscalImportGate');
+    const imported = await importClass2OscalDocument(bytes, { trustClass: 'class-2-local-user' });
+    if (!imported.ok) return { rejected: imported.diagnostic.code };
+    if (imported.document.rootType !== 'profile') return { rejected: 'OSCAL_ROOT_NOT_PROFILE' };
+    const added = await documents.addDocument(verbundId, imported.document, 'imported');
+    // Ein Speicherfehler erscheint als Speichermeldung des Bereichs.
+    return added.ok ? { localId: added.value.localId } : null;
+  };
+
+  const read = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = '';
     if (!file) return;
     setBusy(true);
     setRejected(undefined);
-    const bytes = new Uint8Array(await file.arrayBuffer());
-    const { importClass2OscalDocument } = await import('@/adapters/oscalImportGate');
-    const imported = await importClass2OscalDocument(bytes, { trustClass: 'class-2-local-user' });
-    if (!imported.ok || imported.document.rootType !== 'profile') {
-      setBusy(false);
-      setRejected(imported.ok ? 'OSCAL_ROOT_NOT_PROFILE' : imported.diagnostic.code);
-      return;
-    }
-    const added = await documents.addDocument(verbundId, imported.document, 'imported');
-    setBusy(false);
-    if (added.ok) void navigate(buildWorkspaceDocumentUrl(verbundId, added.value.localId));
+    void admit(file)
+      .catch(() => ({ rejected: 'OSCAL_IMPORT_FILE_UNREADABLE' }))
+      .then((result) => {
+        setBusy(false);
+        if (result && 'rejected' in result) setRejected(result.rejected);
+        else if (result) void navigate(buildWorkspaceDocumentUrl(verbundId, result.localId));
+      });
   };
 
   return (
@@ -48,15 +59,15 @@ export function ProfileFileImport({ verbundId }: Readonly<{ verbundId: VerbundId
         className="sr-only"
         tabIndex={-1}
         aria-describedby={rejected ? statusId : undefined}
-        onChange={(event) => { void read(event); }}
+        onChange={read}
       />
       <Button variant="secondary" className="min-h-touch desktop:min-h-0" disabled={!writable || busy} onClick={() => input.current?.click()}>
         Profil-Datei einlesen
       </Button>
       {rejected && (
-        <p id={statusId} role="status" className="text-xs text-[var(--color-danger-text)]">
+        <output id={statusId} className="text-xs text-[var(--color-danger-text)]">
           Nicht aufgenommen: <span className="font-mono">{rejected}</span>
-        </p>
+        </output>
       )}
     </div>
   );

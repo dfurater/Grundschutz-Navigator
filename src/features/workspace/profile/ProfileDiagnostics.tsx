@@ -31,6 +31,21 @@ const OUTCOME_ICON: Readonly<Record<Outcome, ReactNode>> = {
   open: <span className="block h-0.5 w-3 rounded-full bg-[var(--color-text-muted)]" />,
 };
 
+function edgeOutcome(state: ProfileAnalysis['imports'][number]['state']): Outcome {
+  if (state === 'resolved') return 'passed';
+  return state === 'error' || state === 'missing-source' ? 'failed' : 'open';
+}
+
+function edgeResult(edge: ProfileAnalysis['imports'][number]): string {
+  if (edge.state === 'resolved') return 'Import gebunden';
+  return edge.diagnosticCode ? `${EDGE_STATE_LABELS[edge.state]} · ${edge.diagnosticCode}` : EDGE_STATE_LABELS[edge.state];
+}
+
+function resolutionSummary(resolution: ProfileAnalysis['resolution']): string {
+  if (resolution.status === 'resolved') return formatCount(resolution.index.ids.length);
+  return resolution.status === 'error' ? 'Fehler' : 'offen';
+}
+
 function rows(analysis: ProfileAnalysis, oscalVersion: string): DiagnosticRow[] {
   const result: DiagnosticRow[] = analysis.hints.map((hint, index) => ({
     key: `hint-${index}`, outcome: 'hint', result: HINT_LABELS[hint.code], stage: 'Hinweis', path: hint.path,
@@ -41,8 +56,8 @@ function rows(analysis: ProfileAnalysis, oscalVersion: string): DiagnosticRow[] 
   for (const edge of analysis.imports) {
     result.push({
       key: `edge-${edge.path}`,
-      outcome: edge.state === 'resolved' ? 'passed' : edge.state === 'error' || edge.state === 'missing-source' ? 'failed' : 'open',
-      result: edge.state === 'resolved' ? 'Import gebunden' : `${EDGE_STATE_LABELS[edge.state]}${edge.diagnosticCode ? ` · ${edge.diagnosticCode}` : ''}`,
+      outcome: edgeOutcome(edge.state),
+      result: edgeResult(edge),
       stage: 'Referenzen',
       path: edge.path,
     });
@@ -67,7 +82,7 @@ function Summary({ analysis }: Readonly<{ analysis: ProfileAnalysis }>) {
       {analysis.hints.length > 0 && <span>Hinweise <strong className="tabular-nums text-[var(--color-text-primary)]">{analysis.hints.length}</strong></span>}
       <span>Schema <strong className="text-[var(--color-text-primary)]">{analysis.schema.status === 'passed' ? 'bestanden' : 'nicht bestanden'}</strong></span>
       <span className="hidden sm:inline">Referenzen <strong className="tabular-nums text-[var(--color-text-primary)]">{resolved}/{analysis.imports.length}</strong></span>
-      <span className="hidden sm:inline">Resolution <strong className="tabular-nums text-[var(--color-text-primary)]">{resolution.status === 'resolved' ? formatCount(resolution.index.ids.length) : resolution.status === 'error' ? 'Fehler' : 'offen'}</strong></span>
+      <span className="hidden sm:inline">Resolution <strong className="tabular-nums text-[var(--color-text-primary)]">{resolutionSummary(resolution)}</strong></span>
       <span className="hidden sm:inline">Constraints <strong className="text-[var(--color-text-primary)]">nicht geprüft</strong></span>
     </span>
   );
@@ -78,10 +93,11 @@ function Summary({ analysis }: Readonly<{ analysis: ProfileAnalysis }>) {
  * (Skizze 001, Mockup 6): je Zeile Ergebnis, Stufe und OSCAL-Pfad, nie ein
  * Dokumentwert.
  */
-export function ProfileDiagnostics({ analysis, current, oscalVersion }: Readonly<{ analysis: ProfileAnalysis | null; current: boolean; oscalVersion: string }>) {
+export function ProfileDiagnostics({ analysis, current, failed, oscalVersion }: Readonly<{ analysis: ProfileAnalysis | null; current: boolean; failed: boolean; oscalVersion: string }>) {
   const panelId = useId();
   const [open, setOpen] = useState(false);
-  const issues = analysis ? analysis.hints.length + (analysis.schema.status === 'passed' ? 0 : 1) : 0;
+  const schemaIssues = analysis?.schema.status === 'failed' ? 1 : 0;
+  const issues = (analysis?.hints.length ?? 0) + schemaIssues;
   return (
     <section aria-label="Diagnosen" aria-busy={!current} className="border-t border-[var(--color-border-default)] bg-[var(--color-surface-base)]">
       <button
@@ -93,7 +109,7 @@ export function ProfileDiagnostics({ analysis, current, oscalVersion }: Readonly
       >
         <span className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">Diagnosen</span>
         {issues > 0 && <span className="inline-flex min-w-4.5 items-center justify-center rounded-full bg-[var(--color-text-primary)] px-1 text-2xs font-semibold tabular-nums text-[var(--color-text-inverse)]">{issues}</span>}
-        {analysis ? <Summary analysis={analysis} /> : <span className="text-sm text-[var(--color-text-secondary)]">werden abgeleitet</span>}
+        {analysis ? <Summary analysis={analysis} /> : <span className="text-sm text-[var(--color-text-secondary)]">{failed ? 'nicht ableitbar' : 'werden abgeleitet'}</span>}
         <IconChevronDown className={`ml-auto h-4 w-4 shrink-0 text-[var(--color-text-muted)] ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && analysis && (

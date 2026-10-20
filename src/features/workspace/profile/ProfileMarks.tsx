@@ -7,9 +7,20 @@ export const CLASS_1_ORIGIN_LABEL = 'BSI-geprüft';
 
 const MARK = 'inline-flex items-center gap-1 whitespace-nowrap rounded border px-2 py-0.5 text-xs font-medium leading-4';
 
-export function OriginMark({ origin }: Readonly<{ origin: 'class-1' | 'local' }>) {
+export type CatalogVerification = 'valid' | 'invalid' | 'pending';
+
+const UNVERIFIED_LABELS: Readonly<Record<Exclude<CatalogVerification, 'valid'>, string>> = {
+  invalid: 'BSI-Katalog · nicht verifiziert',
+  pending: 'BSI-Katalog · Prüfung offen',
+};
+
+/** „BSI-geprüft“ steht nur bei bestandener Hashprüfung; Herkunft allein trägt kein Siegel. */
+export function OriginMark({ origin, verification = 'pending' }: Readonly<{ origin: 'class-1' | 'local'; verification?: CatalogVerification }>) {
   if (origin === 'local') {
     return <span className={`${MARK} border-[var(--color-border-strong)] bg-[var(--color-surface-subtle)] text-[var(--color-text-secondary)]`}>{LOCAL_ORIGIN_LABEL}</span>;
+  }
+  if (verification !== 'valid') {
+    return <span className={`${MARK} border-[var(--color-border-strong)] bg-[var(--color-surface-base)] text-[var(--color-text-secondary)]`}>{UNVERIFIED_LABELS[verification]}</span>;
   }
   return (
     <span className={`${MARK} border-[var(--color-border-strong)] bg-[var(--color-surface-base)] text-[var(--color-text-secondary)]`}>

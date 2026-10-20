@@ -17,10 +17,10 @@ describe('Profilanalyse über zwei Importziele', () => {
 
     const analysis = await deriveProfileAnalysis({ localId: profile.localId, source, members: [working, first, second], bindings, class1Artifacts: [] });
 
-    const [hrefA, hrefB] = (body(working).imports as { href: string }[]).map((entry) => entry.href);
-    expect(analysis.targets.get(hrefA)?.ids).toEqual(['ac-1']);
-    expect(analysis.targets.get(hrefB)?.ids).toEqual(['ac-1']);
-    expect(analysis.targets.get(hrefA)).not.toBe(analysis.targets.get(hrefB));
+    const [first0, second1] = ['/profile/imports/0/href', '/profile/imports/1/href'].map((pointer) => analysis.targets.get(pointer));
+    expect(first0?.ids).toEqual(['ac-1']);
+    expect(second1?.ids).toEqual(['ac-1']);
+    expect(first0).not.toBe(second1);
     expect(analysis.imports.map((edge) => edge.state)).toEqual(['resolved', 'resolved']);
     // Der Ausschluss gilt nur im zweiten Import; ac-1 aus dem ersten Ziel bleibt Teil des Pakets.
     expect(analysis.resolution).toMatchObject({ status: 'resolved', index: { ids: ['ac-1'] } });

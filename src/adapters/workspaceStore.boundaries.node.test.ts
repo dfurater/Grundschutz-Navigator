@@ -236,3 +236,23 @@ it('rejects a generated local ID equal to the imported document root UUID', asyn
     expect(value(await store.listDocuments())).toMatchObject([{ localId: envelope.localId }]);
   } finally { generate.mockRestore(); }
 });
+
+describe('addDocument mit ausgehender Bindung (GSPP-292)', () => {
+  async function profileInput() {
+    return valueImported(await processClass2OscalBytes(new TextEncoder().encode(JSON.stringify(makeSchemaValidOscalDocument('profile', '1.1.3'))), { trustClass: 'class-2-local-user' }));
+  }
+
+  it('schreibt Dokument und Bindung gemeinsam und speichert bei ungültiger Bindung nichts', async () => {
+    const profile = await profileInput();
+    const href = (profile.source as { profile: { imports: { href: string }[] } }).profile.imports[0].href;
+    const pointer = '/profile/imports/0/href';
+    const added = value(await store.addDocument(verbund.verbundId, profile, 'draft', [{ pointer, href, target: { kind: 'local', localId: envelope.localId } }]));
+    expect(value(await store.listBindings())).toEqual([{ fromLocalId: added.localId, pointer, href, target: { kind: 'local', localId: envelope.localId } }]);
+
+    const before = value(await store.listDocuments(verbund.verbundId)).length;
+    rejected(await store.addDocument(verbund.verbundId, profile, 'draft', [{ pointer, href, target: { kind: 'class-1', artifactKey: 'profile-gspp' } }]), 'WORKSPACE_ARTIFACT_UNSUPPORTED');
+    rejected(await store.addDocument(verbund.verbundId, profile, 'draft', [{ pointer, href: 'anders.json', target: { kind: 'local', localId: envelope.localId } }]), 'WORKSPACE_BINDING_INVALID');
+    expect(value(await store.listDocuments(verbund.verbundId))).toHaveLength(before);
+    expect(value(await store.listBindings())).toHaveLength(1);
+  });
+});

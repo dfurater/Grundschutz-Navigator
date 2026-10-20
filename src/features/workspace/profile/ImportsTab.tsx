@@ -1,7 +1,7 @@
 import { useContext, useId, useState } from 'react';
 import { Button } from '@/components/Button';
 import type { CatalogState, Control } from '@/domain/models';
-import { addImport, removeImport } from '@/domain/profileImportList';
+import { addImport, importHrefPointer, removeImport } from '@/domain/profileImportList';
 import { SUPPORTED_CATALOGS, type CatalogKey } from '@/domain/sourceRegistry';
 import { ROOT_TYPE_LABELS } from '@/domain/workspaceStations';
 import type { BindingTarget } from '@/domain/workspaceModel';
@@ -14,16 +14,15 @@ import { targetKey, type ImportTargetOption } from '@/features/workspace/profile
 import type { ProfileEditor } from '@/features/workspace/profile/useProfileEditor';
 
 /** Auswahlliste der Importziele; ein Ziel mit anderer `oscal-version` ist ausgegraut. */
-function TargetMenu({ id, options, oscalVersion, onPick, onClose }: Readonly<{
+function TargetMenu({ id, options, oscalVersion, onPick }: Readonly<{
   id: string;
   options: readonly ImportTargetOption[];
   oscalVersion: string;
   onPick: (option: ImportTargetOption) => void;
-  onClose: () => void;
 }>) {
   return (
-    <div id={id} role="group" aria-label="Importziel" onKeyDown={(event) => { if (event.key === 'Escape') onClose(); }} className="absolute right-0 top-full z-20 mt-1 w-full max-w-md rounded-lg border border-[var(--color-border-default)] bg-[var(--color-surface-overlay)] py-2 shadow-overlay">
-      <p className={`${SECTION_LABEL} px-4 pb-1`}>Importziel</p>
+    <fieldset id={id} className="absolute right-0 top-full z-20 mt-1 w-full max-w-md rounded-lg border border-[var(--color-border-default)] bg-[var(--color-surface-overlay)] py-2 shadow-overlay">
+      <legend className={`${SECTION_LABEL} float-left w-full px-4 pb-1`}>Importziel</legend>
       <ul>
         {options.map((option) => {
           const disabled = option.oscalVersion !== oscalVersion;
@@ -45,7 +44,7 @@ function TargetMenu({ id, options, oscalVersion, onPick, onClose }: Readonly<{
           );
         })}
       </ul>
-    </div>
+    </fieldset>
   );
 }
 
@@ -89,10 +88,10 @@ export function ImportsTab({ editor, analysis, options, oscalVersion }: Readonly
         >
           + Import hinzufügen
         </Button>
-        {picking !== undefined && <TargetMenu id={menuId} options={options} oscalVersion={oscalVersion} onPick={pick} onClose={() => setPicking(undefined)} />}
+        {picking !== undefined && <TargetMenu id={menuId} options={options} oscalVersion={oscalVersion} onPick={pick} />}
       </div>
       {editor.imports.map((entry, position) => {
-        const target = editor.targetFor(entry.href);
+        const target = editor.targetFor(entry);
         return (
           <ImportCard
             key={`${entry.index}|${entry.href ?? ''}`}
@@ -100,8 +99,8 @@ export function ImportsTab({ editor, analysis, options, oscalVersion }: Readonly
             position={position + 1}
             oscalVersion={oscalVersion}
             target={optionFor(target)}
-            edge={analysis?.imports.find((edge) => edge.path === `/profile/imports/${entry.index}/href`)}
-            controls={entry.href === undefined ? undefined : analysis?.targets.get(entry.href)}
+            edge={analysis?.imports.find((edge) => edge.path === importHrefPointer(entry.index))}
+            controls={analysis?.targets.get(importHrefPointer(entry.index))}
             details={catalogDetails(catalogs, target)}
             canRemove={editor.imports.length > 1}
             onChange={editor.change}

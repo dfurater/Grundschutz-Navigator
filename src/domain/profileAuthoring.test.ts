@@ -75,6 +75,14 @@ describe('Import-Formular entlang der Schemastruktur', () => {
     expect(() => setWithChildControls(source, 0, 'include', 'ja')).toThrow('PROFILE_WITH_CHILD_CONTROLS_INVALID');
   });
 
+  it('zeigt einen gemischten with-child-controls-Zustand und schreibt den Wert in jeden Selektor', () => {
+    const source = setImportMode(newProfile('1.2.2'), 0, 'controls', '1.2.2') as { profile: { imports: Record<string, unknown>[] } };
+    source.profile.imports[0]['include-controls'] = [{ 'with-ids': ['A'], 'with-child-controls': 'no' }, { 'with-ids': ['B'], 'with-child-controls': 'yes' }];
+    expect(readProfileImports(source)[0].include.withChildControls).toBe('mixed');
+    const written = setWithChildControls(source, 0, 'include', 'yes');
+    expect(readProfileImports(written)[0].include.withChildControls).toBe('yes');
+  });
+
   it('entfernt eine Anforderung aus jedem Selektor und lässt Fremdfelder unverändert', () => {
     const source = makeProfileSource(profileSpecFor('profile-gspp'));
     const imports = (source.profile as { imports: Record<string, unknown>[] }).imports;

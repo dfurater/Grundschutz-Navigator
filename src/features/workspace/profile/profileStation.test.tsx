@@ -9,6 +9,7 @@ import type { CatalogKey } from '@/domain/sourceRegistry';
 import type { DocumentState, LocalId, VerbundId, WorkspaceEnvelope } from '@/domain/workspaceModel';
 import { makeSchemaValidOscalDocument } from '@/test/fixtures/oscalSchemaFixtures';
 import { makeProfileSource, profileSpecFor } from '@/test/fixtures/profiles';
+import { CLASS_2_IMPORT_LIMITS } from '@/domain/oscalImportContract';
 import { EMPTY_CATALOG_STATE, mainLandmark as main, renderWorkspaceArea as renderArea } from '@/test/renderWorkspaceArea';
 import { readStore, resetWorkspace, seedWorkspace, type SeededWorkspace } from '@/test/workspaceAreaFixture';
 
@@ -34,8 +35,8 @@ afterEach(async () => {
   await resetWorkspace();
 });
 
-function withGspp(): CatalogState {
-  const loaded = { catalogKey: 'gspp', catalogDocument: { source: makeSchemaValidOscalDocument('catalog', '1.1.3') }, verification: { valid: true } } as unknown as LoadedCatalogState;
+function withGspp(valid = true): CatalogState {
+  const loaded = { catalogKey: 'gspp', catalogDocument: { source: makeSchemaValidOscalDocument('catalog', '1.1.3') }, verification: { valid } } as unknown as LoadedCatalogState;
   return { ...EMPTY_CATALOG_STATE, catalogs: new Map<CatalogKey, LoadedCatalogState>([['gspp', loaded]]) };
 }
 
@@ -111,6 +112,14 @@ describe('Neuanlage über das Importziel', () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  it('zeigt „BSI-geprüft“ nur für einen Katalog mit bestandener Hashprüfung', async () => {
+    renderArea(buildStationUrl(seeded.verbundId, 'profile'), withGspp(false));
+    await openNewProfile('Paket');
+    const gspp = (await within(main()).findByRole('radio', { name: /catalog-gspp/ })).closest('label')!;
+    expect(gspp).toHaveTextContent('BSI-Katalog · nicht verifiziert');
+    expect(main()).not.toHaveTextContent('BSI-geprüft');
+  });
+
   it('bindet ein Ziel des eigenen Verbunds lokal und bietet kein Ziel eines anderen Verbunds an', async () => {
     const catalog = await add(seeded.verbundId, local('catalog', '1.2.2', 'Zusatzkatalog'));
     await add(seeded.otherVerbundId, local('catalog', '1.2.2', 'Fremder Katalog'));
@@ -167,6 +176,39 @@ describe('Bearbeiten, Autosave, Speichern und Export', () => {
     expect(JSON.stringify(exported)).not.toMatch(/localId|verbundId|savedAt|documentState|artifactKey/);
   });
 
+  it('behält eine Eingabe während des Speicherns als Arbeitsstand und sichert sie danach als Entwurf', async () => {
+    const { localId } = await createdProfile();
+    fireEvent.click(await within(main()).findByRole('radio', { name: 'Einzelne Anforderungen' }));
+    const checkbox = await within(main()).findByRole('checkbox', { name: 'ac-1 auswählen' }, WAIT);
+    fireEvent.click(within(main()).getByRole('button', { name: 'Speichern' }));
+    fireEvent.click(checkbox);
+    await waitFor(async () => expect((await readStore((store) => store.getDocument(localId)))?.documentState).toBe('export-ready'), WAIT);
+    expect(within(main()).getByRole('checkbox', { name: 'ac-1 auswählen' })).toBeChecked();
+    await waitFor(async () => {
+      const draft = await readStore((store) => store.getDraft(localId));
+      expect(profileBody(draft as never)?.imports[0]['include-controls']).toEqual([{ 'with-ids': ['ac-1'] }]);
+    }, WAIT);
+  });
+
+  it('meldet ein gescheitertes Löschen und sichert offene Eingaben weiter', async () => {
+    const { WorkspaceStore } = await import('@/adapters/workspaceStore');
+    const { StorageFailure, failure } = await import('@/adapters/workspaceStorageFailure');
+    vi.spyOn(WorkspaceStore.prototype, 'deleteDocument').mockResolvedValue(failure(new StorageFailure('WORKSPACE_STORAGE_FAILED')));
+    const { localId } = await createdProfile();
+    fireEvent.click(await within(main()).findByRole('button', { name: '+ Muster' }));
+    fireEvent.click(within(main()).getByRole('button', { name: 'Profil löschen…' }));
+    fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Endgültig löschen' }));
+    expect(await within(main()).findByText('Das Profil wurde nicht gelöscht.', undefined, WAIT)).toBeInTheDocument();
+    await waitFor(async () => expect(await readStore((store) => store.getDraft(localId))).toBeDefined(), WAIT);
+  });
+
+  it('sichert offene Eingaben sofort, wenn der Editor innerhalb des Bereichs verlassen wird', async () => {
+    const { localId } = await createdProfile();
+    fireEvent.click(await within(main()).findByRole('button', { name: '+ Muster' }));
+    fireEvent.click(within(main()).getByRole('link', { name: /^Profile$/ }));
+    await waitFor(async () => expect(await readStore((store) => store.getDraft(localId))).toBeDefined(), WAIT);
+  });
+
   it('löscht ein Profil nach Bestätigung samt Entwurf und Bindung', async () => {
     const { localId } = await createdProfile();
     fireEvent.click(await within(main()).findByRole('button', { name: '+ Muster' }));
@@ -213,6 +255,18 @@ describe('Kopie eines eingelesenen Profils', () => {
     expect(profileBody(saved)['back-matter']).toEqual((source.profile as Record<string, unknown>)['back-matter']);
   });
 
+  it('weist eine übergroße Datei vor dem Lesen ab', async () => {
+    renderArea(buildStationUrl(seeded.verbundId, 'profile'), withGspp());
+    await within(main()).findByRole('button', { name: 'Profil-Datei einlesen' });
+    const file = new File(['{}'], 'gross.json');
+    Object.defineProperty(file, 'size', { value: CLASS_2_IMPORT_LIMITS.maxBytes + 1 });
+    const read = vi.spyOn(file, 'arrayBuffer');
+    fireEvent.change(main().querySelector<HTMLInputElement>('input[type="file"]')!, { target: { files: [file] } });
+    expect(await within(main()).findByRole('status', undefined, WAIT)).toHaveTextContent('Nicht aufgenommen');
+    expect(read).not.toHaveBeenCalled();
+    expect(within(main()).getByRole('button', { name: 'Profil-Datei einlesen' })).toBeEnabled();
+  });
+
   it('weist eine Datei ab, die kein Profile ist', async () => {
     renderArea(buildStationUrl(seeded.verbundId, 'profile'), withGspp());
     await within(main()).findByRole('button', { name: 'Profil-Datei einlesen' });
@@ -250,6 +304,28 @@ describe('Fremddokumente bleiben erhalten', () => {
     expect(within(menu).getByRole('button', { name: /Alter Katalog/ })).toBeDisabled();
     expect(within(menu).getByRole('button', { name: /catalog-gspp/ })).toBeDisabled();
     expect((await readStore((store) => store.getDocument(profile.localId)))?.oscalVersion).toBe('1.2.2');
+  });
+
+  it('behält zwei Bindungen desselben href an ihren Pointern über das Speichern', async () => {
+    const first = await add(seeded.verbundId, local('catalog', '1.2.2', 'Katalog A'));
+    const second = await add(seeded.verbundId, local('catalog', '1.2.2', 'Katalog B'));
+    const profile = await add(seeded.verbundId, local('profile', '1.2.2', 'Doppelt', (body) => {
+      const [entry] = body.imports as Record<string, unknown>[];
+      body.imports = [entry, { href: entry.href, 'include-all': {} }];
+    }));
+    const href = profileBody(profile).imports[0].href as string;
+    for (const [index, target] of [[0, first], [1, second]] as const) {
+      const current = (await readStore((store) => store.getDocument(profile.localId)))!;
+      await readStore((store) => store.setBinding({ fromLocalId: profile.localId, pointer: `/profile/imports/${index}/href`, href, target: { kind: 'local', localId: target.localId } }, current.savedAt));
+    }
+    renderArea(buildWorkspaceDocumentUrl(seeded.verbundId, profile.localId), withGspp());
+    fireEvent.click(await within(main()).findByRole('button', { name: 'Speichern' }, WAIT));
+    await waitFor(async () => expect((await readStore((store) => store.getDocument(profile.localId)))?.documentState).toBe('export-ready'), WAIT);
+    const bindings = (await readStore((store) => store.listBindings())).filter((binding) => binding.fromLocalId === profile.localId);
+    expect(bindings.map((binding) => [binding.pointer, binding.target])).toEqual([
+      ['/profile/imports/0/href', { kind: 'local', localId: first.localId }],
+      ['/profile/imports/1/href', { kind: 'local', localId: second.localId }],
+    ]);
   });
 
   it('bricht einen zirkulären Import mit Fehler ab', async () => {

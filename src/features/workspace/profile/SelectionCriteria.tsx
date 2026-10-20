@@ -1,4 +1,4 @@
-import { useId, useState, type FormEvent } from 'react';
+import { useId, useMemo, useState, type FormEvent } from 'react';
 import { CheckboxLabel } from '@/components/CheckboxLabel';
 import { IconInfo, IconX } from '@/components/icons';
 import type { ProfilePatternView, ProfileSelectorView } from '@/domain/profileAuthoring';
@@ -24,7 +24,8 @@ function PatternRow({ pattern, ids, actions, index }: Readonly<{
   index: number;
 }>) {
   const inputId = useId();
-  const matches = pattern.pattern === undefined ? undefined : countGlobMatches(pattern.pattern, ids);
+  // Je Muster ein eigenes Arbeitsbudget; gezählt wird nur bei geändertem Muster oder Ziel.
+  const matches = useMemo(() => pattern.pattern === undefined ? undefined : countGlobMatches(pattern.pattern, ids), [pattern.pattern, ids]);
   return (
     <li className="flex flex-wrap items-center gap-x-3 gap-y-1">
       <label htmlFor={inputId} className="sr-only">Muster {index + 1}</label>
@@ -122,6 +123,7 @@ export function SelectionCriteria({ title, oscalKey, view, ids, actions, showIds
         <CheckboxLabel
           label={childLabel}
           checked={view.withChildControls === 'yes'}
+          indeterminate={view.withChildControls === 'mixed'}
           onChange={(checked) => actions.setWithChildControls?.(checked ? 'yes' : 'no')}
         />
       )}

@@ -28,6 +28,7 @@ function OptionRow({ option, name, checked, disabled, onSelect }: Readonly<{
           <span className="text-sm font-semibold text-[var(--color-text-primary)]">{option.title || ROOT_TYPE_LABELS[option.rootType]}</span>
           <span className="font-mono text-xs text-[var(--color-text-secondary)]">{option.artifactKey ?? 'Im Verbund'}</span>
         </span>
+        {option.origin === 'class-1' && option.verification !== 'valid' && <OriginMark origin="class-1" verification={option.verification} />}
         <span className="text-xs text-[var(--color-text-secondary)]">
           {ROOT_TYPE_LABELS[option.rootType]} · OSCAL <span className="font-mono">{option.oscalVersion}</span>
         </span>
@@ -55,8 +56,10 @@ export function ImportTargetPicker({ name, options, selected, requiredVersion, o
   return (
     <div className="space-y-3">
       {groups.filter((group) => group.entries.length > 0).map((group) => (
-        <div key={group.origin} role="radiogroup" aria-label={group.origin === 'class-1' ? 'BSI-geprüft' : 'Eigene Daten'} className="space-y-2">
-          <OriginMark origin={group.origin} />
+        <div key={group.origin} role="radiogroup" aria-label={group.origin === 'class-1' ? 'BSI-Kataloge' : 'Eigene Daten'} className="space-y-2">
+          {group.origin === 'class-1' && group.entries.some((option) => option.verification !== 'valid')
+            ? <p className="text-xs font-medium text-[var(--color-text-secondary)]">BSI-Kataloge</p>
+            : <OriginMark origin={group.origin} verification="valid" />}
           <ul className="divide-y divide-[var(--color-border-subtle)] overflow-hidden rounded-md border border-[var(--color-border-default)]">
             {group.entries.map((option) => (
               <OptionRow

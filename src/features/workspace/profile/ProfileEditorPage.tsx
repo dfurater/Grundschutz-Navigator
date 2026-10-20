@@ -26,6 +26,7 @@ const MESSAGES: Readonly<Record<ProfileEditorMessage, string>> = {
   'saved-as-draft': 'Das Schema ist nicht bestanden; das Profil ist als Entwurf gespeichert.',
   'save-failed': 'Das Profil wurde nicht gespeichert.',
   'export-failed': 'Der Export wurde abgelehnt; die Diagnosen nennen die Stufe.',
+  'delete-failed': 'Das Profil wurde nicht gelöscht.',
 };
 
 function Tabs({ tab, onSelect, counts, ids }: Readonly<{ tab: Tab; onSelect: (tab: Tab) => void; counts: Readonly<Record<Tab, number>>; ids: Readonly<Record<Tab, string>> }>) {
@@ -126,14 +127,14 @@ export function ProfileEditorPage({ view, document }: Readonly<{ view: VerbundVi
   const desktop = useMediaQuery(DESKTOP_QUERY);
   const localId = document.localId as LocalId;
   const editor = useProfileEditor(localId);
-  const { analysis, current } = useProfileAnalysis(view.verbund.verbundId as VerbundId, localId, editor.working, editor.bindings);
+  const { analysis, current, failed } = useProfileAnalysis(view.verbund.verbundId as VerbundId, localId, editor.working, editor.bindings);
   const options = useImportTargets(view, localId);
   const [tab, setTab] = useState<Tab>('imports');
   const [sheet, setSheet] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const navigate = useNavigate();
   const targets = useMemo(() => editor.imports.flatMap((entry) => {
-    const target = editor.targetFor(entry.href);
+    const target = editor.targetFor(entry);
     const option = target && options.find((candidate) => candidate.key === targetKey(target));
     return option ? [option] : [];
   }), [editor, options]);
@@ -157,7 +158,7 @@ export function ProfileEditorPage({ view, document }: Readonly<{ view: VerbundVi
         <Tabs tab={tab} onSelect={setTab} counts={{ imports: editor.imports.length, references: view.edges.get(localId)?.length ?? 0 }} ids={ids} />
         <div className="min-h-0 flex-1 space-y-4 p-4 md:overflow-y-auto">
           <WorkspaceNotices />
-          {editor.message && <p role="status" className="text-sm text-[var(--color-text-primary)]">{MESSAGES[editor.message]}</p>}
+          {editor.message && <output className="block text-sm text-[var(--color-text-primary)]">{MESSAGES[editor.message]}</output>}
           <div role="tabpanel" id={ids.imports} aria-labelledby={`${ids.imports}-tab`} hidden={tab !== 'imports'}>
             <ImportsTab editor={editor} analysis={analysis} options={options} oscalVersion={oscalVersion} />
           </div>
@@ -166,7 +167,7 @@ export function ProfileEditorPage({ view, document }: Readonly<{ view: VerbundVi
           </div>
         </div>
         <div className="sticky bottom-0 z-10 shrink-0 bg-[var(--color-surface-base)] desktop:static">
-          <ProfileDiagnostics analysis={analysis} current={current} oscalVersion={oscalVersion} />
+          <ProfileDiagnostics analysis={analysis} current={current} failed={failed} oscalVersion={oscalVersion} />
           {!desktop && (
             <div className="grid grid-cols-2 gap-2 border-t border-[var(--color-border-default)] p-3 pb-safe shadow-footer">
               <Button variant="secondary" className="min-h-touch" aria-haspopup="dialog" onClick={() => setSheet(true)}>

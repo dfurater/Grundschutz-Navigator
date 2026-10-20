@@ -16,10 +16,12 @@ export const PROFILE_ANALYSIS_DELAY_MS = 250;
 export function useProfileAnalysis(verbundId: VerbundId, localId: LocalId, source: unknown, bindings: readonly WorkspaceBinding[]): {
   readonly analysis: ProfileAnalysis | null;
   readonly current: boolean;
+  /** Die letzte Ableitung ist gescheitert; es gibt dann keinen (veralteten) Befund. */
+  readonly failed: boolean;
 } {
   const { documents } = useWorkspace();
   const { requestCatalog } = useContext(CatalogContext);
-  const [state, setState] = useState<{ analysis: ProfileAnalysis | null; source: unknown; bindings: readonly WorkspaceBinding[] }>({ analysis: null, source: undefined, bindings: [] });
+  const [state, setState] = useState<{ analysis: ProfileAnalysis | null; failed: boolean; source: unknown; bindings: readonly WorkspaceBinding[] }>({ analysis: null, failed: false, source: undefined, bindings: [] });
 
   useEffect(() => {
     for (const binding of bindings) {
@@ -35,7 +37,7 @@ export function useProfileAnalysis(verbundId: VerbundId, localId: LocalId, sourc
     let active = true;
     const timer = setTimeout(() => {
       void documents.analyzeProfile({ verbundId, localId, source, bindings }).then((result) => {
-        if (active && result.ok) setState({ analysis: result.value, source, bindings });
+        if (active) setState({ analysis: result.ok ? result.value : null, failed: !result.ok, source, bindings });
       });
     }, PROFILE_ANALYSIS_DELAY_MS);
     return () => {
@@ -44,5 +46,5 @@ export function useProfileAnalysis(verbundId: VerbundId, localId: LocalId, sourc
     };
   }, [documents, verbundId, localId, source, bindings]);
 
-  return { analysis: state.analysis, current: state.source === source && state.bindings === bindings };
+  return { analysis: state.analysis, failed: state.failed, current: state.source === source && state.bindings === bindings };
 }

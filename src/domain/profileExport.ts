@@ -23,6 +23,7 @@ export const PROFILE_EXPORT_CODES = Object.freeze({
   rootNotProfile: 'OSCAL_EXPORT_ROOT_NOT_PROFILE',
   sourceInvalid: 'OSCAL_EXPORT_SOURCE_INVALID',
   referenceUnresolved: 'OSCAL_EXPORT_REFERENCE_UNRESOLVED',
+  referenceAmbiguous: 'OSCAL_EXPORT_REFERENCE_AMBIGUOUS',
 } as const);
 
 export interface ProfileExportReport {
@@ -68,21 +69,35 @@ export function toDerivedProfileTree(source: unknown): DerivedJsonTree {
   return builder.finishRoot(root);
 }
 
-function checkReferences(tree: unknown, oscalVersion: string): { resolved: number; total: number; failedPath?: string } {
+/** Zahl der `back-matter.resources` je UUID, ohne Groß-/Kleinschreibung (`localFragmentUuid()`). */
+function resourceCounts(profile: Record<string, unknown> | undefined): Map<string, number> {
+  const counts = new Map<string, number>();
+  const backMatter = profile?.['back-matter'];
+  for (const resource of readArray(isJsonObject(backMatter) ? backMatter.resources : undefined)) {
+    const uuid = isJsonObject(resource) ? readString(resource.uuid)?.toLowerCase() : undefined;
+    if (uuid !== undefined) counts.set(uuid, (counts.get(uuid) ?? 0) + 1);
+  }
+  return counts;
+}
+
+function checkReferences(tree: unknown, oscalVersion: string): { resolved: number; total: number; failure?: { code: string; path: string } } {
   const profile = isJsonObject(tree) && isJsonObject(tree.profile) ? tree.profile : undefined;
+  const counts = resourceCounts(profile);
   const document = createReferenceDocument({ source: tree, context: { trustClass: 'class-2-local-user' }, rootType: 'profile', oscalVersion });
   let resolved = 0;
   let total = 0;
-  let failedPath: string | undefined;
+  let failure: { code: string; path: string } | undefined;
   readArray(profile?.imports).forEach((entry, index) => {
     const href = isJsonObject(entry) ? readString(entry.href) : undefined;
     if (href === undefined || !isLocalFragmentHref(href)) return;
     total += 1;
     const path = `/profile/imports/${index}/href`;
-    if (resolveOscalReference({ href, path }, { document }).kind === 'resource') resolved += 1;
-    else failedPath ??= path;
+    // Der Ressourcenindex der Auflösung behält bei doppelter UUID still den ersten Eintrag.
+    if ((counts.get(href.slice(1).toLowerCase()) ?? 0) > 1) failure ??= { code: PROFILE_EXPORT_CODES.referenceAmbiguous, path };
+    else if (resolveOscalReference({ href, path }, { document }).kind === 'resource') resolved += 1;
+    else failure ??= { code: PROFILE_EXPORT_CODES.referenceUnresolved, path };
   });
-  return { resolved, total, failedPath };
+  return { resolved, total, failure };
 }
 
 /**
@@ -95,7 +110,7 @@ export async function validateProfileExportTree(tree: unknown): Promise<ProfileE
   if (!processed.ok) return fail(processed.diagnostic.code, processed.diagnostic.path);
   if (processed.document.rootType !== 'profile') return fail(PROFILE_EXPORT_CODES.rootNotProfile);
   const references = checkReferences(processed.document.source, processed.document.oscalVersion);
-  if (references.failedPath !== undefined) return fail(PROFILE_EXPORT_CODES.referenceUnresolved, references.failedPath);
+  if (references.failure) return fail(references.failure.code, references.failure.path);
   return {
     ok: true,
     json: serializeWorkspaceJson(processed.document.source),

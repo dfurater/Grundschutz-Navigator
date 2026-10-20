@@ -46,7 +46,7 @@ export function PackageContent({ analysis, targets, total }: Readonly<{
         {targets.length === 0 && <dd className="text-[var(--color-text-secondary)]">nicht zugeordnet</dd>}
         {targets.map((target) => (
           <dd key={target.key} className="space-y-1">
-            <OriginMark origin={target.origin} />
+            <OriginMark origin={target.origin} verification={target.verification} />
             <p className="font-medium text-[var(--color-text-primary)]">{target.title}</p>
           </dd>
         ))}

@@ -6,7 +6,7 @@ import type { WorkspaceClass1Artifact, WorkspaceGraph, WorkspaceGraphEdge } from
 import { serializeWorkspaceJson } from '@/domain/workspaceJson';
 import type { LocalId, VerbundId, WorkspaceBinding, WorkspaceEnvelope, WorkspaceResult } from '@/domain/workspaceModel';
 import {
-  loadMembers, pointerString, projectEdges, unavailableClass1Bindings,
+  loadMembers, projectEdges, unavailableClass1Bindings,
   type WorkspaceEdgeView, type WorkspacePort,
 } from '@/state/workspaceVerbundView';
 
@@ -35,7 +35,7 @@ export interface ProfileAnalysis {
   /** Die `profile-import`-Kanten dieses Dokuments. */
   readonly imports: readonly WorkspaceEdgeView[];
   readonly resolution: ProfileResolutionView;
-  /** Anforderungen je gebundenem Importziel, nach `href`. */
+  /** Anforderungen je gebundenem Import, nach JSON Pointer seines `href`; zwei Importe teilen nie einen Eintrag. */
   readonly targets: ReadonlyMap<string, TargetControlIndex>;
 }
 
@@ -102,9 +102,8 @@ export async function deriveProfileAnalysis(snapshot: ProfileAnalysisSnapshot): 
   const targets = new Map<string, TargetControlIndex>();
   for (const edge of graph.edges) {
     if (edge.kind !== 'profile-import' || edge.from.document.kind !== 'local' || edge.from.document.localId !== localId) continue;
-    const href = pointerString(source, edge.path);
-    const index = href === undefined ? null : buildTargetControlIndex(targetSource(edge, graph, members, class1Artifacts));
-    if (href !== undefined && index) targets.set(href, index);
+    const index = buildTargetControlIndex(targetSource(edge, graph, members, class1Artifacts));
+    if (index) targets.set(edge.path, index);
   }
   return {
     schema,

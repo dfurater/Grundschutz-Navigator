@@ -531,10 +531,10 @@ Neuanlage beginnt deshalb mit dem Importziel. `createProfileSource()` erzeugt
 `metadata` mit Titel, `last-modified`, `version` `1.0` und der
 `oscal-version` des Ziels, einen Import `{ "href": "#<uuid>", "include-all":
 {} }` und eine `back-matter.resource` mit dieser `uuid` und dem Titel des
-Ziels. Der Speicher nimmt das Profil im Zustand `draft` auf; `setBinding()`
-bindet `/profile/imports/0/href` an das Ziel (`class-1` mit `artifactKey` oder
-`local` mit `localId` desselben Verbunds). Scheitert die Bindung, löscht der
-Vorgang das neue Dokument wieder.
+Ziels. `addDocument()` nimmt das Profil im Zustand `draft` auf und bindet in
+derselben Transaktion `/profile/imports/0/href` an das Ziel (`class-1` mit
+`artifactKey` oder `local` mit `localId` desselben Verbunds); eine ungültige
+Bindung speichert nichts.
 
 **Importe.** Jeder Import, den die Anwendung schreibt, trägt ein `href` der
 Form `#<uuid>` auf eine eigene `back-matter.resource`; das Metaschema verlangt
@@ -543,7 +543,9 @@ importiertes Profil mit Import ohne `href` bleibt unverändert; der
 Dokumentgraph meldet `OSCAL_GRAPH_IMPORT_SOURCE_MISSING`. Die Zweigwahl setzt
 genau eines von `include-controls` und `include-all` und entfernt das andere;
 ein 1.1.x-Import ohne beide bleibt gültig, bis der Nutzer einen Zweig wählt.
-`with-child-controls` nimmt nur `yes` und `no` an. Leere Listen entfallen,
+`with-child-controls` nimmt nur `yes` und `no` an; der Schalter schreibt den
+Wert in jeden Selektor des Bereichs und zeigt einen gemischten Zustand, wenn
+die Selektoren sich unterscheiden. Leere Listen entfallen,
 weil `with-ids`, `matching` und `exclude-controls` `minItems: 1` tragen; ein
 leerer Einschlussselektor `{}` bleibt stehen und ist ein Hinweis. Ein neues
 `matching` beginnt ohne `pattern`. Die Trefferzahl eines `pattern` zählt

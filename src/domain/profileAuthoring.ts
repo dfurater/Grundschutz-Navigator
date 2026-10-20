@@ -19,7 +19,7 @@ export type WithChildControls = 'yes' | 'no';
 /** Ab OSCAL 1.2.1 ist `import` ein `anyOf` mit gegenseitigem Ausschluss der beiden Zweige. */
 export type ProfileImportStructure = 'exclusive' | 'optional';
 
-const WITH_CHILD_CONTROLS: readonly string[] = ['yes', 'no'];
+const WITH_CHILD_CONTROLS: ReadonlySet<string> = new Set(['yes', 'no']);
 
 export function importStructureFor(oscalVersion: string): ProfileImportStructure {
   return oscalVersion.startsWith('1.1.') ? 'optional' : 'exclusive';
@@ -43,7 +43,10 @@ export interface ProfileSelectorView {
   /** `with-ids` aller Selektoren in Quellreihenfolge, ohne Dubletten. */
   readonly withIds: readonly string[];
   readonly patterns: readonly ProfilePatternView[];
-  /** `with-child-controls` des ersten Selektors. */
+  /**
+   * `with-child-controls` über alle Selektoren; `mixed`, wenn sie sich
+   * unterscheiden. Ein fehlender Wert zählt als `no`.
+   */
   readonly withChildControls?: string;
 }
 
@@ -74,8 +77,9 @@ function selectorView(selectors: readonly unknown[]): ProfileSelectorView {
       patterns.push({ selector: index, item, pattern: isJsonObject(matching) ? readString(matching.pattern) : undefined });
     });
   });
-  const first = selectors[0];
-  return { withIds, patterns, withChildControls: isJsonObject(first) ? readString(first['with-child-controls']) : undefined };
+  const values = new Set(selectors.filter(isJsonObject).map((selector) => readString(selector['with-child-controls']) ?? 'no'));
+  const [single] = values;
+  return { withIds, patterns, withChildControls: values.size > 1 ? 'mixed' : single };
 }
 
 function resourceTitle(profile: JsonObject, uuid: string | undefined): string | undefined {
@@ -176,34 +180,42 @@ export function setImportMode(source: unknown, index: number, mode: 'all' | 'con
   });
 }
 
-/** Setzt oder entfernt eine Anforderung; entfernt wird sie aus jedem Selektor des Bereichs. */
-export function setSelectedControl(source: unknown, index: number, scope: ProfileSelectionScope, controlId: string, selected: boolean): unknown {
-  if (controlId === '') throw new ProfilePatchError('PROFILE_CONTROL_ID_INVALID');
+/**
+ * Setzt oder entfernt Anforderungen auf einer einzigen Kopie; entfernt wird
+ * eine Anforderung aus jedem Selektor des Bereichs.
+ */
+export function setSelectedControls(source: unknown, index: number, scope: ProfileSelectionScope, controlIds: readonly string[], selected: boolean): unknown {
+  if (controlIds.includes('')) throw new ProfilePatchError('PROFILE_CONTROL_ID_INVALID');
   return patchImport(source, index, (entry) => {
-    const selectors = readArray(entry[selectorKey(scope)]).filter(isJsonObject);
-    const present = selectors.some((selector) => readArray(selector['with-ids']).includes(controlId));
-    if (selected && !present) {
-      const first = firstSelector(entry, scope);
-      first['with-ids'] = [...readArray(first['with-ids']), controlId];
-    } else if (!selected) {
-      for (const selector of selectors) {
-        if (!Array.isArray(selector['with-ids'])) continue;
-        selector['with-ids'] = selector['with-ids'].filter((id) => id !== controlId);
-        dropEmpty(selector, 'with-ids');
+    for (const controlId of controlIds) {
+      const selectors = readArray(entry[selectorKey(scope)]).filter(isJsonObject);
+      const present = selectors.some((selector) => readArray(selector['with-ids']).includes(controlId));
+      if (selected && !present) {
+        const first = firstSelector(entry, scope);
+        first['with-ids'] = [...readArray(first['with-ids']), controlId];
+      } else if (!selected) {
+        for (const selector of selectors) {
+          if (!Array.isArray(selector['with-ids'])) continue;
+          selector['with-ids'] = selector['with-ids'].filter((id) => id !== controlId);
+          dropEmpty(selector, 'with-ids');
+        }
       }
-      if (scope === 'exclude') tidyExclude(entry);
     }
+    if (!selected && scope === 'exclude') tidyExclude(entry);
   });
 }
 
-/** Setzt eine ganze Gruppe von Anforderungen in einem Schritt. */
-export function setSelectedControls(source: unknown, index: number, scope: ProfileSelectionScope, controlIds: readonly string[], selected: boolean): unknown {
-  return controlIds.reduce((current, id) => setSelectedControl(current, index, scope, id, selected), source);
+export function setSelectedControl(source: unknown, index: number, scope: ProfileSelectionScope, controlId: string, selected: boolean): unknown {
+  return setSelectedControls(source, index, scope, [controlId], selected);
 }
 
+/** Schreibt `with-child-controls` in jeden Selektor des Bereichs; fehlt einer, entsteht der erste. */
 export function setWithChildControls(source: unknown, index: number, scope: ProfileSelectionScope, value: string): unknown {
-  if (!WITH_CHILD_CONTROLS.includes(value)) throw new ProfilePatchError('PROFILE_WITH_CHILD_CONTROLS_INVALID');
-  return patchImport(source, index, (entry) => { firstSelector(entry, scope)['with-child-controls'] = value; });
+  if (!WITH_CHILD_CONTROLS.has(value)) throw new ProfilePatchError('PROFILE_WITH_CHILD_CONTROLS_INVALID');
+  return patchImport(source, index, (entry) => {
+    firstSelector(entry, scope);
+    for (const selector of readArray(entry[selectorKey(scope)]).filter(isJsonObject)) selector['with-child-controls'] = value;
+  });
 }
 
 /** Ein neues `matching` beginnt ohne `pattern`; das ist schemagültig und erscheint als Hinweis. */

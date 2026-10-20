@@ -38,17 +38,11 @@ export function NewProfileForm({ view, onCancel }: Readonly<{ view: VerbundView;
       uuid: crypto.randomUUID(), resourceUuid, title: target.title, profileTitle: title.trim(),
       oscalVersion, lastModified: new Date().toISOString(),
     });
+    // Dokument und Bindung in einer Transaktion: Ohne gültige Bindung entsteht kein Profil.
     const added = await documents.addDocument(view.verbund.verbundId as VerbundId, {
       source, context: { trustClass: 'class-2-local-user' }, rootType: 'profile', oscalVersion,
-    }, 'draft');
+    }, 'draft', [{ pointer: importHrefPointer(0), href, target: target.target }]);
     if (!added.ok) {
-      setSaving(false);
-      return;
-    }
-    const bound = await documents.setBinding({ fromLocalId: added.value.localId, pointer: importHrefPointer(0), href, target: target.target }, added.value.savedAt);
-    if (!bound.ok) {
-      // Ohne Bindung bleibt kein halbes Profil zurück.
-      await documents.deleteDocument(added.value.localId);
       setSaving(false);
       return;
     }

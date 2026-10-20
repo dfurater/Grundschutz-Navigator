@@ -5,6 +5,7 @@ import type { OscalRootKey } from '@/domain/oscalVersionMatrix';
 import type { BindingTarget, LocalId } from '@/domain/workspaceModel';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { CatalogContext } from '@/state/CatalogContext';
+import type { CatalogVerification } from '@/features/workspace/profile/ProfileMarks';
 import type { VerbundView } from '@/state/workspaceVerbundView';
 
 export interface ImportTargetOption {
@@ -18,6 +19,13 @@ export interface ImportTargetOption {
   readonly oscalVersion: string;
   /** Anzahl der Anforderungen, sobald das Ziel gelesen ist. */
   readonly count?: number;
+  /** Hashprüfung eines BSI-Katalogs in dieser Sitzung. */
+  readonly verification?: CatalogVerification;
+}
+
+function verificationOf(valid: boolean | undefined): CatalogVerification {
+  if (valid === undefined) return 'pending';
+  return valid ? 'valid' : 'invalid';
 }
 
 export function targetKey(target: BindingTarget): string {
@@ -67,6 +75,7 @@ export function useImportTargets(view: VerbundView, excludeLocalId?: LocalId): r
         rootType: 'catalog',
         oscalVersion: entry.oscalVersion,
         count: loaded?.catalog?.controls.length,
+        verification: verificationOf(loaded?.verification?.valid),
       };
     }),
     ...locals.map((document): ImportTargetOption => {

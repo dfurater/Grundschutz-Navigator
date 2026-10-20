@@ -80,7 +80,7 @@ export function ImportCard({ entry, position, oscalVersion, target, edge, contro
       <header className="space-y-2 px-4 pb-3 pt-3">
         <div className="flex flex-wrap items-center gap-2">
           <h2 id={headingId} className="text-sm font-semibold text-[var(--color-text-primary)]">Import {position}</h2>
-          {target && <OriginMark origin={target.origin} />}
+          {target && <OriginMark origin={target.origin} verification={target.verification} />}
           <span className="min-w-0 flex-1 truncate text-sm text-[var(--color-text-primary)]">{target?.title ?? entry.resourceTitle}</span>
           <button
             type="button"
@@ -114,6 +114,7 @@ export function ImportCard({ entry, position, oscalVersion, target, edge, contro
             <CheckboxLabel
               label={CHILD_LABEL}
               checked={entry.include.withChildControls === 'yes'}
+              indeterminate={entry.include.withChildControls === 'mixed'}
               onChange={(checked) => onChange((source) => setWithChildControls(source, entry.index, 'include', checked ? 'yes' : 'no'))}
             />
           )}
