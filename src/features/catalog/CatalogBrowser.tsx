@@ -20,7 +20,7 @@ import { describeCatalogScope } from './catalogScopeTitle';
 import { CatalogDesktopSidebar } from './CatalogDesktopSidebar';
 import { CatalogTargetNotFound } from './CatalogTargetNotFound';
 import { CatalogDetailPage, CatalogDetailPanel } from './CatalogDetailPanel';
-import { CatalogMobileList } from './CatalogMobileList';
+import { CatalogMobileList, type CatalogMobileListHandle } from './CatalogMobileList';
 import { CatalogToolbar } from './CatalogToolbar';
 import { ControlTable } from './ControlTable';
 import type { FilterPanelProps } from './FilterPanel';
@@ -49,6 +49,7 @@ export function CatalogBrowser() {
   const isDesktop = useMediaQuery(DESKTOP_QUERY);
   const hasOwnScrollArea = useMediaQuery(OWN_SCROLL_AREA_QUERY);
   const [filterCollapsed, setFilterCollapsed] = useState(false);
+  const mobileListRef = useRef<CatalogMobileListHandle>(null);
   const [mobileSelectMode, setMobileSelectMode] = useState(false);
   const {
     size: detailWidth,
@@ -114,6 +115,7 @@ export function CatalogBrowser() {
   // ohne Fokusfalle, `inert` und Scroll-Sperre (GSPP-514).
   useTabletDetailPanel({
     enabled: isTablet,
+    onRestoreRowFocus: (id) => mobileListRef.current?.focusControl(id) ?? false,
     controlId: selectedControl?.id ?? null,
     scopeKey: `${catalogKey ?? selectionScopeId}:${scopeId ?? ''}`,
     listReady: displayState.kind === 'content',
@@ -282,6 +284,7 @@ export function CatalogBrowser() {
               </div>
             ) : (
               <CatalogMobileList
+                ref={mobileListRef}
                 controls={filtered}
                 controlsById={controlsById}
                 allControls={contentCatalog.controls}

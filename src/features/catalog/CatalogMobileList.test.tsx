@@ -1,8 +1,11 @@
+import { createRef } from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Control } from '@/domain/models';
 import { downloadCSV } from '@/features/export/csvExport';
-import { CatalogMobileList } from './CatalogMobileList';
+import { useTabletDetailPanel } from '@/hooks/useTabletDetailPanel';
+import { renderHook } from '@testing-library/react';
+import { CatalogMobileList, type CatalogMobileListHandle } from './CatalogMobileList';
 
 vi.mock('@/features/export/csvExport', () => ({ downloadCSV: vi.fn() }));
 const controls = Array.from({ length: 1000 }, (_, index) => ({
@@ -34,6 +37,43 @@ describe('CatalogMobileList', () => {
     view.rerender(<CatalogMobileList {...props} controls={[]} />);
     expect(screen.getByText('Keine Kontrollen gefunden')).toBeInTheDocument();
     expect(view.container.querySelectorAll('[data-control-row]')).toHaveLength(0);
+  });
+
+  it.each([false, true])('tabbt über fehlende Nachbarn in beiden Richtungen (Auswahl: %s)', (selectMode) => {
+    const view = render(<CatalogMobileList {...props} selectMode={selectMode} />);
+    const first = screen.getByRole('button', { name: /GC.1.0 / });
+    const scroller = first.closest('[data-row-index]')!.parentElement!;
+    act(() => first.focus());
+    fireEvent.scroll(scroller, { target: { scrollTop: 44000 } });
+    fireEvent.keyDown(first, { key: 'Tab' });
+    const next = selectMode
+      ? screen.getByRole('checkbox', { name: 'GC.1.1 auswählen' })
+      : screen.getByRole('button', { name: /GC.1.1 / });
+    expect(next).toHaveFocus();
+    fireEvent.keyDown(next, { key: 'Tab', shiftKey: true });
+    expect(screen.getByRole('button', { name: /GC.1.0 / })).toHaveFocus();
+    expect(view.container.querySelectorAll('[data-control-row]').length).toBeLessThan(40);
+  });
+
+  it('rendert das fehlende Tablet-Rückkehrziel und lehnt herausgefilterte Ziele ab', () => {
+    const ref = createRef<CatalogMobileListHandle>();
+    render(<CatalogMobileList {...props} ref={ref} />);
+    act(() => {
+      ref.current!.focusControl(controls.at(-1)!.id);
+      ref.current!.focusControl(controls[0].id);
+    });
+    expect(screen.getByRole('button', { name: /GC.1.0 / })).toHaveFocus();
+    const hookProps = { controlId: null as string | null };
+    const { rerender } = renderHook(({ controlId }) => useTabletDetailPanel({
+      enabled: true, controlId, scopeKey: 'test', listReady: true, onClose: vi.fn(),
+      onRestoreRowFocus: (id) => ref.current!.focusControl(id),
+    }), { initialProps: hookProps });
+    rerender({ controlId: controls.at(-1)!.id });
+    rerender({ controlId: null });
+    expect(screen.getByRole('button', { name: /GC.1.999 / })).toHaveFocus();
+    act(() => { expect(ref.current!.focusControl('missing')).toBe(false); });
+    act(() => { expect(ref.current!.focusControl(controls.at(-1)!.id)).toBe(true); });
+    expect(screen.getByRole('button', { name: /GC.1.999 / })).toHaveFocus();
   });
 
   it('zählt und exportiert die vollständige Auswahl einschließlich ungefensterter Treffer', () => {

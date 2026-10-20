@@ -1,11 +1,12 @@
-import { createElement, useState } from 'react';
+import { createElement, useRef, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import { afterEach, expect, test } from 'vitest';
-import { page } from 'vitest/browser';
+import { commands, page, userEvent } from 'vitest/browser';
 import type { Control } from '@/domain/models';
-import { CatalogMobileList } from '@/features/catalog/CatalogMobileList';
+import { CatalogMobileList, type CatalogMobileListHandle } from '@/features/catalog/CatalogMobileList';
 import { useDocumentDetailPage } from '@/hooks/useDocumentDetailPage';
+import { useTabletDetailPanel } from '@/hooks/useTabletDetailPanel';
 import '@/index.css';
 
 const controls: Control[] = Array.from({ length: 1000 }, (_, index) => ({
@@ -22,12 +23,13 @@ const controlsById = new Map(controls.map((control) => [control.id, control]));
 let root: Root | undefined;
 let host: HTMLDivElement | undefined;
 
-afterEach(() => {
+afterEach(async () => {
   root?.unmount();
   host?.remove();
   root = undefined;
   host = undefined;
   globalThis.scrollTo(0, 0);
+  await commands.setBrowserFontSize();
 });
 
 async function settle() {
@@ -39,16 +41,22 @@ async function settle() {
 function Harness({ ownScroll }: { ownScroll: boolean }) {
   const [selectMode, setSelectMode] = useState(false);
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
+  const listRef = useRef<CatalogMobileListHandle>(null);
   const [selected, setSelected] = useState<Control | null>(null);
   useDocumentDetailPage({
     enabled: !ownScroll, controlId: selected?.id ?? null,
     scopeKey: 'test', listReady: true, onClose: () => setSelected(null),
   });
+  useTabletDetailPanel({
+    enabled: ownScroll, controlId: selected?.id ?? null, scopeKey: 'test', listReady: true,
+    onClose: () => setSelected(null), onRestoreRowFocus: (id) => listRef.current?.focusControl(id) ?? false,
+  });
   return createElement('div', { style: ownScroll ? { height: 480, display: 'flex', flexDirection: 'column' } : undefined },
     createElement('div', { hidden: !ownScroll && selected !== null, style: ownScroll ? { minHeight: 0, display: 'flex', flexDirection: 'column', flex: 1 } : undefined },
       createElement('button', { onClick: () => setSelectMode(!selectMode) }, 'Auswahlmodus'),
+      // eslint-disable-next-line react-hooks/refs -- createElement forwards the ref; only effects and event handlers read it.
       createElement(CatalogMobileList, {
-        controls, controlsById, allControls: controls, hasOwnScrollArea: ownScroll,
+        ref: listRef, controls, controlsById, allControls: controls, hasOwnScrollArea: ownScroll,
         selectMode, checkedIds, onSelect: setSelected,
         onCheckedChange: (control, checked) => setCheckedIds((current) => {
           const next = new Set(current);
@@ -57,7 +65,7 @@ function Harness({ ownScroll }: { ownScroll: boolean }) {
         }),
         onSelectionDone: () => setSelectMode(false),
       })),
-    !ownScroll && selected && createElement('div', { 'data-control-detail-page': true },
+    selected && createElement('div', { 'data-control-detail-page': !ownScroll, 'data-tablet-detail-panel': ownScroll },
       createElement('h1', { tabIndex: -1, 'data-control-detail-title': true }, selected.title),
       createElement('button', { onClick: () => setSelected(null) }, 'Zurück')));
 }
@@ -66,8 +74,9 @@ function rows() {
   return [...host!.querySelectorAll<HTMLElement>('[data-control-row]')];
 }
 
-for (const ownScroll of [false, true]) {
-  test(`begrenzt 1000 mobile Treffer mit ${ownScroll ? 'Listen' : 'Dokument'}scroll und erhält Fokus und Auswahl`, async () => {
+for (const [ownScroll, fontSize] of [[false, 16], [true, 16], [false, 32]] as const) {
+  test(`begrenzt 1000 mobile Treffer mit ${ownScroll ? 'Listen' : 'Dokument'}scroll und erhält Fokus und Auswahl (${fontSize}px Schrift)`, async () => {
+    await commands.setBrowserFontSize(fontSize);
     await page.viewport(ownScroll ? 900 : 390, 800);
     host = document.createElement('div');
     // Dokument-Offset wie durch Kopf und Werkzeugleiste in der App.
@@ -107,6 +116,13 @@ for (const ownScroll of [false, true]) {
         expect(Math.abs(row.getBoundingClientRect().top - expectedTop)).toBeLessThanOrEqual(1);
       }
     }
+    await scrollTo(40000);
+    await userEvent.keyboard('{Tab}');
+    expect(document.activeElement?.getAttribute('data-control-row')).toBe(controls[1].id);
+    await scrollTo(40000);
+    await userEvent.keyboard('{Shift>}{Tab}{/Shift}');
+    expect(document.activeElement?.getAttribute('data-control-row')).toBe(controls[0].id);
+    await scrollTo(1000000);
     expect(rows().at(-1)!.dataset.controlRow).toBe(controls.at(-1)!.id);
     const last = rows().at(-1)!;
     expect(last.getBoundingClientRect().bottom).toBeLessThanOrEqual(ownScroll ? scroller.getBoundingClientRect().bottom + 1 : innerHeight + 1);
@@ -122,10 +138,29 @@ for (const ownScroll of [false, true]) {
     await scrollTo(1234);
     expect(document.activeElement).toBe(checkbox);
     expect(checkbox.checked).toBe(true);
+    await userEvent.keyboard('{Shift>}{Tab}{/Shift}');
+    expect(document.activeElement?.getAttribute('data-control-row')).toBe(controls.at(-2)!.id);
+    await scrollTo(1234);
+    await userEvent.keyboard('{Tab}');
+    expect(document.activeElement?.getAttribute('aria-label')).toBe(`${controls.at(-1)!.id} auswählen`);
     await scrollTo(1000000);
+    const returnRow = rows().at(-1)!;
+    if (ownScroll) {
+      returnRow.click();
+      await settle();
+      await scrollTo(1234);
+      const other = rows().find((row) => row !== returnRow)!;
+      const otherCheckbox = other.closest('[data-row-index]')!.querySelector<HTMLInputElement>('input')!;
+      otherCheckbox.focus({ preventScroll: true });
+      await settle();
+      expect(returnRow.isConnected).toBe(false);
+      [...host.querySelectorAll('button')].find((button) => button.textContent === 'Zurück')!.click();
+      await settle();
+      expect(document.activeElement?.getAttribute('data-control-row')).toBe(controls.at(-1)!.id);
+    }
     if (!ownScroll) {
       const listPosition = scrollPosition();
-      last.click();
+      returnRow.click();
       await settle();
       expect(document.activeElement).toBe(host.querySelector('h1'));
       expect(scrollPosition()).toBe(0);
