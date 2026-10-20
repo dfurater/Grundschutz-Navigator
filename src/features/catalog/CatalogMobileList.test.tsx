@@ -30,7 +30,7 @@ describe('CatalogMobileList', () => {
     act(() => first.focus());
     fireEvent.scroll(scroller, { target: { scrollTop: 44000 } });
     expect(first).toHaveFocus();
-    expect(view.container.querySelectorAll('[data-control-row]').length).toBe(27);
+    expect(view.container.querySelectorAll('[data-control-row]')).toHaveLength(27);
     expect(view.container.querySelector('[data-control-row="GC.1.500"]')).not.toBeNull();
     view.rerender(<CatalogMobileList {...props} controls={[...controls].reverse()} />);
     expect(first).toHaveFocus();
