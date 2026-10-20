@@ -1700,6 +1700,29 @@ Die Ableitung liest ausschließlich die übergebenen Graphen. Sie führt weder N
 
 `src/test/fixtures/assessmentPlans.ts` enthält synthetische Minimal- und Vollpläne. Vier originale NIST-AP-Beispiele aus `usnistgov/oscal-content` am Commit `78650f02ad9321bb7b817846f8fbd4f2bcd620de` stehen mit SHA-256 und Größe im `ORACLE_MANIFEST.json` unter `src/test/fixtures/oscal-content-v1.5.0/`. `scripts/sync-oscal-content-oracle.mjs` ist ihr Wartungs-Netzpfad. Alle vier bestehen Stufe 3 gegen die deklarierte Version. Jede Datei enthält eine nicht definierte Activity-UUID in `tasks[0].associated-activities[0]`; der Offline-Test erwartet genau `OSCAL_AP_ACTIVITY_REFERENCE_UNRESOLVED` an diesem strukturellen Pfad. Der No-op-Round-trip-Korpus prüft zusätzlich Assessment Plans in allen vier Matrixzellen.
 
+## Evidenz (Assessment Layer)
+
+`deriveEvidenceReadModel({ source, rootType, oscalVersion, at, contextUuids })` in `src/domain/evidenceReadModel.ts` leitet die Evidenz eines Dokuments mit Root `assessment-results` oder `plan-of-action-and-milestones` ab. Die Funktion ist rein: Sie liest nur `source`, führt keinen Netzwerk-, Datei- oder Storagezugriff aus, hält keinen Zustand und verändert `source` nicht. Evidenzinhalte liegen ausschließlich als `back-matter.resources[].base64` im Dokument; einen eigenen Evidenzspeicher gibt es nicht.
+
+Beobachtungen stammen in Assessment Results aus `results[].observations[]`, im POA&M aus `observations[]`. Je Beobachtung führt das Modell `methods` und `types` als Werte mit Status `documented` oder `undocumented`. Das dokumentierte Spektrum ist `EXAMINE`, `INTERVIEW`, `TEST` und `UNKNOWN` für `methods` sowie `ssp-statement-issue`, `control-objective`, `mitigation`, `finding`, `discovery` und `historic` für `types`; das Schema akzeptiert daneben jeden String, das Modell übernimmt ihn unverändert.
+
+Die Gültigkeit stammt ausschließlich aus `collected` und `expires`, bewertet gegen den Zeitpunkt `at`:
+
+| Zustand | Bedingung |
+| --- | --- |
+| `current` | `expires` liegt nach `at` |
+| `expired` | `expires` liegt nicht nach `at` |
+| `no-expiry-declared` | `expires` fehlt; das ist kein unbegrenzt gültiger Zustand |
+| `not-evaluable` | `collected` oder `expires` ist kein lesbarer Zeitstempel |
+
+`blocksPositiveFinding(validity)` liefert `true` für `expired` und `not-evaluable`.
+
+Ein `relevant-evidence`-Eintrag ohne `href` ist `descriptive` und gültig. `href` und `relevant-evidence[].links[]` klassifiziert `createOscalReferenceClassifier()` aus `src/domain/referenceResolution.ts`; `resource-fragment` bleibt in der Klassifikation erhalten. Die Ressourcen liefert `resolveCatalogResources()`: `content` ist `empty`, wenn eine Ressource weder `description`, `citation`, `rlinks` noch `base64` trägt; je `rlink` stehen `media-type`, `hashes` und `integrity` (`declared` oder `missing`); für `base64` stehen nur `filename` und `media-type`, die Nutzlast wird nicht gelesen.
+
+UUID-Referenzen haben vier Zustände: `resolved` (Ziel im Dokument), `resolved-in-context` (Ziel in `contextUuids`), `not-resolvable-in-context` und `missing-in-document`. Vergleiche ignorieren die Groß-/Kleinschreibung der Hexziffern. `subjects[]` mit `type: resource` lösen nur gegen `back-matter.resources` auf; ein fehlendes Ziel ergibt `missing-in-document` und `OSCAL_EVIDENCE_RESOURCE_NOT_FOUND`. Andere Subjekttypen lösen nur gegen `contextUuids` auf. `related-observations[].observation-uuid` liest das Modell in Assessment Results aus `results[].findings[]` und `results[].risks[]`, im POA&M aus `poam-items[]`, `findings[]` und `risks[]`. In Assessment Results ist ein fehlendes Ziel `missing-in-document` mit `OSCAL_EVIDENCE_OBSERVATION_NOT_FOUND`; im POA&M ist es `not-resolvable-in-context` ohne Diagnose, weil das POA&M kein `import-ar` besitzt und Beobachtungen per UUID übernimmt. Diagnosen tragen nur Code und strukturellen Pfad.
+
+OSCAL garantiert für Evidenz weder eine Ressource (`relevant-evidence.href` ist optional), noch Ressourceninhalt (`back-matter.resource` verlangt nur `uuid`), noch einen Hash (`rlinks[].hashes` ist optional), noch eine Medienart oder einen Dateinamen (`media-type` und `base64.filename` sind optional), noch ein Ablaufdatum (`expires` ist optional), noch ein geschlossenes Vokabular für `methods`, `types` und `hash.algorithm`.
+
 ## Siehe auch
 
 - [ARCHITECTURE.md](./ARCHITECTURE.md) — Gesamtarchitektur
