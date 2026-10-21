@@ -128,7 +128,7 @@ describe('deriveEvidenceReadModel', () => {
   });
 
   it('bewertet vorhandene, nicht lesbare Ablaufwerte und unmögliche Kalenderdaten als not-evaluable', () => {
-    const unreadable = [null, 123, {}, '2026-02-30T00:00:00Z', '2027-02-29T00:00:00Z', '2026-04-31T00:00:00Z', '2026-13-01T00:00:00Z', '2026-12-31T24:00:00Z', '2026-12-31T00:00:00+15:00', '2026-12-31T00:00:00+05:15'];
+    const unreadable = [null, 123, {}, '2026-02-30T00:00:00Z', '2027-02-29T00:00:00Z', '2026-04-31T00:00:00Z', '2026-13-01T00:00:00Z', '2026-12-31T24:00:00Z', '2026-12-31T00:00:00+15:00', '2026-12-31T00:00:00+05:15', '2026-12-31T00:00:00+14:45', '2026-12-31T00:00:00-14:00', '2026-12-31T00:00:00-05:30'];
     const model = derive(
       poam({
         observations: [
@@ -137,6 +137,7 @@ describe('deriveEvidenceReadModel', () => {
           observation(OBS_B, { expires: '2028-02-29T00:00:00Z' }),
           observation(OBS_B, { expires: '2026-12-31T23:59:59.123456+05:45' }),
           observation(OBS_B, { expires: '2026-06-01T00:30:00-09:30' }),
+          ...['+14:00', '-12:00', '+05:45', '-03:30'].map((offset) => observation(OBS_B, { expires: `2026-12-31T00:00:00${offset}` })),
         ],
       }),
       'plan-of-action-and-milestones',
@@ -147,6 +148,7 @@ describe('deriveEvidenceReadModel', () => {
       'current',
       'current',
       'current',
+      ...Array.from({ length: 4 }, () => 'current'),
     ]);
   });
 

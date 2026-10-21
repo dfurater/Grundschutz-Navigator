@@ -111,18 +111,27 @@ function vocabulary(value: unknown, documented: ReadonlySet<string>): Vocabulary
 }
 
 /** OSCAL `dateTime-with-timezone`: ohne Offset wäre der Zeitpunkt von der Gerätezeitzone abhängig. */
-const DATE_TIME_WITH_TIMEZONE = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(\.\d+)?(Z|[+-](\d{2}):(\d{2}))$/;
+const DATE_TIME_WITH_TIMEZONE = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
 
-/** Offset-Minuten, die `DateTimeWithTimezoneDatatype` in den gepinnten AR- und POA&M-Schemas zulässt. */
-const OFFSET_MINUTES = new Set([0, 30, 45]);
+const hours = (from: number, to: number, sign: string): string[] =>
+  Array.from({ length: to - from + 1 }, (_, hour) => `${sign}${String(from + hour).padStart(2, '0')}:00`);
+
+/** Offsets, die `DateTimeWithTimezoneDatatype` in den gepinnten AR- und POA&M-Schemas (v1.1.2 bis v1.2.2) zulässt. */
+const ALLOWED_OFFSETS = new Set([
+  'Z',
+  ...hours(0, 12, '-'),
+  '-03:30',
+  '-09:30',
+  ...hours(0, 14, '+'),
+  ...['03', '04', '05', '06', '09', '10'].map((hour) => `+${hour}:30`),
+  ...['05', '08', '12'].map((hour) => `+${hour}:45`),
+]);
 
 /** `Date.parse` normalisiert unmögliche Angaben wie `2026-02-30`; deshalb vorher jede Komponente prüfen. */
 function parseTimestamp(value: unknown): number {
   const match = typeof value === 'string' ? DATE_TIME_WITH_TIMEZONE.exec(value) : null;
   if (match === null) return Number.NaN;
   const [year, month, day, hour, minute, second] = match.slice(1, 7).map(Number);
-  const offsetHour = Number(match[9] ?? 0);
-  const offsetMinute = Number(match[10] ?? 0);
   const calendarDay = new Date(Date.UTC(year, month - 1, day));
   const valid =
     calendarDay.getUTCFullYear() === year &&
@@ -131,8 +140,7 @@ function parseTimestamp(value: unknown): number {
     hour <= 23 &&
     minute <= 59 &&
     second <= 59 &&
-    offsetHour <= 14 &&
-    OFFSET_MINUTES.has(offsetMinute);
+    ALLOWED_OFFSETS.has(match[8]);
   return valid ? Date.parse(match[0]) : Number.NaN;
 }
 
