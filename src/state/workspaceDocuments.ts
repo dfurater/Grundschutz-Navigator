@@ -1,5 +1,7 @@
 import { StorageFailure, failure } from '@/adapters/workspaceStorageFailure';
+import type { ReviewGuard } from '@/adapters/workspaceStore';
 import type { CatalogDelivery } from '@/domain/workspaceCatalogPin';
+import { WORKSPACE_DIAGNOSTIC_CODES } from '@/domain/workspaceDiagnostics';
 import type { WorkspaceClass1Artifact } from '@/domain/workspaceGraphModel';
 import type { BindingTarget, LocalId, WorkspaceResult } from '@/domain/workspaceModel';
 import type { ProfileAnalysis, ProfileAnalysisInput, ProfileSchemaCheck } from '@/state/workspaceProfileAnalysis';
@@ -53,24 +55,16 @@ const storageFailed = () => failure(new StorageFailure('WORKSPACE_STORAGE_FAILED
 
 /**
  * Prüf- und Freigabeaktionen nur über einem gebundenen Bezugsstand, auch einem über lokale
- * Referenzen geerbten (SSP → Profil → Katalog). Dieselbe Ableitung wie die Verbundansicht,
- * hier im Speicherpfad, damit eine gesperrte Oberfläche nicht die einzige Sperre ist.
+ * Referenzen geerbten (SSP → Profil → Katalog). Dieselbe Ableitung wie die Verbundansicht; der
+ * Speicher wertet sie in der Schreibtransaktion aus, damit eine gesperrte Oberfläche nicht die
+ * einzige Sperre ist und ein anderer Tab sie zwischen Prüfung und Schreiben nicht umgeht.
  */
-async function reviewGate(port: WorkspacePort, localId: LocalId, delivery: CatalogDelivery): Promise<WorkspaceResult<null>> {
-  const document = await port.getDocument(localId);
-  if (!document.ok) return document;
-  if (!document.value) return { ok: true, value: null };
-  const [{ loadMembers }, { applyCatalogPins, reviewLocked }] = await Promise.all([
-    import('@/state/workspaceVerbundView'),
-    import('@/domain/workspaceCatalogPin'),
-  ]);
-  const members = await loadMembers(port, document.value.verbundId);
-  if (!members.ok) return members;
-  const bindings = await port.listBindings();
-  if (!bindings.ok) return bindings;
-  const ids = new Set<string>(members.value.map((member) => member.localId));
-  const pin = applyCatalogPins(members.value, bindings.value.filter((binding) => ids.has(binding.fromLocalId)), delivery).pins.get(localId);
-  return reviewLocked(pin) ? failure(new StorageFailure(pin?.code ?? 'OSCAL_WORKSPACE_CATALOG_PIN_UNVERIFIED')) : { ok: true, value: null };
+async function reviewGuard(delivery: CatalogDelivery): Promise<ReviewGuard> {
+  const { applyCatalogPins, reviewLocked } = await import('@/domain/workspaceCatalogPin');
+  return (localId, members, bindings) => {
+    const pin = applyCatalogPins(members, bindings, delivery).pins.get(localId);
+    return reviewLocked(pin) ? pin?.code ?? WORKSPACE_DIAGNOSTIC_CODES.catalogPinUnverified : null;
+  };
 }
 
 /** Liest den Schnappschuss im Main Thread und leitet ihn im Worker ab. */
@@ -113,14 +107,9 @@ export function createWorkspaceDocuments({ port, write, quiet, class1, delivery,
     getDraft: (localId) => read((store) => store.getDraft(localId)),
     listBindings: () => read((store) => store.listBindings()),
     addDocument: (...args) => write((store) => store.addDocument(...args)),
-    saveDocument: (...args) => write(async (store) => {
-      // Eine Freigabe ist eine Prüfentscheidung und braucht den gebundenen Bezugsstand.
-      if (args[6] !== undefined) {
-        const gate = await reviewGate(store, args[0], delivery);
-        if (!gate.ok) return gate;
-      }
-      return store.saveDocument(...args);
-    }),
+    // Eine Freigabe ist eine Prüfentscheidung und braucht den gebundenen Bezugsstand.
+    saveDocument: (localId, savedAt, draftSavedAt, input, bindings, state, approval) => write(async (store) =>
+      store.saveDocument(localId, savedAt, draftSavedAt, input, bindings, state, approval, approval ? await reviewGuard(delivery) : undefined)),
     autosaveDraft: (...args) => quiet((store) => store.autosaveDraft(...args)),
     setBinding: (...args) => write((store) => store.setBinding(...args)),
     deleteDocument: async (localId) => {
@@ -129,14 +118,10 @@ export function createWorkspaceDocuments({ port, write, quiet, class1, delivery,
       return result;
     },
     listReviewTrail: (localId) => read((store) => store.listReviewTrail(localId)),
-    appendCheckpoint: (...args) => read(async (store) => {
-      const gate = await reviewGate(store, args[0], delivery);
-      return gate.ok ? store.appendCheckpoint(...args) : gate;
-    }),
-    appendDecision: (...args) => read(async (store) => {
-      const gate = await reviewGate(store, args[0], delivery);
-      return gate.ok ? store.appendDecision(...args) : gate;
-    }),
+    appendCheckpoint: (localId, savedAt, draftSavedAt, sequence) => read(async (store) =>
+      store.appendCheckpoint(localId, savedAt, draftSavedAt, sequence, await reviewGuard(delivery))),
+    appendDecision: (localId, savedAt, draftSavedAt, request) => read(async (store) =>
+      store.appendDecision(localId, savedAt, draftSavedAt, request, await reviewGuard(delivery))),
     analyzeProfile: (input) => read((store) => analyze(store, input, class1, delivery)),
     checkProfileSchema: (source) => checkSchema(source)
       .catch((): ProfileSchemaCheck => ({ status: 'failed', code: 'OSCAL_EXPORT_SOURCE_INVALID', path: '/' })),

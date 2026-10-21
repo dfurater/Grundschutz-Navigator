@@ -29,3 +29,14 @@ export function readString(value: unknown): string | undefined {
 export function readArray<T = unknown>(value: unknown): readonly T[] {
   return Array.isArray(value) ? (value as T[]) : [];
 }
+
+/** Liest einen Zeichenkettenwert per JSON Pointer; jeder andere Fund ergibt `undefined`. */
+export function pointerString(source: unknown, pointer: string): string | undefined {
+  let value: unknown = source;
+  for (const segment of pointer.slice(1).split('/')) {
+    const key = segment.replaceAll('~1', '/').replaceAll('~0', '~');
+    if (!isJsonContainer(value) || !Object.hasOwn(value, key)) return undefined;
+    value = value[key];
+  }
+  return typeof value === 'string' ? value : undefined;
+}

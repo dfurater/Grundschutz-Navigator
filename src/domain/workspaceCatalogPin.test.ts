@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { pointerString } from '@/domain/jsonGuards';
 import { PROJECT_PROPS_NAMESPACE } from '@/domain/projectProps';
 import {
   applyCatalogPins, catalogPinStatus, catalogPinsForSave, editLocked, readCatalogPins, reviewLocked, withCatalogPins, type CatalogDelivery,
@@ -57,6 +58,13 @@ describe('catalogPinStatus', () => {
     ['invalid', pin('unbekannt', NEW), delivered(NEW)],
   ] as const)('prüft ein vorhandenes Paar ohne Katalogbindung: %s', (state, props, delivery) => {
     expect(catalogPinStatus(profile([...props]), 'profile', [], delivery)?.state).toBe(state);
+  });
+
+  it('wertet einen gleichnamigen Prop aus fremdem Namespace nicht als Katalogpaar', () => {
+    const foreign = { name: 'assessed-against-catalog-key', value: 'gspp', ns: 'https://example.invalid/ns' };
+    const unknown = { name: 'unbekannt', value: 'x', ns: PROJECT_PROPS_NAMESPACE };
+    expect(catalogPinStatus(profile([foreign, unknown]), 'profile', [], delivered(NEW))).toBeUndefined();
+    expect(withCatalogPins(profile([foreign, unknown]), 'profile', [], delivered(NEW)).ok).toBe(true);
   });
 
   it('prüft nichts bei einem Dokument ohne Paar und ohne Katalogbindung', () => {
@@ -149,20 +157,34 @@ describe('applyCatalogPins', () => {
     const SSP = 'ssp' as LocalId;
     const PROFILE = 'profile' as LocalId;
     const sspSource = () => makeSchemaValidOscalDocument('system-security-plan', '1.2.2');
-    const toLocal = (fromLocalId: LocalId, localId: LocalId): WorkspaceBinding => ({
-      fromLocalId, pointer: '/x', href: `${localId}.json`, target: { kind: 'local', localId },
-    });
+    type Member = { readonly localId: LocalId; readonly rootType: 'profile' | 'system-security-plan'; readonly source: unknown };
+    /** Bindung entlang der Referenz, die die Quelle von `fromLocalId` trägt. */
+    const toLocal = (members: readonly Member[], fromLocalId: LocalId, localId: LocalId): WorkspaceBinding => {
+      const from = members.find((member) => member.localId === fromLocalId)!;
+      const pointer = from.rootType === 'profile' ? '/profile/imports/0/href' : '/system-security-plan/import-profile/href';
+      return { fromLocalId, pointer, href: pointerString(from.source, pointer)!, target: { kind: 'local', localId } };
+    };
 
     it('überträgt die Sperre des Profils auf das SSP, das es importiert', () => {
       const members = [
         { localId: SSP, rootType: 'system-security-plan' as const, source: sspSource() },
         { localId: PROFILE, rootType: 'profile' as const, source: profile(pin('gspp', OLD)) },
       ];
-      const { pins } = applyCatalogPins(members, [toLocal(SSP, PROFILE), catalogBinding('catalog-gspp', PROFILE)], delivered(NEW));
+      const { pins } = applyCatalogPins(members, [toLocal(members, SSP, PROFILE), catalogBinding('catalog-gspp', PROFILE)], delivered(NEW));
       expect(pins.get(SSP)).toMatchObject({ state: 'not-delivered', code: WORKSPACE_DIAGNOSTIC_CODES.catalogPinNotDelivered, inherited: true });
       expect(reviewLocked(pins.get(SSP))).toBe(true);
       expect(editLocked(pins.get(SSP))).toBe(false);
       expect(editLocked(pins.get(PROFILE))).toBe(true);
+    });
+
+    it('vererbt nicht über eine Bindung, deren Referenz die Quelle nicht mehr trägt', () => {
+      const members: Member[] = [
+        { localId: SSP, rootType: 'system-security-plan', source: sspSource() },
+        { localId: PROFILE, rootType: 'profile', source: profile(pin('gspp', OLD)) },
+      ];
+      const stale = { ...toLocal(members, SSP, PROFILE), href: 'entfernt.json' };
+      const { pins } = applyCatalogPins(members, [stale, catalogBinding('catalog-gspp', PROFILE)], delivered(NEW));
+      expect(pins.has(SSP)).toBe(false);
     });
 
     it('lässt das SSP frei, solange das Profil gebunden ist', () => {
@@ -170,7 +192,7 @@ describe('applyCatalogPins', () => {
         { localId: SSP, rootType: 'system-security-plan' as const, source: sspSource() },
         { localId: PROFILE, rootType: 'profile' as const, source: profile(pin('gspp', NEW)) },
       ];
-      const { pins } = applyCatalogPins(members, [toLocal(SSP, PROFILE), catalogBinding('catalog-gspp', PROFILE)], delivered(NEW));
+      const { pins } = applyCatalogPins(members, [toLocal(members, SSP, PROFILE), catalogBinding('catalog-gspp', PROFILE)], delivered(NEW));
       expect(pins.has(SSP)).toBe(false);
       expect(reviewLocked(pins.get(SSP))).toBe(false);
     });
@@ -182,7 +204,7 @@ describe('applyCatalogPins', () => {
         { localId: MIDDLE, rootType: 'profile' as const, source: profile() },
         { localId: PROFILE, rootType: 'profile' as const, source: profile(pin('gspp', OLD)) },
       ];
-      const bindings = [toLocal(SSP, MIDDLE), toLocal(MIDDLE, SSP), toLocal(MIDDLE, PROFILE), catalogBinding('catalog-gspp', PROFILE)];
+      const bindings = [toLocal(members, SSP, MIDDLE), toLocal(members, MIDDLE, SSP), toLocal(members, MIDDLE, PROFILE), catalogBinding('catalog-gspp', PROFILE)];
       const { pins } = applyCatalogPins(members, bindings, delivered(NEW));
       expect(pins.get(SSP)?.state).toBe('not-delivered');
       expect(pins.get(MIDDLE)?.state).toBe('not-delivered');
@@ -194,17 +216,17 @@ describe('applyCatalogPins', () => {
         { localId: ID, rootType: 'profile' as const, source: profile(pin('unbekannt', NEW)) },
         { localId: PROFILE, rootType: 'profile' as const, source: profile(pin('gspp', OLD)) },
       ];
-      const { pins } = applyCatalogPins(members, [toLocal(ID, PROFILE), catalogBinding('catalog-gspp', PROFILE)], delivered(NEW));
+      const { pins } = applyCatalogPins(members, [toLocal(members, ID, PROFILE), catalogBinding('catalog-gspp', PROFILE)], delivered(NEW));
       expect(pins.get(ID)).toMatchObject({ state: 'invalid' });
       expect(pins.get(ID)?.inherited).toBeUndefined();
     });
 
     it('ersetzt einen eigenen leichteren Sperrzustand nicht durch einen geerbten', () => {
-      const members = [
-        { localId: ID, rootType: 'profile' as const, source: profile() },
+      const members: Member[] = [
+        { localId: ID, rootType: 'profile', source: profile() },
         { localId: PROFILE, rootType: 'profile' as const, source: profile(pin('gspp', OLD)) },
       ];
-      const bindings = [catalogBinding(), toLocal(ID, PROFILE), catalogBinding('catalog-gspp', PROFILE)];
+      const bindings = [catalogBinding(), toLocal(members, ID, PROFILE), catalogBinding('catalog-gspp', PROFILE)];
       const { pins } = applyCatalogPins(members, bindings, delivered(NEW));
       expect(pins.get(ID)).toMatchObject({ state: 'unpinned', code: WORKSPACE_DIAGNOSTIC_CODES.catalogPinMissing });
       expect(pins.get(ID)?.inherited).toBeUndefined();

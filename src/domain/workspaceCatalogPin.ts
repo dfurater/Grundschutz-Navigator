@@ -1,4 +1,4 @@
-import { isJsonObject } from '@/domain/jsonGuards';
+import { isJsonObject, pointerString } from '@/domain/jsonGuards';
 import type { RawOscalProp } from '@/domain/models';
 import { createCatalogReferenceProjectProps, readProjectProps } from '@/domain/projectProps';
 import { SUPPORTED_CATALOGS } from '@/domain/sourceRegistry';
@@ -72,11 +72,10 @@ function boundCatalogArtifacts(bindings: readonly WorkspaceBinding[]): string[] 
     binding.target.kind === 'class-1' && catalogKeyByArtifact.has(binding.target.artifactKey) ? [binding.target.artifactKey] : []))];
 }
 
-/** Das Dokument trägt ein Katalogpaar, auch ein unvollständiges oder ungültiges. */
+/** Das Dokument trägt im Projektnamespace ein Katalogpaar, auch ein unvollständiges oder ungültiges; fremde Namespaces zählen nicht. */
 function carriesCatalogPair(source: unknown, rootType: string): boolean {
-  const props = metadataOf(source, rootType)?.props;
-  return Array.isArray(props) && props.some((prop) =>
-    isJsonObject(prop) && typeof prop.name === 'string' && prop.name.startsWith('assessed-against-catalog-'));
+  return readProjectProps(metadataOf(source, rootType)?.props, 'metadata').projectProps
+    .some((prop) => prop.name === 'assessed-against-catalog-key' || prop.name === 'assessed-against-catalog-commit');
 }
 
 /**
@@ -230,10 +229,16 @@ export interface PinnedBindings {
  * Dokument im Zyklus erbt, was der Zyklus insgesamt erreicht. Nur ein gebundenes oder fehlendes
  * eigenes Paar erbt.
  */
-function inheritCatalogPins(direct: ReadonlyMap<string, CatalogPin>, bindings: readonly WorkspaceBinding[]): Map<string, CatalogPin> {
+function inheritCatalogPins(
+  direct: ReadonlyMap<string, CatalogPin>,
+  bindings: readonly WorkspaceBinding[],
+  sources: ReadonlyMap<string, unknown>,
+): Map<string, CatalogPin> {
   const targets = new Map<string, string[]>();
   for (const binding of bindings) {
     if (binding.target.kind !== 'local' || binding.target.localId === binding.fromLocalId) continue;
+    // Nur eine Referenz, die die Quelle noch trägt; eine veraltete Bindung ist keine Kante des Dokumentgraphen.
+    if (pointerString(sources.get(binding.fromLocalId), binding.pointer) !== binding.href) continue;
     targets.set(binding.fromLocalId, [...(targets.get(binding.fromLocalId) ?? []), binding.target.localId]);
   }
   /** Schwerster gesperrter Zustand eines erreichbaren Dokuments, ohne das Dokument selbst. */
@@ -278,7 +283,8 @@ export function applyCatalogPins(
   // wird, was sonst gegen einen anderen als den gebundenen Stand auflösen würde.
   const locked = (binding: WorkspaceBinding) => binding.target.kind === 'class-1'
     && (direct.get(binding.fromLocalId)?.withheld.includes(binding.target.artifactKey) ?? false);
-  return { pins: inheritCatalogPins(direct, bindings), bindings: bindings.filter((binding) => !locked(binding)), withheld: bindings.filter(locked) };
+  const sources = new Map<string, unknown>(members.map((member) => [member.localId, member.source]));
+  return { pins: inheritCatalogPins(direct, bindings, sources), bindings: bindings.filter((binding) => !locked(binding)), withheld: bindings.filter(locked) };
 }
 
 /** Prüf- und Freigabeaktionen sind nur über einem gebundenen Bezugsstand zulässig, auch einem geerbten. */

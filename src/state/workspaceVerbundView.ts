@@ -1,3 +1,4 @@
+import { pointerString } from '@/domain/jsonGuards';
 import { REFERENCE_GRAPH_CODES } from '@/domain/referenceGraphModel';
 import { buildWorkspaceGraph } from '@/domain/workspaceGraph';
 import { applyCatalogPins, CATALOG_PIN_PATH, type CatalogDelivery, type CatalogPin } from '@/domain/workspaceCatalogPin';
@@ -75,17 +76,7 @@ function documentTitle(envelope: WorkspaceEnvelope): string | undefined {
   return typeof title === 'string' ? title : undefined;
 }
 
-/** Liest einen Zeichenkettenwert per JSON Pointer; jeder andere Fund ergibt `undefined`. */
-export function pointerString(source: unknown, pointer: string): string | undefined {
-  let value: unknown = source;
-  for (const segment of pointer.slice(1).split('/')) {
-    const container = record(value);
-    const key = segment.replaceAll('~1', '/').replaceAll('~0', '~');
-    if (!container || !Object.hasOwn(container, key)) return undefined;
-    value = container[key];
-  }
-  return typeof value === 'string' ? value : undefined;
-}
+export { pointerString } from '@/domain/jsonGuards';
 
 function edgeView(edge: WorkspaceGraphEdge, source: unknown, class1Unavailable: boolean, withheld: boolean): WorkspaceEdgeView {
   if (withheld) {

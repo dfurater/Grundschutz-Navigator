@@ -62,8 +62,16 @@ interface StoreDocumentOptions {
   readonly changedBindings?: readonly WorkspaceBinding[];
   readonly state?: DocumentState;
   readonly approval?: ReviewApprovalRequest;
+  readonly guard?: ReviewGuard;
   readonly resetBaseline?: boolean;
 }
+
+/**
+ * Sperre einer Prüf- oder Freigabeaktion aus dem Verbundstand (GSPP-362). Läuft in der
+ * Schreibtransaktion mit den Dokumenten und Bindungen des Verbunds und liefert einen
+ * Ablehnungscode oder `null`.
+ */
+export type ReviewGuard = (localId: LocalId, members: readonly WorkspaceEnvelope[], bindings: readonly WorkspaceBinding[]) => string | null;
 
 /** `approved` läuft ausschließlich über `saveDocument`; hier bleiben die Workspace-Entscheidungen. */
 export interface ReviewDecisionRequest {
@@ -291,12 +299,12 @@ export class WorkspaceStore {
     return current;
   }
 
-  async saveDocument(localId: LocalId, expectedSavedAt: string, expectedDraftSavedAt: string | null, input: Class2OscalImportedDocument, changedBindings?: readonly WorkspaceBinding[], state?: DocumentState, approval?: ReviewApprovalRequest): Promise<WorkspaceResult<WorkspaceEnvelope>> {
-    return this.storeDocument(localId, expectedSavedAt, expectedDraftSavedAt, input, { changedBindings, state, approval });
+  async saveDocument(localId: LocalId, expectedSavedAt: string, expectedDraftSavedAt: string | null, input: Class2OscalImportedDocument, changedBindings?: readonly WorkspaceBinding[], state?: DocumentState, approval?: ReviewApprovalRequest, guard?: ReviewGuard): Promise<WorkspaceResult<WorkspaceEnvelope>> {
+    return this.storeDocument(localId, expectedSavedAt, expectedDraftSavedAt, input, { changedBindings, state, approval, guard });
   }
 
   private async storeDocument(localId: LocalId, expectedSavedAt: string, expectedDraftSavedAt: string | null, input: Class2OscalImportedDocument, options: StoreDocumentOptions): Promise<WorkspaceResult<WorkspaceEnvelope>> {
-    const { changedBindings, state, approval, resetBaseline = false } = options;
+    const { changedBindings, state, approval, guard, resetBaseline = false } = options;
     try {
       const bindingSnapshot = changedBindings === undefined ? undefined : structuredClone(changedBindings);
       if (state !== undefined) assertState(state);
@@ -326,6 +334,8 @@ export class WorkspaceStore {
         // A replaced document starts a new comparison line; older checkpoints stay history.
         if (resetBaseline) await this.reviewBaseline.delete(localId);
         if (approval && approvalStand) {
+          // Nach dem Schreiben der Bindungen: Die Freigabe gilt dem Verbundstand, den dieses Speichern hinterlässt.
+          await this.enforceReviewGuard(localId, guard);
           await this.appendDecisionRow(localId, 'approved', approval.expectedSequence, approvalStand, stamp, {
             actionUuid: approval.actionUuid, roleId: approval.roleId, partyUuids: [...approval.partyUuids], reason: approval.reason,
           });
@@ -373,7 +383,7 @@ export class WorkspaceStore {
   }
 
   /** Ein Checkpoint schreibt nur Trail und Baseline, nie das Dokument. */
-  async appendCheckpoint(localId: LocalId, expectedSavedAt: string, expectedDraftSavedAt: string | null, expectedSequence: number): Promise<WorkspaceResult<ReviewCheckpoint>> {
+  async appendCheckpoint(localId: LocalId, expectedSavedAt: string, expectedDraftSavedAt: string | null, expectedSequence: number, guard?: ReviewGuard): Promise<WorkspaceResult<ReviewCheckpoint>> {
     try {
       const read = await this.read(['documents', 'reviewBaseline'], async () => {
         const document = await this.documents.get(localId);
@@ -391,6 +401,7 @@ export class WorkspaceStore {
       if (!diff) reject('REVIEW_TRAIL_WORK_FAILED');
       return await this.write(async stamp => {
         const current = await this.current(localId, expectedSavedAt, expectedDraftSavedAt);
+        await this.enforceReviewGuard(localId, guard);
         // A checkpoint binds a saved stand; an ungespeicherter Entwurf wäre sofort überholt.
         if (current.documentState === 'draft' || await this.drafts.get(localId)) reject('REVIEW_CHECKPOINT_NOT_ALLOWED');
         const last = await this.lastSequence(localId);
@@ -407,7 +418,7 @@ export class WorkspaceStore {
   }
 
   /** Prüfung, Änderungsanforderung und Rücknahme; `approved` läuft über `saveDocument`. */
-  async appendDecision(localId: LocalId, expectedSavedAt: string, expectedDraftSavedAt: string | null, request: ReviewDecisionRequest): Promise<WorkspaceResult<ReviewDecision>> {
+  async appendDecision(localId: LocalId, expectedSavedAt: string, expectedDraftSavedAt: string | null, request: ReviewDecisionRequest, guard?: ReviewGuard): Promise<WorkspaceResult<ReviewDecision>> {
     try {
       const read = await this.read(['documents', 'reviewTrail'], async () => {
         const document = await this.documents.get(localId);
@@ -422,9 +433,22 @@ export class WorkspaceStore {
       if (!work.ok) return work;
       return await this.write(async stamp => {
         await this.current(localId, expectedSavedAt, expectedDraftSavedAt);
+        await this.enforceReviewGuard(localId, guard);
         return this.appendDecisionRow(localId, request.decision, request.expectedSequence, work.value.snapshot, stamp, request);
       });
     } catch (error) { return failure(error); }
+  }
+
+  /** Läuft in der Schreibtransaktion: Der Verbundstand, gegen den die Sperre geprüft wird, ist der, auf den geschrieben wird. */
+  private async enforceReviewGuard(localId: LocalId, guard: ReviewGuard | undefined): Promise<void> {
+    if (!guard) return;
+    const document = await this.documents.get(localId);
+    if (!document) reject('WORKSPACE_DOCUMENT_NOT_FOUND');
+    const members = await this.documents.where('verbundId').equals(document.verbundId).toArray();
+    const ids = new Set<string>(members.map(member => member.localId));
+    const bindings = (await this.bindings.toArray()).filter(binding => ids.has(binding.fromLocalId));
+    const code = guard(localId, members, bindings);
+    if (code !== null) reject(code);
   }
 
   private async lastSequence(localId: LocalId): Promise<number> {
