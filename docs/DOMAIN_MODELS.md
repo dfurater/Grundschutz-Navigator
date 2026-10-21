@@ -1026,6 +1026,8 @@ Der Weg eines SSP in die Anwendung ist die Klasse-2-Importgrenze:
 `parseSspDocument()`. Stufe 4 bleibt `not-checked`; die Referenzprüfungen
 unten sind Modelldiagnosen des Adapters.
 
+Die SSP-Station (`src/features/workspace/ssp/`) nimmt ausschließlich schema-geprüfte SSP-JSON-Dateien auf. `SspDocumentContent` lädt das ausgewählte Dokument über den Workspace-Port und zeigt die Projektion von `parseSspDocument()` mit Modelldiagnosen. `SspFields` beschränkt den lesenden Feldbaum auf fachliche Projektionsfelder; aufgelöste Referenzobjekte und strukturelle Diagnosepfade stehen außerhalb dieses Baums. Fremde `props` und nicht projizierte Inhalte bleiben in `source` erhalten. Der Import und die Anzeige ändern weder Root-UUID noch `metadata.last-modified`.
+
 ### Umsetzungsstatus je Komponente
 
 `implementation-status` sitzt in OSCAL an `by-component` — pro Komponente je
@@ -1632,6 +1634,7 @@ interface CatalogState {
   activeCatalogKey: CatalogKey;
   selectCatalog: (catalogKey: CatalogKey) => void;
   requestCatalog?: (catalogKey: CatalogKey) => void;
+  retryCatalog?: (catalogKey: CatalogKey) => void;
 
   // Projektionen des aktiven Katalogs
   catalogDocument: CatalogDocument | null;
@@ -1650,7 +1653,7 @@ interface CatalogState {
 Jeder Katalog trägt Provenienz, Verifikationsergebnis und Fehlerzustand
 isoliert; `selectCatalog` ignoriert nicht ausgelieferte Schlüssel (fail-closed
 beim zuletzt gültigen Katalog). `requestCatalog` lädt einen ausgelieferten
-Katalog, ohne die Auswahl zu ändern, je Katalog höchstens einmal. `catalog` ist `catalogDocument.view` des
+Katalog, ohne die Auswahl zu ändern, je Katalog höchstens einmal. `retryCatalog` wiederholt einen Katalog mit Fehlerzustand und startet dabei genau einen neuen Request. `catalog` ist `catalogDocument.view` des
 aktiven Katalogs. Wer Felder braucht, die das Domänenmodell nicht abbildet,
 geht über `catalogDocument.source`.
 
