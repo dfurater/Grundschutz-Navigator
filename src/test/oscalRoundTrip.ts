@@ -972,7 +972,8 @@ function collectSubobjectUuids(
     return;
   }
   if (!isJsonObject(value)) return;
-  if (typeof value.uuid === 'string' && path !== exclusions.rootPath) {
+  // Der UUID-Pfad selbst kann das Edit-Ziel sein (replace auf `…uuid`).
+  if (typeof value.uuid === 'string' && path !== exclusions.rootPath && `${path}.uuid` !== exclusions.editPath) {
     out.add(`${path}.uuid\u0000${value.uuid}`);
   }
   for (const [key, child] of Object.entries(value)) {

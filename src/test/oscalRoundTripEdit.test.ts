@@ -245,6 +245,17 @@ describe('Edit-Lauf: Unterobjekt-UUIDs bleiben erhalten', () => {
     expect(result.status).toBe('failed');
     expect(result.identities.findings).toEqual(['subobject-uuid-changed']);
   });
+
+  it('lässt eine Unterobjekt-UUID zu, die selbst das Ziel der Edit-Operation ist', async () => {
+    const result = await runReference(withAction('component-definition'), {
+      op: 'replace',
+      path: ['component-definition', 'metadata', 'actions', 0, 'uuid'],
+      value: NEW_UUID,
+    });
+
+    expect(result.status).toBe('passed');
+    expect(result.identities.findings).toEqual([]);
+  });
 });
 
 describe('Edit-Lauf: erwartete Differenzmenge', () => {
