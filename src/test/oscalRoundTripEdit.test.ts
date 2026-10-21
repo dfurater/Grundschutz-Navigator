@@ -246,15 +246,17 @@ describe('Edit-Lauf: Unterobjekt-UUIDs bleiben erhalten', () => {
     expect(result.identities.findings).toEqual(['subobject-uuid-changed']);
   });
 
-  it('lässt eine Unterobjekt-UUID zu, die selbst das Ziel der Edit-Operation ist', async () => {
-    const result = await runReference(withAction('component-definition'), {
-      op: 'replace',
-      path: ['component-definition', 'metadata', 'actions', 0, 'uuid'],
-      value: NEW_UUID,
-    });
+  it.each([
+    ['metadata.actions', () => withAction('component-definition'),
+      ['component-definition', 'metadata', 'actions', 0, 'uuid']],
+    // metadata.links[0].href zeigt per `#<uuid>` auf diese Ressource.
+    ['referenzierte back-matter-resource', () => maximal('profile'),
+      ['profile', 'back-matter', 'resources', 0, 'uuid']],
+  ] as const)('meldet einen replace auf die bestehende UUID an %s', async (_name, makeDocument, path) => {
+    const result = await runReference(makeDocument(), { op: 'replace', path, value: NEW_UUID });
 
-    expect(result.status).toBe('passed');
-    expect(result.identities.findings).toEqual([]);
+    expect(result.status).toBe('failed');
+    expect(result.identities.findings).toEqual(['subobject-uuid-changed']);
   });
 });
 

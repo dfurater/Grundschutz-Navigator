@@ -149,8 +149,10 @@ Getrennt vom Inhaltsvergleich prüft der Harnisch:
   dem Stempel und verschieden vom Original (`last-modified-not-updated`,
   `last-modified-not-stamp`).
 * Im Edit-Lauf bleibt die Menge der Paare (Pfad, Wert) aller `uuid`-Felder
-  unterhalb der Root-Ebene gleich; ausgenommen ist nur der Teilbaum der
-  Edit-Operation (Befund `subobject-uuid-changed`). Das schützt fachliche
+  unterhalb der Root-Ebene gleich; ausgenommen ist nur das Element, das eine
+  `add`-Operation anhängt (Befund `subobject-uuid-changed`). Ein `replace` auf
+  ein bestehendes Unterobjekt-`uuid`-Feld ist eine Neuvergabe und schlägt mit
+  diesem Befund fehl. Das schützt fachliche
   Unterobjekte wie `implemented-requirement`, `by-component`, `risk`,
   `observation`, `finding`, `metadata.actions` und `back-matter`-Ressourcen,
   auf deren UUIDs `#<uuid>`-Fragmente zeigen.

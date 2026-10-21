@@ -956,7 +956,8 @@ function differenceKey(difference: Pick<JsonGraphDifference, 'path' | 'kind'>): 
 /**
  * Paare (Pfad, Wert) aller `uuid`-Felder unterhalb der Root-Ebene. Der
  * Teilbaum der Edit-Operation ist ausgenommen: Ein angehängtes Element darf
- * eigene UUIDs mitbringen.
+ * eigene UUIDs mitbringen. `replace` trifft nur Blattwerte und nimmt deshalb
+ * keine bestehende Unterobjekt-UUID aus.
  */
 function collectSubobjectUuids(
   value: unknown,
@@ -972,8 +973,7 @@ function collectSubobjectUuids(
     return;
   }
   if (!isJsonObject(value)) return;
-  // Der UUID-Pfad selbst kann das Edit-Ziel sein (replace auf `…uuid`).
-  if (typeof value.uuid === 'string' && path !== exclusions.rootPath && `${path}.uuid` !== exclusions.editPath) {
+  if (typeof value.uuid === 'string' && path !== exclusions.rootPath) {
     out.add(`${path}.uuid\u0000${value.uuid}`);
   }
   for (const [key, child] of Object.entries(value)) {
