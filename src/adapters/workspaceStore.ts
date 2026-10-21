@@ -86,6 +86,22 @@ function approvalMatches(action: JsonObject, approval: ReviewApprovalRequest): b
     && parties.every(uuid => typeof uuid === 'string' && expected.has(uuid));
 }
 
+/** Checks an approval before any write and computes the stand it binds; a rejected gate throws. */
+async function approvalStandFor(document: Class2OscalImportedDocument, schemaValid: boolean, state: DocumentState | undefined, approval: ReviewApprovalRequest): Promise<WorkspaceResult<DocumentSnapshot>> {
+  // The approval gate holds for every caller: a schema-valid source and a stored state that is not draft.
+  if (state === 'draft') reject('REVIEW_APPROVAL_BLOCKED');
+  if (!schemaValid) reject('REVIEW_APPROVAL_SCHEMA');
+  // Schema validity is no reference resolution: a missing or ambiguous role/party stops before any write.
+  const metadata = documentBody(document.source, document.rootType)?.metadata;
+  const action = readArray(isJsonObject(metadata) ? metadata.actions : undefined)
+    .find(entry => isJsonObject(entry) && entry.uuid === approval.actionUuid);
+  if (!isJsonObject(action) || !approvalMatches(action, approval)) reject('REVIEW_APPROVAL_INVALID');
+  const findings = resolveActionReferences(action, metadata);
+  if (findings.length) reject(findings[0].code);
+  const work = await reviewTrailInWorker({ source: document.source, rootType: document.rootType, previous: null, baseSequence: null, diff: false });
+  return work.ok ? { ok: true, value: work.value.snapshot } : work;
+}
+
 /** No singleton, cached sources, search index or document-content event payloads. */
 export class WorkspaceStore {
   private readonly db: Dexie;
@@ -287,19 +303,9 @@ export class WorkspaceStore {
       const { document, schemaValid } = await snapshotDocument(input, state);
       let approvalStand: DocumentSnapshot | undefined;
       if (approval) {
-        // The approval gate holds for every caller: a schema-valid source and a stored state that is not draft.
-        if (state === 'draft') reject('REVIEW_APPROVAL_BLOCKED');
-        if (!schemaValid) reject('REVIEW_APPROVAL_SCHEMA');
-        // Schema validity is no reference resolution: a missing or ambiguous role/party stops before any write.
-        const metadata = documentBody(document.source, document.rootType)?.metadata;
-        const action = readArray(isJsonObject(metadata) ? metadata.actions : undefined)
-          .find(entry => isJsonObject(entry) && entry.uuid === approval.actionUuid);
-        if (!isJsonObject(action) || !approvalMatches(action, approval)) reject('REVIEW_APPROVAL_INVALID');
-        const findings = resolveActionReferences(action, metadata);
-        if (findings.length) reject(findings[0].code);
-        const work = await reviewTrailInWorker({ source: document.source, rootType: document.rootType, previous: null, baseSequence: null, diff: false });
-        if (!work.ok) return work;
-        approvalStand = work.value.snapshot;
+        const prepared = await approvalStandFor(document, schemaValid, state, approval);
+        if (!prepared.ok) return prepared;
+        approvalStand = prepared.value;
       }
       return await this.write(async stamp => {
         const current = await this.current(localId, expectedSavedAt, expectedDraftSavedAt);
