@@ -214,7 +214,8 @@ export interface PinnedBindings {
 /**
  * Überträgt den schwersten Zustand lokal referenzierter Dokumente auf das referenzierende Dokument
  * (SSP → Profil → Katalog): Seine Bewertung stützt sich auf deren Bezugsstand. Zyklussicher; ein
- * Dokument im Zyklus erbt, was der Zyklus insgesamt erreicht.
+ * Dokument im Zyklus erbt, was der Zyklus insgesamt erreicht. Nur ein gebundenes oder fehlendes
+ * eigenes Paar erbt.
  */
 function inheritCatalogPins(direct: ReadonlyMap<string, CatalogPin>, bindings: readonly WorkspaceBinding[]): Map<string, CatalogPin> {
   const targets = new Map<string, string[]>();
@@ -242,7 +243,8 @@ function inheritCatalogPins(direct: ReadonlyMap<string, CatalogPin>, bindings: r
     const inherited = reachable(localId);
     if (inherited === undefined) continue;
     const own = direct.get(localId);
-    if (own && !worse(inherited.state, own.state)) continue;
+    // Ein eigener gesperrter Zustand sperrt bereits Bearbeiten und Prüfen; er bleibt mit Diagnose und Bindeaktion stehen.
+    if (reviewLocked(own)) continue;
     pins.set(localId, { state: inherited.state, code: inherited.code, offers: own?.offers ?? [], withheld: own?.withheld ?? [], pending: own?.pending ?? [], inherited: true });
   }
   return pins;

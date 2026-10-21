@@ -198,6 +198,18 @@ describe('applyCatalogPins', () => {
       expect(pins.get(ID)).toMatchObject({ state: 'invalid' });
       expect(pins.get(ID)?.inherited).toBeUndefined();
     });
+
+    it('ersetzt einen eigenen leichteren Sperrzustand nicht durch einen geerbten', () => {
+      const members = [
+        { localId: ID, rootType: 'profile' as const, source: profile() },
+        { localId: PROFILE, rootType: 'profile' as const, source: profile(pin('gspp', OLD)) },
+      ];
+      const bindings = [catalogBinding(), toLocal(ID, PROFILE), catalogBinding('catalog-gspp', PROFILE)];
+      const { pins } = applyCatalogPins(members, bindings, delivered(NEW));
+      expect(pins.get(ID)).toMatchObject({ state: 'unpinned', code: WORKSPACE_DIAGNOSTIC_CODES.catalogPinMissing });
+      expect(pins.get(ID)?.inherited).toBeUndefined();
+      expect(editLocked(pins.get(ID))).toBe(true);
+    });
   });
 
   it('hält eine falsch gebundene Katalogbindung auch zurück, wenn ein anderer Katalog nicht verifiziert ist', () => {
