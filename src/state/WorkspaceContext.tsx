@@ -206,7 +206,7 @@ export function WorkspaceProvider({ open = openWorkspaceStore, children }: Reado
     if (!port) return storageFailed();
     const result = await operation(port);
     if (result.ok) setRevision((value) => value + 1);
-    else report(result.diagnostic);
+    else if (result.diagnostic.code !== 'WORKSPACE_OPERATION_CANCELLED') report(result.diagnostic);
     return result;
   }, [port, report]);
 

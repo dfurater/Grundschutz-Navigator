@@ -9,6 +9,7 @@ import { FOCUS_RING, OriginLabel, ValidityBadge } from '@/features/workspace/Doc
 import { WorkspaceNotices } from '@/features/workspace/WorkspaceNotices';
 import { WorkspaceStatePage, useRoutedVerbund } from '@/features/workspace/WorkspaceStatePage';
 import { ProfileEditorPage } from '@/features/workspace/profile/ProfileEditorPage';
+import { SspDocumentContent } from '@/features/workspace/ssp/SspDocumentContent';
 
 function DocumentDetail({ view, document }: Readonly<{ view: VerbundView; document: WorkspaceDocumentView }>) {
   return (
@@ -29,6 +30,7 @@ function DocumentDetail({ view, document }: Readonly<{ view: VerbundView; docume
         </div>
       </header>
       <WorkspaceNotices />
+      {document.rootType === 'system-security-plan' && <SspDocumentContent key={document.localId} localId={document.localId} />}
       <ReferenceEdges view={view} document={document} />
     </div>
   );
