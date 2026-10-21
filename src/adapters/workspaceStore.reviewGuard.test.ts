@@ -11,8 +11,9 @@ vi.mock('@/adapters/reviewTrailWork', async () => (await import('@/test/reviewTr
 import { WorkspaceStore, WORKSPACE_DATABASE_NAME, type ReviewApprovalRequest, type ReviewGuard } from './workspaceStore';
 import { APPROVAL_UUID, PARTY_UUID, ROLE_ID, catalogSource, imported, value } from '@/test/reviewTrailFixtures';
 
+const locked: ReviewGuard = () => 'X';
+
 describe('ReviewGuard in the write transaction (GSPP-362)', () => {
-  const locked = () => 'X';
 
   it('rolls an approved save back completely when the guard locks', async () => {
     const store = value(await WorkspaceStore.open());
