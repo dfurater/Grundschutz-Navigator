@@ -287,6 +287,9 @@ export class WorkspaceStore {
       const { document, schemaValid } = await snapshotDocument(input, state);
       let approvalStand: DocumentSnapshot | undefined;
       if (approval) {
+        // The approval gate holds for every caller: a schema-valid source and a stored state that is not draft.
+        if (state === 'draft') reject('REVIEW_APPROVAL_BLOCKED');
+        if (!schemaValid) reject('REVIEW_APPROVAL_SCHEMA');
         // Schema validity is no reference resolution: a missing or ambiguous role/party stops before any write.
         const metadata = documentBody(document.source, document.rootType)?.metadata;
         const action = readArray(isJsonObject(metadata) ? metadata.actions : undefined)
@@ -301,6 +304,7 @@ export class WorkspaceStore {
       return await this.write(async stamp => {
         const current = await this.current(localId, expectedSavedAt, expectedDraftSavedAt);
         assertAdmissible(state ?? current.documentState, schemaValid);
+        if (approval && (state ?? current.documentState) === 'draft') reject('REVIEW_APPROVAL_BLOCKED');
         if ((document.source as Record<string, { uuid?: string }>)[document.rootType]?.uuid === localId) reject('WORKSPACE_DOCUMENT_INVALID');
         const updated: WorkspaceEnvelope = { ...writtenRow(current), source: document.source, rootType: document.rootType, oscalVersion: document.oscalVersion, savedAt: stamp, documentState: state ?? current.documentState };
         await this.documents.put(updated);

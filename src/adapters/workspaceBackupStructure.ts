@@ -1,5 +1,6 @@
 import { hasRegistryKeyGrammar } from '@/domain/sourceRegistry';
 import { OSCAL_ROOT_KEYS } from '@/domain/oscalVersionMatrix';
+import { CONTENT_HASH_ALGORITHM, CONTENT_HASH_VERSION } from '@/domain/reviewTrail';
 import { bindsEnvelopeSource, withinSourceLimits } from '@/adapters/workspaceDraftSource';
 import {
   STORAGE_SCHEMA_VERSION, isVerbundName,
@@ -149,7 +150,7 @@ function validSnapshot(value: unknown): value is DocumentSnapshot {
     && OSCAL_ROOT_KEYS.includes(value.rootType as never) && nonEmptyString(value.uuid)
     && nonEmptyString(value.lastModified) && nonEmptyString(value.version) && nonEmptyString(value.oscalVersion)
     && fields(value.contentHash, ['version', 'algorithm', 'value'])
-    && positiveInteger(value.contentHash.version) && nonEmptyString(value.contentHash.algorithm)
+    && value.contentHash.version === CONTENT_HASH_VERSION && value.contentHash.algorithm === CONTENT_HASH_ALGORITHM
     && typeof value.contentHash.value === 'string' && SHA256.test(value.contentHash.value);
 }
 
@@ -164,8 +165,12 @@ function validDiff(value: unknown, sequence: number, checkpoints: ReadonlyMap<nu
     && typeof entry.marker === 'boolean');
 }
 
+/**
+ * Ein Trail-Stand gehört über `localId` zum Dokument, trägt aber seinen eigenen
+ * Root-Typ: nach einem zulässigen Root-Wechsel bleiben Altzeilen Historie.
+ */
 function validStandForDocument(context: BundleContext, localId: string, stand: unknown): stand is DocumentSnapshot {
-  return validSnapshot(stand) && stand.rootType === context.documents.get(localId)?.rootType;
+  return context.documents.has(localId) && validSnapshot(stand);
 }
 
 function sameSnapshot(left: DocumentSnapshot, right: DocumentSnapshot): boolean {
@@ -241,7 +246,7 @@ function collectReviewBaseline(context: BundleContext, rows: readonly unknown[])
     const localId = row.localId as string;
     const document = context.documents.get(localId);
     const checkpoint = context.checkpoints.get(localId)?.get(row.sequence as number);
-    if (!checkpoint || !validSnapshot(row.stand) || !sameSnapshot(row.stand, checkpoint)) return false;
+    if (!checkpoint || !validSnapshot(row.stand) || !sameSnapshot(row.stand, checkpoint) || row.stand.rootType !== document?.rootType) return false;
     if (!document || !withinSourceLimits(row.source) || !bindsEnvelopeSource(row.source, document.rootType as never, document.oscalVersion)) return false;
     context.baselines.add(localId);
   }

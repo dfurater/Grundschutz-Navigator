@@ -71,7 +71,7 @@ function renderPanel(trail: readonly ReviewTrailRow[] = [checkpoint, approval]) 
     metadata,
     nativeActionUuids: ['action-1'],
   });
-  render(<ReviewPanel view={view} metadata={metadata} rootType="catalog" />);
+  render(<ReviewPanel view={view} metadata={metadata} />);
   return {
     documentLayer: screen.getByRole('region', { name: 'Im Dokument' }),
     workspaceLayer: screen.getByRole('region', { name: 'Nur im Workspace' }),
@@ -104,6 +104,16 @@ describe('ReviewPanel', () => {
     const { workspaceLayer } = renderPanel();
     expect(within(workspaceLayer).getByText('Schreibmarker')).toBeInTheDocument();
     expect(within(workspaceLayer).getByText(/Diff-Ergebnis ist gekürzt/)).toBeInTheDocument();
+  });
+
+  it('benennt historische Stände nach ihrem eigenen Root-Typ', () => {
+    const historic = { ...checkpoint, stand: { ...snapshot('catalog'), rootType: 'catalog' as const } };
+    const current = { ...checkpoint, sequence: 3, stand: { ...snapshot('profile'), rootType: 'profile' as const }, diff: { ...checkpoint.diff, truncated: false } };
+    const { workspaceLayer } = renderPanel([historic, { ...approval, decision: 'reviewed', actionUuid: undefined }, current]);
+    const history = within(workspaceLayer).getByRole('list', { name: 'Verlauf der Prüfspur' });
+    expect(within(history).getByText('Catalog')).toBeInTheDocument();
+    expect(within(history).queryByText('Profile')).not.toBeInTheDocument();
+    expect(within(workspaceLayer).getByText('Profile')).toBeInTheDocument();
   });
 
   it('hält frühere Begründungen und Diffs im Verlauf lesbar', () => {

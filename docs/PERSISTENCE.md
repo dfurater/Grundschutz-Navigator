@@ -273,6 +273,10 @@ Eine Freigabe ist der einzige native Schreibvorgang des Prüfablaufs: Sie trägt
 
 `DocumentSnapshot` bindet `rootType`, Root-`uuid`, `last-modified`, `version`, `oscal-version` und den Inhalts-Hash. `hashVersion: 1` heißt SHA-256 über `sorted-json/1`: Objektschlüssel sortiert, Arrays in Quellreihenfolge, `-0` erhalten; ausgenommen sind nur die Root-`uuid` und die Root-`last-modified`. Jede Änderung eines anderen Werts erzeugt einen anderen Hash. Ein Prüfstand gilt als überholt, sobald einer dieser sechs Werte vom gebundenen Stand abweicht oder der Editor ungespeicherte Eingaben hat.
 
+Jeder Trail-Eintrag trägt den Root-Typ seines eigenen Stands. Ersetzt `replaceDocument()` ein Dokument durch eine andere Root unter derselben `localId`, bleiben die älteren Einträge mit ihrem bisherigen Root-Typ Historie; nur die Vergleichsbasis muss zur aktuellen Root passen. Sicherung und Wiederherstellung nehmen ausschließlich Stände mit `hashVersion: 1` und Algorithmus `sha-256` an; eine unbekannte Hash-Version oder ein unbekannter Algorithmus lässt das Bündel scheitern.
+
+Die Speichergrenze prüft eine Freigabe unabhängig vom Aufrufer: Eine Freigabe in den Zustand `draft` meldet `REVIEW_APPROVAL_BLOCKED`, eine schemawidrige Quelle `REVIEW_APPROVAL_SCHEMA`. In beiden Fällen bleiben Dokument, Entwurf und Trail unverändert.
+
 ### Grenzen
 
 Hash und Diff entstehen in `src/workers/reviewTrail.worker.ts` mit derselben Klasse-2-Eingangsgrenze wie der Import (10 MiB, Tiefe 64, 1 000 000 Knoten) und einer Frist von 15 000 ms. Ein Fehlschlag oder Fristablauf schreibt nichts (`REVIEW_TRAIL_WORK_FAILED`); einen Rückfall auf Berechnung im Hauptthread gibt es nicht. Ein Diff führt höchstens `DOCUMENT_DIFF_MAX_ENTRIES` (5 000) Einträge und `DOCUMENT_DIFF_MAX_BYTES` (1 MiB); darüber setzt er `truncated`. Die Einträge nennen Pfad, Art (`added`/`removed`/`changed`) und Wertart, keinen Inhalt. Die Vergleichsbasis ist die Quellkopie des letzten Prüfpunkts, nicht eine Sammlung aller Stände; ein ersetztes Dokument verwirft sie.

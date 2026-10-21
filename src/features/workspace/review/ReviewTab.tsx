@@ -107,15 +107,19 @@ export function ReviewTab({ localId, documentSavedAt, editorDirty = false, appro
   const canRequestChanges = reviewView.derived.state === 'reviewed' || reviewView.derived.state === 'approved' || reviewView.derived.state === 'none';
   const withdrawTarget = reviewView.derived.state === 'approved' ? reviewView.derived.actionUuid : undefined;
 
+  // Nur der abgeschickte Wert wird geleert; währenddessen getippter Text bleibt stehen.
+  const clearSubmitted = (submitted: string) => (ok: boolean) => {
+    if (ok) setReason((current) => (current === submitted ? '' : current));
+  };
   const decide = (decision: 'reviewed' | 'changes-requested') => {
-    void review.decide({ decision, reason: reason.trim() }).then((ok) => { if (ok) setReason(''); });
+    void review.decide({ decision, reason: reason.trim() }).then(clearSubmitted(reason));
   };
   const withdraw = () => {
     if (!withdrawTarget) return;
     const target = view.trail.find((row) => row.kind === 'decision' && row.actionUuid === withdrawTarget);
     if (!target) return;
     void review.decide({ decision: 'withdrawn', withdraws: { sequence: target.sequence, actionUuid: withdrawTarget }, reason: reason.trim() })
-      .then((ok) => { if (ok) setReason(''); });
+      .then(clearSubmitted(reason));
   };
   const submitApproval = (input: DecisionSubmission) => {
     if (!approval || approving) return;
@@ -180,5 +184,5 @@ export function ReviewTab({ localId, documentSavedAt, editorDirty = false, appro
     </div>
   );
 
-  return <ReviewPanel view={reviewView} metadata={metadata} rootType={document.rootType} actions={actions} />;
+  return <ReviewPanel view={reviewView} metadata={metadata} actions={actions} />;
 }

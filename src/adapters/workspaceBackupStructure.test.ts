@@ -52,7 +52,13 @@ function bundle(): WorkspaceBackup {
 
 type Mutation = (backup: WorkspaceBackup) => unknown;
 const rejected: readonly (readonly [string, Mutation])[] = [
-  ['checkpoint-stand-falscher-root', (b) => ({ ...b, reviewTrail: [{ ...(b.reviewTrail[0] as object), stand: { ...stand, rootType: 'profile' } }] })],
+  ['baseline-stand-fremder-root', (b) => ({
+    ...b,
+    reviewTrail: [{ ...(b.reviewTrail[0] as object), stand: { ...stand, rootType: 'profile' } }],
+    reviewBaseline: [{ ...b.reviewBaseline[0], stand: { ...stand, rootType: 'profile' } }],
+  })],
+  ['hash-version-unbekannt', (b) => ({ ...b, reviewTrail: [b.reviewTrail[0], { ...b.reviewTrail[1], stand: { ...stand, contentHash: { ...stand.contentHash, version: 999 } } }], reviewBaseline: [] })],
+  ['hash-algorithmus-unbekannt', (b) => ({ ...b, reviewTrail: [b.reviewTrail[0], { ...b.reviewTrail[1], stand: { ...stand, contentHash: { ...stand.contentHash, algorithm: 'sha-1' } } }], reviewBaseline: [] })],
   ['checkpoint-diff-unbekannte-basis', (b) => ({ ...b, reviewTrail: [{ ...(b.reviewTrail[0] as object), diff: { version: 1, baseSequence: 1, entries: [], truncated: false } }] })],
   ['checkpoint-diff-falsche-basis-art', (b) => ({ ...b, reviewTrail: [{ ...(b.reviewTrail[0] as object), diff: { version: 1, baseSequence: null, entries: [], truncated: false, extra: true } }] })],
   ['checkpoint-diff-falscher-pfad', (b) => ({ ...b, reviewTrail: [{ ...(b.reviewTrail[0] as object), diff: { version: 1, baseSequence: null, entries: [{ path: 'catalog', kind: 'added', valueKind: 'object', marker: false }], truncated: false } }] })],
@@ -77,6 +83,17 @@ describe('workspace backup structure v2', () => {
 
   it.each(rejected)('weist %s ab', (_name, mutate) => {
     expect(validWorkspaceBackupStructure(mutate(bundle()))).toBe(false);
+  });
+
+  it('akzeptiert historische Stände mit eigenem Root-Typ nach einem Root-Wechsel', () => {
+    const backup = bundle();
+    const historic = { ...stand, rootType: 'profile' as const };
+    const trail = [
+      { ...backup.reviewTrail[0], stand: historic, diff: { version: 1, baseSequence: null, entries: [], truncated: false } },
+      { ...backup.reviewTrail[1], sequence: 2, stand: historic },
+      { ...backup.reviewTrail[0], sequence: 3 },
+    ];
+    expect(validWorkspaceBackupStructure({ ...backup, reviewTrail: trail, reviewBaseline: [{ ...backup.reviewBaseline[0], sequence: 3 }] })).toBe(true);
   });
 
   it('validiert inkrementell in Abhängigkeitsreihenfolge', () => {

@@ -2,7 +2,6 @@ import { Fragment, useId, type ReactNode } from 'react';
 import { IconArrowLeft, IconCheck, IconInfo, IconX } from '@/components/icons';
 import type { DiffEntry, DocumentDiff } from '@/domain/documentDiff';
 import { isJsonObject, readArray, readString, type JsonObject } from '@/domain/jsonGuards';
-import type { OscalRootKey } from '@/domain/oscalVersionMatrix';
 import { projectRevisions, resolveActionReferences } from '@/domain/reviewTrail';
 import type { DocumentSnapshot, ReviewCheckpoint, ReviewDecision, ReviewTrailRow } from '@/domain/workspaceModel';
 import { documentValidity, ROOT_TYPE_LABELS } from '@/domain/workspaceStations';
@@ -19,7 +18,6 @@ import {
 export interface ReviewPanelProps {
   readonly view: ReviewView;
   readonly metadata: unknown;
-  readonly rootType: OscalRootKey;
   /** Bedienelemente der Station; sie bleiben von der Anzeige getrennt. */
   readonly actions?: ReactNode;
 }
@@ -255,7 +253,7 @@ function Diff({ diff }: Readonly<{ diff: DocumentDiff }>) {
   );
 }
 
-function CheckpointDetails({ checkpoint, rootType }: Readonly<{ checkpoint?: ReviewCheckpoint; rootType: OscalRootKey }>) {
+function CheckpointDetails({ checkpoint }: Readonly<{ checkpoint?: ReviewCheckpoint }>) {
   if (!checkpoint) return <p className="text-sm text-[var(--color-text-secondary)]">Keine Prüfpunkte im Workspace.</p>;
   return (
     <div className="space-y-2">
@@ -263,7 +261,7 @@ function CheckpointDetails({ checkpoint, rootType }: Readonly<{ checkpoint?: Rev
       <p className="flex flex-wrap items-baseline gap-x-2 text-sm text-[var(--color-text-secondary)]">
         <span className="font-medium text-[var(--color-text-primary)]">{documentValidity(checkpoint.documentState)}</span>
         <span aria-hidden="true">·</span><time dateTime={checkpoint.createdAt}>{timestamp(checkpoint.createdAt)}</time>
-        <span aria-hidden="true">·</span><span>{ROOT_TYPE_LABELS[rootType]}</span>
+        <span aria-hidden="true">·</span><span>{ROOT_TYPE_LABELS[checkpoint.stand.rootType]}</span>
       </p>
       <Stand stand={checkpoint.stand} />
       <Diff diff={checkpoint.diff} />
@@ -290,7 +288,7 @@ function TrailDecision({ decision }: Readonly<{ decision: ReviewDecision }>) {
   );
 }
 
-function TrailHistory({ trail, rootType }: Readonly<{ trail: readonly ReviewTrailRow[]; rootType: OscalRootKey }>) {
+function TrailHistory({ trail }: Readonly<{ trail: readonly ReviewTrailRow[] }>) {
   let latestCheckpoint: ReviewTrailRow | undefined;
   let latestDecision: ReviewTrailRow | undefined;
   for (const row of trail) {
@@ -315,7 +313,7 @@ function TrailHistory({ trail, rootType }: Readonly<{ trail: readonly ReviewTrai
               </summary>
               <div className="mt-2 space-y-2 pl-2">
                 {row.kind === 'checkpoint'
-                  ? <><p className="text-xs text-[var(--color-text-secondary)]">{ROOT_TYPE_LABELS[rootType]}</p><Stand stand={row.stand} /><Diff diff={row.diff} /></>
+                  ? <><p className="text-xs text-[var(--color-text-secondary)]">{ROOT_TYPE_LABELS[row.stand.rootType]}</p><Stand stand={row.stand} /><Diff diff={row.diff} /></>
                   : <TrailDecision decision={row} />}
               </div>
             </details>
@@ -348,7 +346,7 @@ function StatusSection({ view }: Readonly<{ view: ReviewView }>) {
 }
 
 /** Prüfspur eines Dokuments: was im Dokument steht, getrennt von dem, was nur der Workspace hält. */
-export function ReviewPanel({ view, metadata, rootType, actions }: Readonly<ReviewPanelProps>) {
+export function ReviewPanel({ view, metadata, actions }: Readonly<ReviewPanelProps>) {
   return (
     <div className="space-y-4">
       <Layer title="Im Dokument">
@@ -358,9 +356,9 @@ export function ReviewPanel({ view, metadata, rootType, actions }: Readonly<Revi
       </Layer>
       <Layer title="Nur im Workspace">
         <StatusSection view={view} />
-        <CheckpointDetails checkpoint={view.latestCheckpoint} rootType={rootType} />
+        <CheckpointDetails checkpoint={view.latestCheckpoint} />
         {actions}
-        <TrailHistory trail={view.trail} rootType={rootType} />
+        <TrailHistory trail={view.trail} />
         <CapabilityContract />
       </Layer>
     </div>

@@ -29,6 +29,10 @@ vi.mock('@/adapters/reviewTrailWork', async () => {
     }),
   };
 });
+vi.mock('@/adapters/workspaceBackup', async () => {
+  const { processWorkspaceBackupBytes, processVerbundBackupBytes } = await import('@/adapters/workspaceBackupProcessing');
+  return { parseWorkspaceBackup: processWorkspaceBackupBytes, parseVerbundBackup: processVerbundBackupBytes };
+});
 import { WorkspaceStore, WORKSPACE_DATABASE_NAME, type ReviewApprovalRequest } from './workspaceStore';
 import { reviewTrailInWorker } from './reviewTrailWork';
 import { approvalAction } from '@/domain/reviewTrail';
@@ -121,6 +125,51 @@ it('starts a new comparison line after replaceDocument while older checkpoints s
     const checkpoint = value(await store.appendCheckpoint(envelope.localId, replaced.savedAt, null, 1));
     expect(checkpoint).toMatchObject({ sequence: 2, diff: { baseSequence: null } });
     expect(value(await store.listReviewTrail(envelope.localId)).trail).toHaveLength(2);
+  } finally { store.close(); }
+});
+
+it.each(['workspace', 'verbund'] as const)('keeps a root change backupable with its historic root types (%s)', async (scope) => {
+  const store = value(await WorkspaceStore.open());
+  try {
+    const verbund = value(await store.createVerbund('Root change'));
+    const envelope = value(await store.addDocument(verbund.verbundId, await imported(catalogSource({ action: false }))));
+    value(await store.appendCheckpoint(envelope.localId, envelope.savedAt, null, 0));
+    value(await store.appendDecision(envelope.localId, envelope.savedAt, null, { decision: 'reviewed', expectedSequence: 1, reason: 'Katalog' }));
+    const profile = await imported(makeSchemaValidOscalDocument('profile', '1.1.3'));
+    const replaced = value(await store.replaceDocument(envelope.localId, envelope.savedAt, null, profile));
+    expect(replaced.rootType).toBe('profile');
+    value(await store.appendCheckpoint(envelope.localId, replaced.savedAt, null, 2));
+
+    const backup = value(await (scope === 'workspace' ? store.exportBackup() : store.exportVerbundBackup(verbund.verbundId)));
+    value(await (scope === 'workspace'
+      ? store.restoreBackup(bytes(backup), 'replace-workspace')
+      : store.restoreVerbundBackup(bytes(backup), 'replace-verbund')));
+    const view = value(await store.listReviewTrail(envelope.localId));
+    expect(view.document.rootType).toBe('profile');
+    expect(view.trail.map(row => [row.sequence, row.stand.rootType])).toEqual([[1, 'catalog'], [2, 'catalog'], [3, 'profile']]);
+  } finally { store.close(); }
+});
+
+it('rejects an approval on the draft path regardless of the caller', async () => {
+  const store = value(await WorkspaceStore.open());
+  try {
+    const verbund = value(await store.createVerbund('Review'));
+    const envelope = value(await store.addDocument(verbund.verbundId, await imported(catalogSource({ action: false }))));
+    value(await store.autosaveDraft(envelope.localId, envelope.savedAt, null, catalogSource({ action: false, title: 'DRAFT' })));
+    const before = value(await store.getDocument(envelope.localId))!;
+    const draftBefore = value(await store.listReviewTrail(envelope.localId)).draftSavedAt;
+    const approval: ReviewApprovalRequest = { actionUuid: APPROVAL_UUID, expectedSequence: 0, roleId: ROLE_ID, partyUuids: [PARTY_UUID] };
+    const invalid = catalogSource();
+    delete (invalid.catalog as { metadata: Record<string, unknown> }).metadata.title;
+    const input: Class2OscalImportedDocument = { source: invalid, context: { trustClass: 'class-2-local-user' }, rootType: 'catalog', oscalVersion: '1.1.3' };
+
+    expect(await store.saveDocument(envelope.localId, before.savedAt, draftBefore, input, undefined, 'draft', approval)).toMatchObject({ ok: false, diagnostic: { code: 'REVIEW_APPROVAL_BLOCKED' } });
+    expect(await store.saveDocument(envelope.localId, before.savedAt, draftBefore, input, undefined, undefined, approval)).toMatchObject({ ok: false, diagnostic: { code: 'REVIEW_APPROVAL_SCHEMA' } });
+    expect(await store.saveDocument(envelope.localId, before.savedAt, draftBefore, await imported(catalogSource()), undefined, 'draft', approval)).toMatchObject({ ok: false, diagnostic: { code: 'REVIEW_APPROVAL_BLOCKED' } });
+    const after = value(await store.listReviewTrail(envelope.localId));
+    expect(value(await store.getDocument(envelope.localId))).toEqual(before);
+    expect(after.draftSavedAt).toBe(draftBefore);
+    expect(after.trail).toEqual([]);
   } finally { store.close(); }
 });
 
