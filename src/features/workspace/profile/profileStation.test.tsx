@@ -131,6 +131,14 @@ describe('Neuanlage über das Importziel', () => {
     expect(main()).not.toHaveTextContent('BSI-geprüft');
   });
 
+  it('legt kein Profil auf einem BSI-Katalog an, dessen Hashprüfung noch aussteht', async () => {
+    const loading = { catalogKey: 'gspp', catalogDocument: null, catalog: null, verification: null, error: null, loading: true } as unknown as LoadedCatalogState;
+    renderArea(buildStationUrl(seeded.verbundId, 'profile'), { ...EMPTY_CATALOG_STATE, catalogs: new Map<CatalogKey, LoadedCatalogState>([['gspp', loading]]) });
+    await openNewProfile('Paket');
+    fireEvent.click(await within(main()).findByRole('radio', { name: /catalog-gspp/ }));
+    expect(within(main()).getByRole('button', { name: 'Profil anlegen' })).toBeDisabled();
+  });
+
   it('zeigt einen Katalog mit Ladefehler als nicht ladbar und nicht wählbar', async () => {
     const failed = { catalogKey: 'gspp', catalogDocument: null, catalog: null, verification: null, error: 'Netzfehler' } as unknown as LoadedCatalogState;
     renderArea(buildStationUrl(seeded.verbundId, 'profile'), { ...EMPTY_CATALOG_STATE, catalogs: new Map<CatalogKey, LoadedCatalogState>([['gspp', failed]]) });

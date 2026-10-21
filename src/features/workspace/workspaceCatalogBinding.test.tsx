@@ -116,6 +116,45 @@ describe('Bindung an einen BSI-Katalog', () => {
     await waitFor(() => expect(edges.querySelector('[data-edge-state="resolved"]')).toHaveTextContent('/profile/imports/0/href'));
   });
 
+  it('bindet ein Profil ohne Katalogpaar auch mit offenem Entwurf und speichert den Entwurf mit', async () => {
+    const profile = await bindProfileToCatalog(undefined, null);
+    const store = value(await WorkspaceStore.open());
+    const draftSource = profileSource('bsi-katalog.json', null).source;
+    (draftSource.profile as { metadata: { title: string } }).metadata.title = 'Entwurfstitel';
+    try {
+      const current = value(await store.getDocument(profile.localId))!;
+      value(await store.autosaveDraft(profile.localId, current.savedAt, null, draftSource));
+    } finally { store.close(); }
+    renderArea(buildWorkspaceDocumentUrl(seeded.verbundId, profile.localId), withLoadedCatalog(true));
+    const bind = await within(main()).findByRole('button', { name: 'An ausgelieferten Stand binden' });
+    await waitFor(() => expect(bind).toBeEnabled());
+    fireEvent.click(bind);
+    await waitFor(async () => {
+      const stored = await readStore((store) => store.getDocument(profile.localId));
+      expect(readCatalogPins(stored?.source, 'profile')).toEqual(new Map([['gspp', TEST_CATALOG_COMMIT]]));
+      expect((stored?.source as { profile: { metadata: { title: string } } }).profile.metadata.title).toBe('Entwurfstitel');
+    });
+  });
+
+  it('sperrt die Prüfung eines Nicht-Profils, dessen Katalogstand nicht ausgeliefert ist', async () => {
+    const store = value(await WorkspaceStore.open());
+    let localId;
+    try {
+      const ssp = value(await store.addDocument(seeded.verbundId, {
+        source: makeSchemaValidOscalDocument('system-security-plan', '1.2.2'), context: { trustClass: 'class-2-local-user' },
+        rootType: 'system-security-plan', oscalVersion: '1.2.2',
+      }));
+      localId = ssp.localId;
+      const href = (ssp.source as { 'system-security-plan': { 'import-profile': { href: string } } })['system-security-plan']['import-profile'].href;
+      value(await store.setBinding({ fromLocalId: ssp.localId, pointer: '/system-security-plan/import-profile/href', href, target: { kind: 'class-1', artifactKey: 'catalog-gspp' } }, ssp.savedAt));
+    } finally { store.close(); }
+    renderArea(buildWorkspaceDocumentUrl(seeded.verbundId, localId!), withLoadedCatalog(true));
+    await waitFor(() => expect(main().querySelector('[data-catalog-pin="unpinned"]')).toBeInTheDocument());
+    expect(within(main()).queryByRole('button', { name: 'An ausgelieferten Stand binden' })).not.toBeInTheDocument();
+    fireEvent.click(within(main()).getByText('Prüfung und Freigabe'));
+    await waitFor(() => expect(main().querySelector('details fieldset')).toBeDisabled());
+  });
+
   it('meldet einen manipulierten Stand mit redigierter Diagnose und sperrt das Bearbeiten', async () => {
     const profile = await bindProfileToCatalog();
     renderArea(buildWorkspaceDocumentUrl(seeded.verbundId, profile.localId), withLoadedCatalog(false));

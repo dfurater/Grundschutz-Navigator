@@ -169,7 +169,7 @@ export function ProfileEditorPage({ view, document }: Readonly<{ view: VerbundVi
         <Tabs tab={tab} onSelect={selectTab} counts={{ imports: editor.imports.length, references: view.edges.get(localId)?.length ?? 0, review: undefined }} ids={ids} />
         <div className="min-h-0 flex-1 space-y-4 p-4 md:overflow-y-auto">
           <WorkspaceNotices />
-          <CatalogPinNotice pin={document.catalogPin} busy={editor.busy || editor.dirty} onBind={() => { void editor.bindCatalogStand(); }} />
+          <CatalogPinNotice pin={document.catalogPin} busy={editor.busy} onBind={() => { void editor.bindCatalogStand(); }} />
           {editor.message && <output className="block text-sm text-[var(--color-text-primary)]">{MESSAGES[editor.message]}</output>}
           <div role="tabpanel" id={ids.imports} aria-labelledby={`${ids.imports}-tab`} hidden={tab !== 'imports'}>
             <fieldset disabled={locked} className="min-w-0">

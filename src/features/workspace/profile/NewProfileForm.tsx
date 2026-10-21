@@ -27,7 +27,10 @@ export function NewProfileForm({ view, onCancel }: Readonly<{ view: VerbundView;
   const [title, setTitle] = useState('');
   const [target, setTarget] = useState<ImportTargetOption>();
   const [saving, setSaving] = useState(false);
-  const ready = isProfileTitle(title) && target !== undefined && writable && !saving;
+  const [pinError, setPinError] = useState<string>();
+  // Ein BSI-Katalog ist erst nach bestandener Hashprüfung ein Ziel: Erst dann steht der Stand fest, an den das Profil bindet.
+  const verified = target?.origin !== 'class-1' || target.verification === 'valid';
+  const ready = isProfileTitle(title) && target !== undefined && verified && writable && !saving;
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -42,12 +45,15 @@ export function NewProfileForm({ view, onCancel }: Readonly<{ view: VerbundView;
     });
     const binding = { pointer: importHrefPointer(0), href, target: target.target };
     const pinned = withCatalogPins(source, 'profile', [{ fromLocalId: '' as LocalId, ...binding }], catalogDelivery);
+    setPinError(pinned.ok ? undefined : pinned.code);
+    if (!pinned.ok) {
+      setSaving(false);
+      return;
+    }
     // Dokument und Bindung in einer Transaktion: Ohne gültige Bindung entsteht kein Profil.
-    const added = pinned.ok
-      ? await documents.addDocument(view.verbund.verbundId as VerbundId, {
-        source: pinned.source, context: { trustClass: 'class-2-local-user' }, rootType: 'profile', oscalVersion,
-      }, 'draft', [binding])
-      : pinned;
+    const added = await documents.addDocument(view.verbund.verbundId as VerbundId, {
+      source: pinned.source, context: { trustClass: 'class-2-local-user' }, rootType: 'profile', oscalVersion,
+    }, 'draft', [binding]);
     if (!added.ok) {
       setSaving(false);
       return;
@@ -70,6 +76,12 @@ export function NewProfileForm({ view, onCancel }: Readonly<{ view: VerbundView;
         </legend>
         <ImportTargetPicker name={pickerName} options={options} selected={target?.key} onSelect={setTarget} />
       </fieldset>
+      {pinError && (
+        <output className="block text-sm text-[var(--color-text-primary)]">
+          Der Stand des gewählten BSI-Katalogs ist nicht geprüft; das Profil wurde nicht angelegt.
+          <span className="ml-2 font-mono text-xs text-[var(--color-text-secondary)]">{pinError}</span>
+        </output>
+      )}
       <div className="flex flex-wrap gap-2">
         <Button type="submit" className="min-h-touch desktop:min-h-0" disabled={!ready}>Profil anlegen</Button>
         <Button variant="ghost" className="min-h-touch desktop:min-h-0" onClick={onCancel}>Abbrechen</Button>

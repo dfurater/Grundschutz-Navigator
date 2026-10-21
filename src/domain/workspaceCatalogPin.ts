@@ -27,11 +27,12 @@ export interface CatalogPin {
   readonly code?: string;
   /** Kataloge, für die ein neuerer ausgelieferter Stand als Angebot besteht. */
   readonly offers: readonly string[];
+  /** `artifactKey` der Katalogbindungen, die gegen einen anderen als den gebundenen Stand auflösen würden. */
+  readonly withheld: readonly string[];
 }
 
 export const CATALOG_PIN_PATH = '/metadata/props';
 
-const WITHHELD = new Set<CatalogPinState | undefined>(['unpinned', 'not-delivered', 'invalid']);
 
 const CODES: Readonly<Partial<Record<CatalogPinState, string>>> = {
   unpinned: WORKSPACE_DIAGNOSTIC_CODES.catalogPinMissing,
@@ -76,11 +77,12 @@ export function catalogPinStatus(
   const artifacts = boundCatalogArtifacts(bindings);
   if (artifacts.length === 0) return undefined;
   const pins = readCatalogPins(source, rootType);
-  if (pins === null) return { state: 'invalid', code: CODES.invalid, offers: [] };
+  if (pins === null) return { state: 'invalid', code: CODES.invalid, offers: [], withheld: artifacts };
   // Der schwerste Befund bestimmt den Zustand; Angebote sammeln alle Kataloge mit anderem ausgeliefertem Stand.
   const severity: readonly CatalogPinState[] = ['bound', 'pending', 'unpinned', 'not-delivered', 'unverified'];
   let state: CatalogPinState = 'bound';
   const offers: string[] = [];
+  const withheld: string[] = [];
   for (const artifactKey of artifacts) {
     const catalogKey = catalogKeyByArtifact.get(artifactKey)!;
     const delivered = delivery.get(artifactKey);
@@ -90,10 +92,32 @@ export function catalogPinStatus(
     else if (!delivered.verified || delivered.commit === null) found = 'unverified';
     else if (pin === undefined) found = 'unpinned';
     else found = pin === delivered.commit ? 'bound' : 'not-delivered';
-    if (found === 'unpinned' || found === 'not-delivered') offers.push(catalogKey);
+    if (found === 'unpinned' || found === 'not-delivered') {
+      offers.push(catalogKey);
+      withheld.push(artifactKey);
+    }
     if (severity.indexOf(found) > severity.indexOf(state)) state = found;
   }
-  return { state, code: CODES[state], offers };
+  return { state, code: CODES[state], offers, withheld };
+}
+
+/**
+ * Schreibfreigabe eines expliziten Speicherns: Der gespeicherte Stand muss gebunden sein
+ * (`rebind` erlaubt zusätzlich das bestätigte Binden eines Dokuments ohne Paar); danach
+ * ergänzt `withCatalogPins` die Paare neuer Katalogbindungen.
+ */
+export function catalogPinsForSave(
+  saved: Readonly<{ source: unknown; rootType: string; bindings: readonly WorkspaceBinding[] }>,
+  working: unknown,
+  bindings: readonly WorkspaceBinding[],
+  delivery: CatalogDelivery,
+  rebind = false,
+): CatalogPinWrite {
+  const pin = catalogPinStatus(saved.source, saved.rootType, saved.bindings, delivery);
+  if (pin && pin.state !== 'bound' && !(rebind && pin.state === 'unpinned')) {
+    return { ok: false, code: pin.code ?? WORKSPACE_DIAGNOSTIC_CODES.catalogPinUnverified };
+  }
+  return withCatalogPins(working, saved.rootType, bindings, delivery);
 }
 
 export type CatalogPinWrite =
@@ -156,10 +180,9 @@ export function applyCatalogPins(
     const pin = catalogPinStatus(member.source, member.rootType, bindings.filter((binding) => binding.fromLocalId === member.localId), delivery);
     if (pin) pins.set(member.localId, pin);
   }
-  // Ein nicht geladener oder nicht verifizierter Katalog fehlt dem Graphen ohnehin; zurückgehalten wird,
-  // was sonst gegen einen anderen als den gebundenen Stand auflösen würde.
+  // Je Bindung: Ein nicht geladener oder nicht verifizierter Katalog fehlt dem Graphen ohnehin; zurückgehalten
+  // wird, was sonst gegen einen anderen als den gebundenen Stand auflösen würde.
   const locked = (binding: WorkspaceBinding) => binding.target.kind === 'class-1'
-    && catalogKeyByArtifact.has(binding.target.artifactKey)
-    && WITHHELD.has(pins.get(binding.fromLocalId)?.state);
+    && (pins.get(binding.fromLocalId)?.withheld.includes(binding.target.artifactKey) ?? false);
   return { pins, bindings: bindings.filter((binding) => !locked(binding)), withheld: bindings.filter(locked) };
 }

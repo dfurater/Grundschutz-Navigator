@@ -6,8 +6,7 @@ import { exportProfileInWorker } from '@/adapters/profileWorkbench';
 import { isPinnedOscalVersion } from '@/domain/oscalVersionMatrix';
 import { commitExplicitSave, sameProfileContent } from '@/domain/profileSave';
 import { approvalAction, withApprovalAction, withReviewIdentities } from '@/domain/reviewTrail';
-import { catalogPinStatus, withCatalogPins } from '@/domain/workspaceCatalogPin';
-import { WORKSPACE_DIAGNOSTIC_CODES } from '@/domain/workspaceDiagnostics';
+import { catalogPinsForSave } from '@/domain/workspaceCatalogPin';
 import type { BindingTarget, LocalId, WorkspaceBinding, WorkspaceEnvelope } from '@/domain/workspaceModel';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import type { ReviewApprovalRequest } from '@/adapters/workspaceStore';
@@ -260,18 +259,21 @@ export function useProfileEditor(localId: LocalId): ProfileEditor {
     const oscalVersion = envelope?.oscalVersion;
     if (!envelope || oscalVersion === undefined || !isPinnedOscalVersion(oscalVersion)) return { ok: false, code: 'WORKSPACE_DOCUMENT_NOT_FOUND' };
     if (saving.current) return { ok: false, code: 'WORKSPACE_SAVE_CONFLICT' };
-    // Schreibschutz aus dem gespeicherten Stand: Nur ein gebundener Katalogstand gibt das Speichern frei.
-    const pin = catalogPinStatus(envelope.source, 'profile', stored, catalogDelivery);
-    if (pin && pin.state !== 'bound' && !(rebind && pin.state === 'unpinned')) {
+    // Schreibschutz aus dem gespeicherten Stand; neue Katalogbindungen erhalten das Paar des ausgelieferten Stands.
+    // Vor change-on-write: Ein ergänztes Paar ist eine Inhaltsänderung mit neuer UUID und `last-modified`.
+    const pinned = catalogPinsForSave({ source: envelope.source, rootType: 'profile', bindings: stored }, working, bindings, catalogDelivery, rebind);
+    if (!pinned.ok) {
       setMessage('catalog-locked');
-      return { ok: false, code: pin.code ?? WORKSPACE_DIAGNOSTIC_CODES.catalogPinUnverified };
+      // Offene Eingaben bleiben Entwurf, auch wenn das Speichern abgelehnt ist.
+      if (latest.current.unsaved) schedule();
+      return { ok: false, code: pinned.code };
     }
     setBusy(true);
     setMessage(undefined);
     saving.current = true;
     let release = () => {};
     savingDone.current = new Promise<void>((resolve) => { release = resolve; });
-    const snapshot = working;
+    const snapshot = pinned.source;
     // Freigaben speichern eine abgeleitete Quelle; offene Eingaben sind der Vergleich zum Startstand.
     const startWorking = latest.current.working;
     let documentState: 'export-ready' | 'draft';
@@ -279,14 +281,7 @@ export function useProfileEditor(localId: LocalId): ProfileEditor {
     try {
       await chain.current;
       clearTimeout(timer.current);
-      // Neue Katalogbindungen erhalten das Paar des ausgelieferten Stands; ein abweichendes Paar sperrt.
-      // Vor change-on-write: Ein ergänztes Paar ist eine Inhaltsänderung mit neuer UUID und `last-modified`.
-      const pinned = withCatalogPins(snapshot, 'profile', bindings, catalogDelivery);
-      if (!pinned.ok) {
-        setMessage('catalog-locked');
-        return { ok: false, code: pinned.code };
-      }
-      const { source } = commitExplicitSave(envelope.source, pinned.source, { uuid: crypto.randomUUID(), lastModified: new Date().toISOString() });
+      const { source } = commitExplicitSave(envelope.source, snapshot, { uuid: crypto.randomUUID(), lastModified: new Date().toISOString() });
       const schema = await documents.checkProfileSchema(source);
       // Eine Freigabe über einem schemawidrigen Stand wäre keine belastbare Freigabe.
       if (approval?.requireSchema && schema.status !== 'passed') return { ok: false, code: 'REVIEW_APPROVAL_SCHEMA' };
@@ -329,10 +324,10 @@ export function useProfileEditor(localId: LocalId): ProfileEditor {
     if (result.ok && result.documentState === 'draft') setMessage('saved-as-draft');
   }, [commit]);
 
+  // Ein offener Entwurf wird dabei mitgespeichert: Er ist sonst unter der Sperre nicht mehr zu sichern.
   const bindCatalogStand = useCallback(async () => {
-    if (latest.current.unsaved || dirty) return;
     await commit(latest.current.working, undefined, true);
-  }, [commit, dirty]);
+  }, [commit]);
 
   const approve = useCallback(async (input: ProfileApprovalInput): Promise<ProfileApprovalResult> => {
     const state = latest.current;

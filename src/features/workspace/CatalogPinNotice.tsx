@@ -8,7 +8,7 @@ const TEXT: Readonly<Record<Exclude<CatalogPinState, 'bound'>, { readonly title:
   },
   unpinned: {
     title: 'Kein Katalogstand gebunden',
-    text: 'Dieses Dokument nennt nicht, gegen welchen Stand des BSI-Katalogs es erstellt wurde. Lesen und Export bleiben möglich; Änderungen sind gesperrt, bis Sie es an den ausgelieferten Stand binden.',
+    text: 'Dieses Dokument nennt nicht, gegen welchen Stand des BSI-Katalogs es erstellt wurde. Lesen und Export bleiben möglich; Änderungen sind gesperrt, bis es an den ausgelieferten Stand gebunden ist. Beim Binden wird ein offener Entwurf mitgespeichert.',
   },
   'not-delivered': {
     title: 'Gebundener Katalogstand nicht mehr ausgeliefert',
@@ -25,7 +25,7 @@ const TEXT: Readonly<Record<Exclude<CatalogPinState, 'bound'>, { readonly title:
 };
 
 /** Schreibschutz eines an einen BSI-Katalogstand gebundenen Dokuments; ohne Wert, Schlüssel oder Commit im Text. */
-export function CatalogPinNotice({ pin, busy, onBind }: Readonly<{ pin: CatalogPin | undefined; busy: boolean; onBind: () => void }>) {
+export function CatalogPinNotice({ pin, busy = false, onBind }: Readonly<{ pin: CatalogPin | undefined; busy?: boolean; onBind?: () => void }>) {
   if (!pin || pin.state === 'bound') return null;
   const { title, text } = TEXT[pin.state];
   return (
@@ -39,7 +39,7 @@ export function CatalogPinNotice({ pin, busy, onBind }: Readonly<{ pin: CatalogP
         <p className="mt-1 text-sm leading-relaxed text-[var(--color-text-secondary)]">{text}</p>
         {pin.code && <p className="mt-1 font-mono text-xs text-[var(--color-text-secondary)]">{pin.code}</p>}
       </div>
-      {pin.state === 'unpinned' && (
+      {pin.state === 'unpinned' && onBind && (
         <Button variant="secondary" className="min-h-touch shrink-0 desktop:min-h-0" disabled={busy} onClick={onBind}>
           An ausgelieferten Stand binden
         </Button>
