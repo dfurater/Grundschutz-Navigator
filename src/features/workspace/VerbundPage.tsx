@@ -15,8 +15,7 @@ import { Button } from '@/components/Button';
 import type { VerbundId } from '@/domain/workspaceModel';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { NewProfileForm } from '@/features/workspace/profile/NewProfileForm';
-import { ProfileFileImport } from '@/features/workspace/profile/ProfileFileImport';
-import { SspFileImport } from '@/features/workspace/ssp/SspFileImport';
+import { WorkspaceFileImport } from '@/features/workspace/WorkspaceFileImport';
 
 const PANEL = 'rounded-md border border-[var(--color-border-default)] bg-[var(--color-surface-base)]';
 const PANEL_LABEL = 'px-4 pt-3 text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)]';
@@ -96,7 +95,7 @@ function ProfileStationActions({ view }: Readonly<{ view: VerbundView }>) {
   return (
     <div className="flex flex-wrap items-center gap-2 px-4 pt-3">
       <Button className="min-h-touch desktop:min-h-0" disabled={!writable} onClick={() => setCreating(true)}>Neues Profil</Button>
-      <ProfileFileImport verbundId={view.verbund.verbundId as VerbundId} />
+      <WorkspaceFileImport verbundId={view.verbund.verbundId as VerbundId} rootType="profile" rejectionCode="OSCAL_ROOT_NOT_PROFILE" label="Profil" />
     </div>
   );
 }
@@ -134,8 +133,8 @@ function VerbundContent({ view, station }: Readonly<{ view: VerbundView; station
           {station ? `Station ${STATION_DEFINITIONS[station].title}` : 'Alle Dokumente'}
         </h2>
         {station && <p className="px-4 text-xs text-[var(--color-text-secondary)]">{STATION_DEFINITIONS[station].explanation}</p>}
-        {station === 'profile' && <ProfileStationActions view={view} />}
-        {station === 'ssp' && <SspFileImport key={verbund.verbundId} verbundId={verbund.verbundId} />}
+        {station === 'profile' && <ProfileStationActions key={verbund.verbundId} view={view} />}
+        {station === 'ssp' && <div className="px-4 pt-3"><WorkspaceFileImport key={verbund.verbundId} verbundId={verbund.verbundId} rootType="system-security-plan" rejectionCode="OSCAL_ROOT_NOT_SSP" label="SSP" /></div>}
         {shown.length === 0 ? (
           <p className="px-4 pb-3 pt-2 text-sm text-[var(--color-text-secondary)]">
             {station ? 'An dieser Station liegt noch kein Dokument.' : 'Dieser Informationsverbund enthält noch kein Dokument.'}

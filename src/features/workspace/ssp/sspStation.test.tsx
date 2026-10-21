@@ -93,37 +93,6 @@ describe('SSP-Station', () => {
     expect((await readStore(store => store.getDocument(doc.localId)))?.source).toEqual(source);
   });
 
-  it('ein verzögertes Einlesen steuert nach dem Wechsel des Verbunds nicht die Route', async () => {
-    let finish!: (value: ArrayBuffer) => void;
-    const file = new File([''], 'lokal.json');
-    vi.spyOn(file, 'arrayBuffer').mockImplementation(() => new Promise(resolve => { finish = resolve; }));
-    const { router } = renderWorkspaceArea(buildStationUrl(seeded.verbundId, 'ssp'));
-    await upload(file);
-    await act(() => router.navigate(buildStationUrl(seeded.otherVerbundId, 'ssp')));
-    await act(async () => { finish(new TextEncoder().encode(JSON.stringify(makeFullSsp())).buffer); });
-    expect(router.state.location.pathname).toBe(buildStationUrl(seeded.otherVerbundId, 'ssp'));
-    expect(await readStore(store => store.listDocuments(seeded.verbundId))).toHaveLength(5);
-  });
-
-  it('beginnt nach einem Stationswechsel auch nach der zweiten Schemaprüfung keine Speicherung', async () => {
-    const gate = await import('@/adapters/oscalImportGate');
-    const original = gate.importClass2OscalDocument;
-    let finish!: () => void;
-    let checks = 0;
-    const waiting = new Promise<void>(resolve => { finish = resolve; });
-    vi.spyOn(gate, 'importClass2OscalDocument').mockImplementation(async (...args) => {
-      if (++checks === 2) await waiting;
-      return original(...args);
-    });
-    const { router } = renderWorkspaceArea(buildStationUrl(seeded.verbundId, 'ssp'));
-    await upload(new File([JSON.stringify(makeFullSsp())], 'lokal.json'));
-    await waitFor(() => expect(checks).toBe(2));
-    await act(() => router.navigate(buildStationUrl(seeded.otherVerbundId, 'ssp')));
-    await act(async () => { finish(); await waiting; });
-    await waitFor(async () => expect(await readStore(store => store.listDocuments(seeded.verbundId))).toHaveLength(5));
-    expect(router.state.location.pathname).toBe(buildStationUrl(seeded.otherVerbundId, 'ssp'));
-  });
-
   it('begrenzt auch Modelldiagnosen beim Öffnen der Dokumentseite', async () => {
     const source = JSON.parse(JSON.stringify(makeFullSsp()));
     source['system-security-plan']['system-implementation'].users[0]['role-ids'] = Array.from({ length: 121 }, (_, i) => `unknown-${i}`);

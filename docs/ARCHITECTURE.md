@@ -357,6 +357,7 @@ src/                              # Anwendungsquellcode
 │       ├── StationStrip.tsx              # Waagerechte Stationswahl außerhalb des Desktops
 │       ├── VerbundOverviewPage.tsx       # Verbünde anlegen, umbenennen, mit Bestätigung löschen, sichern
 │       ├── VerbundPage.tsx               # Orientierung, Dokumentliste mit Stationsfilter, Diagnosen
+│       ├── WorkspaceFileImport.tsx       # Gemeinsame Klasse-2-Dateiaufnahme für Profile und SSPs
 │       ├── WorkspaceNotices.tsx          # Speichermeldungen mit Export bzw. Neu laden
 │       ├── WorkspaceStatePage.tsx        # Lade-, Nicht-gefunden- und Fehlerzustand im Bereich
 │       ├── profile/                      # Profile-Station
@@ -367,7 +368,6 @@ src/                              # Anwendungsquellcode
 │       │   ├── PackagePanel.tsx              # Anforderungspaket, Speicherstand, Export und Speichern
 │       │   ├── ProfileDiagnostics.tsx        # Aufklappbare Diagnoseleiste der Hauptspalte
 │       │   ├── ProfileEditorPage.tsx         # Bearbeitungsansicht eines Profils auf der Dokumentroute
-│       │   ├── ProfileFileImport.tsx         # Profil-Datei über das Klasse-2-Importgate aufnehmen
 │       │   ├── ProfileMarks.tsx              # Herkunftsmarke, OSCAL-Schlüssel, Tabellen-Checkbox, Aufwand
 │       │   ├── RequirementSelection.tsx      # Auswahl einzelner Anforderungen mit Kontextwahl
 │       │   ├── SelectionCriteria.tsx         # Einzel-IDs und Glob-Muster eines Selektorbereichs
@@ -376,8 +376,7 @@ src/                              # Anwendungsquellcode
 │       │   └── useProfileEditor.ts           # Arbeitsstand, Autosave, Speichern und Export
 │       └── ssp/                          # SSP-Import und lesende Station
 │           ├── SspDocumentContent.tsx         # Ausgewähltes SSP ableiten, Inhalte und Modelldiagnosen lesen
-│           ├── SspFields.tsx                  # Inaktive Textfelder und aufklappbare Listen der Projektion
-│           └── SspFileImport.tsx              # SSP-Datei über das Klasse-2-Importgate aufnehmen
+│           └── SspFields.tsx                  # Inaktive Textfelder und aufklappbare Listen der Projektion
 ├── components/                   # Wiederverwendbare UI-Komponenten
 │   ├── AreaSwitch.tsx                # Bereichswechsel Katalog / Informationsverbünde
 │   ├── BackdropTint.tsx              # Abdunklung hinter mobilen Bottom Sheets und Bestätigungsdialogen als Kind-Element
@@ -782,17 +781,17 @@ Katalog- und Arbeitsbereich teilen keine Seitenkomponenten: Code unter `src/feat
 
 ### SSP-Station
 
-`VerbundPage` bietet an der Station `ssp` „SSP-Datei einlesen“ (`src/features/workspace/ssp/SspFileImport.tsx`). Die Dateigröße wird vor `arrayBuffer()` geprüft; `importClass2OscalDocument()` prüft Bytes, Root, Version und Schema im Klasse-2-Worker. Nur `system-security-plan` wird über `useWorkspace().documents.addDocument()` als `imported` aufgenommen; die Quelle bleibt unverändert. Nach einem Verbundwechsel oder Verlassen der Station darf ein ausstehender Import weder eine neue Aufnahme beginnen noch die aktuelle Route steuern. Eine bereits laufende Speichertransaktion bleibt atomar.
+`VerbundPage` bietet an der Station `ssp` „SSP-Datei einlesen“ (`src/features/workspace/WorkspaceFileImport.tsx`). Die Dateigröße wird vor `arrayBuffer()` geprüft; `importClass2OscalDocument()` prüft Bytes, Root, Version und Schema im Klasse-2-Worker. Nur `system-security-plan` wird über `useWorkspace().documents.addDocument()` als `imported` aufgenommen; die Quelle bleibt unverändert. Nach einem Verbundwechsel oder Verlassen der Station darf ein ausstehender Import weder eine neue Aufnahme beginnen noch die aktuelle Route steuern. Eine bereits laufende Speichertransaktion bleibt atomar.
 
 `DocumentReferenceDetailPage` ergänzt für SSPs `SspDocumentContent`: Die Ansicht lädt das ausgewählte Dokument, hält die mit `parseSspDocument()` abgeleitete Projektion und entlässt den Quellgraphen. Metadaten, Baseline, Systemmerkmale, Systemimplementierung und Anforderungsumsetzung sind aufklappbar. `SspFields` rendert ausschließlich erlaubte Projektionsfelder als Text; Referenzobjekte und interne Pfade gehören nicht zum Feldbaum. Listen zeigen zunächst 50 Einträge und lassen weitere in Schritten von 50 anzeigen. Geschlossene Gruppen halten ihren Feldinhalt nicht im DOM. UUIDs und `href` bleiben inaktiv; Markup wird nicht als HTML interpretiert, Back-Matter-base64 wird nicht aktiviert.
 
-Die SSP-Detailprojektion erhält keinen Baseline-Katalog und kennzeichnet ihre Anforderungsbezüge als „nicht auflösbar im aktuellen Kontext“. Die vorhandene Referenzansicht zeigt die separat berechneten Graphkanten und Bindungszustände. Modelldiagnosen erscheinen mit Stufe, Code und strukturellem Pfad in Schritten von 50 Einträgen. Importablehnungen zeigen Stufe und Code ohne Dateiname oder Inhalt; Speicherfehler erscheinen über die Workspace-Meldung. Die Dateiaufnahme öffnet die Dokumentroute, sobald die aktualisierte Verbundansicht das gespeicherte Dokument enthält. Herkunftslabel und feste Dokumentseitentitel stammen aus der gemeinsamen Dokumentansicht. Die SSP-Station bietet Import und Lesen; Neuanlage, Bearbeitung und OSCAL-Export sind dort nicht bedienbar.
+Die SSP-Detailprojektion erhält keinen Baseline-Katalog und kennzeichnet ihre Anforderungsbezüge als „nicht auflösbar im aktuellen Kontext“. Die vorhandene Referenzansicht zeigt die separat berechneten Graphkanten und Bindungszustände. Modelldiagnosen erscheinen mit Stufe, Code und strukturellem Pfad in Schritten von 50 Einträgen. Importablehnungen zeigen Stufe und Code ohne Dateiname oder Inhalt; Speicherfehler erscheinen über die Workspace-Meldung. Die gemeinsame Dateiaufnahme `WorkspaceFileImport` öffnet für Profile und SSPs die Dokumentroute, sobald die aktualisierte Verbundansicht das gespeicherte Dokument enthält. Sie sperrt doppelte Dateiereignisse während einer Aufnahme und bricht beim Verlassen der Station oder beim Verbundwechsel ihr Speichersignal ab. Schlägt das Nachladen fehl, zeigt `WorkspaceStatePage` die Speichermeldung mit „Neu laden“. Herkunftslabel und feste Dokumentseitentitel stammen aus der gemeinsamen Dokumentansicht. Die SSP-Station bietet Import und Lesen; Neuanlage, Bearbeitung und OSCAL-Export sind dort nicht bedienbar.
 
 ### Profile-Station
 
 Die Station Profile (`src/features/workspace/profile/`) legt Profile an, nimmt Profil-Dateien auf, bearbeitet ihre Importe und exportiert sie. Sie nutzt ausschließlich die Routen der Tabelle oben und den Speicher über `useWorkspace().documents`; einen eigenen Store oder eine eigene Route hat sie nicht.
 
-- **Station:** `VerbundPage` zeigt an der Station `profile` „Neues Profil“ (`NewProfileForm`: Titel, dann Importziel aus „BSI-geprüft“ und „Eigene Daten · kein Integritätsnachweis“) und „Profil-Datei einlesen“ (`ProfileFileImport`, über `importClass2OscalDocument()`; ein anderes Root-Modell als `profile` wird nicht aufgenommen).
+- **Station:** `VerbundPage` zeigt an der Station `profile` „Neues Profil“ (`NewProfileForm`: Titel, dann Importziel aus „BSI-geprüft“ und „Eigene Daten · kein Integritätsnachweis“) und „Profil-Datei einlesen“ (`WorkspaceFileImport` mit Root-Typ `profile`, über `importClass2OscalDocument()`; ein anderes Root-Modell als `profile` wird nicht aufgenommen).
 - **Bearbeitungsansicht:** `DocumentReferenceDetailPage` rendert für Root `profile` `ProfileEditorPage`. Auf dem Desktop liegen Werkzeugleiste (51 px), die Reiter „Importe“ und „Referenzen“, die scrollende Hauptspalte und am Fuß die aufklappbare Diagnoseleiste in der Hauptspalte; rechts steht das Panel „Anforderungspaket“ (360 px) mit Speicherstand, „Export“ (Secondary) und „Speichern“ (Primary). Außerhalb des Desktops steht der Kopf über den Reitern, Diagnoseleiste und eine feste Leiste mit „Paket“ und „Speichern“ am unteren Rand; „Paket“ öffnet das Anforderungspaket mit „Export“ als `BottomSheet`.
 - **Arbeitsstand:** `useProfileEditor()` liest Dokument, Entwurf und Bindungen beim Öffnen, wendet jede Änderung als Patch aus `src/domain/profileAuthoring.ts` oder `src/domain/profileImportList.ts` auf eine Kopie an und sichert sie 800 ms nach der letzten Änderung über `autosaveDraft()`. Der Editor registriert diese Sicherung mit `registerAutosave()`; jede Navigation weg von der Dokumentroute speichert einen offenen Entwurf deshalb vor dem Routenwechsel und bleibt bei einem Fehler auf der Route.
 - **Analyse:** `useProfileAnalysis()` leitet 250 ms nach der letzten Änderung Schema-, Referenz- und Resolutionsbefund, Hinweise und die Anforderungen jedes gebundenen Importziels ab. `profileAnalysisSnapshot()` liest dafür im Main Thread den Verbund mit eingesetztem Arbeitsstand; `deriveProfileAnalysis()` läuft in `src/workers/profileWorkbench.worker.ts`. Gebundene BSI-Kataloge fordert die Station über `requestCatalog()` an; der Graph erhält sie erst mit bestandener Hashprüfung.

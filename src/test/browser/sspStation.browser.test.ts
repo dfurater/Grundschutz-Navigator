@@ -99,7 +99,6 @@ describe.each([{ width: 1440, touch: false }, { width: 1032, touch: true }, { wi
     summary.focus();
     await userEvent.keyboard('{Enter}');
     await expect.poll(() => summary.parentElement!.hasAttribute('open')).toBe(true);
-    await page.screenshot({ path: `../../../.vitest/gspp294-${width}.png`, fullPage: false });
     await expand(shell);
     expect(shell.textContent).toContain('gspp-teilweise-geprueft');
     expect(shell.textContent).toContain('Von der Plattform geerbt.');

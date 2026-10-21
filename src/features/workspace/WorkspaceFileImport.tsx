@@ -9,9 +9,15 @@ import { useWorkspace } from '@/hooks/useWorkspace';
 
 type Rejection = { readonly stage: OscalDiagnosticStage; readonly code: string };
 
-/** Der einzige Dateieingang der SSP-Station ist das bestehende Klasse-2-Importgate. */
-export function SspFileImport({ verbundId }: Readonly<{ verbundId: VerbundId }>) {
+/** Dateiaufnahme für Profile und SSPs über das Klasse-2-Importgate. */
+export function WorkspaceFileImport({ verbundId, rootType, rejectionCode, label }: Readonly<{
+  verbundId: VerbundId;
+  rootType: 'profile' | 'system-security-plan';
+  rejectionCode: string;
+  label: 'Profil' | 'SSP';
+}>) {
   const inputId = useId();
+  const statusId = useId();
   const input = useRef<HTMLInputElement>(null);
   const mounted = useRef(true);
   const cancellation = useRef<AbortController | null>(null);
@@ -41,7 +47,7 @@ export function SspFileImport({ verbundId }: Readonly<{ verbundId: VerbundId }>)
     const { importClass2OscalDocument } = await import('@/adapters/oscalImportGate');
     const imported = await importClass2OscalDocument(bytes, { trustClass: 'class-2-local-user' });
     if (!imported.ok) return imported.diagnostic;
-    if (imported.document.rootType !== 'system-security-plan') return { stage: 'root-dispatch', code: 'OSCAL_ROOT_NOT_SSP' };
+    if (imported.document.rootType !== rootType) return { stage: 'root-dispatch', code: rejectionCode };
     if (!mounted.current) return null;
     const added = await documents.addDocument(verbundId, imported.document, 'imported', [], cancellation.current?.signal);
     if (added.ok && mounted.current) setImportedLocalId(added.value.localId);
@@ -66,12 +72,12 @@ export function SspFileImport({ verbundId }: Readonly<{ verbundId: VerbundId }>)
   };
 
   return (
-    <div className="flex flex-wrap items-center gap-2 px-4 pt-3">
-      <input ref={input} id={inputId} aria-label="SSP-Datei" type="file" accept="application/json,.json" className="sr-only" tabIndex={-1} disabled={!writable || busy || importedLocalId !== undefined} onChange={read} />
+    <div className="flex flex-wrap items-center gap-2">
+      <input ref={input} id={inputId} aria-label={`${label}-Datei`} aria-describedby={rejected ? statusId : undefined} type="file" accept="application/json,.json" className="sr-only" tabIndex={-1} disabled={!writable || busy || importedLocalId !== undefined} onChange={read} />
       <Button variant="secondary" className="min-h-touch desktop:min-h-0" disabled={!writable || busy || importedLocalId !== undefined} onClick={() => input.current?.click()}>
-        {busy || importedLocalId ? 'SSP wird geprüft…' : 'SSP-Datei einlesen'}
+        {busy || importedLocalId ? `${label} wird geprüft…` : `${label}-Datei einlesen`}
       </Button>
-      {rejected && <p role="alert" className="break-words text-xs text-[var(--color-danger-text)]">Nicht aufgenommen: <span className="font-mono">{rejected.stage} · {rejected.code}</span>. Eine gültige OSCAL-SSP-JSON-Datei auswählen.</p>}
+      {rejected && <p id={statusId} role="alert" className="break-words text-xs text-[var(--color-danger-text)]">Nicht aufgenommen: <span className="font-mono">{rejected.stage} · {rejected.code}</span>. Eine gültige OSCAL-{label}-JSON-Datei auswählen.</p>}
     </div>
   );
 }
