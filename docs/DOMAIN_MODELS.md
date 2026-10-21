@@ -1713,9 +1713,9 @@ Die Gültigkeit stammt ausschließlich aus `collected` und `expires`, bewertet g
 | `current` | `expires` liegt nach `at` |
 | `expired` | `expires` liegt nicht nach `at` |
 | `no-expiry-declared` | `expires` fehlt; das ist kein unbegrenzt gültiger Zustand |
-| `not-evaluable` | `collected` fehlt, oder `collected` oder `expires` ist kein Zeitstempel mit Zeitzone |
+| `not-evaluable` | `collected` fehlt, oder `collected` oder ein vorhandenes `expires` ist kein gültiger Zeitstempel mit Zeitzone, auch wenn `expires` `null`, eine Zahl oder ein Objekt ist |
 
-Bewertbar ist nur ein Zeitstempel der Form `YYYY-MM-DDThh:mm:ss` mit optionalen Sekundenbruchteilen und Pflicht-Offset `Z` oder `±hh:mm`, wie es der OSCAL-Datentyp `dateTime-with-timezone` verlangt. Ein Wert ohne Offset ergibt `not-evaluable`, weil sein Zeitpunkt von der Zeitzone des Geräts abhinge. Der Vergleich mit `at` läuft auf Millisekunden seit der Epoche und ist damit zeitzonenunabhängig; liegt `expires` in derselben Millisekunde wie `at`, ist die Beobachtung `current`, wenn Sekundenbruchteile unterhalb der Millisekunde ungleich null sind.
+Bewertbar ist nur ein Zeitstempel, der das Muster von `DateTimeWithTimezoneDatatype` aus den gepinnten AR- und POA&M-Schemas erfüllt: ein existierendes Kalenderdatum einschließlich Schaltjahrregel, Uhrzeit bis `23:59:59` mit optionalen Sekundenbruchteilen und Pflicht-Offset `Z` oder einem dort aufgeführten `±hh:mm`. Ein Wert ohne Offset oder mit unmöglichem Datum wie `2026-02-30` ergibt `not-evaluable`. Der Vergleich mit `at` läuft auf Millisekunden seit der Epoche und ist damit zeitzonenunabhängig; liegt `expires` in derselben Millisekunde wie `at`, ist die Beobachtung `current`, wenn Sekundenbruchteile unterhalb der Millisekunde ungleich null sind.
 
 `blocksPositiveFinding(validity)` liefert `true` für `expired` und `not-evaluable`.
 

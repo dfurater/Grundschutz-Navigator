@@ -127,6 +127,29 @@ describe('deriveEvidenceReadModel', () => {
     expect(validity.map(blocksPositiveFinding)).toEqual([false, false, true, true, true, true, true, true, false, true]);
   });
 
+  it('bewertet vorhandene, nicht lesbare Ablaufwerte und unmögliche Kalenderdaten als not-evaluable', () => {
+    const unreadable = [null, 123, {}, '2026-02-30T00:00:00Z', '2027-02-29T00:00:00Z', '2026-04-31T00:00:00Z', '2026-12-31T24:00:00Z', '2026-12-31T00:00:00+15:00'];
+    const model = derive(
+      poam({
+        observations: [
+          ...unreadable.map((expires) => observation(OBS_A, { expires })),
+          observation(OBS_A, { collected: '2026-02-30T00:00:00Z' }),
+          observation(OBS_B, { expires: '2028-02-29T00:00:00Z' }),
+          observation(OBS_B, { expires: '2026-12-31T23:59:59.123456+05:45' }),
+          observation(OBS_B, { expires: '2026-06-01T00:30:00-09:30' }),
+        ],
+      }),
+      'plan-of-action-and-milestones',
+    );
+    expect(model.observations.map((entry) => entry.validity)).toEqual([
+      ...unreadable.map(() => 'not-evaluable'),
+      'not-evaluable',
+      'current',
+      'current',
+      'current',
+    ]);
+  });
+
   it('erhält undokumentierte methods und types als Rohwert', () => {
     const model = derive(
       poam({ observations: [observation(OBS_A, { methods: ['UNKNOWN', 'ERFUNDEN'], types: ['finding', 'eigen'] })] }),
