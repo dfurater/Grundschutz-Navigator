@@ -131,12 +131,16 @@ describe('Neuanlage über das Importziel', () => {
     expect(main()).not.toHaveTextContent('BSI-geprüft');
   });
 
-  it('legt kein Profil auf einem BSI-Katalog an, dessen Hashprüfung noch aussteht', async () => {
+  it('legt ein Profil auf einem BSI-Katalog erst nach dessen Hashprüfung an, auch wenn es vorher gewählt wurde', async () => {
     const loading = { catalogKey: 'gspp', catalogDocument: null, catalog: null, verification: null, error: null, loading: true } as unknown as LoadedCatalogState;
-    renderArea(buildStationUrl(seeded.verbundId, 'profile'), { ...EMPTY_CATALOG_STATE, catalogs: new Map<CatalogKey, LoadedCatalogState>([['gspp', loading]]) });
+    let catalogs: CatalogState = { ...EMPTY_CATALOG_STATE, catalogs: new Map<CatalogKey, LoadedCatalogState>([['gspp', loading]]) };
+    const { rerenderApp } = renderArea(buildStationUrl(seeded.verbundId, 'profile'), () => catalogs);
     await openNewProfile('Paket');
     fireEvent.click(await within(main()).findByRole('radio', { name: /catalog-gspp/ }));
     expect(within(main()).getByRole('button', { name: 'Profil anlegen' })).toBeDisabled();
+    catalogs = withGspp();
+    rerenderApp();
+    await waitFor(() => expect(within(main()).getByRole('button', { name: 'Profil anlegen' })).toBeEnabled());
   });
 
   it('zeigt einen Katalog mit Ladefehler als nicht ladbar und nicht wählbar', async () => {

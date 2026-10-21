@@ -25,7 +25,9 @@ export function NewProfileForm({ view, onCancel }: Readonly<{ view: VerbundView;
   const { documents, writable, catalogDelivery } = useWorkspace();
   const options = useImportTargets(view);
   const [title, setTitle] = useState('');
-  const [target, setTarget] = useState<ImportTargetOption>();
+  // Nur der Schlüssel: Der Prüfzustand des Ziels kommt stets aus den aktuellen Optionen.
+  const [targetKey, setTargetKey] = useState<string>();
+  const target = options.find((option) => option.key === targetKey);
   const [saving, setSaving] = useState(false);
   const [pinError, setPinError] = useState<string>();
   // Ein BSI-Katalog ist erst nach bestandener Hashprüfung ein Ziel: Erst dann steht der Stand fest, an den das Profil bindet.
@@ -74,12 +76,12 @@ export function NewProfileForm({ view, onCancel }: Readonly<{ view: VerbundView;
         <legend className="mb-2 flex items-baseline gap-2 text-sm font-medium text-[var(--color-text-primary)]">
           Importziel <OscalKey>imports[0]</OscalKey>
         </legend>
-        <ImportTargetPicker name={pickerName} options={options} selected={target?.key} onSelect={setTarget} />
+        <ImportTargetPicker name={pickerName} options={options} selected={targetKey} onSelect={(option: ImportTargetOption) => setTargetKey(option.key)} />
       </fieldset>
       {pinError && (
         <output className="block text-sm text-[var(--color-text-primary)]">
-          Der Stand des gewählten BSI-Katalogs ist nicht geprüft; das Profil wurde nicht angelegt.
-          <span className="ml-2 font-mono text-xs text-[var(--color-text-secondary)]">{pinError}</span>
+          Der Stand des gewählten BSI-Katalogs ist nicht geprüft; das Profil wurde nicht angelegt.{' '}
+          <span className="ml-1 font-mono text-xs text-[var(--color-text-secondary)]">{pinError}</span>
         </output>
       )}
       <div className="flex flex-wrap gap-2">

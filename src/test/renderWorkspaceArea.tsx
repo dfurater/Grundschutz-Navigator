@@ -36,10 +36,11 @@ export function withLoadedCatalog(valid: boolean, sourceCommit = TEST_CATALOG_CO
 }
 
 /** Shell mit echtem `WorkspaceProvider` und echter Routentabelle für Router-Tests des Bereichs Informationsverbünde. */
-export function renderWorkspaceArea(path: string, catalogs: CatalogState = EMPTY_CATALOG_STATE) {
+/** `catalogs` als Funktion liest bei jedem `rerenderApp()` den aktuellen Katalogzustand. */
+export function renderWorkspaceArea(path: string, catalogs: CatalogState | (() => CatalogState) = EMPTY_CATALOG_STATE) {
   return renderAppShell([path], {
     shell: () => (
-      <CatalogContext.Provider value={catalogs}>
+      <CatalogContext.Provider value={typeof catalogs === 'function' ? catalogs() : catalogs}>
         <WorkspaceProvider><AppShell /></WorkspaceProvider>
       </CatalogContext.Provider>
     ),

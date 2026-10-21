@@ -251,6 +251,28 @@ export function useProfileEditor(localId: LocalId): ProfileEditor {
   const bindings = useMemo(() => editorBindings(localId, imports, stored, pendingTargets), [localId, imports, stored, pendingTargets]);
   const dirty = envelope !== undefined && !sameProfileContent(envelope.source, working);
 
+  /** Übernimmt einen gespeicherten Stand nach dem expliziten Speichern. */
+  const adoptSaved = useCallback((saved: WorkspaceEnvelope, savedBindings: readonly WorkspaceBinding[], startWorking: unknown) => {
+    // Nur Zuordnungen, die genau so gespeichert wurden; eine während des Speicherns geänderte bleibt offen.
+    for (const binding of savedBindings) {
+      const assigned = pending.get(binding.pointer);
+      if (assigned?.href === binding.href && sameTarget(assigned.target, binding.target)) pending.delete(binding.pointer);
+    }
+    setPendingTargets(new Map(pending));
+    setEnvelope(saved);
+    setStored(savedBindings);
+    // Eingaben während des Speicherns bleiben Arbeitsstand und gehen in den nächsten Entwurf.
+    const changedMeanwhile = latest.current.working !== startWorking;
+    latest.current = { working: changedMeanwhile ? latest.current.working : saved.source, envelope: saved, draftSavedAt: null, unsaved: changedMeanwhile };
+    if (changedMeanwhile) {
+      setSaveState({ kind: 'pending' });
+      schedule();
+    } else {
+      setWorking(saved.source);
+      setSaveState({ kind: 'saved', at: saved.savedAt });
+    }
+  }, [pending, schedule]);
+
   type CommitResult = { readonly ok: true; readonly documentState: 'export-ready' | 'draft' } | { readonly ok: false; readonly code: string };
 
   const commit = useCallback(async (working: unknown, approval?: { readonly request: ReviewApprovalRequest; readonly requireSchema: boolean }, rebind = false): Promise<CommitResult> => {
@@ -298,26 +320,9 @@ export function useProfileEditor(localId: LocalId): ProfileEditor {
       if (latest.current.unsaved) schedule();
       return { ok: false, code: result.diagnostic.code };
     }
-    // Nur Zuordnungen, die genau so gespeichert wurden; eine während des Speicherns geänderte bleibt offen.
-    for (const binding of bindings) {
-      const assigned = pending.get(binding.pointer);
-      if (assigned?.href === binding.href && sameTarget(assigned.target, binding.target)) pending.delete(binding.pointer);
-    }
-    setPendingTargets(new Map(pending));
-    setEnvelope(result.value);
-    setStored(bindings);
-    // Eingaben während des Speicherns bleiben Arbeitsstand und gehen in den nächsten Entwurf.
-    const changedMeanwhile = latest.current.working !== startWorking;
-    latest.current = { working: changedMeanwhile ? latest.current.working : result.value.source, envelope: result.value, draftSavedAt: null, unsaved: changedMeanwhile };
-    if (changedMeanwhile) {
-      setSaveState({ kind: 'pending' });
-      schedule();
-    } else {
-      setWorking(result.value.source);
-      setSaveState({ kind: 'saved', at: result.value.savedAt });
-    }
+    adoptSaved(result.value, bindings, startWorking);
     return { ok: true, documentState };
-  }, [bindings, catalogDelivery, documents, localId, pending, schedule, stored]);
+  }, [adoptSaved, bindings, catalogDelivery, documents, localId, schedule, stored]);
 
   const save = useCallback(async () => {
     const result = await commit(latest.current.working);
