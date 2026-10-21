@@ -95,7 +95,7 @@ interface ResourceIndex {
   readonly byLowerCaseUuid: ReadonlyMap<string, IndexedResource | null>;
 }
 
-interface PreparedReferenceResolutionContext extends ReferenceResolutionContext {
+interface PreparedReferenceResolutionContext extends ReferenceClassifierContext {
   readonly resourceIndex: ResourceIndex;
   readonly resourceIndexes: Map<ReferenceDocument, ResourceIndex>;
   readonly resourceClassifications?: WeakMap<JsonObject, ResolvedResource>;
@@ -223,11 +223,15 @@ function createResourceIndex(
  * sonst trifft das Fragment nur eine eindeutige Ressource, nie still die erste mehrerer Schreibweisen.
  */
 function lookupResource(index: ResourceIndex, fragment: string): IndexedResource | undefined {
-  return index.byUuid.get(fragment) ?? index.byLowerCaseUuid.get(fragment.toLowerCase()) ?? undefined;
+  return index.byUuid.get(fragment) ?? lookupResourceByOtherCase(index, fragment);
+}
+
+function lookupResourceByOtherCase(index: ResourceIndex, fragment: string): IndexedResource | undefined {
+  return index.byLowerCaseUuid.get(fragment.toLowerCase()) ?? undefined;
 }
 
 function prepareReferenceResolutionContext(
-  input: ReferenceResolutionContext,
+  input: ReferenceClassifierContext,
 ): PreparedReferenceResolutionContext {
   const resourceIndexes = new Map<ReferenceDocument, ResourceIndex>();
   resourceIndexes.set(input.document, createResourceIndex(input.document));
@@ -486,18 +490,19 @@ function resolveFragmentReference(
   const target = input.href.slice(1);
   if (!target) return unresolvedReference(input, context, 'fragment-not-found');
 
-  const indexedResource = lookupResource(context.resourceIndex, target);
-  if (indexedResource) {
+  const resolveIndexed = (indexedResource: IndexedResource | undefined): ResolvedOscalReference | null => {
+    if (!indexedResource) return null;
     const resolvedResource = resolveResource(
       indexedResource.resource,
       `/${context.document.rootType}/back-matter/resources/${indexedResource.index}`,
       context,
       resolveResourceLinks,
     );
-    if (resolvedResource) {
-      return { ...input, kind: 'resource', resource: resolvedResource };
-    }
-  }
+    return resolvedResource ? { ...input, kind: 'resource', resource: resolvedResource } : null;
+  };
+
+  const exactResource = resolveIndexed(context.resourceIndex.byUuid.get(target));
+  if (exactResource) return exactResource;
 
   const catalogKey = context.document.context.catalogKey;
   const control = catalogKey && context.catalogsByKey
@@ -505,6 +510,13 @@ function resolveFragmentReference(
     : null;
   if (control && catalogKey) {
     return { ...input, kind: 'control', catalogKey, control };
+  }
+
+  // Ein exaktes lokales Control-Ziel geht dem Schreibweisen-Fallback vor; der Klassifikator projiziert es.
+  const localControl = context.localControlLookup?.(target);
+  if (localControl !== 'found' && localControl !== 'ambiguous') {
+    const otherCaseResource = resolveIndexed(lookupResourceByOtherCase(context.resourceIndex, target));
+    if (otherCaseResource) return otherCaseResource;
   }
 
   return unresolvedReference(input, context, 'fragment-not-found');

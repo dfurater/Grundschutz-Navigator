@@ -94,9 +94,10 @@ ist keine Eingabe dieser Schicht.
 
 Der Klassifikator löst nur dokumentinterne Fragmente und explizit
 bereitgestellte Cross-Dokument-Ziele auf. Ein Fragment trifft zuerst die
-`back-matter`-Ressource mit exakt gleicher `uuid`; sonst die einzige Ressource,
-deren `uuid` sich nur in der Groß-/Kleinschreibung der Hexziffern
-unterscheidet. Tragen mehrere Ressourcen diese UUID in verschiedenen
+`back-matter`-Ressource mit exakt gleicher `uuid`, danach ein exakt gleiches
+Control-Ziel (Katalog oder `localControlLookup` des Klassifikators); erst dann
+die einzige Ressource, deren `uuid` sich nur in der Groß-/Kleinschreibung der
+Hexziffern unterscheidet. Tragen mehrere Ressourcen diese UUID in verschiedenen
 Schreibweisen, bleibt das Fragment unaufgelöst. Relative Ziele erhalten keinen
 Verzeichniskontext; externe Ziele werden ausschließlich für `https:` als
 externe Navigation ausgewiesen, alle anderen Protokolle bleiben Text. Die

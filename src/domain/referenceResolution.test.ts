@@ -248,6 +248,23 @@ describe('referenceResolution', () => {
     expect(resolve([{ uuid: lower }, { uuid: mixed }], `#${lower.toUpperCase()}`)).toMatchObject({ kind: 'unresolved', reason: 'fragment-not-found' });
   });
 
+  it('keeps an exact control target ahead of a resource that differs only in case', () => {
+    const source = makeReferenceResolutionCatalogSource();
+    (source.catalog as Record<string, unknown>)['back-matter'] = { resources: [{ uuid: 'gc.1.2' }] };
+    (source.catalog.groups[0]!.groups[0]!.controls![0]! as { links: unknown[] }).links = [{ href: '#GC.1.2' }];
+    const document = createReferenceDocument({
+      source,
+      context: { catalogKey: 'gspp', trustClass: 'class-1-verified-public' },
+      rootType: 'catalog',
+      oscalVersion: '1.1.3',
+    });
+    const catalogsByKey = makeCatalogsByKey();
+
+    expect(resolveOscalReference({ href: '#GC.1.2', path: '/x/href' }, { document, catalogsByKey }))
+      .toMatchObject({ kind: 'control', control: { id: 'GC.1.2' } });
+    expect(resolveCatalogControlLinks({ document, catalogsByKey }).get('GC.1.1')).toMatchObject([{ targetId: 'GC.1.2' }]);
+  });
+
   it('excludes provenance links from resolution and diagnostics', () => {
     const references = resolveCatalogMetadataReferences({ document: makeDocument() });
 

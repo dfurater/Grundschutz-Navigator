@@ -14,4 +14,12 @@ describe('wiederverwendbarer Referenzklassifikator',()=>{
     expect(classify({href:'local.json',path:'/catalog/metadata/links/0/href'})).toMatchObject({kind:'unresolved',reason:'relative'});
     expect(classify({href:'profile.json',rel:'source-profile',path:'/catalog/metadata/links/0/href'}).kind).toBe('provenance');
   });
+  it('löst ein exaktes lokales Control-Ziel vor einer Ressource anderer Schreibweise auf',()=>{
+    const id='AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA';
+    const document=createReferenceDocument({source:{catalog:{'back-matter':{resources:[{uuid:id.toLowerCase()}]}}},rootType:'catalog',oscalVersion:'1.2.2',context:{}});
+    const classify=(lookup:(id:string)=>'found'|'missing'|'ambiguous')=>createOscalReferenceClassifier({document,localControlLookup:lookup})({href:`#${id}`,path:'/catalog/metadata/links/0/href'});
+    expect(classify(target=>target===id?'found':'missing')).toMatchObject({kind:'local-control',controlId:id,state:'found'});
+    expect(classify(target=>target===id?'ambiguous':'missing')).toMatchObject({kind:'local-control',state:'ambiguous'});
+    expect(classify(()=>'missing')).toMatchObject({kind:'resource',resource:{uuid:id.toLowerCase()}});
+  });
 });
