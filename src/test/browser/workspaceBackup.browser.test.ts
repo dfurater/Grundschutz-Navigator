@@ -4,6 +4,7 @@ import { WorkspaceStore, WORKSPACE_DATABASE_NAME } from '@/adapters/workspaceSto
 import { importClass2OscalDocument } from '@/adapters/oscalImportGate';
 import type { Class2OscalImportedDocument } from '@/domain/oscalClass2Import';
 import type { WorkspaceEnvelope, WorkspaceResult, WorkspaceVerbund } from '@/domain/workspaceModel';
+import { documentSnapshot } from '@/domain/reviewTrail';
 import { makeSchemaValidOscalDocument } from '@/test/fixtures/oscalSchemaFixtures';
 import { CLASS_2_IMPORT_LIMITS } from '@/domain/class2ImportLimits.mjs';
 
@@ -84,4 +85,46 @@ it.each(['workspace', 'verbund'] as const)('retains a binding after its source h
   value(await (scope === 'workspace' ? store.restoreBackup(new TextEncoder().encode(backup), 'replace-workspace') : store.restoreVerbundBackup(new TextEncoder().encode(backup), 'replace-verbund')));
   expect(value(await store.listBindings())).toEqual([binding]);
   expect(value(await store.getDocument(envelope.localId))?.source).toEqual(source);
+});
+
+it('re-exports a restored v1 bundle and accepts that export again', async () => {
+  const current = JSON.parse(value(await store.exportBackup())) as {
+    storageSchemaVersion: number; documents: Record<string, unknown>[]; workspaceMeta: Record<string, unknown>[];
+    verbuende: unknown[];
+  };
+  const legacy: Record<string, unknown> = {
+    ...current,
+    storageSchemaVersion: 1,
+    documents: current.documents.map(row => ({ ...row, storageSchemaVersion: 1 })),
+    workspaceMeta: current.workspaceMeta.map(row => ({ ...row, storageSchemaVersion: 1 })),
+  };
+  delete legacy.reviewTrail;
+  delete legacy.reviewBaseline;
+  value(await store.restoreBackup(new TextEncoder().encode(JSON.stringify(legacy)), 'replace-workspace'));
+  const exported = value(await store.exportBackup());
+  expect(JSON.parse(exported).verbuende).toEqual(current.verbuende);
+  expect(JSON.parse(exported).documents[0].storageSchemaVersion).toBe(2);
+  value(await store.restoreBackup(new TextEncoder().encode(exported), 'replace-workspace'));
+});
+
+it('rejects a baseline whose source no longer matches its bound stand', async () => {
+  const stand = await documentSnapshot(envelope.source, envelope.rootType);
+  if (!stand) throw new Error('fixture has no document stand');
+  const backup = JSON.parse(value(await store.exportBackup())) as {
+    reviewTrail: Record<string, unknown>[]; reviewBaseline: Record<string, unknown>[];
+  };
+  backup.reviewTrail.push({
+    localId: envelope.localId, sequence: 1, kind: 'checkpoint', createdAt: stand.lastModified, documentState: 'imported', stand,
+    diff: { version: 1, baseSequence: null, entries: [], truncated: false },
+  });
+  backup.reviewBaseline.push({ localId: envelope.localId, sequence: 1, stand, source: structuredClone(envelope.source) });
+  value(await store.restoreBackup(new TextEncoder().encode(JSON.stringify(backup)), 'replace-workspace'));
+  const tampered = JSON.parse(value(await store.exportBackup())) as {
+    reviewBaseline: { source: { catalog: { metadata: { title: string } } } }[];
+  };
+  tampered.reviewBaseline[0].source.catalog.metadata.title = 'Tampered baseline';
+  const before = value(await store.exportBackup());
+  expect(await store.restoreBackup(new TextEncoder().encode(JSON.stringify(tampered)), 'replace-workspace'))
+    .toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_BACKUP_INVALID' } });
+  expect(value(await store.exportBackup())).toBe(before);
 });

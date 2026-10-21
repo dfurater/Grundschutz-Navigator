@@ -35,6 +35,17 @@ test('Verbund-Backup ersetzt oder ergänzt nur den gewählten Verbund in je eine
   expect(value(await store.exportVerbundBackup(b.verbundId))).toBe(untouched);
 });
 
+test('Verbund-Wiederherstellung ersetzt eine vorhandene Prüfspur ohne Schlüsselkollision', async () => {
+  const store = await open();
+  const a = value(await store.createVerbund('Selected'));
+  const one = value(await store.addDocument(a.verbundId, await document()));
+  value(await store.appendCheckpoint(one.localId, one.savedAt, null, 0));
+  const backup = value(await store.exportVerbundBackup(a.verbundId));
+  expect(JSON.parse(backup).reviewTrail).toHaveLength(1);
+  value(await store.restoreVerbundBackup(bytes(backup), 'replace-verbund'));
+  expect(value(await store.exportVerbundBackup(a.verbundId))).toBe(backup);
+});
+
 test('Verbund-Wiederherstellung lehnt Kollisionen, falsche Formate und ungültige Quellen ohne Änderung ab', async () => {
   const store = await open();
   const a = value(await store.createVerbund('Selected'));
@@ -50,7 +61,7 @@ test('Verbund-Wiederherstellung lehnt Kollisionen, falsche Formate und ungültig
   const invalid = JSON.parse(selected); invalid.documents[0].source = { catalog: {} };
   const multiple = JSON.parse(selected); multiple.verbuende.push({ ...multiple.verbuende[0], verbundId: b.verbundId });
   const metadata = { ...JSON.parse(selected), workspaceMeta: JSON.parse(before).workspaceMeta };
-  for (const input of [bytes(before), bytes(JSON.stringify(invalid)), bytes(JSON.stringify(multiple)), bytes(JSON.stringify(metadata)), bytes(selected.replace('"storageSchemaVersion":1', '"storageSchemaVersion":2')), new Uint8Array(WORKSPACE_BACKUP_MAX_BYTES + 1)]) {
+  for (const input of [bytes(before), bytes(JSON.stringify(invalid)), bytes(JSON.stringify(multiple)), bytes(JSON.stringify(metadata)), bytes(selected.replace('"storageSchemaVersion":2', '"storageSchemaVersion":3')), new Uint8Array(WORKSPACE_BACKUP_MAX_BYTES + 1)]) {
     expect(await store.restoreVerbundBackup(input, 'replace-verbund')).toMatchObject({ ok: false });
     expect(value(await store.exportBackup())).toBe(before);
   }

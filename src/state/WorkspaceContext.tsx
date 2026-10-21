@@ -274,8 +274,15 @@ export function WorkspaceProvider({ open = openWorkspaceStore, children }: Reado
       return result;
     },
     exportBackup: async () => {
-      if (!port) return storageFailed();
-      const result = await port.exportBackup();
+      if (port) {
+        const result = await port.exportBackup();
+        if (!result.ok) report(result.diagnostic);
+        return result;
+      }
+      if (!notices.includes('migration-failed')) return storageFailed();
+      const result = await import('@/adapters/workspaceStore')
+        .then(({ WorkspaceStore }) => WorkspaceStore.exportRecoveryBackup())
+        .catch(storageFailed);
       if (!result.ok) report(result.diagnostic);
       return result;
     },

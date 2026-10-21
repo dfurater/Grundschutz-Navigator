@@ -131,6 +131,7 @@ export function ProfileEditorPage({ view, document }: Readonly<{ view: VerbundVi
   const { analysis, current, failed, analyzedBindings } = useProfileAnalysis(view.verbund.verbundId as VerbundId, localId, editor.working, editor.bindings);
   const options = useImportTargets(view, localId);
   const [tab, setTab] = useState<Tab>('imports');
+  const [reviewStartedFor, setReviewStartedFor] = useState<LocalId | null>(null);
   const [sheet, setSheet] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const navigate = useNavigate();
@@ -148,6 +149,11 @@ export function ProfileEditorPage({ view, document }: Readonly<{ view: VerbundVi
   const canExport = editor.envelope.documentState === 'export-ready' && !editor.dirty && !editor.busy;
   const total = targets.length === 1 ? targets[0].count : undefined;
   const resolvedCount = analysis?.resolution.status === 'resolved' ? analysis.resolution.index.ids.length : 0;
+  // Nach dem ersten Öffnen bleibt der Reiter eingehängt: ein Wechsel verwirft keine Freigabeeingaben.
+  const selectTab = (next: Tab) => {
+    setTab(next);
+    if (next === 'review') setReviewStartedFor(localId);
+  };
   const actions = (
     <PackageActions saveState={editor.saveState} dirty={editor.dirty} canExport={canExport} busy={editor.busy} onSave={() => { void editor.save(); }} onExport={() => { void editor.exportDocument(); }} />
   );
@@ -156,7 +162,7 @@ export function ProfileEditorPage({ view, document }: Readonly<{ view: VerbundVi
     <div className="flex flex-col md:h-full desktop:flex-row">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <Toolbar view={view} document={document} title={document.title ?? 'Profile'} state={state} desktop={desktop} onDelete={() => setConfirming(true)} />
-        <Tabs tab={tab} onSelect={setTab} counts={{ imports: editor.imports.length, references: view.edges.get(localId)?.length ?? 0, review: undefined }} ids={ids} />
+        <Tabs tab={tab} onSelect={selectTab} counts={{ imports: editor.imports.length, references: view.edges.get(localId)?.length ?? 0, review: undefined }} ids={ids} />
         <div className="min-h-0 flex-1 space-y-4 p-4 md:overflow-y-auto">
           <WorkspaceNotices />
           {editor.message && <output className="block text-sm text-[var(--color-text-primary)]">{MESSAGES[editor.message]}</output>}
@@ -168,7 +174,9 @@ export function ProfileEditorPage({ view, document }: Readonly<{ view: VerbundVi
           </div>
           <div role="tabpanel" id={ids.review} aria-labelledby={`${ids.review}-tab`} hidden={tab !== 'review'}>
             {/* Erst beim Öffnen geladen: der Prüf-Worker entsteht nicht auf jedem Profilaufruf. */}
-            {tab === 'review' && <ReviewTab localId={localId} editorDirty={editor.dirty} approval={{ onSubmit: editor.approve }} />}
+            {reviewStartedFor === localId && (
+              <ReviewTab key={localId} localId={localId} documentSavedAt={editor.envelope.savedAt} editorDirty={editor.dirty} approval={{ onSubmit: editor.approve }} />
+            )}
           </div>
         </div>
         <div className="sticky bottom-0 z-10 shrink-0 bg-[var(--color-surface-base)] desktop:static">

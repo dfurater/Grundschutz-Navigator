@@ -10,6 +10,8 @@ export interface DecisionFormProps {
   readonly parties: readonly { readonly uuid: string; readonly name: string }[];
   /** Genannt, wenn keine Freigabe möglich ist. */
   readonly disabledReason?: string;
+  /** Eine Freigabe läuft bereits; weitere Absendungen sind gesperrt. */
+  readonly busy?: boolean;
   readonly findingCodes?: readonly ReviewReferenceCode[];
   readonly onSubmit: (input: DecisionSubmission) => void;
 }
@@ -17,7 +19,7 @@ export interface DecisionFormProps {
 const NEW = '__new';
 
 /** Erfasst eine Freigabe als Dokumenteintrag; Signatur und Identitätsprüfung finden nicht statt. */
-export function DecisionForm({ roles, parties, disabledReason, findingCodes = [], onSubmit }: Readonly<DecisionFormProps>) {
+export function DecisionForm({ roles, parties, disabledReason, busy = false, findingCodes = [], onSubmit }: Readonly<DecisionFormProps>) {
   const headingId = useId();
   const roleFieldId = useId();
   const newRoleIdId = useId();
@@ -32,7 +34,7 @@ export function DecisionForm({ roles, parties, disabledReason, findingCodes = []
   const [selectedPartyUuids, setSelectedPartyUuids] = useState<readonly string[]>([]);
   const [partyName, setPartyName] = useState('');
   const [reason, setReason] = useState('');
-  const blocked = Boolean(disabledReason);
+  const blocked = Boolean(disabledReason) || busy;
   const newRole = roleSelection === NEW;
   const roleReady = newRole ? newRoleId.trim() !== '' && newRoleTitle.trim() !== '' : roleSelection !== '';
   const partyReady = selectedPartyUuids.length > 0 || partyName.trim() !== '';
@@ -55,7 +57,7 @@ export function DecisionForm({ roles, parties, disabledReason, findingCodes = []
   };
 
   return (
-    <form aria-labelledby={headingId} className="space-y-4" onSubmit={submit}>
+    <form aria-labelledby={headingId} aria-busy={busy} className="space-y-4" onSubmit={submit}>
       <h3 id={headingId} className="text-base font-semibold text-[var(--color-text-primary)]">Freigabe erfassen</h3>
       {disabledReason && (
         <p id={disabledReasonId} role="status" className="rounded-md border border-[var(--color-border-strong)] bg-[var(--color-surface-subtle)] p-3 text-sm text-[var(--color-text-primary)]">

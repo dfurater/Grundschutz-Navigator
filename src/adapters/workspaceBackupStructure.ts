@@ -285,7 +285,7 @@ export function normalizeWorkspaceBackup(value: unknown): WorkspaceBackup | null
   return {
     format: 'gspp-workspace',
     storageSchemaVersion: STORAGE_SCHEMA_VERSION,
-    verbuende: upgradeRows(legacy.verbuende),
+    verbuende: legacy.verbuende,
     documents: upgradeRows(legacy.documents) as WorkspaceEnvelope[],
     drafts: legacy.drafts,
     bindings: legacy.bindings,
@@ -302,7 +302,7 @@ export function normalizeVerbundBackup(value: unknown): WorkspaceVerbundBackup |
   return {
     format: 'gspp-workspace-verbund',
     storageSchemaVersion: STORAGE_SCHEMA_VERSION,
-    verbuende: upgradeRows(legacy.verbuende) as unknown as WorkspaceVerbundBackup['verbuende'],
+    verbuende: legacy.verbuende,
     documents: upgradeRows(legacy.documents) as WorkspaceEnvelope[],
     drafts: legacy.drafts,
     bindings: legacy.bindings,

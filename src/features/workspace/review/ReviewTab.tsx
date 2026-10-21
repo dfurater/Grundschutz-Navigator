@@ -16,6 +16,8 @@ export type ReviewApprovalResult = { readonly ok: true } | { readonly ok: false;
 
 export interface ReviewTabProps {
   readonly localId: LocalId;
+  /** Gespeicherter Stand; ein neuer Wert lädt die Prüfspur nach einem Speichern neu. */
+  readonly documentSavedAt?: string;
   /** Ungespeicherte Eingaben der Station; sie blockieren Prüfpunkt und Freigabe. */
   readonly editorDirty?: boolean;
   /** Fehlt bei schreibgeschützten Roots; dann bleibt die Freigabe gesperrt. */
@@ -52,10 +54,11 @@ const APPROVAL_MESSAGES: Readonly<Record<string, string>> = {
  * Workspace-Entscheidungen schreiben nie das Dokument; nur die Freigabe tut das
  * und läuft deshalb über den Editor, der den gespeicherten Stand besitzt.
  */
-export function ReviewTab({ localId, editorDirty = false, approval }: Readonly<ReviewTabProps>) {
-  const review = useReviewTrail(localId);
+export function ReviewTab({ localId, documentSavedAt, editorDirty = false, approval }: Readonly<ReviewTabProps>) {
+  const review = useReviewTrail(localId, documentSavedAt);
   const [reason, setReason] = useState('');
   const [approvalMessage, setApprovalMessage] = useState<string>();
+  const [approving, setApproving] = useState(false);
 
   if (review.status === 'failed') return <output className="block text-sm text-[var(--color-text-primary)]">{MESSAGES['load-failed']}</output>;
   if (!review.view) return <output className="block text-sm text-[var(--color-text-secondary)]">Prüfspur wird geladen…</output>;
@@ -64,7 +67,7 @@ export function ReviewTab({ localId, editorDirty = false, approval }: Readonly<R
   const document = view.document;
   const metadata = metadataOf(document.source, document.rootType);
   const { roles, parties } = reviewIdentities(metadata);
-  const reviewView = buildReviewView({ trail: view.trail, stand: view.stand, editorDirty, metadata });
+  const reviewView = buildReviewView({ trail: view.trail, stand: view.stand, editorDirty, refreshing: review.refreshing, metadata });
   const sequence = view.trail.at(-1)?.sequence ?? 0;
   const draft = document.documentState === 'draft' || view.draftSavedAt !== null || editorDirty;
   const checkpointReason = draft
@@ -90,13 +93,17 @@ export function ReviewTab({ localId, editorDirty = false, approval }: Readonly<R
       .then((ok) => { if (ok) setReason(''); });
   };
   const submitApproval = (input: DecisionSubmission) => {
-    if (!approval) return;
+    if (!approval || approving) return;
+    setApproving(true);
     setApprovalMessage(undefined);
-    void approval.onSubmit({ ...input, expectedSequence: sequence }).then((result) => {
-      if (result.ok) return review.reload();
+    void approval.onSubmit({ ...input, expectedSequence: sequence }).then(async (result) => {
+      if (result.ok) {
+        setApprovalMessage('Die Freigabe wurde als Aktion in das Dokument geschrieben.');
+        await review.reload();
+        return;
+      }
       setApprovalMessage(APPROVAL_MESSAGES[result.code] ?? 'Die Freigabe wurde nicht geschrieben.');
-      return undefined;
-    });
+    }).finally(() => setApproving(false));
   };
 
   const actions = (
@@ -114,16 +121,16 @@ export function ReviewTab({ localId, editorDirty = false, approval }: Readonly<R
           <textarea id={`${localId}-decision-reason`} className={INPUT} rows={3} maxLength={1000} value={reason} onChange={(event) => setReason(event.target.value)} />
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button type="button" className="min-h-touch desktop:min-h-0" disabled={review.busy || !canReview} onClick={() => decide('reviewed')}>Als geprüft markieren</Button>
-          <Button type="button" variant="secondary" className="min-h-touch desktop:min-h-0" disabled={review.busy || !canRequestChanges} onClick={() => decide('changes-requested')}>Änderungen anfordern</Button>
+          <Button type="button" className="min-h-touch desktop:min-h-0" disabled={review.busy || review.refreshing || approving || !canReview} onClick={() => decide('reviewed')}>Als geprüft markieren</Button>
+          <Button type="button" variant="secondary" className="min-h-touch desktop:min-h-0" disabled={review.busy || review.refreshing || approving || !canRequestChanges} onClick={() => decide('changes-requested')}>Änderungen anfordern</Button>
           {withdrawTarget && (
-            <Button type="button" variant="ghost" className="min-h-touch desktop:min-h-0" disabled={review.busy} onClick={withdraw}>Freigabe zurücknehmen</Button>
+            <Button type="button" variant="ghost" className="min-h-touch desktop:min-h-0" disabled={review.busy || review.refreshing || approving} onClick={withdraw}>Freigabe zurücknehmen</Button>
           )}
         </div>
       </form>
       <div className="space-y-2">
         <h3 className="text-base font-semibold text-[var(--color-text-primary)]">Prüfpunkt</h3>
-        <Button type="button" variant="secondary" className="min-h-touch desktop:min-h-0" disabled={review.busy || Boolean(checkpointReason)} onClick={() => { void review.checkpoint(); }}>
+        <Button type="button" variant="secondary" className="min-h-touch desktop:min-h-0" disabled={review.busy || review.refreshing || approving || Boolean(checkpointReason)} onClick={() => { void review.checkpoint(); }}>
           Prüfpunkt setzen
         </Button>
         {checkpointReason && <p className="text-sm text-[var(--color-text-secondary)]">{checkpointReason}</p>}
@@ -133,11 +140,11 @@ export function ReviewTab({ localId, editorDirty = false, approval }: Readonly<R
         <div className="space-y-2">
           {approvalMessage && <output className="block text-sm text-[var(--color-text-primary)]">{approvalMessage}</output>}
           <DecisionForm
-            key={`${sequence}-${view.stand.contentHash.value}`}
             roles={roles}
             parties={parties}
             disabledReason={approvalReason}
             findingCodes={reviewView.findings.map((finding) => finding.code)}
+            busy={approving || review.busy || review.refreshing}
             onSubmit={submitApproval}
           />
         </div>

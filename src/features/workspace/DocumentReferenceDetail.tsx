@@ -22,7 +22,7 @@ function ReviewSection({ localId }: Readonly<{ localId: LocalId }>) {
       <summary className={`min-h-touch cursor-pointer px-4 py-3 text-sm font-semibold text-[var(--color-text-primary)] hover:bg-[var(--color-surface-subtle)] ${FOCUS_RING} focus-visible:ring-inset desktop:min-h-0`}>
         Prüfung und Freigabe
       </summary>
-      {open && <div className="border-t border-[var(--color-border-default)] p-4"><ReviewTab localId={localId} /></div>}
+      {open && <div className="border-t border-[var(--color-border-default)] p-4"><ReviewTab key={localId} localId={localId} /></div>}
     </details>
   );
 }
@@ -65,7 +65,7 @@ export function DocumentReferenceDetailPage() {
       <PageTitle title={PAGE_TITLES.workspaceDocument} />
       {document.rootType === 'profile'
         ? <ProfileEditorPage key={document.localId} view={routed.view} document={document} />
-        : <DocumentDetail view={routed.view} document={document} />}
+        : <DocumentDetail key={document.localId} view={routed.view} document={document} />}
     </>
   );
 }

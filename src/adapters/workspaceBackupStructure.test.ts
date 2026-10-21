@@ -5,6 +5,7 @@ import {
   createWorkspaceStructureValidator,
   normalizeVerbundBackup,
   normalizeWorkspaceBackup,
+  validVerbundBackupStructure,
   validWorkspaceBackupStructure,
 } from './workspaceBackupStructure';
 
@@ -103,6 +104,8 @@ describe('workspace backup structure v2', () => {
       format: 'gspp-workspace-verbund', storageSchemaVersion: 2, reviewTrail: [], reviewBaseline: [],
       documents: [{ storageSchemaVersion: 2 }],
     });
+    expect(normalized?.verbuende).toEqual(legacy.verbuende);
+    expect(normalized && validVerbundBackupStructure(normalized)).toBe(true);
     expect(normalizeWorkspaceBackup(legacy)).toBeNull();
   });
 });

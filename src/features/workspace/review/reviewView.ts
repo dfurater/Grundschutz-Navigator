@@ -14,6 +14,7 @@ import {
   resolveActionReferences,
   sameStand,
   REVIEW_ACTIONS_SYSTEM,
+  REVIEW_ACTION_TYPE_APPROVED,
   type DerivedReviewState,
   type ReviewReferenceCode,
   type ReviewReferenceFinding,
@@ -45,6 +46,8 @@ export interface ReviewViewInput {
   readonly stand?: DocumentSnapshot;
   /** Ungespeicherte Eingaben im Editor. */
   readonly editorDirty: boolean;
+  /** Die Prüfspur wird gerade neu geladen; die positive Anzeige bleibt gesperrt. */
+  readonly refreshing?: boolean;
   /** Root-`metadata` des Dokuments. */
   readonly metadata: unknown;
   /** `metadata.actions`-UUIDs mit unserem System-Namespace; ohne Angabe aus `metadata` abgeleitet. */
@@ -54,7 +57,7 @@ export interface ReviewViewInput {
 /** Aktionen im Projekt-Namespace; fremde Aktionen bleiben Dokumentinhalt ohne lokalen Nachweis. */
 export function nativeApprovalUuids(metadata: unknown): readonly string[] {
   return readArray(isJsonObject(metadata) ? metadata.actions : undefined)
-    .flatMap(entry => isJsonObject(entry) && entry.system === REVIEW_ACTIONS_SYSTEM && readString(entry.uuid) ? [entry.uuid as string] : []);
+    .flatMap(entry => isJsonObject(entry) && entry.system === REVIEW_ACTIONS_SYSTEM && entry.type === REVIEW_ACTION_TYPE_APPROVED && readString(entry.uuid) ? [entry.uuid as string] : []);
 }
 
 /** Rollen und Parteien des Dokuments als Anzeigeform; mehrdeutige Einträge bleiben einzeln sichtbar. */
@@ -87,6 +90,7 @@ export interface ReviewView {
   /** Befunde zur aktuellen Entscheidung; nur bei vorhandener Aktion befüllt. */
   readonly findings: readonly ReviewReferenceFinding[];
   readonly reason?: string;
+  readonly trail: readonly ReviewTrailRow[];
 }
 
 function findApproval(trail: readonly ReviewTrailRow[], actionUuid: string): ReviewDecision | undefined {
@@ -97,7 +101,7 @@ function findApproval(trail: readonly ReviewTrailRow[], actionUuid: string): Rev
   return approval;
 }
 
-export function buildReviewView({ trail, stand, editorDirty, metadata, nativeActionUuids = nativeApprovalUuids(metadata) }: ReviewViewInput): ReviewView {
+export function buildReviewView({ trail, stand, editorDirty, refreshing = false, metadata, nativeActionUuids = nativeApprovalUuids(metadata) }: ReviewViewInput): ReviewView {
   const derived = deriveReviewState(trail);
   let latestCheckpoint: ReviewCheckpoint | undefined;
   let latestDecision: ReviewDecision | undefined;
@@ -111,7 +115,11 @@ export function buildReviewView({ trail, stand, editorDirty, metadata, nativeAct
     badge = 'unverified';
   } else if (derived.state === 'approved') {
     const approval = derived.actionUuid ? findApproval(trail, derived.actionUuid) : undefined;
-    badge = approval && !editorDirty && stand && sameStand(approval.stand, stand) ? 'approved' : 'stale';
+    badge = approval && !editorDirty && !refreshing && stand && sameStand(approval.stand, stand) ? 'approved' : 'stale';
+  } else if (derived.state === 'reviewed') {
+    let reviewed: ReviewDecision | undefined;
+    for (const row of trail) if (row.kind === 'decision' && row.decision === 'reviewed') reviewed = row;
+    badge = reviewed && !editorDirty && !refreshing && stand && sameStand(reviewed.stand, stand) ? 'reviewed' : 'stale';
   }
 
   const actionUuid = derived.actionUuid ?? latestDecision?.withdraws?.actionUuid;
@@ -119,7 +127,7 @@ export function buildReviewView({ trail, stand, editorDirty, metadata, nativeAct
   const action = actionUuid === undefined ? undefined : actions.find((entry) => entry.uuid === actionUuid);
   const findings: readonly ReviewReferenceFinding[] = action ? resolveActionReferences(action, metadata) : [];
 
-  return { badge, derived, latestCheckpoint, latestDecision, findings, reason: latestDecision?.reason };
+  return { badge, derived, latestCheckpoint, latestDecision, findings, reason: latestDecision?.reason, trail };
 }
 
 export const REVIEW_BADGE_TEXT: Readonly<Record<ReviewBadge, string>> = {

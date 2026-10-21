@@ -15,13 +15,19 @@ export function documentBody(source: unknown, rootType: OscalRootKey): JsonObjec
   return isJsonObject(source) && isJsonObject(source[rootType]) ? source[rootType] : undefined;
 }
 
+function withoutLastModified(metadata: JsonObject): JsonObject {
+  return Object.fromEntries(Object.entries(metadata).filter(([key]) => key !== 'last-modified'));
+}
+
 /** Der Quellgraph ohne Root-`uuid` und Root-`metadata.last-modified`. */
 export function documentContent(source: unknown, rootType: OscalRootKey): unknown {
   const copy = structuredClone(source);
   const body = documentBody(copy, rootType);
-  if (body) {
-    delete body.uuid;
-    if (isJsonObject(body.metadata)) delete body.metadata['last-modified'];
-  }
-  return copy;
+  if (!body) return copy;
+  const content: JsonObject = Object.fromEntries(Object.entries(body).filter(([key]) => key !== 'uuid'));
+  const metadata = body.metadata;
+  const next = metadata === undefined
+    ? content
+    : isJsonObject(metadata) ? { ...content, metadata: withoutLastModified(metadata) } : { ...content, metadata };
+  return { ...(copy as JsonObject), [rootType]: next };
 }

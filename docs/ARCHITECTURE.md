@@ -249,7 +249,7 @@ src/                              # Anwendungsquellcode
 │   ├── workspaceDocumentAdmission.ts # Zustandsabhängige Sourcevalidierung, Dokumentzustände und Referenzpointer
 │   ├── workspaceDraftSource.ts       # Sourcegrenzen und Root-Bindung ohne Schemaprüfung
 │   ├── workspaceMigration.ts         # Vorwärtsmigration in einer versionchange-Transaktion
-│   ├── workspaceRecoveryJson.ts      # Typisierte Graphkodierung für Rettungsexporte neuerer Schemas
+│   ├── workspaceRecoveryJson.ts      # Typisierte Graphkodierung für Rettungsexporte
 │   ├── workspaceRecoveryStorage.ts   # Nativer IndexedDB-Snapshot aller Stores neuerer Datenbanken
 │   ├── workspaceStorageFailure.ts    # Redigierte Speicherfehler und monotone Zeitstempel
 │   └── workspaceStore.ts             # Transaktionaler Dexie-Speicher für Informationsverbünde

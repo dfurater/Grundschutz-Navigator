@@ -10,6 +10,7 @@ export type WorkspaceNotice =
   | 'quota-warning'
   | 'quota-exceeded'
   | 'conflict'
+  | 'migration-failed'
   | 'storage-failed';
 
 /** Ab diesem Anteil belegten Browser-Speichers erscheint die Quota-Vorwarnung. */
@@ -20,6 +21,7 @@ export function noticeForDiagnostic(diagnostic: Pick<OscalDiagnostic, 'code'>): 
     case 'WORKSPACE_SCHEMA_NEWER': return 'write-locked';
     case 'WORKSPACE_QUOTA_EXCEEDED': return 'quota-exceeded';
     case 'WORKSPACE_SAVE_CONFLICT': return 'conflict';
+    case 'WORKSPACE_MIGRATION_FAILED': return 'migration-failed';
     default: return 'storage-failed';
   }
 }

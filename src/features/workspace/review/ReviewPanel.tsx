@@ -4,7 +4,7 @@ import type { DiffEntry, DocumentDiff } from '@/domain/documentDiff';
 import { isJsonObject, readArray, readString, type JsonObject } from '@/domain/jsonGuards';
 import type { OscalRootKey } from '@/domain/oscalVersionMatrix';
 import { projectRevisions, resolveActionReferences } from '@/domain/reviewTrail';
-import type { DocumentSnapshot, ReviewCheckpoint } from '@/domain/workspaceModel';
+import type { DocumentSnapshot, ReviewCheckpoint, ReviewDecision, ReviewTrailRow } from '@/domain/workspaceModel';
 import { documentValidity, ROOT_TYPE_LABELS } from '@/domain/workspaceStations';
 import { OscalKey, SECTION_LABEL } from '@/features/workspace/profile/ProfileMarks';
 import { CapabilityContract } from '@/features/workspace/review/CapabilityContract';
@@ -262,6 +262,61 @@ function CheckpointDetails({ checkpoint, rootType }: Readonly<{ checkpoint?: Rev
   );
 }
 
+function TrailDecision({ decision }: Readonly<{ decision: ReviewDecision }>) {
+  const actionUuid = decision.actionUuid ?? decision.withdraws?.actionUuid;
+  return (
+    <dl className="grid gap-x-3 gap-y-1 text-sm sm:grid-cols-[auto_1fr]">
+      {decision.reason && <><dt className="text-[var(--color-text-secondary)]">Begründung</dt><dd className="whitespace-pre-wrap break-words text-[var(--color-text-primary)]">{decision.reason}</dd></>}
+      {decision.roleId && <><dt className="text-[var(--color-text-secondary)]">Rolle</dt><dd className="font-mono text-xs">{decision.roleId}</dd></>}
+      {decision.partyUuids && decision.partyUuids.length > 0 && (
+        <><dt className="text-[var(--color-text-secondary)]">Parteien</dt><dd className="break-all font-mono text-xs">{decision.partyUuids.join(', ')}</dd></>
+      )}
+      {decision.withdraws && (
+        <><dt className="text-[var(--color-text-secondary)]">Nimmt zurück</dt><dd className="text-[var(--color-text-primary)]">Nr. <span className="tabular-nums">{decision.withdraws.sequence}</span></dd></>
+      )}
+      {actionUuid && <><dt className="text-[var(--color-text-secondary)]">Aktion</dt><dd className="break-all font-mono text-xs">{actionUuid}</dd></>}
+      <dt className="text-[var(--color-text-secondary)]">Gebundener Stand</dt>
+      <dd className="break-all font-mono text-xs">{decision.stand.contentHash.value}</dd>
+    </dl>
+  );
+}
+
+function TrailHistory({ trail, rootType }: Readonly<{ trail: readonly ReviewTrailRow[]; rootType: OscalRootKey }>) {
+  let latestCheckpoint: ReviewTrailRow | undefined;
+  let latestDecision: ReviewTrailRow | undefined;
+  for (const row of trail) {
+    if (row.kind === 'checkpoint') latestCheckpoint = row;
+    else latestDecision = row;
+  }
+  // Der jüngste Prüfpunkt und die jüngste Entscheidung stehen bereits in den Abschnitten darüber.
+  const earlier = trail.filter((row) => row !== latestCheckpoint && row !== latestDecision);
+  if (earlier.length === 0) return null;
+  return (
+    <div className="space-y-2">
+      <h3 className={`${SECTION_LABEL} flex flex-wrap items-baseline gap-2`}>Frühere Einträge <span className="tabular-nums">{earlier.length}</span></h3>
+      <p className="text-sm leading-relaxed text-[var(--color-text-secondary)]">Frühere Prüfpunkte und Entscheidungen bleiben mit Begründung und gebundenem Stand lesbar.</p>
+      <ol aria-label="Verlauf der Prüfspur" className="divide-y divide-[var(--color-border-subtle)]">
+        {[...earlier].reverse().map((row) => (
+          <li key={`${row.kind}-${row.sequence}`}>
+            <details className="py-2">
+              <summary className="flex cursor-pointer flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm text-[var(--color-text-primary)]">
+                <span className="text-xs tabular-nums text-[var(--color-text-muted)]">Nr. {row.sequence}</span>
+                <span>{row.kind === 'checkpoint' ? `Prüfpunkt · ${documentValidity(row.documentState)}` : REVIEW_DECISION_TEXT[row.decision]}</span>
+                <time dateTime={row.createdAt} className="text-xs text-[var(--color-text-secondary)]">{timestamp(row.createdAt)}</time>
+              </summary>
+              <div className="mt-2 space-y-2 pl-2">
+                {row.kind === 'checkpoint'
+                  ? <><p className="text-xs text-[var(--color-text-secondary)]">{ROOT_TYPE_LABELS[rootType]}</p><Stand stand={row.stand} /><Diff diff={row.diff} /></>
+                  : <TrailDecision decision={row} />}
+              </div>
+            </details>
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
 function StatusSection({ view }: Readonly<{ view: ReviewView }>) {
   const decision = view.latestDecision;
   const actionUuid = decision?.actionUuid ?? decision?.withdraws?.actionUuid;
@@ -296,6 +351,7 @@ export function ReviewPanel({ view, metadata, rootType, actions }: Readonly<Revi
         <StatusSection view={view} />
         <CheckpointDetails checkpoint={view.latestCheckpoint} rootType={rootType} />
         {actions}
+        <TrailHistory trail={view.trail} rootType={rootType} />
         <CapabilityContract />
       </Layer>
     </div>

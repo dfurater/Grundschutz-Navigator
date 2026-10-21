@@ -63,4 +63,18 @@ describe('DecisionForm', () => {
       reason: '',
     });
   });
+
+  it('sperrt das Absenden während einer laufenden Freigabe', () => {
+    const onSubmit = vi.fn();
+    const { rerender } = render(<DecisionForm roles={roles} parties={parties} onSubmit={onSubmit} />);
+    fireEvent.change(screen.getByRole('combobox', { name: 'Rolle metadata.roles' }), { target: { value: 'role-approver' } });
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Alice Beispiel (party-1)' }));
+    const submit = screen.getByRole('button', { name: 'Freigeben' });
+    expect(submit).toBeEnabled();
+    rerender(<DecisionForm roles={roles} parties={parties} busy onSubmit={onSubmit} />);
+    expect(submit).toBeDisabled();
+    expect(screen.getByRole('form', { name: 'Freigabe erfassen' })).toHaveAttribute('aria-busy', 'true');
+    fireEvent.click(submit);
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
 });

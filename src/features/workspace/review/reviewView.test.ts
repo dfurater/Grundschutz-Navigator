@@ -8,7 +8,7 @@ import type {
   ReviewDecisionKind,
   ReviewTrailRow,
 } from '@/domain/workspaceModel';
-import { buildReviewView } from '@/features/workspace/review/reviewView';
+import { buildReviewView, nativeApprovalUuids } from '@/features/workspace/review/reviewView';
 
 function snapshot(hash: string): DocumentSnapshot {
   return {
@@ -45,11 +45,12 @@ function decision(sequence: number, kind: ReviewDecisionKind, overrides: Partial
   };
 }
 
-function view(trail: readonly ReviewTrailRow[], extra: { readonly metadata?: unknown; readonly nativeActionUuids?: readonly string[]; readonly editorDirty?: boolean } = {}) {
+function view(trail: readonly ReviewTrailRow[], extra: { readonly metadata?: unknown; readonly nativeActionUuids?: readonly string[]; readonly editorDirty?: boolean; readonly refreshing?: boolean } = {}) {
   return buildReviewView({
     trail,
     stand: snapshot('stand'),
     editorDirty: extra.editorDirty ?? false,
+    refreshing: extra.refreshing ?? false,
     metadata: extra.metadata ?? {},
     nativeActionUuids: extra.nativeActionUuids ?? [],
   });
@@ -94,6 +95,36 @@ describe('buildReviewView', () => {
   it('markiert ungespeicherte Eingaben als stale', () => {
     const result = view([decision(1, 'approved', { actionUuid: 'action-1' })], { editorDirty: true });
     expect(result.badge).toBe('stale');
+  });
+
+  it('zeigt eine Prüfung mit passendem Stand als reviewed', () => {
+    expect(view([decision(1, 'reviewed')]).badge).toBe('reviewed');
+  });
+
+  it('markiert eine Prüfung mit abweichendem Stand als stale', () => {
+    const result = buildReviewView({
+      trail: [decision(1, 'reviewed')],
+      stand: snapshot('anderer-inhalt'),
+      editorDirty: false,
+      metadata: {},
+      nativeActionUuids: [],
+    });
+    expect(result.badge).toBe('stale');
+    expect(result.derived.state).toBe('reviewed');
+  });
+
+  it('sperrt die positive Anzeige während des Nachladens', () => {
+    expect(view([decision(1, 'reviewed')], { refreshing: true }).badge).toBe('stale');
+    expect(view([decision(1, 'approved', { actionUuid: 'action-1' })], { refreshing: true }).badge).toBe('stale');
+  });
+
+  it('zählt nur native Aktionen des Typs approved als Freigabe', () => {
+    expect(nativeApprovalUuids({
+      actions: [
+        { uuid: 'action-1', system: REVIEW_ACTIONS_SYSTEM, type: 'approved' },
+        { uuid: 'action-2', system: REVIEW_ACTIONS_SYSTEM, type: 'reviewed' },
+      ],
+    })).toEqual(['action-1']);
   });
 
   it('löst eine Freigabe durch Änderungswünsche ab', () => {

@@ -31,6 +31,8 @@ export interface ReviewTrailState {
   readonly view?: ReviewTrailView;
   readonly message?: ReviewTrailMessage;
   readonly busy: boolean;
+  /** Wahr, solange ein Reload läuft oder der gespeicherte Stand vom geladenen abweicht. */
+  readonly refreshing: boolean;
   readonly reload: () => Promise<void>;
   readonly checkpoint: () => Promise<boolean>;
   readonly decide: (input: ReviewDecisionInput) => Promise<boolean>;
@@ -50,29 +52,39 @@ export function reviewTrailMessage(code: string): ReviewTrailMessage {
   }
 }
 
-export function useReviewTrail(localId: ReviewTrailView['document']['localId']): ReviewTrailState {
+export function useReviewTrail(localId: ReviewTrailView['document']['localId'], documentSavedAt?: string): ReviewTrailState {
   const { documents } = useWorkspace();
   const [status, setStatus] = useState<ReviewTrailState['status']>('loading');
   const [view, setView] = useState<ReviewTrailView>();
   const [message, setMessage] = useState<ReviewTrailMessage>();
   const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
   // Der Speicherzugang wechselt mit geladenen Katalogen; die Referenz hält das Laden stabil.
   const documentsRef = useRef(documents);
   useEffect(() => { documentsRef.current = documents; }, [documents]);
   const running = useRef(false);
+  const request = useRef(0);
 
   const reload = useCallback(async () => {
+    const ticket = ++request.current;
+    setLoading(true);
     const result = await documentsRef.current.listReviewTrail(localId);
+    // Eine Antwort zu einem früheren Dokument- oder Speicherstand darf den aktuellen nie überschreiben.
+    if (ticket !== request.current) return;
     if (!result.ok) {
       setStatus('failed');
       setMessage('load-failed');
+      setLoading(false);
       return;
     }
     setView(result.value);
     setStatus('ready');
+    setLoading(false);
   }, [localId]);
 
-  useEffect(() => { void reload(); }, [reload]);
+  // Jeder gespeicherte Dokumentstand löst einen neuen Lesevorgang aus; ein Checkpoint allein nicht.
+  // Der Microtask hält den Effekt frei von synchronen Zustandswechseln.
+  useEffect(() => { void Promise.resolve().then(reload); }, [reload, documentSavedAt]);
 
   const run = useCallback(async (operation: () => Promise<{ readonly ok: boolean; readonly code?: string }>): Promise<boolean> => {
     if (running.current) return false;
@@ -82,7 +94,10 @@ export function useReviewTrail(localId: ReviewTrailView['document']['localId']):
     try {
       const result = await operation();
       if (!result.ok) {
-        setMessage(reviewTrailMessage(result.code ?? 'WORKSPACE_STORAGE_FAILED'));
+        const next = reviewTrailMessage(result.code ?? 'WORKSPACE_STORAGE_FAILED');
+        setMessage(next);
+        // Ein Konflikt macht die gebundenen Werte ungültig; erst der neue Stand erlaubt den nächsten Versuch.
+        if (next === 'conflict') await reload();
         return false;
       }
       await reload();
@@ -119,5 +134,5 @@ export function useReviewTrail(localId: ReviewTrailView['document']['localId']):
     });
   }, [localId, run, view]);
 
-  return { status, view, message, busy, reload, checkpoint, decide };
+  return { status, view, message, busy, refreshing: loading || (documentSavedAt !== undefined && view?.document.savedAt !== documentSavedAt), reload, checkpoint, decide };
 }

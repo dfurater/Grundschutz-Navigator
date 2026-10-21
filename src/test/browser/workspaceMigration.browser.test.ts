@@ -1,7 +1,7 @@
 import Dexie from 'dexie';
 import { afterEach, expect, test, vi } from 'vitest';
 import { migrateWorkspaceStorage } from '@/adapters/workspaceMigration';
-import { WORKSPACE_SCHEMA, WORKSPACE_SCHEMA_V1 } from '@/adapters/workspaceStore';
+import { WORKSPACE_DATABASE_NAME, WORKSPACE_SCHEMA, WORKSPACE_SCHEMA_V1, WorkspaceStore } from '@/adapters/workspaceStore';
 import { makeSchemaValidOscalDocument } from '@/test/fixtures/oscalSchemaFixtures';
 import type { LocalId, VerbundId, WorkspaceBackup } from '@/domain/workspaceModel';
 import { normalizeWorkspaceBackup } from '@/adapters/workspaceBackupStructure';
@@ -28,8 +28,7 @@ function fixture(): V1Backup {
   if (!normalizeWorkspaceBackup(backup)) throw new Error('Invalid migration fixture');
   return backup;
 }
-async function seed(data: V1Backup) {
-  const name = `gspp-migration-test-${crypto.randomUUID()}`;
+async function seed(data: V1Backup, name = `gspp-migration-test-${crypto.randomUUID()}`) {
   names.push(name);
   const db = new Dexie(name);
   databases.push(db);
@@ -209,6 +208,27 @@ test.each(['document', 'draft', 'binding', 'cross-verbund-binding', 'verbund', '
   expect(await rows(reopened)).toEqual(snapshot);
 });
 
+
+test('meldet eine gescheiterte Migration und sichert den unveränderten Vorzustand als Rettungsexport', async () => {
+  const data = fixture();
+  data.documents[1] = { ...data.documents[1], rootType: 'profile' };
+  await seed(data, WORKSPACE_DATABASE_NAME);
+  const probe = new Dexie(WORKSPACE_DATABASE_NAME);
+  databases.push(probe);
+  await probe.open();
+  const snapshot = await rows(probe);
+  probe.close();
+  expect(await WorkspaceStore.open()).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_MIGRATION_FAILED' } });
+  const rescue = await WorkspaceStore.exportRecoveryBackup();
+  if (!rescue.ok) throw new Error(rescue.diagnostic.code);
+  expect(JSON.parse(rescue.value)).toMatchObject({ format: 'gspp-workspace', storageSchemaVersion: 1 });
+  expect(rescue.value).toContain('Migration fixture');
+  const reopened = new Dexie(WORKSPACE_DATABASE_NAME);
+  databases.push(reopened);
+  await reopened.open();
+  expect(reopened.verno).toBe(1);
+  expect(await rows(reopened)).toEqual(snapshot);
+});
 
 test('verweigert Migration in einer gewöhnlichen Schreibtransaktion', async () => {
   const name = await seed(fixture());

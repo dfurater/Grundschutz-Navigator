@@ -188,7 +188,7 @@ export async function restoreVerbundBackupSnapshot(db: Dexie, backup: WorkspaceV
   const oldIds = new Set(await documents.where('verbundId').equals(verbundId).primaryKeys());
   await db.table<WorkspaceBinding>('bindings').filter(row => oldIds.has(row.fromLocalId) || (row.target.kind === 'local' && oldIds.has(row.target.localId))).delete();
   await db.table('drafts').bulkDelete([...oldIds]);
-  await db.table('reviewTrail').bulkDelete([...oldIds]);
+  await db.table('reviewTrail').where('localId').anyOf([...oldIds]).delete();
   await db.table('reviewBaseline').bulkDelete([...oldIds]);
   await documents.bulkDelete([...oldIds]);
   await db.table('verbuende').put(backup.verbuende[0]);

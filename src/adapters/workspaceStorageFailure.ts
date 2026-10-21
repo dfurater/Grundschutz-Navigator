@@ -18,10 +18,18 @@ function isQuotaError(error: unknown): boolean {
   }
   return false;
 }
+function storageCode(error: unknown): string | undefined {
+  const seen = new Set<unknown>();
+  let current = error;
+  while (current && typeof current === 'object' && !seen.has(current)) {
+    seen.add(current);
+    if (current instanceof StorageFailure) return current.code;
+    current = 'inner' in current ? current.inner : undefined;
+  }
+  return undefined;
+}
 export function failure(error: unknown): WorkspaceResult<never> {
-  let code = 'WORKSPACE_STORAGE_FAILED';
-  if (error instanceof StorageFailure) code = error.code;
-  else if (isQuotaError(error)) code = 'WORKSPACE_QUOTA_EXCEEDED';
+  const code = storageCode(error) ?? (isQuotaError(error) ? 'WORKSPACE_QUOTA_EXCEEDED' : 'WORKSPACE_STORAGE_FAILED');
   return { ok: false, diagnostic: createOscalDiagnostic({ code, stage: 'domain', validator: { name: 'gspp-workspace', version: '1' }, path: '/' }) };
 }
 

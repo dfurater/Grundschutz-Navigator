@@ -105,4 +105,17 @@ describe('ReviewPanel', () => {
     expect(within(workspaceLayer).getByText('Schreibmarker')).toBeInTheDocument();
     expect(within(workspaceLayer).getByText(/Diff-Ergebnis ist gekürzt/)).toBeInTheDocument();
   });
+
+  it('hält frühere Begründungen und Diffs im Verlauf lesbar', () => {
+    const newerCheckpoint = { ...checkpoint, sequence: 4, stand: snapshot('newer'), diff: { ...checkpoint.diff, baseSequence: 1, truncated: false } };
+    const { workspaceLayer } = renderPanel([
+      checkpoint,
+      { ...approval, sequence: 2, decision: 'changes-requested', actionUuid: undefined, reason: 'Bitte nachbessern.' },
+      { ...approval, sequence: 3 },
+      newerCheckpoint,
+    ]);
+    const history = within(workspaceLayer).getByRole('list', { name: 'Verlauf der Prüfspur' });
+    expect(within(history).getByText('Bitte nachbessern.')).toBeInTheDocument();
+    expect(within(history).getByText(/Vergleich gegen das leere Dokument/)).toBeInTheDocument();
+  });
 });

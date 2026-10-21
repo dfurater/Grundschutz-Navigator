@@ -26,6 +26,11 @@ const NOTICE_TEXT: Readonly<Record<WorkspaceNotice, { readonly title: string; re
     text: 'Ein anderer Tab hat diese Daten inzwischen geändert. Die Änderung hier wurde nicht gespeichert. Laden Sie den aktuellen Stand neu.',
     action: 'reload',
   },
+  'migration-failed': {
+    title: 'Migration fehlgeschlagen',
+    text: 'Der vorhandene Speicher konnte nicht auf die aktuelle Struktur migriert werden. Der Vorzustand bleibt unverändert. Sichern Sie ihn mit einem Rettungsexport, bevor Sie die Anwendung neu laden.',
+    action: 'export',
+  },
   'storage-failed': {
     title: 'Speicher nicht verfügbar',
     text: 'Der lokale Speicher dieses Browsers konnte nicht gelesen oder geschrieben werden.',
@@ -74,7 +79,7 @@ export function WorkspaceNotices() {
               <p className="mt-1 text-sm leading-relaxed text-[var(--color-text-secondary)]">{text}</p>
             </div>
             {action === 'export' ? (
-              <Button variant="secondary" className="min-h-touch shrink-0 desktop:min-h-0" onClick={exportBackup} disabled={exporting || status !== 'ready'}>
+              <Button variant="secondary" className="min-h-touch shrink-0 desktop:min-h-0" onClick={exportBackup} disabled={exporting || (status !== 'ready' && notice !== 'migration-failed')}>
                 Sicherung exportieren
               </Button>
             ) : (

@@ -8,7 +8,7 @@ import {
   type WorkspaceDraft, type WorkspaceEnvelope, type WorkspaceMeta, type WorkspaceDocumentSummary,
   type WorkspaceResult, type WorkspaceVerbund,
   type ReviewBaseline, type ReviewCheckpoint, type ReviewDecision, type ReviewDecisionKind, type ReviewTrailRow,
-  type ReviewTrailView, type DocumentSnapshot,
+  type ReviewTrailView, type DocumentSnapshot, type WorkspaceBackup,
 } from '@/domain/workspaceModel';
 import { snapshotDocument, assertAdmissible, assertState, pointerValue } from '@/adapters/workspaceDocumentAdmission';
 import { parseWorkspaceBackup, parseVerbundBackup } from '@/adapters/workspaceBackup';
@@ -20,7 +20,7 @@ import { StorageFailure, failure, reject, timestamp } from '@/adapters/workspace
 import { deleteDatabase, storedDatabaseShape, withinDeadline } from '@/adapters/workspaceDatabaseLifecycle';
 import { migrateWorkspaceStorage } from '@/adapters/workspaceMigration';
 import { reviewTrailInWorker } from '@/adapters/reviewTrailWork';
-import { appendDecisionError, deriveReviewState, resolveActionReferences, REVIEW_ACTIONS_SYSTEM, REVIEW_ACTION_TYPE_APPROVED } from '@/domain/reviewTrail';
+import { appendDecisionError, deriveReviewState, documentSnapshot, resolveActionReferences, sameStand, REVIEW_ACTIONS_SYSTEM, REVIEW_ACTION_TYPE_APPROVED } from '@/domain/reviewTrail';
 import { documentBody } from '@/domain/documentContent';
 import { isJsonObject, readArray, type JsonObject } from '@/domain/jsonGuards';
 
@@ -140,7 +140,20 @@ export class WorkspaceStore {
   private static declareVersions(db: Dexie): void {
     db.version(1).stores(WORKSPACE_SCHEMA_V1);
     db.version(STORAGE_SCHEMA_VERSION).stores(WORKSPACE_SCHEMA)
-      .upgrade(transaction => migrateWorkspaceStorage(transaction, 1, STORAGE_SCHEMA_VERSION));
+      .upgrade(async (transaction) => {
+        try { await migrateWorkspaceStorage(transaction, 1, STORAGE_SCHEMA_VERSION); }
+        catch { reject('WORKSPACE_MIGRATION_FAILED'); }
+      });
+  }
+
+  /** Read-only rescue export after a failed migration; never creates a missing database. */
+  static async exportRecoveryBackup(): Promise<WorkspaceResult<string>> {
+    try {
+      if (!await Dexie.exists(WORKSPACE_DATABASE_NAME)) reject('WORKSPACE_STORAGE_FAILED');
+      const db = new Dexie(WORKSPACE_DATABASE_NAME);
+      try { await db.open(); return await exportNewerWorkspaceBackup(db); }
+      finally { db.close(); }
+    } catch (error) { return failure(error); }
   }
 
   close(): void { this.db.close(); }
@@ -483,16 +496,30 @@ export class WorkspaceStore {
     return this.read(this.db.tables.map(table => table.name), () => exportVerbundBackupSnapshot(this.db, verbundId));
   }
 
+  /** Die Vergleichsbasis muss den Stand aus ihrer eigenen Quelle belegen; sonst wäre der nächste Diff falsch. */
+  private async baselinesMatch(backup: Pick<WorkspaceBackup, 'documents' | 'reviewBaseline'>): Promise<boolean> {
+    const documents = new Map(backup.documents.map(entry => [entry.localId, entry]));
+    for (const row of backup.reviewBaseline) {
+      const document = documents.get(row.localId);
+      if (!document) return false;
+      const snapshot = await documentSnapshot(row.source, document.rootType).catch(() => undefined);
+      if (!snapshot || !sameStand(row.stand, snapshot)) return false;
+    }
+    return true;
+  }
+
   async restoreBackup(bytes: Uint8Array, confirmation: 'replace-workspace'): Promise<WorkspaceResult<void>> {
     if (confirmation !== 'replace-workspace') return failure(new StorageFailure('WORKSPACE_CONFIRMATION_REQUIRED'));
     const parsed = await parseWorkspaceBackup(bytes);
     if (!parsed.ok) return parsed;
+    if (!await this.baselinesMatch(parsed.value)) return failure(new StorageFailure('WORKSPACE_BACKUP_INVALID'));
     return this.write(() => restoreWorkspaceBackupSnapshot(this.db, parsed.value), false);
   }
   async restoreVerbundBackup(bytes: Uint8Array, confirmation: 'replace-verbund'): Promise<WorkspaceResult<void>> {
     if (confirmation !== 'replace-verbund') return failure(new StorageFailure('WORKSPACE_CONFIRMATION_REQUIRED'));
     const parsed = await parseVerbundBackup(bytes);
     if (!parsed.ok) return parsed;
+    if (!await this.baselinesMatch(parsed.value)) return failure(new StorageFailure('WORKSPACE_BACKUP_INVALID'));
     return this.write(() => restoreVerbundBackupSnapshot(this.db, parsed.value), false);
   }
 
