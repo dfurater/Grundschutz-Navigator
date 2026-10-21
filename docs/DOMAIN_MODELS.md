@@ -93,9 +93,11 @@ trägt weder `resource-fragment` noch `media-type`, `citation` oder `base64` und
 ist keine Eingabe dieser Schicht.
 
 Der Klassifikator löst nur dokumentinterne Fragmente und explizit
-bereitgestellte Cross-Dokument-Ziele auf. Ein Fragment trifft eine
-`back-matter`-Ressource unabhängig von der Groß-/Kleinschreibung der
-Hexziffern ihrer `uuid`. Relative Ziele erhalten keinen
+bereitgestellte Cross-Dokument-Ziele auf. Ein Fragment trifft zuerst die
+`back-matter`-Ressource mit exakt gleicher `uuid`; sonst die einzige Ressource,
+deren `uuid` sich nur in der Groß-/Kleinschreibung der Hexziffern
+unterscheidet. Tragen mehrere Ressourcen diese UUID in verschiedenen
+Schreibweisen, bleibt das Fragment unaufgelöst. Relative Ziele erhalten keinen
 Verzeichniskontext; externe Ziele werden ausschließlich für `https:` als
 externe Navigation ausgewiesen, alle anderen Protokolle bleiben Text. Die
 Schicht führt weder Netzwerk- noch Dateizugriffe aus und dekodiert keine

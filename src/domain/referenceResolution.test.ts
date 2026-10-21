@@ -232,17 +232,20 @@ describe('referenceResolution', () => {
     });
   });
 
-  it('resolves resource fragments regardless of hex digit case', () => {
-    const document = createReferenceDocument({
-      source: { 'assessment-results': { 'back-matter': { resources: [{ uuid: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' }] } } },
-      context: {},
-      rootType: 'assessment-results',
-      oscalVersion: '1.2.2',
+  it('resolves resource fragments across hex digit case only when the target is unambiguous', () => {
+    const lower = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    const mixed = 'Aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    const resolve = (resources: unknown[], href: string) => resolveOscalReference({ href, path: '/x/href' }, {
+      document: createReferenceDocument({
+        source: { 'assessment-results': { 'back-matter': { resources } } },
+        context: {},
+        rootType: 'assessment-results',
+        oscalVersion: '1.2.2',
+      }),
     });
-    expect(resolveOscalReference(
-      { href: '#AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA', path: '/x/href' },
-      { document },
-    )).toMatchObject({ kind: 'resource', resource: { uuid: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' } });
+    expect(resolve([{ uuid: lower }], `#${lower.toUpperCase()}`)).toMatchObject({ kind: 'resource', resource: { uuid: lower } });
+    expect(resolve([{ uuid: lower }, { uuid: mixed }], `#${mixed}`)).toMatchObject({ kind: 'resource', resource: { uuid: mixed } });
+    expect(resolve([{ uuid: lower }, { uuid: mixed }], `#${lower.toUpperCase()}`)).toMatchObject({ kind: 'unresolved', reason: 'fragment-not-found' });
   });
 
   it('excludes provenance links from resolution and diagnostics', () => {

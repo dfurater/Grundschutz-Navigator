@@ -91,6 +91,8 @@ interface IndexedResource {
 interface ResourceIndex {
   readonly entries: readonly IndexedResource[];
   readonly byUuid: ReadonlyMap<string, IndexedResource>;
+  /** Kleingeschriebene UUID → Ressource; `null`, wenn mehrere Schreibweisen dieselbe UUID tragen. */
+  readonly byLowerCaseUuid: ReadonlyMap<string, IndexedResource | null>;
 }
 
 interface PreparedReferenceResolutionContext extends ReferenceResolutionContext {
@@ -199,15 +201,29 @@ function createResourceIndex(
 ): ResourceIndex {
   const entries = getBackMatterResources(document).map((resource, index) => ({ resource, index }));
   const byUuid = new Map<string, IndexedResource>();
+  const byLowerCaseUuid = new Map<string, IndexedResource | null>();
   for (const entry of entries) {
     const { resource } = entry;
-    // OSCAL-UUIDs erlauben beide Schreibweisen der Hexziffern; Fragmente lösen schreibweisenunabhängig auf.
-    const uuid = readString(resource.uuid)?.toLowerCase();
-    if (uuid && !byUuid.has(uuid)) {
+    const uuid = readString(resource.uuid);
+    if (!uuid) continue;
+    if (!byUuid.has(uuid)) {
       byUuid.set(uuid, entry);
     }
+    const lower = uuid.toLowerCase();
+    const known = byLowerCaseUuid.get(lower);
+    const sameSpelling = known !== undefined && known !== null && readString(known.resource.uuid) === uuid;
+    if (known === undefined) byLowerCaseUuid.set(lower, entry);
+    else if (!sameSpelling) byLowerCaseUuid.set(lower, null);
   }
-  return { entries, byUuid };
+  return { entries, byUuid, byLowerCaseUuid };
+}
+
+/**
+ * OSCAL-UUIDs erlauben beide Schreibweisen der Hexziffern. Die exakte Schreibweise gewinnt;
+ * sonst trifft das Fragment nur eine eindeutige Ressource, nie still die erste mehrerer Schreibweisen.
+ */
+function lookupResource(index: ResourceIndex, fragment: string): IndexedResource | undefined {
+  return index.byUuid.get(fragment) ?? index.byLowerCaseUuid.get(fragment.toLowerCase()) ?? undefined;
 }
 
 function prepareReferenceResolutionContext(
@@ -218,7 +234,7 @@ function prepareReferenceResolutionContext(
 
   return {
     ...input,
-    resourceIndex: resourceIndexes.get(input.document) ?? { entries: [], byUuid: new Map() },
+    resourceIndex: resourceIndexes.get(input.document) ?? { entries: [], byUuid: new Map(), byLowerCaseUuid: new Map() },
     resourceIndexes,
   };
 }
@@ -342,7 +358,7 @@ function resolveExplicitDocumentReference(
   }
 
   const documentContext = withReferenceDocument(context, document);
-  const indexedResource = documentContext.resourceIndex.byUuid.get(fragment.toLowerCase());
+  const indexedResource = lookupResource(documentContext.resourceIndex, fragment);
   if (!indexedResource) {
     return unresolvedReference(
       input,
@@ -470,7 +486,7 @@ function resolveFragmentReference(
   const target = input.href.slice(1);
   if (!target) return unresolvedReference(input, context, 'fragment-not-found');
 
-  const indexedResource = context.resourceIndex.byUuid.get(target.toLowerCase());
+  const indexedResource = lookupResource(context.resourceIndex, target);
   if (indexedResource) {
     const resolvedResource = resolveResource(
       indexedResource.resource,
