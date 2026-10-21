@@ -149,7 +149,7 @@ function validityOf(collected: unknown, expires: unknown, at: Date): EvidenceVal
   if (Number.isNaN(parseTimestamp(collected))) return 'not-evaluable';
   if (expires === undefined) return 'no-expiry-declared';
   const expiresAt = parseTimestamp(expires);
-  if (Number.isNaN(expiresAt) || typeof expires !== 'string') return 'not-evaluable';
+  if (Number.isNaN(expiresAt) || typeof expires !== 'string' || Number.isNaN(at.getTime())) return 'not-evaluable';
   if (expiresAt !== at.getTime()) return expiresAt > at.getTime() ? 'current' : 'expired';
   // `Date.parse` kappt unter der Millisekunde; ein Rest > 0 liegt noch nach `at`.
   const subMillisecond = /\.\d{3}(\d+)/.exec(expires)?.[1] ?? '';

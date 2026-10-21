@@ -152,6 +152,17 @@ describe('deriveEvidenceReadModel', () => {
     ]);
   });
 
+  it('bewertet ein vorhandenes expires gegen ein ungültiges at als not-evaluable', () => {
+    const source = poam({ observations: [observation(OBS_A), observation(OBS_B, { expires: '2026-12-31T00:00:00Z' })] });
+    const model = deriveEvidenceReadModel({
+      source,
+      rootType: 'plan-of-action-and-milestones',
+      oscalVersion: '1.2.2',
+      at: new Date('ungültig'),
+    });
+    expect(model.observations.map((entry) => entry.validity)).toEqual(['no-expiry-declared', 'not-evaluable']);
+  });
+
   it('erhält undokumentierte methods und types als Rohwert', () => {
     const model = derive(
       poam({ observations: [observation(OBS_A, { methods: ['UNKNOWN', 'ERFUNDEN'], types: ['finding', 'eigen'] })] }),
