@@ -175,7 +175,7 @@ describe('deriveEvidenceReadModel', () => {
           observation(OBS_A, {
             'relevant-evidence': [
               { description: SECRET_DESCRIPTION },
-              { description: 'd', href: `#${RES_FILE}` },
+              { description: 'd', href: `#${RES_FILE.toUpperCase()}` },
               { description: 'd', href: EXTERNAL_HREF },
               { description: 'd', href: 'file:///etc/passwd' },
               { description: 'd', links: [{ href: `#${RES_EMPTY}`, 'resource-fragment': 'seite-2' }, { text: 'ohne href' }, { href: 'nachweise/datei.pdf' }] },

@@ -93,7 +93,9 @@ trägt weder `resource-fragment` noch `media-type`, `citation` oder `base64` und
 ist keine Eingabe dieser Schicht.
 
 Der Klassifikator löst nur dokumentinterne Fragmente und explizit
-bereitgestellte Cross-Dokument-Ziele auf. Relative Ziele erhalten keinen
+bereitgestellte Cross-Dokument-Ziele auf. Ein Fragment trifft eine
+`back-matter`-Ressource unabhängig von der Groß-/Kleinschreibung der
+Hexziffern ihrer `uuid`. Relative Ziele erhalten keinen
 Verzeichniskontext; externe Ziele werden ausschließlich für `https:` als
 externe Navigation ausgewiesen, alle anderen Protokolle bleiben Text. Die
 Schicht führt weder Netzwerk- noch Dateizugriffe aus und dekodiert keine
@@ -1705,7 +1707,7 @@ Die Ableitung liest ausschließlich die übergebenen Graphen. Sie führt weder N
 
 ## Evidenz (Assessment Layer)
 
-`deriveEvidenceReadModel({ source, rootType, oscalVersion, at, contextUuids })` in `src/domain/evidenceReadModel.ts` leitet die Evidenz eines Dokuments mit Root `assessment-results` oder `plan-of-action-and-milestones` ab. Die Funktion ist rein: Sie liest nur `source`, führt keinen Netzwerk-, Datei- oder Storagezugriff aus, hält keinen Zustand und verändert `source` nicht. Evidenzinhalte liegen ausschließlich als `back-matter.resources[].base64` im Dokument; einen eigenen Evidenzspeicher gibt es nicht.
+`deriveEvidenceReadModel({ source, rootType, oscalVersion, at, contextUuids })` in `src/domain/evidenceReadModel.ts` leitet die Evidenz eines Dokuments mit Root `assessment-results` oder `plan-of-action-and-milestones` ab. Die Funktion ist rein: Sie liest ausschließlich ihre Eingaben `source`, `rootType`, `oscalVersion`, `at` und `contextUuids`, führt keinen Netzwerk-, Datei- oder Storagezugriff aus, hält keinen Zustand und verändert `source` nicht. Evidenzinhalte liegen ausschließlich als `back-matter.resources[].base64` im Dokument; einen eigenen Evidenzspeicher gibt es nicht.
 
 Beobachtungen stammen in Assessment Results aus `results[].observations[]`, im POA&M aus `observations[]`. Je Beobachtung führt das Modell `methods` und `types` als Werte mit Status `documented` oder `undocumented`. Das dokumentierte Spektrum ist `EXAMINE`, `INTERVIEW`, `TEST` und `UNKNOWN` für `methods` sowie `ssp-statement-issue`, `control-objective`, `mitigation`, `finding`, `discovery` und `historic` für `types`; das Schema akzeptiert daneben jeden String, das Modell übernimmt ihn unverändert.
 

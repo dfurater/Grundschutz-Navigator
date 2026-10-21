@@ -232,6 +232,19 @@ describe('referenceResolution', () => {
     });
   });
 
+  it('resolves resource fragments regardless of hex digit case', () => {
+    const document = createReferenceDocument({
+      source: { 'assessment-results': { 'back-matter': { resources: [{ uuid: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' }] } } },
+      context: {},
+      rootType: 'assessment-results',
+      oscalVersion: '1.2.2',
+    });
+    expect(resolveOscalReference(
+      { href: '#AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA', path: '/x/href' },
+      { document },
+    )).toMatchObject({ kind: 'resource', resource: { uuid: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' } });
+  });
+
   it('excludes provenance links from resolution and diagnostics', () => {
     const references = resolveCatalogMetadataReferences({ document: makeDocument() });
 

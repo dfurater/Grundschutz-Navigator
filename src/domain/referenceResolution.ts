@@ -201,7 +201,8 @@ function createResourceIndex(
   const byUuid = new Map<string, IndexedResource>();
   for (const entry of entries) {
     const { resource } = entry;
-    const uuid = readString(resource.uuid);
+    // OSCAL-UUIDs erlauben beide Schreibweisen der Hexziffern; Fragmente lösen schreibweisenunabhängig auf.
+    const uuid = readString(resource.uuid)?.toLowerCase();
     if (uuid && !byUuid.has(uuid)) {
       byUuid.set(uuid, entry);
     }
@@ -341,7 +342,7 @@ function resolveExplicitDocumentReference(
   }
 
   const documentContext = withReferenceDocument(context, document);
-  const indexedResource = documentContext.resourceIndex.byUuid.get(fragment);
+  const indexedResource = documentContext.resourceIndex.byUuid.get(fragment.toLowerCase());
   if (!indexedResource) {
     return unresolvedReference(
       input,
@@ -469,7 +470,7 @@ function resolveFragmentReference(
   const target = input.href.slice(1);
   if (!target) return unresolvedReference(input, context, 'fragment-not-found');
 
-  const indexedResource = context.resourceIndex.byUuid.get(target);
+  const indexedResource = context.resourceIndex.byUuid.get(target.toLowerCase());
   if (indexedResource) {
     const resolvedResource = resolveResource(
       indexedResource.resource,
