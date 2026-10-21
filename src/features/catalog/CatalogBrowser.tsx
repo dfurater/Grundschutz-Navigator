@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router';
 import { PageTitle } from '@/app/PageTitle';
 import { PAGE_TITLES, TITLE_ID_SEPARATOR, TITLE_PARENT_SEPARATOR } from '@/app/pageTitles';
+import { Button } from '@/components/Button';
 import type { Catalog, Control } from '@/domain/models';
 import { useCatalog } from '@/hooks/useCatalog';
 import { useControlNavigation } from '@/hooks/useControlNavigation';
@@ -44,7 +45,7 @@ export function CatalogBrowser() {
   }>();
   const navigate = useNavigate();
   const location = useLocation();
-  const { catalog, loading, error } = useCatalog();
+  const { catalog, loading, error, activeCatalogKey, retryCatalog } = useCatalog();
   const { filters, setFilters, sort, setSort, searchString } = useFilterParams();
   const isDesktop = useMediaQuery(DESKTOP_QUERY);
   const hasOwnScrollArea = useMediaQuery(OWN_SCROLL_AREA_QUERY);
@@ -200,6 +201,14 @@ export function CatalogBrowser() {
           <div className="text-center max-w-sm">
             <p className="text-red-600 font-medium">Fehler beim Laden</p>
             <p className="text-sm text-[var(--color-danger-text)] mt-1">{displayState.error}</p>
+            <Button
+              variant="primary"
+              size="sm"
+              className="mt-4"
+              onClick={() => retryCatalog?.(activeCatalogKey)}
+            >
+              Erneut versuchen
+            </Button>
           </div>
         </div>
       </>

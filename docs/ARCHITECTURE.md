@@ -661,6 +661,7 @@ Sammlungsbezogene Felder:
 - `activeCatalogKey` — der aktuell ausgewählte Katalog
 - `selectCatalog(catalogKey)` — wählt einen ausgelieferten Katalog aus und stößt ihn bei Bedarf an. `AppShell` ruft das aus dem Routen-`catalogKey` auf.
 - `requestCatalog(catalogKey)` — lädt einen ausgelieferten Katalog, ohne die Auswahl zu ändern, je Katalog höchstens einmal. Die Profile-Station fordert damit die BSI-Kataloge ihrer Importziele an.
+- `retryCatalog(catalogKey)` — wiederholt den Ladepfad eines Katalogs mit Fehlerzustand: setzt den Fehler zurück und startet genau einen neuen Request. Ohne Fehler oder während eines laufenden Requests bleibt der Aufruf wirkungslos. Der Fehlerzustand in `CatalogBrowser` bietet dafür „Erneut versuchen“.
 
 Projektionen des **aktiven** Katalogs:
 

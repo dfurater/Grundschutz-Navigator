@@ -204,6 +204,7 @@ Der Kontext hält eine Katalogsammlung (`catalogs: ReadonlyMap<CatalogKey, Loade
 - Ein Katalog mit abweichendem Hash oder fehlenden Metadaten trägt `class-1-unverified-public` und bleibt sichtbar.
 - Kein anderer geladener Katalog verliert dadurch seine Vertrauensklasse; kein Katalog wird still als verifiziert dargestellt.
 - Ein fehlender oder beschädigter Katalog erzeugt einen Fehlerzustand für genau diesen Katalog; die übrigen bleiben nutzbar.
+- `retryCatalog(catalogKey)` setzt den Fehler des betroffenen Katalogs zurück und startet genau einen neuen Request, auch für den Einstiegskatalog. Während eines laufenden Requests bleibt der Aufruf wirkungslos.
 
 Die Projektionen `catalog`, `provenance`, `verification`, `loading` und `error` aus `useCatalog()` beziehen sich auf den per Route aktiven Katalog.
 
