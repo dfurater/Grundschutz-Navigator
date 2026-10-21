@@ -51,6 +51,28 @@ type Write = <T>(operation: (store: WorkspacePort) => Promise<WorkspaceResult<T>
 
 const storageFailed = () => failure(new StorageFailure('WORKSPACE_STORAGE_FAILED'));
 
+/**
+ * Prüf- und Freigabeaktionen nur über einem gebundenen Bezugsstand, auch einem über lokale
+ * Referenzen geerbten (SSP → Profil → Katalog). Dieselbe Ableitung wie die Verbundansicht,
+ * hier im Speicherpfad, damit eine gesperrte Oberfläche nicht die einzige Sperre ist.
+ */
+async function reviewGate(port: WorkspacePort, localId: LocalId, delivery: CatalogDelivery): Promise<WorkspaceResult<null>> {
+  const document = await port.getDocument(localId);
+  if (!document.ok) return document;
+  if (!document.value) return { ok: true, value: null };
+  const [{ loadMembers }, { applyCatalogPins, reviewLocked }] = await Promise.all([
+    import('@/state/workspaceVerbundView'),
+    import('@/domain/workspaceCatalogPin'),
+  ]);
+  const members = await loadMembers(port, document.value.verbundId);
+  if (!members.ok) return members;
+  const bindings = await port.listBindings();
+  if (!bindings.ok) return bindings;
+  const ids = new Set<string>(members.value.map((member) => member.localId));
+  const pin = applyCatalogPins(members.value, bindings.value.filter((binding) => ids.has(binding.fromLocalId)), delivery).pins.get(localId);
+  return reviewLocked(pin) ? failure(new StorageFailure(pin?.code ?? 'OSCAL_WORKSPACE_CATALOG_PIN_UNVERIFIED')) : { ok: true, value: null };
+}
+
 /** Liest den Schnappschuss im Main Thread und leitet ihn im Worker ab. */
 async function analyze(port: WorkspacePort, input: ProfileAnalysisInput, class1: readonly WorkspaceClass1Artifact[], delivery: CatalogDelivery): Promise<WorkspaceResult<ProfileAnalysis>> {
   const [{ profileAnalysisSnapshot }, { analyzeProfileInWorker }] = await Promise.all([
@@ -91,7 +113,14 @@ export function createWorkspaceDocuments({ port, write, quiet, class1, delivery,
     getDraft: (localId) => read((store) => store.getDraft(localId)),
     listBindings: () => read((store) => store.listBindings()),
     addDocument: (...args) => write((store) => store.addDocument(...args)),
-    saveDocument: (...args) => write((store) => store.saveDocument(...args)),
+    saveDocument: (...args) => write(async (store) => {
+      // Eine Freigabe ist eine Prüfentscheidung und braucht den gebundenen Bezugsstand.
+      if (args[6] !== undefined) {
+        const gate = await reviewGate(store, args[0], delivery);
+        if (!gate.ok) return gate;
+      }
+      return store.saveDocument(...args);
+    }),
     autosaveDraft: (...args) => quiet((store) => store.autosaveDraft(...args)),
     setBinding: (...args) => write((store) => store.setBinding(...args)),
     deleteDocument: async (localId) => {
@@ -100,8 +129,14 @@ export function createWorkspaceDocuments({ port, write, quiet, class1, delivery,
       return result;
     },
     listReviewTrail: (localId) => read((store) => store.listReviewTrail(localId)),
-    appendCheckpoint: (...args) => read((store) => store.appendCheckpoint(...args)),
-    appendDecision: (...args) => read((store) => store.appendDecision(...args)),
+    appendCheckpoint: (...args) => read(async (store) => {
+      const gate = await reviewGate(store, args[0], delivery);
+      return gate.ok ? store.appendCheckpoint(...args) : gate;
+    }),
+    appendDecision: (...args) => read(async (store) => {
+      const gate = await reviewGate(store, args[0], delivery);
+      return gate.ok ? store.appendDecision(...args) : gate;
+    }),
     analyzeProfile: (input) => read((store) => analyze(store, input, class1, delivery)),
     checkProfileSchema: (source) => checkSchema(source)
       .catch((): ProfileSchemaCheck => ({ status: 'failed', code: 'OSCAL_EXPORT_SOURCE_INVALID', path: '/' })),

@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { PROJECT_PROPS_NAMESPACE } from '@/domain/projectProps';
-import { applyCatalogPins, catalogPinStatus, catalogPinsForSave, readCatalogPins, withCatalogPins, type CatalogDelivery } from '@/domain/workspaceCatalogPin';
+import {
+  applyCatalogPins, catalogPinStatus, catalogPinsForSave, editLocked, readCatalogPins, reviewLocked, withCatalogPins, type CatalogDelivery,
+} from '@/domain/workspaceCatalogPin';
 import { WORKSPACE_DIAGNOSTIC_CODES } from '@/domain/workspaceDiagnostics';
 import type { LocalId, WorkspaceBinding } from '@/domain/workspaceModel';
 import { makeSchemaValidOscalDocument } from '@/test/fixtures/oscalSchemaFixtures';
@@ -33,16 +35,32 @@ describe('catalogPinStatus', () => {
 
   const all = ['catalog-gspp'];
   it.each([
-    ['bound', pin('gspp', NEW), delivered(NEW), undefined, [], []],
-    ['pending', pin('gspp', NEW), new Map(), undefined, [], []],
-    ['unpinned', undefined, delivered(NEW), WORKSPACE_DIAGNOSTIC_CODES.catalogPinMissing, ['gspp'], all],
-    ['not-delivered', pin('gspp', OLD), delivered(NEW), WORKSPACE_DIAGNOSTIC_CODES.catalogPinNotDelivered, ['gspp'], all],
-    ['unverified', pin('gspp', NEW), delivered(NEW, false), WORKSPACE_DIAGNOSTIC_CODES.catalogPinUnverified, [], []],
-    ['invalid', pin('gspp', NEW).slice(1), delivered(NEW), WORKSPACE_DIAGNOSTIC_CODES.catalogPinInvalid, [], all],
-    ['invalid', pin('unbekannt', NEW), delivered(NEW), WORKSPACE_DIAGNOSTIC_CODES.catalogPinInvalid, [], all],
-  ] as const)('meldet %s', (state, props, delivery, code, offers, withheld) => {
+    ['bound', pin('gspp', NEW), delivered(NEW), undefined, [], [], []],
+    ['pending', pin('gspp', NEW), new Map(), undefined, [], [], ['gspp']],
+    ['unpinned', undefined, delivered(NEW), WORKSPACE_DIAGNOSTIC_CODES.catalogPinMissing, ['gspp'], all, []],
+    ['not-delivered', pin('gspp', OLD), delivered(NEW), WORKSPACE_DIAGNOSTIC_CODES.catalogPinNotDelivered, ['gspp'], all, []],
+    ['unverified', pin('gspp', NEW), delivered(NEW, false), WORKSPACE_DIAGNOSTIC_CODES.catalogPinUnverified, [], [], []],
+    ['invalid', pin('gspp', NEW).slice(1), delivered(NEW), WORKSPACE_DIAGNOSTIC_CODES.catalogPinInvalid, [], all, []],
+    ['invalid', pin('unbekannt', NEW), delivered(NEW), WORKSPACE_DIAGNOSTIC_CODES.catalogPinInvalid, [], all, []],
+  ] as const)('meldet %s', (state, props, delivery, code, offers, withheld, pending) => {
     expect(catalogPinStatus(profile(props ? [...props] : undefined), 'profile', [catalogBinding()], delivery))
-      .toEqual({ state, code, offers, withheld });
+      .toEqual({ state, code, offers, withheld, pending });
+  });
+
+  // Ein importiertes Dokument hat noch keine Bindung; sein Paar ist trotzdem die Bewertungsgrundlage.
+  it.each([
+    ['bound', pin('gspp', NEW), delivered(NEW)],
+    ['pending', pin('gspp', NEW), new Map()],
+    ['not-delivered', pin('gspp', OLD), delivered(NEW)],
+    ['unverified', pin('gspp', NEW), delivered(NEW, false)],
+    ['invalid', pin('gspp', NEW).slice(1), delivered(NEW)],
+    ['invalid', pin('unbekannt', NEW), delivered(NEW)],
+  ] as const)('prüft ein vorhandenes Paar ohne Katalogbindung: %s', (state, props, delivery) => {
+    expect(catalogPinStatus(profile([...props]), 'profile', [], delivery)?.state).toBe(state);
+  });
+
+  it('prüft nichts bei einem Dokument ohne Paar und ohne Katalogbindung', () => {
+    expect(catalogPinStatus(profile([{ name: 'x', value: 'y' }]), 'profile', [], delivered(NEW))).toBeUndefined();
   });
 
   it('enthält weder Commit noch Katalogschlüssel in der Diagnose', () => {
@@ -82,6 +100,13 @@ describe('withCatalogPins', () => {
   ])('verweigert %s, statt still zu migrieren', (_label, source, delivery, code) => {
     expect(withCatalogPins(source, 'profile', [catalogBinding()], delivery)).toEqual({ ok: false, code });
   });
+
+  it.each([
+    ['einen anderen Stand', pin('gspp', OLD), WORKSPACE_DIAGNOSTIC_CODES.catalogPinNotDelivered],
+    ['einen unbekannten Katalog', pin('unbekannt', NEW), WORKSPACE_DIAGNOSTIC_CODES.catalogPinInvalid],
+  ])('verweigert ein Paar auf %s auch ohne Katalogbindung', (_label, props, code) => {
+    expect(withCatalogPins(profile([...props]), 'profile', [], delivered(NEW))).toEqual({ ok: false, code });
+  });
 });
 
 describe('catalogPinsForSave', () => {
@@ -118,6 +143,61 @@ describe('applyCatalogPins', () => {
     expect(result.withheld).toEqual([stale]);
     expect(result.pins.get(ID)?.state).toBe('bound');
     expect(result.pins.get(other)?.state).toBe('not-delivered');
+  });
+
+  describe('über lokale Referenzen', () => {
+    const SSP = 'ssp' as LocalId;
+    const PROFILE = 'profile' as LocalId;
+    const sspSource = () => makeSchemaValidOscalDocument('system-security-plan', '1.2.2');
+    const toLocal = (fromLocalId: LocalId, localId: LocalId): WorkspaceBinding => ({
+      fromLocalId, pointer: '/x', href: `${localId}.json`, target: { kind: 'local', localId },
+    });
+
+    it('überträgt die Sperre des Profils auf das SSP, das es importiert', () => {
+      const members = [
+        { localId: SSP, rootType: 'system-security-plan' as const, source: sspSource() },
+        { localId: PROFILE, rootType: 'profile' as const, source: profile(pin('gspp', OLD)) },
+      ];
+      const { pins } = applyCatalogPins(members, [toLocal(SSP, PROFILE), catalogBinding('catalog-gspp', PROFILE)], delivered(NEW));
+      expect(pins.get(SSP)).toMatchObject({ state: 'not-delivered', code: WORKSPACE_DIAGNOSTIC_CODES.catalogPinNotDelivered, inherited: true });
+      expect(reviewLocked(pins.get(SSP))).toBe(true);
+      expect(editLocked(pins.get(SSP))).toBe(false);
+      expect(editLocked(pins.get(PROFILE))).toBe(true);
+    });
+
+    it('lässt das SSP frei, solange das Profil gebunden ist', () => {
+      const members = [
+        { localId: SSP, rootType: 'system-security-plan' as const, source: sspSource() },
+        { localId: PROFILE, rootType: 'profile' as const, source: profile(pin('gspp', NEW)) },
+      ];
+      const { pins } = applyCatalogPins(members, [toLocal(SSP, PROFILE), catalogBinding('catalog-gspp', PROFILE)], delivered(NEW));
+      expect(pins.has(SSP)).toBe(false);
+      expect(reviewLocked(pins.get(SSP))).toBe(false);
+    });
+
+    it('folgt mehrstufigen Ketten und endet in einem Zyklus', () => {
+      const MIDDLE = 'middle' as LocalId;
+      const members = [
+        { localId: SSP, rootType: 'system-security-plan' as const, source: sspSource() },
+        { localId: MIDDLE, rootType: 'profile' as const, source: profile() },
+        { localId: PROFILE, rootType: 'profile' as const, source: profile(pin('gspp', OLD)) },
+      ];
+      const bindings = [toLocal(SSP, MIDDLE), toLocal(MIDDLE, SSP), toLocal(MIDDLE, PROFILE), catalogBinding('catalog-gspp', PROFILE)];
+      const { pins } = applyCatalogPins(members, bindings, delivered(NEW));
+      expect(pins.get(SSP)?.state).toBe('not-delivered');
+      expect(pins.get(MIDDLE)?.state).toBe('not-delivered');
+      expect(pins.get(PROFILE)?.inherited).toBeUndefined();
+    });
+
+    it('behält den eigenen schwereren Zustand eines Dokuments', () => {
+      const members = [
+        { localId: ID, rootType: 'profile' as const, source: profile(pin('unbekannt', NEW)) },
+        { localId: PROFILE, rootType: 'profile' as const, source: profile(pin('gspp', OLD)) },
+      ];
+      const { pins } = applyCatalogPins(members, [toLocal(ID, PROFILE), catalogBinding('catalog-gspp', PROFILE)], delivered(NEW));
+      expect(pins.get(ID)).toMatchObject({ state: 'invalid' });
+      expect(pins.get(ID)?.inherited).toBeUndefined();
+    });
   });
 
   it('hält eine falsch gebundene Katalogbindung auch zurück, wenn ein anderer Katalog nicht verifiziert ist', () => {

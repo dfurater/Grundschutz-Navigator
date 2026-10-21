@@ -9,12 +9,16 @@ import { makeSchemaValidOscalDocument } from '@/test/fixtures/oscalSchemaFixture
 import {
   EMPTY_CATALOG_STATE, TEST_CATALOG_COMMIT, mainLandmark as main, renderWorkspaceArea as renderArea, withLoadedCatalog,
 } from '@/test/renderWorkspaceArea';
-import { readStore, resetWorkspace, seedWorkspace, value, type SeededWorkspace } from '@/test/workspaceAreaFixture';
+import { readStore, resetWorkspace, seedWorkspace, SENTINEL_HREF, value, type SeededWorkspace } from '@/test/workspaceAreaFixture';
+import { catalogDelivery } from '@/state/workspaceCatalogSession';
+import { createWorkspaceDocuments } from '@/state/workspaceDocuments';
+import type { LocalId, WorkspaceResult } from '@/domain/workspaceModel';
 
 vi.mock('@/adapters/oscalImportGate', async () => {
   const { processClass2OscalBytes } = await import('@/domain/oscalClass2Import');
   return { importClass2OscalDocument: processClass2OscalBytes };
 });
+vi.mock('@/adapters/reviewTrailWork', async () => (await import('@/test/workspaceNodeWorkers')).inProcessReviewTrailWork());
 
 /*
  * Bindungen lokaler Dokumente an BSI-Kataloge (GSPP-577, GSPP-362): Der
@@ -198,5 +202,82 @@ describe('Bindung an einen BSI-Katalog', () => {
     await waitFor(() => expect(edges.querySelector('[data-edge-state="error"]')).toHaveTextContent('OSCAL_WORKSPACE_BINDING_STALE'));
     expect(edges).not.toHaveTextContent('BSI-Katalog in dieser Sitzung nicht geladen');
   });
-});
 
+  /** Schreibt eine Prüfentscheidung über den Speicherpfad des Bereichs, so wie die Prüfansicht es tut. */
+  async function decideReviewed(localId: LocalId) {
+    const store = value(await WorkspaceStore.open());
+    try {
+      const run = <T,>(operation: (port: WorkspaceStore) => Promise<WorkspaceResult<T>>) => operation(store);
+      const documents = createWorkspaceDocuments({
+        port: store, write: run, quiet: run, class1: [], delivery: catalogDelivery(withLoadedCatalog(true).catalogs), targets: new Map(),
+      });
+      const current = value(await store.getDocument(localId))!;
+      return await documents.appendDecision(localId, current.savedAt, null, { decision: 'reviewed', expectedSequence: 0 });
+    } finally { store.close(); }
+  }
+
+  describe('Katalogpaar eines importierten Dokuments ohne Bindung', () => {
+    it('sperrt bei einem alten Stand Prüfung und Speicherpfad', async () => {
+      const code = 'OSCAL_WORKSPACE_CATALOG_PIN_NOT_DELIVERED';
+      // Der Dateiimport legt das Dokument mit leerem Bindungssatz an.
+      const profile = await readStore((store) => store.addDocument(seeded.verbundId, profileSource('bsi-katalog.json', OLD_COMMIT), 'imported', []));
+      renderArea(buildWorkspaceDocumentUrl(seeded.verbundId, profile.localId), withLoadedCatalog(true));
+      await waitFor(() => expect(main().querySelector('[data-catalog-pin="not-delivered"]')).toBeInTheDocument());
+      expect(main()).toHaveTextContent(code);
+      for (const button of within(main()).getAllByRole('button', { name: 'Speichern' })) expect(button).toBeDisabled();
+      fireEvent.click(await within(main()).findByRole('tab', { name: /^Prüfung/ }));
+      await waitFor(() => expect(main().querySelector('[role="tabpanel"]:not([hidden]) fieldset')).toBeDisabled());
+      const result = await decideReviewed(profile.localId);
+      expect(result.ok ? undefined : result.diagnostic.code).toBe(code);
+      expect((await readStore((store) => store.listReviewTrail(profile.localId))).trail).toEqual([]);
+    });
+
+    it('sperrt ein Paar auf einen unbekannten Katalog', async () => {
+      const input = profileSource('bsi-katalog.json');
+      const props = (input.source.profile as { metadata: { props: { value: string; group: string }[] } }).metadata.props;
+      for (const prop of props) prop.group = 'unbekannt';
+      props[0].value = 'unbekannt';
+      const profile = await readStore((store) => store.addDocument(seeded.verbundId, input, 'imported', []));
+      renderArea(buildWorkspaceDocumentUrl(seeded.verbundId, profile.localId), withLoadedCatalog(true));
+      await waitFor(() => expect(main().querySelector('[data-catalog-pin="invalid"]')).toBeInTheDocument());
+      const result = await decideReviewed(profile.localId);
+      expect(result.ok ? undefined : result.diagnostic.code).toBe('OSCAL_WORKSPACE_CATALOG_PIN_INVALID');
+    });
+  });
+
+  describe('SSP → lokales Profil → BSI-Katalog', () => {
+    /** Gibt dem Profil aus `seedWorkspace` das Paar `commit` und eine Bindung auf `catalog-gspp`; das SSP bleibt unverändert. */
+    async function pinSeededProfile(commit: string) {
+      const store = value(await WorkspaceStore.open());
+      try {
+        const input = profileSource(SENTINEL_HREF, commit);
+        const replaced = value(await store.replaceDocument(seeded.profile.localId, seeded.profile.savedAt, null, input));
+        value(await store.setBinding({
+          fromLocalId: replaced.localId, pointer: '/profile/imports/0/href', href: SENTINEL_HREF,
+          target: { kind: 'class-1', artifactKey: 'catalog-gspp' },
+        }, replaced.savedAt));
+      } finally { store.close(); }
+    }
+
+    it('sperrt die Prüfung des SSP, wenn das importierte Profil an einen nicht ausgelieferten Stand gebunden ist', async () => {
+      await pinSeededProfile(OLD_COMMIT);
+      renderArea(buildWorkspaceDocumentUrl(seeded.verbundId, seeded.ssp.localId), withLoadedCatalog(true));
+      await waitFor(() => expect(main().querySelector('[data-catalog-pin="not-delivered"][data-catalog-pin-inherited]')).toBeInTheDocument());
+      expect(within(main()).queryByRole('button', { name: 'An ausgelieferten Stand binden' })).not.toBeInTheDocument();
+      fireEvent.click(within(main()).getByText('Prüfung und Freigabe'));
+      await waitFor(() => expect(main().querySelector('details fieldset')).toBeDisabled());
+      const result = await decideReviewed(seeded.ssp.localId);
+      expect(result.ok ? undefined : result.diagnostic.code).toBe('OSCAL_WORKSPACE_CATALOG_PIN_NOT_DELIVERED');
+      expect((await readStore((store) => store.listReviewTrail(seeded.ssp.localId))).trail).toEqual([]);
+    });
+
+    it('lässt die Prüfung des SSP frei, solange das Profil an den ausgelieferten Stand gebunden ist', async () => {
+      await pinSeededProfile(TEST_CATALOG_COMMIT);
+      renderArea(buildWorkspaceDocumentUrl(seeded.verbundId, seeded.ssp.localId), withLoadedCatalog(true));
+      fireEvent.click(await within(main()).findByText('Prüfung und Freigabe'));
+      await waitFor(() => expect(main().querySelector('details fieldset')).toBeEnabled());
+      expect(main().querySelector('[data-catalog-pin]')).toBeNull();
+      expect((await decideReviewed(seeded.ssp.localId)).ok).toBe(true);
+    });
+  });
+});

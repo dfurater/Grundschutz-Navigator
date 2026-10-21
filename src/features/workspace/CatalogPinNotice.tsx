@@ -24,14 +24,21 @@ const TEXT: Readonly<Record<Exclude<CatalogPinState, 'bound'>, { readonly title:
   },
 };
 
+/** Sperre über ein lokal referenziertes Dokument; dessen eigene Seite nennt den Grund. */
+const INHERITED = {
+  title: 'Bezugsstand eines referenzierten Dokuments gesperrt',
+  text: 'Ein Dokument, auf das dieses Dokument verweist, ist nicht an den ausgelieferten Stand des BSI-Katalogs gebunden. Prüfpunkte, Prüfentscheidungen und Freigaben sind gesperrt, bis es gebunden ist; Lesen und Export bleiben möglich.',
+} as const;
+
 /** Schreibschutz eines an einen BSI-Katalogstand gebundenen Dokuments; ohne Wert, Schlüssel oder Commit im Text. */
 export function CatalogPinNotice({ pin, busy = false, onBind }: Readonly<{ pin: CatalogPin | undefined; busy?: boolean; onBind?: () => void }>) {
   if (!pin || pin.state === 'bound') return null;
-  const { title, text } = TEXT[pin.state];
+  const { title, text } = pin.inherited ? INHERITED : TEXT[pin.state];
   return (
     <div
       role={pin.state === 'pending' ? 'status' : 'alert'}
       data-catalog-pin={pin.state}
+      data-catalog-pin-inherited={pin.inherited ? '' : undefined}
       className="flex flex-col gap-2 rounded-md border border-[var(--color-border-strong)] bg-[var(--color-surface-base)] p-4 sm:flex-row sm:items-start sm:justify-between"
     >
       <div className="min-w-0">
@@ -39,7 +46,7 @@ export function CatalogPinNotice({ pin, busy = false, onBind }: Readonly<{ pin: 
         <p className="mt-1 text-sm leading-relaxed text-[var(--color-text-secondary)]">{text}</p>
         {pin.code && <p className="mt-1 font-mono text-xs text-[var(--color-text-secondary)]">{pin.code}</p>}
       </div>
-      {pin.state === 'unpinned' && onBind && (
+      {pin.state === 'unpinned' && !pin.inherited && onBind && (
         <Button variant="secondary" className="min-h-touch shrink-0 desktop:min-h-0" disabled={busy} onClick={onBind}>
           An ausgelieferten Stand binden
         </Button>

@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import type { ReactNode } from 'react';
 import { StorageFailure, failure } from '@/adapters/workspaceStorageFailure';
 import { isLocalIdentity } from '@/app/routes';
+import type { CatalogKey } from '@/domain/sourceRegistry';
 import type { CatalogDelivery } from '@/domain/workspaceCatalogPin';
 import { catalogDelivery, verifiedCatalogArtifacts } from '@/state/workspaceCatalogSession';
 import type { WorkspaceClass1Artifact } from '@/domain/workspaceGraphModel';
@@ -96,7 +97,7 @@ export function WorkspaceProvider({ open = openWorkspaceStore, children }: Reado
   const autosaves = useRef(new Set<AutosaveFlush>());
   // Ein stabiles Objekt je Provider, nur im Arbeitsspeicher dieses Tabs.
   const [importTargets] = useState(() => new Map<LocalId, Map<string, PendingImportTarget>>());
-  const { catalogs } = useContext(CatalogContext);
+  const { catalogs, requestCatalog } = useContext(CatalogContext);
   const class1 = useMemo(() => verifiedCatalogArtifacts(catalogs), [catalogs]);
   const delivery = useMemo(() => catalogDelivery(catalogs), [catalogs]);
 
@@ -174,6 +175,12 @@ export function WorkspaceProvider({ open = openWorkspaceStore, children }: Reado
     });
     return () => { current = false; };
   }, [port, selectedVerbundId, revision, report, class1, delivery]);
+
+  // Ein Katalogpaar ohne Bindung fordert seinen Katalog sonst nirgends an; nur so wird der Bezugsstand prüfbar.
+  useEffect(() => {
+    const pending = new Set((loaded?.view?.documents ?? []).flatMap((document) => document.catalogPin?.pending ?? []));
+    for (const catalogKey of pending) requestCatalog?.(catalogKey as CatalogKey);
+  }, [loaded, requestCatalog]);
 
   const verbund = useMemo<VerbundViewState | null>(() => {
     if (selectedVerbundId === null) return null;

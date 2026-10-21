@@ -200,7 +200,8 @@ export async function deriveVerbundView({ verbund, members, bindings: stored, cl
   const graph = await buildWorkspaceGraph({ members, bindings, class1Artifacts });
   // Die Diagnose einer Kante auf ein nicht geladenes BSI-Artefakt beschreibt die Sitzung, nicht das Dokument.
   const { edges, suppressed } = projectEdges(graph, new Map(members.map((member) => [member.localId, member.source])), unavailable, withheld);
-  const pinDiagnostics = [...pins.values()].flatMap((pin) => pin.code ? [{ code: pin.code, path: CATALOG_PIN_PATH }] : []);
+  // Eine geerbte Sperre ist kein Befund des Dokuments; die Diagnose steht beim referenzierten Dokument.
+  const pinDiagnostics = [...pins.values()].flatMap((pin) => pin.code && !pin.inherited ? [{ code: pin.code, path: CATALOG_PIN_PATH }] : []);
   return {
     verbund,
     documents: members.map((member) => ({

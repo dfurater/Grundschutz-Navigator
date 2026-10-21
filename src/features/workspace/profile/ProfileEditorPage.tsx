@@ -12,6 +12,7 @@ import type { VerbundView, WorkspaceDocumentView } from '@/state/workspaceVerbun
 import { FOCUS_RING, OriginLabel, ValidityBadge } from '@/features/workspace/DocumentMarks';
 import { WorkspaceNotices } from '@/features/workspace/WorkspaceNotices';
 import { CatalogPinNotice } from '@/features/workspace/CatalogPinNotice';
+import { editLocked, reviewLocked } from '@/domain/workspaceCatalogPin';
 import { ReferenceEdges } from '@/features/workspace/ReferenceEdges';
 import { ImportsTab } from '@/features/workspace/profile/ImportsTab';
 import { PackageActions, PackageContent } from '@/features/workspace/profile/PackagePanel';
@@ -150,7 +151,9 @@ export function ProfileEditorPage({ view, document }: Readonly<{ view: VerbundVi
   const state = editor.envelope.documentState === 'draft' || editor.dirty ? 'draft' : 'export-ready';
   const canExport = editor.envelope.documentState === 'export-ready' && !editor.dirty && !editor.busy;
   // Schreibschutz durch den Katalogstand: Lesen, Export und Löschen bleiben, Bearbeiten und Prüfen nicht.
-  const locked = document.catalogPin !== undefined && document.catalogPin.state !== 'bound';
+  // Eine über ein importiertes lokales Dokument geerbte Sperre betrifft nur das Prüfen.
+  const locked = editLocked(document.catalogPin);
+  const reviewBlocked = reviewLocked(document.catalogPin);
   const total = targets.length === 1 ? targets[0].count : undefined;
   const resolvedCount = analysis?.resolution.status === 'resolved' ? analysis.resolution.index.ids.length : 0;
   // Nach dem ersten Öffnen bleibt der Reiter eingehängt: ein Wechsel verwirft keine Freigabeeingaben.
@@ -182,7 +185,7 @@ export function ProfileEditorPage({ view, document }: Readonly<{ view: VerbundVi
           <div role="tabpanel" id={ids.review} aria-labelledby={`${ids.review}-tab`} hidden={tab !== 'review'}>
             {/* Erst beim Öffnen geladen: der Prüf-Worker entsteht nicht auf jedem Profilaufruf. */}
             {reviewStartedFor === localId && (
-              <fieldset disabled={locked} className="min-w-0">
+              <fieldset disabled={reviewBlocked} className="min-w-0">
               <ReviewTab key={localId} localId={localId} documentSavedAt={editor.envelope.savedAt} editorDirty={editor.dirty} approval={{ onSubmit: editor.approve }} onDocumentAdopted={editor.adopt} />
               </fieldset>
             )}

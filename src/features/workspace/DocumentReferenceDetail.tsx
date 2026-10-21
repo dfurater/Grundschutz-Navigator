@@ -10,6 +10,7 @@ import { ReferenceEdges } from '@/features/workspace/ReferenceEdges';
 import { FOCUS_RING, OriginLabel, ValidityBadge } from '@/features/workspace/DocumentMarks';
 import { WorkspaceNotices } from '@/features/workspace/WorkspaceNotices';
 import { CatalogPinNotice } from '@/features/workspace/CatalogPinNotice';
+import { reviewLocked } from '@/domain/workspaceCatalogPin';
 import { WorkspaceStatePage, useRoutedVerbund } from '@/features/workspace/WorkspaceStatePage';
 import { ProfileEditorPage } from '@/features/workspace/profile/ProfileEditorPage';
 import { ReviewTab } from '@/features/workspace/review/ReviewTab';
@@ -54,7 +55,7 @@ function DocumentDetail({ view, document }: Readonly<{ view: VerbundView; docume
       <CatalogPinNotice pin={document.catalogPin} />
       {document.rootType === 'system-security-plan' && <SspDocumentContent key={document.localId} localId={document.localId} />}
       <ReferenceEdges view={view} document={document} />
-      <ReviewSection localId={document.localId} locked={document.catalogPin !== undefined && document.catalogPin.state !== 'bound'} />
+      <ReviewSection localId={document.localId} locked={reviewLocked(document.catalogPin)} />
     </div>
   );
 }

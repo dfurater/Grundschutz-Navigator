@@ -29,6 +29,10 @@ export interface CatalogPin {
   readonly offers: readonly string[];
   /** `artifactKey` der Katalogbindungen, die gegen einen anderen als den gebundenen Stand auflösen würden. */
   readonly withheld: readonly string[];
+  /** `catalogKey` der Kataloge, die in dieser Sitzung noch nicht geladen sind; die Sitzung fordert sie an. */
+  readonly pending: readonly string[];
+  /** Der Zustand stammt aus einem lokal referenzierten Dokument; sperrt Prüfaktionen, nicht das Bearbeiten. */
+  readonly inherited?: true;
 }
 
 export const CATALOG_PIN_PATH = '/metadata/props';
@@ -42,6 +46,9 @@ const CODES: Readonly<Partial<Record<CatalogPinState, string>>> = {
 };
 
 const catalogKeyByArtifact = new Map<string, string>(SUPPORTED_CATALOGS.map((entry) => [entry.artifactKey, entry.catalogKey]));
+const artifactByCatalogKey = new Map<string, string>(SUPPORTED_CATALOGS.map((entry) => [entry.catalogKey, entry.artifactKey]));
+const SEVERITY: readonly CatalogPinState[] = ['bound', 'pending', 'unpinned', 'not-delivered', 'unverified', 'invalid'];
+const worse = (a: CatalogPinState, b: CatalogPinState) => SEVERITY.indexOf(a) > SEVERITY.indexOf(b);
 
 function metadataOf(source: unknown, rootType: string): Record<string, unknown> | undefined {
   const root = isJsonObject(source) ? source[rootType] : undefined;
@@ -64,9 +71,31 @@ function boundCatalogArtifacts(bindings: readonly WorkspaceBinding[]): string[] 
     binding.target.kind === 'class-1' && catalogKeyByArtifact.has(binding.target.artifactKey) ? [binding.target.artifactKey] : []))];
 }
 
+/** Das Dokument trägt ein Katalogpaar, auch ein unvollständiges oder ungültiges. */
+function carriesCatalogPair(source: unknown, rootType: string): boolean {
+  const props = metadataOf(source, rootType)?.props;
+  return Array.isArray(props) && props.some((prop) =>
+    isJsonObject(prop) && typeof prop.name === 'string' && prop.name.startsWith('assessed-against-catalog-'));
+}
+
+/**
+ * Zu prüfende BSI-Kataloge: gebundene und solche, für die das Dokument bereits ein Paar trägt.
+ * Ein Paar gilt unabhängig von gespeicherten Bindungen, denn es ist die Bewertungsgrundlage
+ * aus der Quelle. `null`, wenn ein Paar einen nicht unterstützten Katalog nennt.
+ */
+function pinnedCatalogArtifacts(bindings: readonly WorkspaceBinding[], pins: ReadonlyMap<string, string>): string[] | null {
+  const artifacts = new Set(boundCatalogArtifacts(bindings));
+  for (const catalogKey of pins.keys()) {
+    const artifactKey = artifactByCatalogKey.get(catalogKey);
+    if (artifactKey === undefined) return null;
+    artifacts.add(artifactKey);
+  }
+  return [...artifacts];
+}
+
 /**
  * Bindungszustand eines gespeicherten Dokuments. `undefined` heißt: Das Dokument
- * verweist auf keinen BSI-Katalog, ein Stand ist nicht zu prüfen.
+ * verweist auf keinen BSI-Katalog und trägt kein Katalogpaar, ein Stand ist nicht zu prüfen.
  */
 export function catalogPinStatus(
   source: unknown,
@@ -74,15 +103,20 @@ export function catalogPinStatus(
   bindings: readonly WorkspaceBinding[],
   delivery: CatalogDelivery,
 ): CatalogPin | undefined {
-  const artifacts = boundCatalogArtifacts(bindings);
-  if (artifacts.length === 0) return undefined;
+  const bound = boundCatalogArtifacts(bindings);
   const pins = readCatalogPins(source, rootType);
-  if (pins === null) return { state: 'invalid', code: CODES.invalid, offers: [], withheld: artifacts };
+  const artifacts = pins === null ? null : pinnedCatalogArtifacts(bindings, pins);
+  if (pins === null || artifacts === null) {
+    return bound.length > 0 || carriesCatalogPair(source, rootType)
+      ? { state: 'invalid', code: CODES.invalid, offers: [], withheld: bound, pending: [] }
+      : undefined;
+  }
+  if (artifacts.length === 0) return undefined;
   // Der schwerste Befund bestimmt den Zustand; Angebote sammeln alle Kataloge mit anderem ausgeliefertem Stand.
-  const severity: readonly CatalogPinState[] = ['bound', 'pending', 'unpinned', 'not-delivered', 'unverified'];
   let state: CatalogPinState = 'bound';
   const offers: string[] = [];
   const withheld: string[] = [];
+  const pending: string[] = [];
   for (const artifactKey of artifacts) {
     const catalogKey = catalogKeyByArtifact.get(artifactKey)!;
     const delivered = delivery.get(artifactKey);
@@ -92,13 +126,14 @@ export function catalogPinStatus(
     else if (!delivered.verified || delivered.commit === null) found = 'unverified';
     else if (pin === undefined) found = 'unpinned';
     else found = pin === delivered.commit ? 'bound' : 'not-delivered';
+    if (found === 'pending') pending.push(catalogKey);
     if (found === 'unpinned' || found === 'not-delivered') {
       offers.push(catalogKey);
       withheld.push(artifactKey);
     }
-    if (severity.indexOf(found) > severity.indexOf(state)) state = found;
+    if (worse(found, state)) state = found;
   }
-  return { state, code: CODES[state], offers, withheld };
+  return { state, code: CODES[state], offers, withheld, pending };
 }
 
 /**
@@ -135,11 +170,18 @@ export function withCatalogPins(
   bindings: readonly WorkspaceBinding[],
   delivery: CatalogDelivery,
 ): CatalogPinWrite {
-  const artifacts = boundCatalogArtifacts(bindings);
-  if (artifacts.length === 0) return { ok: true, source };
   const pins = readCatalogPins(source, rootType);
+  if (pins === null) {
+    return boundCatalogArtifacts(bindings).length > 0 || carriesCatalogPair(source, rootType)
+      ? { ok: false, code: WORKSPACE_DIAGNOSTIC_CODES.catalogPinInvalid }
+      : { ok: true, source };
+  }
+  // Auch ein Paar ohne Bindung wird geprüft: Ein noch nicht zugeordneter Import behält seine Bewertungsgrundlage.
+  const artifacts = pinnedCatalogArtifacts(bindings, pins);
+  if (artifacts === null) return { ok: false, code: WORKSPACE_DIAGNOSTIC_CODES.catalogPinInvalid };
+  if (artifacts.length === 0) return { ok: true, source };
   const metadata = metadataOf(source, rootType);
-  if (pins === null || metadata === undefined) return { ok: false, code: WORKSPACE_DIAGNOSTIC_CODES.catalogPinInvalid };
+  if (metadata === undefined) return { ok: false, code: WORKSPACE_DIAGNOSTIC_CODES.catalogPinInvalid };
   const added: RawOscalProp[] = [];
   for (const artifactKey of artifacts) {
     const catalogKey = catalogKeyByArtifact.get(artifactKey)!;
@@ -161,12 +203,49 @@ export function withCatalogPins(
 }
 
 export interface PinnedBindings {
-  /** Bindungszustand je `localId`; Dokumente ohne Katalogbindung fehlen. */
+  /** Bindungszustand je `localId`, einschließlich der über lokale Bindungen geerbten Sperren; Dokumente ohne Katalogbezug fehlen. */
   readonly pins: ReadonlyMap<string, CatalogPin>;
   /** Bindungen, die der Dokumentgraph auflösen darf. */
   readonly bindings: readonly WorkspaceBinding[];
   /** Katalogbindungen gesperrter Dokumente: Sie lösen nie gegen einen anderen als den gebundenen Stand auf. */
   readonly withheld: readonly WorkspaceBinding[];
+}
+
+/**
+ * Überträgt den schwersten Zustand lokal referenzierter Dokumente auf das referenzierende Dokument
+ * (SSP → Profil → Katalog): Seine Bewertung stützt sich auf deren Bezugsstand. Zyklussicher; ein
+ * Dokument im Zyklus erbt, was der Zyklus insgesamt erreicht.
+ */
+function inheritCatalogPins(direct: ReadonlyMap<string, CatalogPin>, bindings: readonly WorkspaceBinding[]): Map<string, CatalogPin> {
+  const targets = new Map<string, string[]>();
+  for (const binding of bindings) {
+    if (binding.target.kind !== 'local' || binding.target.localId === binding.fromLocalId) continue;
+    targets.set(binding.fromLocalId, [...(targets.get(binding.fromLocalId) ?? []), binding.target.localId]);
+  }
+  /** Schwerster gesperrter Zustand eines erreichbaren Dokuments, ohne das Dokument selbst. */
+  const reachable = (start: string): CatalogPin | undefined => {
+    const seen = new Set<string>([start]);
+    const queue = [...(targets.get(start) ?? [])];
+    let worst: CatalogPin | undefined;
+    while (queue.length > 0) {
+      const next = queue.shift()!;
+      if (seen.has(next)) continue;
+      seen.add(next);
+      const pin = direct.get(next);
+      if (pin && pin.state !== 'bound' && (worst === undefined || worse(pin.state, worst.state))) worst = pin;
+      queue.push(...(targets.get(next) ?? []));
+    }
+    return worst;
+  };
+  const pins = new Map(direct);
+  for (const localId of targets.keys()) {
+    const inherited = reachable(localId);
+    if (inherited === undefined) continue;
+    const own = direct.get(localId);
+    if (own && !worse(inherited.state, own.state)) continue;
+    pins.set(localId, { state: inherited.state, code: inherited.code, offers: own?.offers ?? [], withheld: own?.withheld ?? [], pending: own?.pending ?? [], inherited: true });
+  }
+  return pins;
 }
 
 /** Hält die Katalogbindungen jedes nicht gebundenen Dokuments aus dem Dokumentgraphen heraus. */
@@ -175,14 +254,24 @@ export function applyCatalogPins(
   bindings: readonly WorkspaceBinding[],
   delivery: CatalogDelivery,
 ): PinnedBindings {
-  const pins = new Map<string, CatalogPin>();
+  const direct = new Map<string, CatalogPin>();
   for (const member of members) {
     const pin = catalogPinStatus(member.source, member.rootType, bindings.filter((binding) => binding.fromLocalId === member.localId), delivery);
-    if (pin) pins.set(member.localId, pin);
+    if (pin) direct.set(member.localId, pin);
   }
   // Je Bindung: Ein nicht geladener oder nicht verifizierter Katalog fehlt dem Graphen ohnehin; zurückgehalten
   // wird, was sonst gegen einen anderen als den gebundenen Stand auflösen würde.
   const locked = (binding: WorkspaceBinding) => binding.target.kind === 'class-1'
-    && (pins.get(binding.fromLocalId)?.withheld.includes(binding.target.artifactKey) ?? false);
-  return { pins, bindings: bindings.filter((binding) => !locked(binding)), withheld: bindings.filter(locked) };
+    && (direct.get(binding.fromLocalId)?.withheld.includes(binding.target.artifactKey) ?? false);
+  return { pins: inheritCatalogPins(direct, bindings), bindings: bindings.filter((binding) => !locked(binding)), withheld: bindings.filter(locked) };
+}
+
+/** Prüf- und Freigabeaktionen sind nur über einem gebundenen Bezugsstand zulässig, auch einem geerbten. */
+export function reviewLocked(pin: CatalogPin | undefined): boolean {
+  return pin !== undefined && pin.state !== 'bound';
+}
+
+/** Bearbeiten sperrt nur der eigene Bezugsstand; eine geerbte Sperre lässt das Dokument bearbeitbar. */
+export function editLocked(pin: CatalogPin | undefined): boolean {
+  return reviewLocked(pin) && pin?.inherited !== true;
 }
