@@ -8,9 +8,9 @@ import {
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SHA256 = /^[a-f0-9]{64}$/;
-const DIFF_KINDS = ['added', 'removed', 'changed'];
-const DIFF_VALUE_KINDS = ['object', 'array', 'string', 'number', 'boolean', 'null'];
-const DECISIONS = ['reviewed', 'changes-requested', 'approved', 'withdrawn'];
+const DIFF_KINDS = new Set(['added', 'removed', 'changed']);
+const DIFF_VALUE_KINDS = new Set(['object', 'array', 'string', 'number', 'boolean', 'null']);
+const DECISIONS = new Set(['reviewed', 'changes-requested', 'approved', 'withdrawn']);
 
 function record(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -160,7 +160,7 @@ function validDiff(value: unknown, sequence: number, checkpoints: ReadonlyMap<nu
   if (!(base === null || (positiveInteger(base) && base < sequence && checkpoints.has(base)))) return false;
   return value.entries.every(entry => fields(entry, ['path', 'kind', 'valueKind', 'marker'])
     && typeof entry.path === 'string' && entry.path.startsWith('/')
-    && DIFF_KINDS.includes(entry.kind as string) && DIFF_VALUE_KINDS.includes(entry.valueKind as string)
+    && DIFF_KINDS.has(entry.kind as string) && DIFF_VALUE_KINDS.has(entry.valueKind as string)
     && typeof entry.marker === 'boolean');
 }
 
@@ -175,6 +175,48 @@ function sameSnapshot(left: DocumentSnapshot, right: DocumentSnapshot): boolean 
     && left.contentHash.value === right.contentHash.value;
 }
 
+function collectCheckpoint(context: BundleContext, row: Record<string, unknown>, localId: string, sequence: number): boolean {
+  if (!fields(row, ['localId', 'sequence', 'kind', 'createdAt', 'documentState', 'stand', 'diff'])
+    || !timestamp(row.createdAt) || !['imported', 'draft', 'export-ready'].includes(row.documentState as string)) return false;
+  const checkpoints = context.checkpoints.get(localId) ?? new Map<number, DocumentSnapshot>();
+  if (!validStandForDocument(context, localId, row.stand) || !validDiff(row.diff, sequence, checkpoints)) return false;
+  checkpoints.set(sequence, row.stand);
+  context.checkpoints.set(localId, checkpoints);
+  return true;
+}
+
+function collectApproval(context: BundleContext, row: Record<string, unknown>, localId: string, sequence: number): boolean {
+  if (row.decision !== 'approved') return row.actionUuid === undefined;
+  if (!uuid(row.actionUuid)) return false;
+  const approved = context.approvals.get(localId) ?? new Map<string, number>();
+  approved.set(row.actionUuid, sequence);
+  context.approvals.set(localId, approved);
+  return true;
+}
+
+function validWithdrawal(context: BundleContext, row: Record<string, unknown>, localId: string): boolean {
+  if (row.decision !== 'withdrawn') return row.withdraws === undefined;
+  if (!fields(row.withdraws, ['sequence', 'actionUuid']) || !positiveInteger(row.withdraws.sequence) || !uuid(row.withdraws.actionUuid)) return false;
+  return context.approvals.get(localId)?.get(row.withdraws.actionUuid) === row.withdraws.sequence;
+}
+
+function validDecisionDetails(row: Record<string, unknown>): boolean {
+  if (row.roleId !== undefined && !nonEmptyString(row.roleId)) return false;
+  if (row.partyUuids !== undefined && (!Array.isArray(row.partyUuids) || !row.partyUuids.length || new Set(row.partyUuids).size !== row.partyUuids.length
+    || !row.partyUuids.every(nonEmptyString))) return false;
+  if (row.reason !== undefined && (typeof row.reason !== 'string' || row.reason.length > 1000)) return false;
+  return true;
+}
+
+function collectDecision(context: BundleContext, row: Record<string, unknown>, localId: string, sequence: number): boolean {
+  if (!fields(row, ['localId', 'sequence', 'kind', 'createdAt', 'decision', 'stand'], ['actionUuid', 'withdraws', 'roleId', 'partyUuids', 'reason'])
+    || row.kind !== 'decision' || !timestamp(row.createdAt) || !DECISIONS.has(row.decision as string)
+    || !validStandForDocument(context, localId, row.stand)) return false;
+  return collectApproval(context, row, localId, sequence)
+    && validWithdrawal(context, row, localId)
+    && validDecisionDetails(row);
+}
+
 function collectReviewTrail(context: BundleContext, rows: readonly unknown[]): boolean {
   if (context.version !== STORAGE_SCHEMA_VERSION) return true;
   for (const row of rows) {
@@ -183,32 +225,10 @@ function collectReviewTrail(context: BundleContext, rows: readonly unknown[]): b
     const sequence = row.sequence;
     if (!positiveInteger(sequence) || sequence <= (context.sequences.get(localId) ?? 0)) return false;
     context.sequences.set(localId, sequence);
-    if (row.kind === 'checkpoint') {
-      if (!fields(row, ['localId', 'sequence', 'kind', 'createdAt', 'documentState', 'stand', 'diff'])
-        || !timestamp(row.createdAt) || !['imported', 'draft', 'export-ready'].includes(row.documentState as string)) return false;
-      const checkpoints = context.checkpoints.get(localId) ?? new Map<number, DocumentSnapshot>();
-      if (!validStandForDocument(context, localId, row.stand) || !validDiff(row.diff, sequence, checkpoints)) return false;
-      checkpoints.set(sequence, row.stand);
-      context.checkpoints.set(localId, checkpoints);
-      continue;
-    }
-    if (!fields(row, ['localId', 'sequence', 'kind', 'createdAt', 'decision', 'stand'], ['actionUuid', 'withdraws', 'roleId', 'partyUuids', 'reason'])
-      || row.kind !== 'decision' || !timestamp(row.createdAt) || !DECISIONS.includes(row.decision as string)
-      || !validStandForDocument(context, localId, row.stand)) return false;
-    const approved = context.approvals.get(localId) ?? new Map<string, number>();
-    if (row.decision === 'approved') {
-      if (!uuid(row.actionUuid)) return false;
-      approved.set(row.actionUuid, sequence);
-      context.approvals.set(localId, approved);
-    } else if (row.actionUuid !== undefined) return false;
-    if (row.decision === 'withdrawn') {
-      if (!fields(row.withdraws, ['sequence', 'actionUuid']) || !positiveInteger(row.withdraws.sequence) || !uuid(row.withdraws.actionUuid)) return false;
-      if (approved.get(row.withdraws.actionUuid) !== row.withdraws.sequence) return false;
-    } else if (row.withdraws !== undefined) return false;
-    if (row.roleId !== undefined && !nonEmptyString(row.roleId)) return false;
-    if (row.partyUuids !== undefined && (!Array.isArray(row.partyUuids) || !row.partyUuids.length || new Set(row.partyUuids).size !== row.partyUuids.length
-      || !row.partyUuids.every(nonEmptyString))) return false;
-    if (row.reason !== undefined && (typeof row.reason !== 'string' || row.reason.length > 1000)) return false;
+    const accepted = row.kind === 'checkpoint'
+      ? collectCheckpoint(context, row, localId, sequence)
+      : collectDecision(context, row, localId, sequence);
+    if (!accepted) return false;
   }
   return true;
 }

@@ -101,27 +101,43 @@ function findApproval(trail: readonly ReviewTrailRow[], actionUuid: string): Rev
   return approval;
 }
 
-export function buildReviewView({ trail, stand, editorDirty, refreshing = false, metadata, nativeActionUuids = nativeApprovalUuids(metadata) }: ReviewViewInput): ReviewView {
-  const derived = deriveReviewState(trail);
+function findReviewed(trail: readonly ReviewTrailRow[]): ReviewDecision | undefined {
+  let reviewed: ReviewDecision | undefined;
+  for (const row of trail) if (row.kind === 'decision' && row.decision === 'reviewed') reviewed = row;
+  return reviewed;
+}
+
+function latestRows(trail: readonly ReviewTrailRow[]): { latestCheckpoint?: ReviewCheckpoint; latestDecision?: ReviewDecision } {
   let latestCheckpoint: ReviewCheckpoint | undefined;
   let latestDecision: ReviewDecision | undefined;
   for (const row of trail) {
     if (row.kind === 'checkpoint') latestCheckpoint = row;
     else latestDecision = row;
   }
+  return { latestCheckpoint, latestDecision };
+}
 
-  let badge: ReviewBadge = derived.state;
-  if (derived.state === 'none' && nativeActionUuids.length > 0) {
-    badge = 'unverified';
-  } else if (derived.state === 'approved') {
+function isCurrent(stand: DocumentSnapshot | undefined, bound: DocumentSnapshot, editorDirty: boolean, refreshing: boolean): boolean {
+  return !editorDirty && !refreshing && stand !== undefined && sameStand(bound, stand);
+}
+
+function badgeFor(derived: DerivedReviewState, trail: readonly ReviewTrailRow[], stand: DocumentSnapshot | undefined, editorDirty: boolean, refreshing: boolean, nativeActionUuids: readonly string[]): ReviewBadge {
+  if (derived.state === 'none' && nativeActionUuids.length > 0) return 'unverified';
+  if (derived.state === 'approved') {
     const approval = derived.actionUuid ? findApproval(trail, derived.actionUuid) : undefined;
-    badge = approval && !editorDirty && !refreshing && stand && sameStand(approval.stand, stand) ? 'approved' : 'stale';
-  } else if (derived.state === 'reviewed') {
-    let reviewed: ReviewDecision | undefined;
-    for (const row of trail) if (row.kind === 'decision' && row.decision === 'reviewed') reviewed = row;
-    badge = reviewed && !editorDirty && !refreshing && stand && sameStand(reviewed.stand, stand) ? 'reviewed' : 'stale';
+    return approval && isCurrent(stand, approval.stand, editorDirty, refreshing) ? 'approved' : 'stale';
   }
+  if (derived.state === 'reviewed') {
+    const reviewed = findReviewed(trail);
+    return reviewed && isCurrent(stand, reviewed.stand, editorDirty, refreshing) ? 'reviewed' : 'stale';
+  }
+  return derived.state;
+}
 
+export function buildReviewView({ trail, stand, editorDirty, refreshing = false, metadata, nativeActionUuids = nativeApprovalUuids(metadata) }: ReviewViewInput): ReviewView {
+  const derived = deriveReviewState(trail);
+  const { latestCheckpoint, latestDecision } = latestRows(trail);
+  const badge = badgeFor(derived, trail, stand, editorDirty, refreshing, nativeActionUuids);
   const actionUuid = derived.actionUuid ?? latestDecision?.withdraws?.actionUuid;
   const actions = readArray(isJsonObject(metadata) ? metadata.actions : undefined).filter(isJsonObject);
   const action = actionUuid === undefined ? undefined : actions.find((entry) => entry.uuid === actionUuid);

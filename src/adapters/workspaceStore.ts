@@ -8,7 +8,7 @@ import {
   type WorkspaceDraft, type WorkspaceEnvelope, type WorkspaceMeta, type WorkspaceDocumentSummary,
   type WorkspaceResult, type WorkspaceVerbund,
   type ReviewBaseline, type ReviewCheckpoint, type ReviewDecision, type ReviewDecisionKind, type ReviewTrailRow,
-  type ReviewTrailView, type DocumentSnapshot, type WorkspaceBackup,
+  type ReviewTrailView, type DocumentSnapshot,
 } from '@/domain/workspaceModel';
 import { snapshotDocument, assertAdmissible, assertState, pointerValue } from '@/adapters/workspaceDocumentAdmission';
 import { parseWorkspaceBackup, parseVerbundBackup } from '@/adapters/workspaceBackup';
@@ -20,7 +20,7 @@ import { StorageFailure, failure, reject, timestamp } from '@/adapters/workspace
 import { deleteDatabase, storedDatabaseShape, withinDeadline } from '@/adapters/workspaceDatabaseLifecycle';
 import { migrateWorkspaceStorage } from '@/adapters/workspaceMigration';
 import { reviewTrailInWorker } from '@/adapters/reviewTrailWork';
-import { appendDecisionError, deriveReviewState, documentSnapshot, resolveActionReferences, sameStand, REVIEW_ACTIONS_SYSTEM, REVIEW_ACTION_TYPE_APPROVED } from '@/domain/reviewTrail';
+import { appendDecisionError, deriveReviewState, resolveActionReferences, REVIEW_ACTIONS_SYSTEM, REVIEW_ACTION_TYPE_APPROVED } from '@/domain/reviewTrail';
 import { documentBody } from '@/domain/documentContent';
 import { isJsonObject, readArray, type JsonObject } from '@/domain/jsonGuards';
 
@@ -56,6 +56,13 @@ export interface ReviewApprovalRequest {
   readonly roleId: string;
   readonly partyUuids: readonly string[];
   readonly reason?: string;
+}
+
+interface StoreDocumentOptions {
+  readonly changedBindings?: readonly WorkspaceBinding[];
+  readonly state?: DocumentState;
+  readonly approval?: ReviewApprovalRequest;
+  readonly resetBaseline?: boolean;
 }
 
 /** `approved` läuft ausschließlich über `saveDocument`; hier bleiben die Workspace-Entscheidungen. */
@@ -147,12 +154,20 @@ export class WorkspaceStore {
   }
 
   /** Read-only rescue export after a failed migration; never creates a missing database. */
-  static async exportRecoveryBackup(): Promise<WorkspaceResult<string>> {
+  static exportRecoveryBackup(): Promise<WorkspaceResult<string>> {
+    return withinDeadline(WORKSPACE_OPEN_TIMEOUT_MS, 'WORKSPACE_OPEN_TIMEOUT', expired => WorkspaceStore.readRecoveryBackup(expired), () => undefined);
+  }
+
+  private static async readRecoveryBackup(expired: () => boolean): Promise<WorkspaceResult<string>> {
     try {
       if (!await Dexie.exists(WORKSPACE_DATABASE_NAME)) reject('WORKSPACE_STORAGE_FAILED');
+      if (expired()) reject('WORKSPACE_OPEN_TIMEOUT');
       const db = new Dexie(WORKSPACE_DATABASE_NAME);
-      try { await db.open(); return await exportNewerWorkspaceBackup(db); }
-      finally { db.close(); }
+      try {
+        await db.open();
+        if (expired()) reject('WORKSPACE_OPEN_TIMEOUT');
+        return await exportNewerWorkspaceBackup(db);
+      } finally { db.close(); }
     } catch (error) { return failure(error); }
   }
 
@@ -261,10 +276,11 @@ export class WorkspaceStore {
   }
 
   async saveDocument(localId: LocalId, expectedSavedAt: string, expectedDraftSavedAt: string | null, input: Class2OscalImportedDocument, changedBindings?: readonly WorkspaceBinding[], state?: DocumentState, approval?: ReviewApprovalRequest): Promise<WorkspaceResult<WorkspaceEnvelope>> {
-    return this.storeDocument(localId, expectedSavedAt, expectedDraftSavedAt, input, changedBindings, state, approval, false);
+    return this.storeDocument(localId, expectedSavedAt, expectedDraftSavedAt, input, { changedBindings, state, approval });
   }
 
-  private async storeDocument(localId: LocalId, expectedSavedAt: string, expectedDraftSavedAt: string | null, input: Class2OscalImportedDocument, changedBindings: readonly WorkspaceBinding[] | undefined, state: DocumentState | undefined, approval: ReviewApprovalRequest | undefined, resetBaseline: boolean): Promise<WorkspaceResult<WorkspaceEnvelope>> {
+  private async storeDocument(localId: LocalId, expectedSavedAt: string, expectedDraftSavedAt: string | null, input: Class2OscalImportedDocument, options: StoreDocumentOptions): Promise<WorkspaceResult<WorkspaceEnvelope>> {
+    const { changedBindings, state, approval, resetBaseline = false } = options;
     try {
       const bindingSnapshot = changedBindings === undefined ? undefined : structuredClone(changedBindings);
       if (state !== undefined) assertState(state);
@@ -310,7 +326,7 @@ export class WorkspaceStore {
   }
 
   replaceDocument(localId: LocalId, expectedSavedAt: string, expectedDraftSavedAt: string | null, input: Class2OscalImportedDocument): Promise<WorkspaceResult<WorkspaceEnvelope>> {
-    return this.storeDocument(localId, expectedSavedAt, expectedDraftSavedAt, input, undefined, undefined, undefined, true);
+    return this.storeDocument(localId, expectedSavedAt, expectedDraftSavedAt, input, { resetBaseline: true });
   }
 
   async autosaveDraft(localId: LocalId, expectedSavedAt: string, expectedDraftSavedAt: string | null, source: unknown): Promise<WorkspaceResult<WorkspaceDraft>> {
@@ -415,7 +431,7 @@ export class WorkspaceStore {
     if (error) reject(error);
     if (extra.withdraws) {
       const target = await this.reviewTrail.get([localId, extra.withdraws.sequence]);
-      if (!target || target.kind !== 'decision' || target.actionUuid !== extra.withdraws.actionUuid) reject('REVIEW_WITHDRAWAL_TARGET_UNKNOWN');
+      if (target?.kind !== 'decision' || target.actionUuid !== extra.withdraws.actionUuid) reject('REVIEW_WITHDRAWAL_TARGET_UNKNOWN');
     }
     const row: ReviewDecision = {
       localId, sequence: last + 1, kind: 'decision', createdAt, decision, stand,
@@ -496,30 +512,16 @@ export class WorkspaceStore {
     return this.read(this.db.tables.map(table => table.name), () => exportVerbundBackupSnapshot(this.db, verbundId));
   }
 
-  /** Die Vergleichsbasis muss den Stand aus ihrer eigenen Quelle belegen; sonst wäre der nächste Diff falsch. */
-  private async baselinesMatch(backup: Pick<WorkspaceBackup, 'documents' | 'reviewBaseline'>): Promise<boolean> {
-    const documents = new Map(backup.documents.map(entry => [entry.localId, entry]));
-    for (const row of backup.reviewBaseline) {
-      const document = documents.get(row.localId);
-      if (!document) return false;
-      const snapshot = await documentSnapshot(row.source, document.rootType).catch(() => undefined);
-      if (!snapshot || !sameStand(row.stand, snapshot)) return false;
-    }
-    return true;
-  }
-
   async restoreBackup(bytes: Uint8Array, confirmation: 'replace-workspace'): Promise<WorkspaceResult<void>> {
     if (confirmation !== 'replace-workspace') return failure(new StorageFailure('WORKSPACE_CONFIRMATION_REQUIRED'));
     const parsed = await parseWorkspaceBackup(bytes);
     if (!parsed.ok) return parsed;
-    if (!await this.baselinesMatch(parsed.value)) return failure(new StorageFailure('WORKSPACE_BACKUP_INVALID'));
     return this.write(() => restoreWorkspaceBackupSnapshot(this.db, parsed.value), false);
   }
   async restoreVerbundBackup(bytes: Uint8Array, confirmation: 'replace-verbund'): Promise<WorkspaceResult<void>> {
     if (confirmation !== 'replace-verbund') return failure(new StorageFailure('WORKSPACE_CONFIRMATION_REQUIRED'));
     const parsed = await parseVerbundBackup(bytes);
     if (!parsed.ok) return parsed;
-    if (!await this.baselinesMatch(parsed.value)) return failure(new StorageFailure('WORKSPACE_BACKUP_INVALID'));
     return this.write(() => restoreVerbundBackupSnapshot(this.db, parsed.value), false);
   }
 

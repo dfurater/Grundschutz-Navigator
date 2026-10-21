@@ -31,7 +31,7 @@ export interface ReviewTrailState {
   readonly view?: ReviewTrailView;
   readonly message?: ReviewTrailMessage;
   readonly busy: boolean;
-  /** Wahr, solange ein Reload läuft oder der gespeicherte Stand vom geladenen abweicht. */
+  /** Wahr, solange ein Reload läuft. */
   readonly refreshing: boolean;
   readonly reload: () => Promise<void>;
   readonly checkpoint: () => Promise<boolean>;
@@ -134,5 +134,5 @@ export function useReviewTrail(localId: ReviewTrailView['document']['localId'], 
     });
   }, [localId, run, view]);
 
-  return { status, view, message, busy, refreshing: loading || (documentSavedAt !== undefined && view?.document.savedAt !== documentSavedAt), reload, checkpoint, decide };
+  return { status, view, message, busy, refreshing: loading, reload, checkpoint, decide };
 }

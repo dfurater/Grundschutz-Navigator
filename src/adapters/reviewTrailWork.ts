@@ -3,12 +3,13 @@ import { OSCAL_ROOT_KEYS, type OscalRootKey } from '@/domain/oscalVersionMatrix'
 import { CONTENT_HASH_ALGORITHM, CONTENT_HASH_VERSION, REVIEW_TRAIL_DEADLINE_MS } from '@/domain/reviewTrail';
 import type { DocumentDiff } from '@/domain/documentDiff';
 import type { DocumentSnapshot, WorkspaceResult } from '@/domain/workspaceModel';
+import { compareStringsByCodeUnit } from '@/domain/codeUnitOrder.mjs';
 
 export interface ReviewTrailWorkRequest {
   readonly source: unknown;
   readonly rootType: OscalRootKey;
   /** Quelle der Vergleichsbaseline; `null` heißt gegen das leere Dokument. */
-  readonly previous: unknown | null;
+  readonly previous: unknown;
   readonly baseSequence: number | null;
   /** `false` spart den Diff, wenn nur der Stand gebraucht wird (Freigabe, reine Prüfung). */
   readonly diff: boolean;
@@ -24,8 +25,8 @@ export type ReviewTrailWorkResponse =
   | { readonly ok: false };
 
 const SHA256 = /^[a-f0-9]{64}$/;
-const DIFF_KINDS = ['added', 'removed', 'changed'];
-const DIFF_VALUE_KINDS = ['object', 'array', 'string', 'number', 'boolean', 'null'];
+const DIFF_KINDS = new Set(['added', 'removed', 'changed']);
+const DIFF_VALUE_KINDS = new Set(['object', 'array', 'string', 'number', 'boolean', 'null']);
 
 function record(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -43,7 +44,7 @@ function validDiff(value: unknown): value is DocumentDiff {
   if (!record(value) || value.version !== 1 || typeof value.truncated !== 'boolean' || !Array.isArray(value.entries)) return false;
   if (!(value.baseSequence === null || (Number.isInteger(value.baseSequence) && (value.baseSequence as number) > 0))) return false;
   return value.entries.every(entry => record(entry) && typeof entry.path === 'string' && entry.path.startsWith('/')
-    && DIFF_KINDS.includes(entry.kind as string) && DIFF_VALUE_KINDS.includes(entry.valueKind as string)
+    && DIFF_KINDS.has(entry.kind as string) && DIFF_VALUE_KINDS.has(entry.valueKind as string)
     && typeof entry.marker === 'boolean');
 }
 
@@ -80,7 +81,7 @@ export function reviewTrailInWorker(request: ReviewTrailWorkRequest): Promise<Wo
         if (event.origin !== '' && event.origin !== globalThis.location.origin) return workerFailure();
         const data = event.data as Record<string, unknown> | null;
         if (!data || typeof data !== 'object' || data.ok !== true || !validSnapshot(data.snapshot)) return workerFailure();
-        const keys = Object.keys(data).sort().join(',');
+        const keys = Object.keys(data).sort(compareStringsByCodeUnit).join(',');
         if (keys !== (request.diff ? 'diff,ok,snapshot' : 'ok,snapshot')) return workerFailure();
         if (request.diff ? !validDiff(data.diff) : data.diff !== undefined) return workerFailure();
         finish({ ok: true, value: { snapshot: data.snapshot, ...(request.diff ? { diff: data.diff as DocumentDiff } : {}) } });

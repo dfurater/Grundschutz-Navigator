@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { processWorkspaceBackupBytes as parseWorkspaceBackup } from './workspaceBackupProcessing';
 import { normalizeWorkspaceBackup } from './workspaceBackupStructure';
 import { makeSchemaValidOscalDocument } from '@/test/fixtures/oscalSchemaFixtures';
+import { documentSnapshot } from '@/domain/reviewTrail';
 import type { LocalId, VerbundId, WorkspaceBackup } from '@/domain/workspaceModel';
 const id = '11111111-1111-4111-8111-111111111111' as VerbundId;
 const localId = '22222222-2222-4222-8222-222222222222' as LocalId;
@@ -21,6 +22,24 @@ describe('workspace backup validation', () => {
   it('retains valid OSCAL source and incomplete drafts', async () => {
     const backup = backupFixture();
     expect(await parseWorkspaceBackup(encode(backup))).toEqual({ ok: true, value: normalizeWorkspaceBackup(backup) });
+  });
+  it('verifies every review baseline against its source inside the backup worker', async () => {
+    const source = makeSchemaValidOscalDocument('catalog', '1.1.3');
+    const stand = await documentSnapshot(source, 'catalog');
+    if (!stand) throw new Error('fixture has no document stand');
+    const backup: WorkspaceBackup = {
+      format: 'gspp-workspace', storageSchemaVersion: 2,
+      verbuende: [{ verbundId: id, name: 'Test', createdAt: timestamp, savedAt: timestamp }],
+      documents: [{ localId, verbundId: id, storageSchemaVersion: 2, rootType: 'catalog', oscalVersion: '1.1.3', trustClass: 'class-2-local-user', documentState: 'imported', createdAt: timestamp, savedAt: timestamp, source }],
+      drafts: [], bindings: [],
+      workspaceMeta: [{ id: 'workspace', storageSchemaVersion: 2, createdAt: timestamp, savedAt: timestamp }],
+      reviewTrail: [{ localId, sequence: 1, kind: 'checkpoint', createdAt: timestamp, documentState: 'imported', stand, diff: { version: 1, baseSequence: null, entries: [], truncated: false } }],
+      reviewBaseline: [{ localId, sequence: 1, stand, source: structuredClone(source) }],
+    };
+    expect(await parseWorkspaceBackup(encode(backup))).toMatchObject({ ok: true });
+    const tampered = structuredClone(backup);
+    (tampered.reviewBaseline[0].source as { catalog: { metadata: { title: string } } }).catalog.metadata.title = 'Tampered baseline';
+    expect(await parseWorkspaceBackup(encode(tampered))).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_BACKUP_INVALID' } });
   });
   it.each([
     (b: V1Backup) => ({ ...b, extra: 'secret' }),

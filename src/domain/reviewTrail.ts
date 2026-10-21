@@ -14,7 +14,7 @@ import { isJsonObject, readArray, readString, type JsonObject } from '@/domain/j
 import { serializeWorkspaceJsonSorted } from '@/domain/workspaceJson';
 import type { OscalRootKey } from '@/domain/oscalVersionMatrix';
 import type {
-  DocumentSnapshot, DocumentStamp, ReviewDecisionKind, ReviewTrailRow,
+  DocumentSnapshot, DocumentStamp, ReviewDecision, ReviewDecisionKind, ReviewTrailRow,
 } from '@/domain/workspaceModel';
 
 export const REVIEW_ACTIONS_SYSTEM = 'https://github.com/dfurater/Grundschutz-Navigator/ns/oscal/actions';
@@ -89,36 +89,43 @@ export interface DerivedReviewState {
  * nur auf ihr Ziel: Sie zieht keine neuere Freigabe zurück und macht keine
  * überholte wieder aktuell.
  */
-export function deriveReviewState(rows: readonly ReviewTrailRow[]): DerivedReviewState {
-  let state: ReviewStateKind = 'none';
-  let actionUuid: string | undefined;
-  const superseded = new Set<string>();
-  const withdrawn = new Set<string>();
-  for (const row of rows) {
-    if (row.kind !== 'decision') continue;
-    if (row.decision === 'approved') {
-      if (actionUuid) superseded.add(actionUuid);
-      actionUuid = row.actionUuid;
-      state = 'approved';
-    } else if (row.decision === 'withdrawn') {
-      const target = row.withdraws?.actionUuid;
-      if (!target) continue;
-      withdrawn.add(target);
-      if (target === actionUuid) {
-        actionUuid = undefined;
-        state = 'withdrawn';
-      }
-    } else {
-      if (actionUuid) superseded.add(actionUuid);
-      actionUuid = undefined;
-      state = row.decision;
-    }
+interface ReviewFold {
+  state: ReviewStateKind;
+  actionUuid?: string;
+  readonly superseded: Set<string>;
+  readonly withdrawn: Set<string>;
+}
+
+function applyReviewDecision(fold: ReviewFold, row: ReviewDecision): void {
+  if (row.decision === 'approved') {
+    if (fold.actionUuid) fold.superseded.add(fold.actionUuid);
+    fold.actionUuid = row.actionUuid;
+    fold.state = 'approved';
+    return;
   }
+  if (row.decision === 'withdrawn') {
+    const target = row.withdraws?.actionUuid;
+    if (!target) return;
+    fold.withdrawn.add(target);
+    if (target === fold.actionUuid) {
+      fold.actionUuid = undefined;
+      fold.state = 'withdrawn';
+    }
+    return;
+  }
+  if (fold.actionUuid) fold.superseded.add(fold.actionUuid);
+  fold.actionUuid = undefined;
+  fold.state = row.decision;
+}
+
+export function deriveReviewState(rows: readonly ReviewTrailRow[]): DerivedReviewState {
+  const fold: ReviewFold = { state: 'none', superseded: new Set(), withdrawn: new Set() };
+  for (const row of rows) if (row.kind === 'decision') applyReviewDecision(fold, row);
   return {
-    state,
-    actionUuid,
-    supersededActionUuids: [...superseded],
-    withdrawnActionUuids: [...withdrawn],
+    state: fold.state,
+    actionUuid: fold.actionUuid,
+    supersededActionUuids: [...fold.superseded],
+    withdrawnActionUuids: [...fold.withdrawn],
   };
 }
 
@@ -171,6 +178,22 @@ function countMatches(entries: readonly unknown[], field: 'id' | 'uuid', value: 
   return entries.filter(entry => isJsonObject(entry) && entry[field] === value).length;
 }
 
+function roleFinding(roles: readonly unknown[], roleId: string | undefined): ReviewReferenceFinding[] {
+  if (!roleId) return [{ code: 'REVIEW_RESPONSIBLE_PARTY_MISSING' }];
+  const matches = countMatches(roles, 'id', roleId);
+  if (!matches) return [{ code: 'REVIEW_ROLE_MISSING', roleId }];
+  return matches > 1 ? [{ code: 'REVIEW_ROLE_AMBIGUOUS', roleId }] : [];
+}
+
+function partyFindings(parties: readonly unknown[], partyUuids: readonly string[]): ReviewReferenceFinding[] {
+  if (!partyUuids.length) return [{ code: 'REVIEW_RESPONSIBLE_PARTY_MISSING' }];
+  return partyUuids.flatMap((partyUuid): ReviewReferenceFinding[] => {
+    const matches = countMatches(parties, 'uuid', partyUuid);
+    if (!matches) return [{ code: 'REVIEW_PARTY_MISSING', partyUuid }];
+    return matches > 1 ? [{ code: 'REVIEW_PARTY_AMBIGUOUS', partyUuid }] : [];
+  });
+}
+
 /**
  * Löst `responsible-parties` einer Aktion ausschließlich dokumentintern auf.
  * Mehrdeutige Ziele zählen wie fehlende. Ein Freigabeschreibvorgang bricht bei
@@ -186,18 +209,7 @@ export function resolveActionReferences(action: unknown, metadata: unknown): rea
   for (const entry of responsible) {
     const roleId = readString(entry['role-id']);
     const partyUuids = readArray(entry['party-uuids']).filter((uuid): uuid is string => typeof uuid === 'string');
-    if (!roleId) findings.push({ code: 'REVIEW_RESPONSIBLE_PARTY_MISSING' });
-    else {
-      const matches = countMatches(roles, 'id', roleId);
-      if (!matches) findings.push({ code: 'REVIEW_ROLE_MISSING', roleId });
-      else if (matches > 1) findings.push({ code: 'REVIEW_ROLE_AMBIGUOUS', roleId });
-    }
-    if (!partyUuids.length) findings.push({ code: 'REVIEW_RESPONSIBLE_PARTY_MISSING' });
-    for (const partyUuid of partyUuids) {
-      const matches = countMatches(parties, 'uuid', partyUuid);
-      if (!matches) findings.push({ code: 'REVIEW_PARTY_MISSING', partyUuid });
-      else if (matches > 1) findings.push({ code: 'REVIEW_PARTY_AMBIGUOUS', partyUuid });
-    }
+    findings.push(...roleFinding(roles, roleId), ...partyFindings(parties, partyUuids));
   }
   return findings;
 }
@@ -291,12 +303,13 @@ export interface ReviewIdentityInput {
 export function withReviewIdentities(source: unknown, rootType: OscalRootKey, { role, party }: ReviewIdentityInput): unknown {
   const next = structuredClone(source);
   const metadata = documentMetadata(next, rootType);
-  if (!metadata) return next;
-  if (!readArray(metadata.roles).some(entry => isJsonObject(entry) && entry.id === role.id)) {
-    metadata.roles = [...readArray(metadata.roles), { id: role.id, title: role.title }];
-  }
-  if (party && !readArray(metadata.parties).some(entry => isJsonObject(entry) && entry.uuid === party.uuid)) {
-    metadata.parties = [...readArray(metadata.parties), { uuid: party.uuid, type: 'organization', name: party.name }];
+  if (metadata) {
+    if (!readArray(metadata.roles).some(entry => isJsonObject(entry) && entry.id === role.id)) {
+      metadata.roles = [...readArray(metadata.roles), { id: role.id, title: role.title }];
+    }
+    if (party && !readArray(metadata.parties).some(entry => isJsonObject(entry) && entry.uuid === party.uuid)) {
+      metadata.parties = [...readArray(metadata.parties), { uuid: party.uuid, type: 'organization', name: party.name }];
+    }
   }
   return next;
 }
@@ -305,7 +318,6 @@ export function withReviewIdentities(source: unknown, rootType: OscalRootKey, { 
 export function withApprovalAction(source: unknown, rootType: OscalRootKey, action: JsonObject): unknown {
   const next = structuredClone(source);
   const metadata = documentMetadata(next, rootType);
-  if (!metadata) return next;
-  metadata.actions = [...readArray(metadata.actions), action];
+  if (metadata) metadata.actions = [...readArray(metadata.actions), action];
   return next;
 }

@@ -60,9 +60,9 @@ export function DecisionForm({ roles, parties, disabledReason, busy = false, fin
     <form aria-labelledby={headingId} aria-busy={busy} className="space-y-4" onSubmit={submit}>
       <h3 id={headingId} className="text-base font-semibold text-[var(--color-text-primary)]">Freigabe erfassen</h3>
       {disabledReason && (
-        <p id={disabledReasonId} role="status" className="rounded-md border border-[var(--color-border-strong)] bg-[var(--color-surface-subtle)] p-3 text-sm text-[var(--color-text-primary)]">
+        <output id={disabledReasonId} className="block rounded-md border border-[var(--color-border-strong)] bg-[var(--color-surface-subtle)] p-3 text-sm text-[var(--color-text-primary)]">
           {disabledReason}
-        </p>
+        </output>
       )}
       {findingCodes.length > 0 && (
         <div className="space-y-1">

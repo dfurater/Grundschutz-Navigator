@@ -175,7 +175,7 @@ export function ProfileEditorPage({ view, document }: Readonly<{ view: VerbundVi
           <div role="tabpanel" id={ids.review} aria-labelledby={`${ids.review}-tab`} hidden={tab !== 'review'}>
             {/* Erst beim Öffnen geladen: der Prüf-Worker entsteht nicht auf jedem Profilaufruf. */}
             {reviewStartedFor === localId && (
-              <ReviewTab key={localId} localId={localId} documentSavedAt={editor.envelope.savedAt} editorDirty={editor.dirty} approval={{ onSubmit: editor.approve }} />
+              <ReviewTab key={localId} localId={localId} documentSavedAt={editor.envelope.savedAt} editorDirty={editor.dirty} approval={{ onSubmit: editor.approve }} onDocumentAdopted={editor.adopt} />
             )}
           </div>
         </div>

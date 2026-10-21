@@ -5,7 +5,22 @@ import { enforceWorkspaceBackupGraphInvariants } from '@/domain/oscalObjectGraph
 import { bindsEnvelopeSource, withinSourceLimits } from '@/adapters/workspaceDraftSource';
 import { normalizeWorkspaceBackup, normalizeVerbundBackup } from '@/adapters/workspaceBackupStructure';
 import { rejectWorkspaceBackup } from '@/adapters/workspaceBackupContract';
+import { documentSnapshot, sameStand } from '@/domain/reviewTrail';
 import { type WorkspaceBackup, type WorkspaceVerbundBackup, type WorkspaceResult } from '@/domain/workspaceModel';
+
+/** Die Vergleichsbasis muss den Stand aus ihrer eigenen Quelle belegen; sonst wäre der nächste Diff falsch. */
+async function verifyBaselines(backup: WorkspaceBackup | WorkspaceVerbundBackup): Promise<'ok' | 'invalid' | 'failed'> {
+  const documents = new Map(backup.documents.map(entry => [entry.localId, entry]));
+  for (const row of backup.reviewBaseline) {
+    const document = documents.get(row.localId);
+    if (!document) return 'invalid';
+    let snapshot;
+    try { snapshot = await documentSnapshot(row.source, document.rootType); }
+    catch { return 'failed'; }
+    if (!snapshot || !sameStand(row.stand, snapshot)) return 'invalid';
+  }
+  return 'ok';
+}
 
 /**
  * Closed restore format. Runs inside the backup module worker; every persisted document source outside state draft
@@ -31,6 +46,9 @@ async function processBackupBytes<T extends WorkspaceBackup | WorkspaceVerbundBa
       const imported = await processClass2OscalBytes(new TextEncoder().encode(serializeWorkspaceJson(envelope.source)), { trustClass: 'class-2-local-user' });
       if (!imported.ok || imported.document.rootType !== envelope.rootType || imported.document.oscalVersion !== envelope.oscalVersion) return rejectWorkspaceBackup('WORKSPACE_BACKUP_DOCUMENT_REJECTED');
     }
+    const baseline = await verifyBaselines(backup);
+    if (baseline === 'invalid') return rejectWorkspaceBackup();
+    if (baseline === 'failed') return rejectWorkspaceBackup('WORKSPACE_BACKUP_WORKER_FAILURE');
     return { ok: true, value: backup };
   } catch { return rejectWorkspaceBackup('WORKSPACE_BACKUP_INPUT_REJECTED'); }
 }

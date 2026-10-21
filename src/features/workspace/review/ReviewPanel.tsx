@@ -66,8 +66,17 @@ function partyLabel(parties: readonly JsonObject[], uuid: string): string {
   const matches = parties.filter((party) => party.uuid === uuid);
   return (matches.length === 1 ? readString(matches[0].name) : undefined) ?? uuid;
 }
+const BADGE_ICON: Readonly<Record<ReviewBadge, typeof IconInfo>> = {
+  none: IconInfo,
+  reviewed: IconCheck,
+  'changes-requested': IconX,
+  approved: IconCheck,
+  withdrawn: IconArrowLeft,
+  stale: IconInfo,
+  unverified: IconInfo,
+};
 function ReviewBadgeMark({ badge }: Readonly<{ badge: ReviewBadge }>) {
-  const Icon = badge === 'approved' || badge === 'reviewed' ? IconCheck : badge === 'changes-requested' ? IconX : badge === 'withdrawn' ? IconArrowLeft : IconInfo;
+  const Icon = BADGE_ICON[badge];
   return (
     <span data-review-badge={badge} className={`inline-flex items-center gap-1 rounded border px-2 py-0.5 text-xs font-medium leading-4 ${BADGE_TONE[badge]}`}>
       <Icon className="h-3.5 w-3.5" />
@@ -131,11 +140,11 @@ function ActionRow({ action, metadata }: Readonly<{ action: JsonObject; metadata
       {system && <p className="break-all font-mono text-2xs text-[var(--color-text-muted)]">{system}</p>}
       {responsible.length === 0 ? <p className="text-sm text-[var(--color-text-secondary)]">Keine verantwortliche Partei vermerkt.</p> : (
         <ul aria-label="Verantwortliche Parteien der Aktion" className="space-y-0.5 text-sm text-[var(--color-text-secondary)]">
-          {responsible.map((entry, index) => {
+          {responsible.map((entry) => {
             const roleId = readString(entry['role-id']);
             const partyUuids = readArray(entry['party-uuids']).filter((value): value is string => typeof value === 'string');
             return (
-              <li key={index} className="flex flex-wrap items-baseline gap-x-2">
+              <li key={JSON.stringify([roleId ?? null, partyUuids])} className="flex flex-wrap items-baseline gap-x-2">
                 <span>Rolle: <span className="font-medium text-[var(--color-text-primary)]">{roleId ? roleLabel(roles, roleId) : 'fehlt'}</span>{roleId && <span className="ml-1 font-mono text-xs text-[var(--color-text-muted)]">{roleId}</span>}</span>
                 <span>Parteien:</span>
                 {partyUuids.length === 0 ? <span>fehlen</span> : partyUuids.map((partyUuid, position) => (
@@ -149,7 +158,7 @@ function ActionRow({ action, metadata }: Readonly<{ action: JsonObject; metadata
       {remarks && <p className="whitespace-pre-wrap break-words text-sm text-[var(--color-text-secondary)]">{remarks}</p>}
       {findings.length > 0 && (
         <ul aria-label="Befunde zur Aktion" className="space-y-0.5 text-sm text-[var(--color-text-primary)]">
-          {findings.map((finding, index) => <li key={index}><span className="font-medium">Befund:</span> {reviewReferenceText(finding)}</li>)}
+          {findings.map((finding) => <li key={JSON.stringify(finding)}><span className="font-medium">Befund:</span> {reviewReferenceText(finding)}</li>)}
         </ul>
       )}
     </li>

@@ -19,15 +19,28 @@ function withoutLastModified(metadata: JsonObject): JsonObject {
   return Object.fromEntries(Object.entries(metadata).filter(([key]) => key !== 'last-modified'));
 }
 
+function withMetadata(content: JsonObject, metadata: unknown): JsonObject {
+  if (metadata === undefined) return content;
+  return isJsonObject(metadata) ? { ...content, metadata: withoutLastModified(metadata) } : { ...content, metadata };
+}
+
+/** Schreibt das Root-Objekt über Literalschlüssel; ein berechneter Schlüssel käme aus Nutzereingaben. */
+function withRoot(copy: JsonObject, rootType: OscalRootKey, body: JsonObject): JsonObject {
+  if (rootType === 'catalog') return { ...copy, catalog: body };
+  if (rootType === 'profile') return { ...copy, profile: body };
+  if (rootType === 'mapping-collection') return { ...copy, 'mapping-collection': body };
+  if (rootType === 'component-definition') return { ...copy, 'component-definition': body };
+  if (rootType === 'system-security-plan') return { ...copy, 'system-security-plan': body };
+  if (rootType === 'assessment-plan') return { ...copy, 'assessment-plan': body };
+  if (rootType === 'assessment-results') return { ...copy, 'assessment-results': body };
+  return { ...copy, 'plan-of-action-and-milestones': body };
+}
+
 /** Der Quellgraph ohne Root-`uuid` und Root-`metadata.last-modified`. */
 export function documentContent(source: unknown, rootType: OscalRootKey): unknown {
   const copy = structuredClone(source);
   const body = documentBody(copy, rootType);
-  if (!body) return copy;
+  if (!body || !isJsonObject(copy)) return copy;
   const content: JsonObject = Object.fromEntries(Object.entries(body).filter(([key]) => key !== 'uuid'));
-  const metadata = body.metadata;
-  const next = metadata === undefined
-    ? content
-    : isJsonObject(metadata) ? { ...content, metadata: withoutLastModified(metadata) } : { ...content, metadata };
-  return { ...(copy as JsonObject), [rootType]: next };
+  return withRoot(copy, rootType, withMetadata(content, body.metadata));
 }

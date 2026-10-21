@@ -56,6 +56,8 @@ export interface ProfileEditor {
   /** Ändert die Quelle und ordnet einem `href` ein Importziel zu. */
   readonly changeWithTarget: (patch: (source: unknown) => { source: unknown; href: string; index: number }, target: BindingTarget) => void;
   readonly save: () => Promise<void>;
+  /** Übernimmt einen neueren gespeicherten Stand, ohne offene Eingaben zu verwerfen. */
+  readonly adopt: (document: WorkspaceEnvelope) => Promise<boolean>;
   /** Schreibt die Freigabe als `metadata.actions` und den Trail in einem Dokumentenschreibvorgang. */
   readonly approve: (input: ProfileApprovalInput) => Promise<ProfileApprovalResult>;
   readonly exportDocument: () => Promise<void>;
@@ -191,6 +193,32 @@ export function useProfileEditor(localId: LocalId): ProfileEditor {
     clearTimeout(timer.current);
     timer.current = setTimeout(() => { void flush(); }, PROFILE_AUTOSAVE_DELAY_MS);
   }, [flush]);
+
+  const adopt = useCallback(async (document: WorkspaceEnvelope) => {
+    if (saving.current) return false;
+    const current = latest.current;
+    if (!current.envelope) return false;
+    if (document.savedAt <= current.envelope.savedAt) return true;
+    const store = documentsRef.current;
+    const [draft, bindings] = await Promise.all([store.getDraft(localId), store.listBindings()]);
+    if (!draft.ok || !bindings.ok) return false;
+    const dirtyNow = current.unsaved || !sameProfileContent(current.envelope.source, current.working);
+    const source = draft.value?.source ?? document.source;
+    const nextWorking = dirtyNow ? current.working : source;
+    latest.current = { working: nextWorking, envelope: document, draftSavedAt: draft.value?.savedAt ?? null, unsaved: dirtyNow };
+    setEnvelope(document);
+    setWorking(nextWorking);
+    const own = bindings.value.filter((binding) => binding.fromLocalId === localId);
+    setStored(draft.value ? alignImportBindings(own, document.source, draft.value.source) : own);
+    setMessage(undefined);
+    if (dirtyNow) {
+      setSaveState({ kind: 'pending' });
+      schedule();
+    } else {
+      setSaveState(draft.value ? { kind: 'autosaved', at: draft.value.savedAt } : { kind: 'stored' });
+    }
+    return true;
+  }, [localId, schedule]);
 
   const change = useCallback((patch: (source: unknown) => unknown) => {
     const next = patch(latest.current.working);
@@ -345,6 +373,6 @@ export function useProfileEditor(localId: LocalId): ProfileEditor {
   return {
     status, envelope, working, imports, dirty, saveState, busy, message, bindings,
     targetFor: (entry) => targetOf(entry, stored, pendingTargets),
-    change, changeWithTarget, removeImportAt, save, approve, exportDocument, remove,
+    change, changeWithTarget, removeImportAt, save, adopt, approve, exportDocument, remove,
   };
 }

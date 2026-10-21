@@ -234,6 +234,51 @@ describe('Bearbeiten, Autosave, Speichern und Export', () => {
     await waitFor(() => expect(main().querySelector('[data-review-badge="stale"]')).toBeInTheDocument(), WAIT);
   });
 
+  it('setzt das Freigabeformular nach Erfolg zurück und legt bei erneuter Freigabe keine doppelte Partei an', async () => {
+    const { localId } = await createdProfile();
+    fireEvent.click(await within(main()).findByRole('button', { name: '+ Muster' }));
+    fireEvent.click(within(main()).getByRole('button', { name: 'Speichern' }));
+    await waitFor(() => expect(within(main()).getAllByText('Gültig').length).toBeGreaterThan(0), WAIT);
+    await openTab(/^Prüfung/);
+
+    fireEvent.change(await within(main()).findByRole('combobox', { name: /^Rolle/ }, WAIT), { target: { value: '__new' } });
+    fireEvent.change(within(main()).getByRole('textbox', { name: 'Neue Rolle (ID)' }), { target: { value: 'freigabe' } });
+    fireEvent.change(within(main()).getByRole('textbox', { name: 'Neue Rolle (Bezeichnung)' }), { target: { value: 'Freigabe' } });
+    fireEvent.change(within(main()).getByRole('textbox', { name: 'Neue Partei (Name)' }), { target: { value: 'Rechenzentrum' } });
+    fireEvent.click(within(main()).getByRole('button', { name: 'Freigeben' }));
+    await waitFor(() => expect(main().querySelector('[data-review-badge="approved"]')).toBeInTheDocument(), WAIT);
+
+    expect(within(main()).getByRole('combobox', { name: /^Rolle/ })).toHaveValue('');
+    expect(within(main()).queryByRole('textbox', { name: 'Neue Rolle (ID)' })).not.toBeInTheDocument();
+    const party = within(main()).getByRole('checkbox', { name: /Rechenzentrum/ });
+    expect(party).not.toBeChecked();
+
+    fireEvent.change(within(main()).getByRole('combobox', { name: /^Rolle/ }), { target: { value: 'freigabe' } });
+    fireEvent.click(party);
+    fireEvent.click(within(main()).getByRole('button', { name: 'Freigeben' }));
+    await waitFor(async () => {
+      const metadata = profileBody(await readStore((store) => store.getDocument(localId))).metadata as Record<string, unknown>;
+      expect(metadata.actions).toHaveLength(2);
+      expect(metadata.parties).toHaveLength(1);
+    }, WAIT);
+  });
+
+  it('lädt nach einem Konflikt im Prüf-Tab den neuen Stand und gibt die Aktionen wieder frei', async () => {
+    const { localId } = await createdProfile();
+    fireEvent.click(await within(main()).findByRole('button', { name: '+ Muster' }));
+    fireEvent.click(within(main()).getByRole('button', { name: 'Speichern' }));
+    await waitFor(() => expect(within(main()).getAllByText('Gültig').length).toBeGreaterThan(0), WAIT);
+    await openTab(/^Prüfung/);
+    const current = (await readStore((store) => store.getDocument(localId)))!;
+    await readStore((store) => store.saveDocument(localId, current.savedAt, null, local('profile', '1.1.3', 'Extern geändert')));
+    const checkpoint = await within(main()).findByRole('button', { name: 'Prüfpunkt setzen' }, WAIT);
+    fireEvent.click(checkpoint);
+    expect(await within(main()).findByText(/Der gespeicherte Stand hat sich geändert; die Prüfspur wurde neu geladen/)).toBeInTheDocument();
+    await waitFor(() => expect(checkpoint).toBeEnabled(), WAIT);
+    fireEvent.click(checkpoint);
+    expect(await within(main()).findByText(/Letzter Prüfpunkt/, undefined, WAIT)).toBeInTheDocument();
+  });
+
   it('behält eine Eingabe während des Speicherns als Arbeitsstand und sichert sie danach als Entwurf', async () => {
     const { localId } = await createdProfile();
     fireEvent.click(await within(main()).findByRole('radio', { name: 'Einzelne Anforderungen' }));

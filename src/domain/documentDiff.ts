@@ -120,6 +120,26 @@ function emitSubtree(state: DiffState, value: unknown, path: string, kind: DiffE
   push(state, path, kind, valueKind(value));
 }
 
+function walkArray(state: DiffState, base: readonly unknown[], next: readonly unknown[], path: string, depth: number): void {
+  const length = Math.max(base.length, next.length);
+  for (let index = 0; index < length; index += 1) {
+    const childPath = `${path}/${index}`;
+    if (index >= base.length) emitSubtree(state, next[index], childPath, 'added', depth + 1);
+    else if (index >= next.length) emitSubtree(state, base[index], childPath, 'removed', depth + 1);
+    else walk(state, base[index], next[index], childPath, depth + 1);
+  }
+}
+
+function walkObject(state: DiffState, base: Record<string, unknown>, next: Record<string, unknown>, path: string, depth: number): void {
+  const keys = [...new Set([...Object.keys(base), ...Object.keys(next)])].sort(compareStringsByCodeUnit);
+  for (const key of keys) {
+    const childPath = `${path}/${escapeSegment(key)}`;
+    if (!Object.hasOwn(base, key)) emitSubtree(state, next[key], childPath, 'added', depth + 1);
+    else if (!Object.hasOwn(next, key)) emitSubtree(state, base[key], childPath, 'removed', depth + 1);
+    else walk(state, base[key], next[key], childPath, depth + 1);
+  }
+}
+
 function walk(state: DiffState, base: unknown, next: unknown, path: string, depth: number): void {
   if (state.stopped) return;
   countNode(state, depth);
@@ -129,27 +149,8 @@ function walk(state: DiffState, base: unknown, next: unknown, path: string, dept
     if (!Object.is(base, next)) push(state, path, 'changed', nextKind);
     return;
   }
-  if (baseKind === 'array') {
-    const baseItems = base as readonly unknown[];
-    const nextItems = next as readonly unknown[];
-    const length = Math.max(baseItems.length, nextItems.length);
-    for (let index = 0; index < length; index += 1) {
-      const childPath = `${path}/${index}`;
-      if (index >= baseItems.length) emitSubtree(state, nextItems[index], childPath, 'added', depth + 1);
-      else if (index >= nextItems.length) emitSubtree(state, baseItems[index], childPath, 'removed', depth + 1);
-      else walk(state, baseItems[index], nextItems[index], childPath, depth + 1);
-    }
-    return;
-  }
-  const baseObject = base as Record<string, unknown>;
-  const nextObject = next as Record<string, unknown>;
-  const keys = [...new Set([...Object.keys(baseObject), ...Object.keys(nextObject)])].sort(compareStringsByCodeUnit);
-  for (const key of keys) {
-    const childPath = `${path}/${escapeSegment(key)}`;
-    if (!Object.hasOwn(baseObject, key)) emitSubtree(state, nextObject[key], childPath, 'added', depth + 1);
-    else if (!Object.hasOwn(nextObject, key)) emitSubtree(state, baseObject[key], childPath, 'removed', depth + 1);
-    else walk(state, baseObject[key], nextObject[key], childPath, depth + 1);
-  }
+  if (baseKind === 'array') walkArray(state, base as readonly unknown[], next as readonly unknown[], path, depth);
+  else walkObject(state, base as Record<string, unknown>, next as Record<string, unknown>, path, depth);
 }
 
 export function diffDocuments({ base, next, rootType, baseSequence, maxEntries = DOCUMENT_DIFF_MAX_ENTRIES, maxBytes = DOCUMENT_DIFF_MAX_BYTES, maxNodes = CLASS_2_IMPORT_LIMITS.maxNodes, maxDepth = DOCUMENT_DIFF_MAX_DEPTH }: DocumentDiffInput): DocumentDiff {
