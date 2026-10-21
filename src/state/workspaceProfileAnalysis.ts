@@ -2,6 +2,7 @@ import { processClass2OscalBytes } from '@/domain/oscalClass2Import';
 import { collectProfileHints, type ProfileHint } from '@/domain/profileHints';
 import { buildTargetControlIndex, type TargetControlIndex } from '@/domain/profileTargetControls';
 import { buildWorkspaceGraph } from '@/domain/workspaceGraph';
+import { applyCatalogPins, catalogPinStatus, withCatalogPins, type CatalogDelivery } from '@/domain/workspaceCatalogPin';
 import type { WorkspaceClass1Artifact, WorkspaceGraph, WorkspaceGraphEdge } from '@/domain/workspaceGraphModel';
 import { serializeWorkspaceJson } from '@/domain/workspaceJson';
 import type { LocalId, VerbundId, WorkspaceBinding, WorkspaceEnvelope, WorkspaceResult } from '@/domain/workspaceModel';
@@ -55,6 +56,7 @@ export interface ProfileAnalysisSnapshot {
   readonly bindings: readonly WorkspaceBinding[];
   /** Nur geladene, hash-verifizierte BSI-Artefakte, auf die eine Bindung zeigt. */
   readonly class1Artifacts: readonly WorkspaceClass1Artifact[];
+  readonly delivery: CatalogDelivery;
 }
 
 /** Schemaprüfung über die Klasse-2-Kette ab den Bytes; nur innerhalb eines Workers aufrufen. */
@@ -91,14 +93,15 @@ function resolutionView(graph: WorkspaceGraph, localId: LocalId, suppressed: Rea
 
 /** Reine Ableitung aus einem Schnappschuss; schreibt nichts und lädt nichts. */
 export async function deriveProfileAnalysis(snapshot: ProfileAnalysisSnapshot): Promise<ProfileAnalysis> {
-  const { localId, source, members, bindings, class1Artifacts } = snapshot;
+  const { localId, source, members, class1Artifacts, delivery } = snapshot;
+  const { bindings, withheld } = applyCatalogPins(members, snapshot.bindings, delivery);
   const unavailable = unavailableClass1Bindings(bindings, new Set(class1Artifacts.map((artifact) => artifact.artifactKey)));
   const [graph, schema] = await Promise.all([
     buildWorkspaceGraph({ members, bindings, class1Artifacts }),
     checkSchemaInProcess(source),
   ]);
   const sources = new Map(members.map((member) => [member.localId, member.source] as const));
-  const { edges, suppressed } = projectEdges(graph, sources, unavailable);
+  const { edges, suppressed } = projectEdges(graph, sources, unavailable, withheld);
   const targets = new Map<string, TargetControlIndex>();
   for (const edge of graph.edges) {
     if (edge.kind !== 'profile-import' || edge.from.document.kind !== 'local' || edge.from.document.localId !== localId) continue;
@@ -119,12 +122,18 @@ export async function profileAnalysisSnapshot(
   port: WorkspacePort,
   input: ProfileAnalysisInput,
   class1Artifacts: readonly WorkspaceClass1Artifact[] = [],
+  delivery: CatalogDelivery = new Map(),
 ): Promise<WorkspaceResult<ProfileAnalysisSnapshot>> {
   const loaded = await loadMembers(port, input.verbundId);
   if (!loaded.ok) return loaded;
   const stored = await port.listBindings();
   if (!stored.ok) return stored;
-  const members = loaded.value.map((member) => member.localId === input.localId ? { ...member, source: input.source } : member);
+  // Ein gesperrtes Dokument bleibt beim gespeicherten Stand; sonst zählt das Paar, das Speichern schreiben würde.
+  const saved = loaded.value.find((member) => member.localId === input.localId);
+  const savedPin = saved && catalogPinStatus(saved.source, saved.rootType, stored.value.filter((binding) => binding.fromLocalId === input.localId), delivery);
+  const preview = savedPin && savedPin.state !== 'bound' ? undefined : withCatalogPins(input.source, 'profile', input.bindings, delivery);
+  const pinned = preview?.ok ? preview.source : input.source;
+  const members = loaded.value.map((member) => member.localId === input.localId ? { ...member, source: pinned } : member);
   const memberIds = new Set<string>(members.map((member) => member.localId));
   const bindings = [
     ...stored.value.filter((binding) => memberIds.has(binding.fromLocalId) && binding.fromLocalId !== input.localId),
@@ -139,6 +148,7 @@ export async function profileAnalysisSnapshot(
       members,
       bindings,
       class1Artifacts: class1Artifacts.filter((artifact) => bound.has(artifact.artifactKey)),
+      delivery,
     },
   };
 }

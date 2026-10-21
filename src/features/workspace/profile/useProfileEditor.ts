@@ -6,6 +6,8 @@ import { exportProfileInWorker } from '@/adapters/profileWorkbench';
 import { isPinnedOscalVersion } from '@/domain/oscalVersionMatrix';
 import { commitExplicitSave, sameProfileContent } from '@/domain/profileSave';
 import { approvalAction, withApprovalAction, withReviewIdentities } from '@/domain/reviewTrail';
+import { catalogPinStatus, withCatalogPins } from '@/domain/workspaceCatalogPin';
+import { WORKSPACE_DIAGNOSTIC_CODES } from '@/domain/workspaceDiagnostics';
 import type { BindingTarget, LocalId, WorkspaceBinding, WorkspaceEnvelope } from '@/domain/workspaceModel';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import type { ReviewApprovalRequest } from '@/adapters/workspaceStore';
@@ -28,7 +30,7 @@ export type ProfileSaveState =
   | { readonly kind: 'saved'; readonly at: string }
   | { readonly kind: 'failed' };
 
-export type ProfileEditorMessage = 'saved-as-draft' | 'export-failed' | 'save-failed' | 'delete-failed';
+export type ProfileEditorMessage = 'saved-as-draft' | 'export-failed' | 'save-failed' | 'delete-failed' | 'catalog-locked';
 
 export interface ProfileApprovalInput extends DecisionSubmission {
   /** Trail-Sequenz, gegen die der Aufrufer gelesen hat. */
@@ -56,6 +58,8 @@ export interface ProfileEditor {
   /** Ändert die Quelle und ordnet einem `href` ein Importziel zu. */
   readonly changeWithTarget: (patch: (source: unknown) => { source: unknown; href: string; index: number }, target: BindingTarget) => void;
   readonly save: () => Promise<void>;
+  /** Bindet ein Dokument ohne Katalogpaar bestätigt an den ausgelieferten, verifizierten Stand. */
+  readonly bindCatalogStand: () => Promise<void>;
   /** Übernimmt einen neueren gespeicherten Stand nur ohne offene Eingaben; sonst bleibt der Konflikt erhalten. */
   readonly adopt: (document: WorkspaceEnvelope) => Promise<'adopted' | 'blocked' | 'failed'>;
   /** Schreibt die Freigabe als `metadata.actions` und den Trail in einem Dokumentenschreibvorgang. */
@@ -104,7 +108,7 @@ function editorBindings(localId: LocalId, imports: readonly ProfileImportView[],
  * Speichern mit change-on-write und Export aus dem gespeicherten Stand.
  */
 export function useProfileEditor(localId: LocalId): ProfileEditor {
-  const { documents, registerAutosave } = useWorkspace();
+  const { documents, registerAutosave, catalogDelivery } = useWorkspace();
   const [envelope, setEnvelope] = useState<WorkspaceEnvelope>();
   const [status, setStatus] = useState<ProfileEditor['status']>('loading');
   const [working, setWorking] = useState<unknown>();
@@ -250,12 +254,18 @@ export function useProfileEditor(localId: LocalId): ProfileEditor {
 
   type CommitResult = { readonly ok: true; readonly documentState: 'export-ready' | 'draft' } | { readonly ok: false; readonly code: string };
 
-  const commit = useCallback(async (working: unknown, approval?: { readonly request: ReviewApprovalRequest; readonly requireSchema: boolean }): Promise<CommitResult> => {
+  const commit = useCallback(async (working: unknown, approval?: { readonly request: ReviewApprovalRequest; readonly requireSchema: boolean }, rebind = false): Promise<CommitResult> => {
     const state = latest.current;
     const envelope = state.envelope;
     const oscalVersion = envelope?.oscalVersion;
     if (!envelope || oscalVersion === undefined || !isPinnedOscalVersion(oscalVersion)) return { ok: false, code: 'WORKSPACE_DOCUMENT_NOT_FOUND' };
     if (saving.current) return { ok: false, code: 'WORKSPACE_SAVE_CONFLICT' };
+    // Schreibschutz aus dem gespeicherten Stand: Nur ein gebundener Katalogstand gibt das Speichern frei.
+    const pin = catalogPinStatus(envelope.source, 'profile', stored, catalogDelivery);
+    if (pin && pin.state !== 'bound' && !(rebind && pin.state === 'unpinned')) {
+      setMessage('catalog-locked');
+      return { ok: false, code: pin.code ?? WORKSPACE_DIAGNOSTIC_CODES.catalogPinUnverified };
+    }
     setBusy(true);
     setMessage(undefined);
     saving.current = true;
@@ -269,7 +279,14 @@ export function useProfileEditor(localId: LocalId): ProfileEditor {
     try {
       await chain.current;
       clearTimeout(timer.current);
-      const { source } = commitExplicitSave(envelope.source, snapshot, { uuid: crypto.randomUUID(), lastModified: new Date().toISOString() });
+      // Neue Katalogbindungen erhalten das Paar des ausgelieferten Stands; ein abweichendes Paar sperrt.
+      // Vor change-on-write: Ein ergänztes Paar ist eine Inhaltsänderung mit neuer UUID und `last-modified`.
+      const pinned = withCatalogPins(snapshot, 'profile', bindings, catalogDelivery);
+      if (!pinned.ok) {
+        setMessage('catalog-locked');
+        return { ok: false, code: pinned.code };
+      }
+      const { source } = commitExplicitSave(envelope.source, pinned.source, { uuid: crypto.randomUUID(), lastModified: new Date().toISOString() });
       const schema = await documents.checkProfileSchema(source);
       // Eine Freigabe über einem schemawidrigen Stand wäre keine belastbare Freigabe.
       if (approval?.requireSchema && schema.status !== 'passed') return { ok: false, code: 'REVIEW_APPROVAL_SCHEMA' };
@@ -305,12 +322,17 @@ export function useProfileEditor(localId: LocalId): ProfileEditor {
       setSaveState({ kind: 'saved', at: result.value.savedAt });
     }
     return { ok: true, documentState };
-  }, [bindings, documents, localId, pending, schedule]);
+  }, [bindings, catalogDelivery, documents, localId, pending, schedule, stored]);
 
   const save = useCallback(async () => {
     const result = await commit(latest.current.working);
     if (result.ok && result.documentState === 'draft') setMessage('saved-as-draft');
   }, [commit]);
+
+  const bindCatalogStand = useCallback(async () => {
+    if (latest.current.unsaved || dirty) return;
+    await commit(latest.current.working, undefined, true);
+  }, [commit, dirty]);
 
   const approve = useCallback(async (input: ProfileApprovalInput): Promise<ProfileApprovalResult> => {
     const state = latest.current;
@@ -370,6 +392,6 @@ export function useProfileEditor(localId: LocalId): ProfileEditor {
   return {
     status, envelope, working, imports, dirty, saveState, busy, message, bindings,
     targetFor: (entry) => targetOf(entry, stored, pendingTargets),
-    change, changeWithTarget, removeImportAt, save, adopt, approve, exportDocument, remove,
+    change, changeWithTarget, removeImportAt, save, bindCatalogStand, adopt, approve, exportDocument, remove,
   };
 }

@@ -1,5 +1,6 @@
 import { REFERENCE_GRAPH_CODES } from '@/domain/referenceGraphModel';
 import { buildWorkspaceGraph } from '@/domain/workspaceGraph';
+import { applyCatalogPins, CATALOG_PIN_PATH, type CatalogDelivery, type CatalogPin } from '@/domain/workspaceCatalogPin';
 import type { WorkspaceClass1Artifact, WorkspaceGraph, WorkspaceGraphEdge } from '@/domain/workspaceGraphModel';
 import type { OscalRootKey } from '@/domain/oscalVersionMatrix';
 import type {
@@ -22,6 +23,8 @@ export interface WorkspaceDocumentView {
   readonly documentState: DocumentState;
   /** `metadata.title`, nur für den Seiteninhalt. */
   readonly title?: string;
+  /** Bindung an BSI-Katalogstände; fehlt, wenn das Dokument auf keinen BSI-Katalog verweist. */
+  readonly catalogPin?: CatalogPin;
 }
 
 export interface WorkspaceEdgeView {
@@ -35,6 +38,8 @@ export interface WorkspaceEdgeView {
   readonly diagnosticCode?: string;
   /** Die Bindung zeigt auf einen BSI-Katalog, der in dieser Sitzung nicht geladen und verifiziert ist. */
   readonly class1Unavailable?: true;
+  /** Der gebundene Katalogstand ist gesperrt; die Kante löst gegen keinen anderen Stand auf. */
+  readonly catalogWithheld?: true;
 }
 
 export interface WorkspaceDiagnosticView {
@@ -82,7 +87,10 @@ export function pointerString(source: unknown, pointer: string): string | undefi
   return typeof value === 'string' ? value : undefined;
 }
 
-function edgeView(edge: WorkspaceGraphEdge, source: unknown, class1Unavailable: boolean): WorkspaceEdgeView {
+function edgeView(edge: WorkspaceGraphEdge, source: unknown, class1Unavailable: boolean, withheld: boolean): WorkspaceEdgeView {
+  if (withheld) {
+    return { kind: edge.kind, path: edge.path, state: 'not-evaluable', href: pointerString(source, edge.path), catalogWithheld: true };
+  }
   if (class1Unavailable) {
     return { kind: edge.kind, path: edge.path, state: 'not-evaluable', href: pointerString(source, edge.path), class1Unavailable: true };
   }
@@ -141,7 +149,10 @@ export interface EdgeProjection {
 }
 
 /** Kanten je lokalem Dokument; Kanten auf nicht geladene BSI-Artefakte werden zum Sitzungszustand. */
-export function projectEdges(graph: WorkspaceGraph, sources: ReadonlyMap<string, unknown>, unavailable: ReadonlySet<string>): EdgeProjection {
+export function projectEdges(
+  graph: WorkspaceGraph, sources: ReadonlyMap<string, unknown>, unavailable: ReadonlySet<string>, withheld: readonly WorkspaceBinding[] = [],
+): EdgeProjection {
+  const withheldKeys = new Set(withheld.map((binding) => bindingKey(binding.fromLocalId, binding.pointer, binding.href)));
   const edges = new Map<LocalId, WorkspaceEdgeView[]>();
   const suppressed = new Set<unknown>();
   const missingEdges = new Set<string>();
@@ -155,7 +166,7 @@ export function projectEdges(graph: WorkspaceGraph, sources: ReadonlyMap<string,
       missingEdges.add(`${localId}|${edge.path}`);
     }
     const list = edges.get(localId) ?? [];
-    list.push(edgeView(edge, source, missing));
+    list.push(edgeView(edge, source, missing, withheldKeys.has(bindingKey(localId, edge.path, pointerString(source, edge.path)))));
     edges.set(localId, list);
   }
   // Die Profilauflösung übernimmt eine solche Kantendiagnose als eigenes Objekt mit
@@ -175,6 +186,7 @@ export interface VerbundViewSnapshot {
   readonly bindings: readonly WorkspaceBinding[];
   /** Nur geladene, hash-verifizierte BSI-Artefakte, auf die eine Bindung des Verbunds zeigt. */
   readonly class1Artifacts: readonly WorkspaceClass1Artifact[];
+  readonly delivery: CatalogDelivery;
 }
 
 /**
@@ -182,11 +194,13 @@ export interface VerbundViewSnapshot {
  * `src/workers/profileWorkbench.worker.ts`, weil die Profile Resolution des
  * Dokumentgraphen die Schemastufe (Ajv) braucht.
  */
-export async function deriveVerbundView({ verbund, members, bindings, class1Artifacts }: VerbundViewSnapshot): Promise<VerbundView> {
+export async function deriveVerbundView({ verbund, members, bindings: stored, class1Artifacts, delivery }: VerbundViewSnapshot): Promise<VerbundView> {
+  const { pins, bindings, withheld } = applyCatalogPins(members, stored, delivery);
   const unavailable = unavailableClass1Bindings(bindings, new Set(class1Artifacts.map((artifact) => artifact.artifactKey)));
   const graph = await buildWorkspaceGraph({ members, bindings, class1Artifacts });
   // Die Diagnose einer Kante auf ein nicht geladenes BSI-Artefakt beschreibt die Sitzung, nicht das Dokument.
-  const { edges, suppressed } = projectEdges(graph, new Map(members.map((member) => [member.localId, member.source])), unavailable);
+  const { edges, suppressed } = projectEdges(graph, new Map(members.map((member) => [member.localId, member.source])), unavailable, withheld);
+  const pinDiagnostics = [...pins.values()].flatMap((pin) => pin.code ? [{ code: pin.code, path: CATALOG_PIN_PATH }] : []);
   return {
     verbund,
     documents: members.map((member) => ({
@@ -195,9 +209,10 @@ export async function deriveVerbundView({ verbund, members, bindings, class1Arti
       oscalVersion: member.oscalVersion,
       documentState: member.documentState,
       title: documentTitle(member),
+      ...(pins.has(member.localId) ? { catalogPin: pins.get(member.localId) } : {}),
     })).sort(compareDocuments),
     edges,
-    diagnostics: graph.diagnostics.filter((diagnostic) => !suppressed.has(diagnostic)).map(({ code, path }) => ({ code, path })),
+    diagnostics: [...graph.diagnostics.filter((diagnostic) => !suppressed.has(diagnostic)).map(({ code, path }) => ({ code, path })), ...pinDiagnostics],
   };
 }
 
@@ -213,6 +228,7 @@ export async function loadVerbundView(
   port: WorkspacePort,
   verbundId: VerbundId,
   class1Artifacts: readonly WorkspaceClass1Artifact[] = [],
+  delivery: CatalogDelivery = new Map(),
 ): Promise<WorkspaceResult<VerbundView | null>> {
   const verbuende = await port.listVerbuende();
   if (!verbuende.ok) return verbuende;
@@ -228,6 +244,6 @@ export async function loadVerbundView(
   const boundArtifacts = new Set(memberBindings.flatMap((binding) => binding.target.kind === 'class-1' ? [binding.target.artifactKey] : []));
   const supplied = class1Artifacts.filter((artifact) => boundArtifacts.has(artifact.artifactKey));
   const { deriveVerbundViewInWorker } = await import('@/adapters/profileWorkbench');
-  const view = await deriveVerbundViewInWorker({ verbund, members, bindings: memberBindings, class1Artifacts: supplied });
+  const view = await deriveVerbundViewInWorker({ verbund, members, bindings: memberBindings, class1Artifacts: supplied, delivery });
   return view ? { ok: true, value: view } : failure(new StorageFailure('WORKSPACE_STORAGE_FAILED'));
 }

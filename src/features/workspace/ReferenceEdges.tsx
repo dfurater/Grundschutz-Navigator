@@ -39,7 +39,7 @@ function EdgeRow({ view, edge }: Readonly<{ view: VerbundView; edge: WorkspaceEd
         <dd className="text-sm">{referenceRequirement(edge.kind) ?? 'keine Angabe'}</dd>
         <dt className={TERM}>Zustand</dt>
         <dd className="text-sm">
-          {edge.class1Unavailable ? 'BSI-Katalog in dieser Sitzung nicht geladen' : EDGE_STATE_LABELS[edge.state]}
+          {edge.catalogWithheld ? 'Gebundener Katalogstand gesperrt' : edge.class1Unavailable ? 'BSI-Katalog in dieser Sitzung nicht geladen' : EDGE_STATE_LABELS[edge.state]}
           {edge.diagnosticCode && <span className="ml-2 font-mono text-xs text-[var(--color-text-secondary)]">{edge.diagnosticCode}</span>}
         </dd>
         {(edge.href !== undefined || edge.targetLocalId !== undefined) && (

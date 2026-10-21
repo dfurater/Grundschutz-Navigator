@@ -2,8 +2,8 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import type { ReactNode } from 'react';
 import { StorageFailure, failure } from '@/adapters/workspaceStorageFailure';
 import { isLocalIdentity } from '@/app/routes';
-import type { CatalogState } from '@/domain/models';
-import { getCatalogByKey } from '@/domain/sourceRegistry';
+import type { CatalogDelivery } from '@/domain/workspaceCatalogPin';
+import { catalogDelivery, verifiedCatalogArtifacts } from '@/state/workspaceCatalogSession';
 import type { WorkspaceClass1Artifact } from '@/domain/workspaceGraphModel';
 import type { LocalId, VerbundId, WorkspaceResult, WorkspaceVerbund } from '@/domain/workspaceModel';
 import { CatalogContext } from '@/state/CatalogContext';
@@ -20,32 +20,10 @@ export type OpenWorkspace = () => Promise<WorkspaceResult<WorkspacePort>>;
 const storageFailed = () => failure(new StorageFailure('WORKSPACE_STORAGE_FAILED'));
 const openWorkspaceStore: OpenWorkspace = () =>
   import('@/adapters/workspaceStore').then(({ WorkspaceStore }) => WorkspaceStore.open());
-const loadView = (port: WorkspacePort, verbundId: VerbundId, class1: readonly WorkspaceClass1Artifact[]): Promise<WorkspaceResult<VerbundView | null>> =>
+const loadView = (port: WorkspacePort, verbundId: VerbundId, class1: readonly WorkspaceClass1Artifact[], delivery: CatalogDelivery): Promise<WorkspaceResult<VerbundView | null>> =>
   import('@/state/workspaceVerbundView')
-    .then(({ loadVerbundView }) => loadVerbundView(port, verbundId, class1))
+    .then(({ loadVerbundView }) => loadVerbundView(port, verbundId, class1, delivery))
     .catch(storageFailed);
-
-/**
- * Bereits geladene Kataloge mit bestandener Hashprüfung als lesende
- * Klasse-1-Artefakte für den Dokumentgraphen. Nicht verifizierte oder nicht
- * unterstützte Kataloge bleiben draußen; nichts davon gelangt in den Speicher.
- */
-function verifiedCatalogArtifacts(catalogs: CatalogState['catalogs'] | undefined): WorkspaceClass1Artifact[] {
-  const artifacts: WorkspaceClass1Artifact[] = [];
-  for (const [catalogKey, loaded] of catalogs ?? []) {
-    const entry = getCatalogByKey(catalogKey);
-    if (entry?.lifecycle !== 'supported' || !loaded.catalogDocument || loaded.verification?.valid !== true) continue;
-    artifacts.push({
-      artifactKey: entry.artifactKey,
-      lifecycle: 'supported',
-      trustClass: 'class-1-verified-public',
-      rootType: entry.expectedRootType,
-      oscalVersion: entry.oscalVersion,
-      source: loaded.catalogDocument.source,
-    });
-  }
-  return artifacts;
-}
 
 /** Speichert einen offenen Entwurf; Stationen registrieren ihn für den Bereichswechsel. */
 export type AutosaveFlush = () => Promise<WorkspaceResult<unknown>>;
@@ -61,6 +39,8 @@ export interface WorkspaceContextValue {
   readonly status: 'idle' | 'opening' | 'ready' | 'unavailable';
   readonly verbuende: readonly WorkspaceVerbund[] | null;
   readonly writable: boolean;
+  /** Ausgelieferte BSI-Katalogstände dieser Sitzung; nur das Manifest, keine Katalogbytes. */
+  readonly catalogDelivery: CatalogDelivery;
   readonly notices: readonly WorkspaceNotice[];
   readonly verbund: VerbundViewState | null;
   readonly activate: () => void;
@@ -84,6 +64,7 @@ export const WorkspaceContext = createContext<WorkspaceContextValue>({
   status: 'idle',
   verbuende: null,
   writable: false,
+  catalogDelivery: new Map(),
   notices: [],
   verbund: null,
   activate: () => undefined,
@@ -95,7 +76,7 @@ export const WorkspaceContext = createContext<WorkspaceContextValue>({
   exportBackup: unavailable,
   registerAutosave: () => () => undefined,
   flushAutosaves: () => Promise.resolve(true),
-  documents: createWorkspaceDocuments({ port: null, write: unavailableWrite, quiet: unavailableWrite, class1: [], targets: new Map() }),
+  documents: createWorkspaceDocuments({ port: null, write: unavailableWrite, quiet: unavailableWrite, class1: [], delivery: new Map(), targets: new Map() }),
 });
 
 export function WorkspaceProvider({ open = openWorkspaceStore, children }: Readonly<{
@@ -117,6 +98,7 @@ export function WorkspaceProvider({ open = openWorkspaceStore, children }: Reado
   const [importTargets] = useState(() => new Map<LocalId, Map<string, PendingImportTarget>>());
   const { catalogs } = useContext(CatalogContext);
   const class1 = useMemo(() => verifiedCatalogArtifacts(catalogs), [catalogs]);
+  const delivery = useMemo(() => catalogDelivery(catalogs), [catalogs]);
 
   const report = useCallback((diagnostic: { readonly code: string }) => {
     const notice = noticeForDiagnostic(diagnostic);
@@ -179,7 +161,7 @@ export function WorkspaceProvider({ open = openWorkspaceStore, children }: Reado
   useEffect(() => {
     if (!port || selectedVerbundId === null || !isLocalIdentity(selectedVerbundId)) return;
     let current = true;
-    void loadView(port, selectedVerbundId as VerbundId, class1).then((result) => {
+    void loadView(port, selectedVerbundId as VerbundId, class1, delivery).then((result) => {
       if (!current) return;
       if (!result.ok) {
         report(result.diagnostic);
@@ -191,7 +173,7 @@ export function WorkspaceProvider({ open = openWorkspaceStore, children }: Reado
       }
     });
     return () => { current = false; };
-  }, [port, selectedVerbundId, revision, report, class1]);
+  }, [port, selectedVerbundId, revision, report, class1, delivery]);
 
   const verbund = useMemo<VerbundViewState | null>(() => {
     if (selectedVerbundId === null) return null;
@@ -218,8 +200,8 @@ export function WorkspaceProvider({ open = openWorkspaceStore, children }: Reado
   }, [port, report]);
 
   const documents = useMemo(
-    () => createWorkspaceDocuments({ port, write, quiet, class1, targets: importTargets }),
-    [port, write, quiet, class1, importTargets],
+    () => createWorkspaceDocuments({ port, write, quiet, class1, delivery, targets: importTargets }),
+    [port, write, quiet, class1, delivery, importTargets],
   );
 
   const registerAutosave = useCallback((flush: AutosaveFlush) => {
@@ -238,6 +220,7 @@ export function WorkspaceProvider({ open = openWorkspaceStore, children }: Reado
     status,
     verbuende,
     writable,
+    catalogDelivery: delivery,
     notices,
     verbund,
     activate,
@@ -289,7 +272,7 @@ export function WorkspaceProvider({ open = openWorkspaceStore, children }: Reado
     registerAutosave,
     flushAutosaves,
     documents,
-  }), [status, verbuende, writable, notices, verbund, activate, checkSchema, write, port, report, registerAutosave, flushAutosaves, documents, importTargets]);
+  }), [status, verbuende, writable, delivery, notices, verbund, activate, checkSchema, write, port, report, registerAutosave, flushAutosaves, documents, importTargets]);
 
   return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>;
 }

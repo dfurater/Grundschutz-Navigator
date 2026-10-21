@@ -36,4 +36,12 @@ export const WORKSPACE_DIAGNOSTIC_CODES = Object.freeze({
   membershipRootRejected: 'OSCAL_WORKSPACE_MEMBERSHIP_ROOT_REJECTED',
   /** Another member of the same information network carries the same root UUID. */
   rootUuidDuplicate: 'OSCAL_WORKSPACE_ROOT_UUID_DUPLICATE',
+  /** A document is bound to a BSI catalog but carries no catalog reference pair. */
+  catalogPinMissing: 'OSCAL_WORKSPACE_CATALOG_PIN_MISSING',
+  /** The pinned catalog commit is not the delivered stand. */
+  catalogPinNotDelivered: 'OSCAL_WORKSPACE_CATALOG_PIN_NOT_DELIVERED',
+  /** The delivered catalog failed its manifest or integrity check. */
+  catalogPinUnverified: 'OSCAL_WORKSPACE_CATALOG_PIN_UNVERIFIED',
+  /** The catalog reference pairs on `metadata.props` lock the write path. */
+  catalogPinInvalid: 'OSCAL_WORKSPACE_CATALOG_PIN_INVALID',
 } as const);

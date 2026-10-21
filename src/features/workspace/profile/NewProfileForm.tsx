@@ -4,7 +4,8 @@ import { buildWorkspaceDocumentUrl } from '@/app/routes';
 import { Button } from '@/components/Button';
 import { createProfileSource, importHrefPointer, isProfileTitle } from '@/domain/profileImportList';
 import { isPinnedOscalVersion } from '@/domain/oscalVersionMatrix';
-import type { VerbundId } from '@/domain/workspaceModel';
+import { withCatalogPins } from '@/domain/workspaceCatalogPin';
+import type { LocalId, VerbundId } from '@/domain/workspaceModel';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import type { VerbundView } from '@/state/workspaceVerbundView';
 import { ImportTargetPicker } from '@/features/workspace/profile/ImportTargetPicker';
@@ -14,13 +15,14 @@ import { useImportTargets, type ImportTargetOption } from '@/features/workspace/
 /**
  * Neuanlage eines Profils (Mockup 1): Titel, dann das Importziel. Erst „Profil
  * anlegen“ speichert; das Dokument trägt von Anfang an die `oscal-version`
- * des Ziels, einen Import mit `href` und die Bindung auf das Ziel.
+ * des Ziels, einen Import mit `href`, die Bindung auf das Ziel und für einen
+ * BSI-Katalog das Paar des ausgelieferten, verifizierten Stands.
  */
 export function NewProfileForm({ view, onCancel }: Readonly<{ view: VerbundView; onCancel: () => void }>) {
   const titleId = useId();
   const pickerName = useId();
   const navigate = useNavigate();
-  const { documents, writable } = useWorkspace();
+  const { documents, writable, catalogDelivery } = useWorkspace();
   const options = useImportTargets(view);
   const [title, setTitle] = useState('');
   const [target, setTarget] = useState<ImportTargetOption>();
@@ -38,10 +40,14 @@ export function NewProfileForm({ view, onCancel }: Readonly<{ view: VerbundView;
       uuid: crypto.randomUUID(), resourceUuid, title: target.title, profileTitle: title.trim(),
       oscalVersion, lastModified: new Date().toISOString(),
     });
+    const binding = { pointer: importHrefPointer(0), href, target: target.target };
+    const pinned = withCatalogPins(source, 'profile', [{ fromLocalId: '' as LocalId, ...binding }], catalogDelivery);
     // Dokument und Bindung in einer Transaktion: Ohne gültige Bindung entsteht kein Profil.
-    const added = await documents.addDocument(view.verbund.verbundId as VerbundId, {
-      source, context: { trustClass: 'class-2-local-user' }, rootType: 'profile', oscalVersion,
-    }, 'draft', [{ pointer: importHrefPointer(0), href, target: target.target }]);
+    const added = pinned.ok
+      ? await documents.addDocument(view.verbund.verbundId as VerbundId, {
+        source: pinned.source, context: { trustClass: 'class-2-local-user' }, rootType: 'profile', oscalVersion,
+      }, 'draft', [binding])
+      : pinned;
     if (!added.ok) {
       setSaving(false);
       return;

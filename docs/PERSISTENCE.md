@@ -66,6 +66,19 @@ Es gibt **keinen** Rückweg aus dem Arbeitsbereich nach außen außer dem vom Nu
 
 Der letzte Punkt ist eine Modelltatsache: `hash` existiert im OSCAL-Modell ausschließlich unter `back-matter/resource/rlinks/hashes` und beschreibt dort eine *referenzierte* Ressource. Ein Dokument-Selbsthash existiert nicht; ein Verifikationsindikator im Sinne von Klasse 1 ist für ein lokales Dokument **prinzipiell unmöglich**.
 
+### Bindung an einen Katalogstand
+
+Ein lokales Dokument mit einer Bindung auf einen BSI-Katalog trägt je Katalog das Paar `assessed-against-catalog-key`/`assessed-against-catalog-commit` auf `metadata.props` ([PROJECT_PROPS.md](PROJECT_PROPS.md)). Das Paar ist der einzige Katalogbezug im Arbeitsbereich; Katalogbytes liegen in keinem Store. `src/domain/workspaceCatalogPin.ts` setzt das um:
+
+- Die Profil-Neuanlage und jedes explizite Speichern ergänzen für eine Katalogbindung ohne Paar den ausgelieferten Stand (`withCatalogPins`). Ein vorhandenes Paar bleibt unverändert.
+- Ausgeliefert ist ein Stand, wenn der in der Sitzung geladene Katalog die Hashprüfung aus [INTEGRITY.md](INTEGRITY.md) bestanden hat und `source.commit_sha` seines Manifests dem Paar entspricht. Die Auslieferungstiefe je `catalogKey` ist eins: Der Build liefert nur den aktuellen Stand unter `public/data/` aus.
+- `catalogPinStatus` liefert je Dokument `bound`, `pending` (Katalog noch nicht geladen), `unpinned` (kein Paar), `not-delivered` (anderer ausgelieferter Stand), `unverified` (Hashprüfung nicht bestanden) oder `invalid` (Projekt-Props sperren den Schreibpfad). Außer `bound` ist jeder Zustand ein Schreibschutz für Bearbeiten, Speichern und Prüfentscheidungen; Lesen, Export und Löschen bleiben möglich.
+- Bei `unpinned`, `not-delivered` und `invalid` hält `applyCatalogPins` die Katalogbindungen des Dokuments aus dem Dokumentgraphen heraus; die Kante zeigt „Gebundener Katalogstand gesperrt“ und löst gegen keinen anderen Stand auf. Die Anwendung lädt dafür nichts aus dem Upstream nach.
+- Die Diagnosecodes `OSCAL_WORKSPACE_CATALOG_PIN_MISSING`, `…_NOT_DELIVERED`, `…_UNVERIFIED` und `…_INVALID` tragen nur Code und Pfad `/metadata/props`, keinen Schlüssel und keinen Commit.
+- Ein Dokument ohne Paar bietet die Aktion „An ausgelieferten Stand binden“ an; sie schreibt das Paar als explizites Speichern. Ein vorhandenes Paar ändert die Anwendung nicht.
+
+Der Katalog-Viewer wertet keine Paare aus und zeigt stets den zuletzt ausgelieferten Stand.
+
 ## 3. Speichervertrag
 
 ### Datenbank und Stores

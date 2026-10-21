@@ -11,6 +11,7 @@ import { useMediaQuery } from '@/hooks/useMediaQuery';
 import type { VerbundView, WorkspaceDocumentView } from '@/state/workspaceVerbundView';
 import { FOCUS_RING, OriginLabel, ValidityBadge } from '@/features/workspace/DocumentMarks';
 import { WorkspaceNotices } from '@/features/workspace/WorkspaceNotices';
+import { CatalogPinNotice } from '@/features/workspace/CatalogPinNotice';
 import { ReferenceEdges } from '@/features/workspace/ReferenceEdges';
 import { ImportsTab } from '@/features/workspace/profile/ImportsTab';
 import { PackageActions, PackageContent } from '@/features/workspace/profile/PackagePanel';
@@ -28,6 +29,7 @@ const MESSAGES: Readonly<Record<ProfileEditorMessage, string>> = {
   'save-failed': 'Das Profil wurde nicht gespeichert.',
   'export-failed': 'Der Export wurde abgelehnt; die Diagnosen nennen die Stufe.',
   'delete-failed': 'Das Profil wurde nicht gelöscht.',
+  'catalog-locked': 'Der gebundene Katalogstand gibt das Speichern nicht frei; das Profil wurde nicht gespeichert.',
 };
 
 function Tabs({ tab, onSelect, counts, ids }: Readonly<{ tab: Tab; onSelect: (tab: Tab) => void; counts: Readonly<Record<Tab, number | undefined>>; ids: Readonly<Record<Tab, string>> }>) {
@@ -147,6 +149,8 @@ export function ProfileEditorPage({ view, document }: Readonly<{ view: VerbundVi
   const oscalVersion = editor.envelope.oscalVersion;
   const state = editor.envelope.documentState === 'draft' || editor.dirty ? 'draft' : 'export-ready';
   const canExport = editor.envelope.documentState === 'export-ready' && !editor.dirty && !editor.busy;
+  // Schreibschutz durch den Katalogstand: Lesen, Export und Löschen bleiben, Bearbeiten und Prüfen nicht.
+  const locked = document.catalogPin !== undefined && document.catalogPin.state !== 'bound';
   const total = targets.length === 1 ? targets[0].count : undefined;
   const resolvedCount = analysis?.resolution.status === 'resolved' ? analysis.resolution.index.ids.length : 0;
   // Nach dem ersten Öffnen bleibt der Reiter eingehängt: ein Wechsel verwirft keine Freigabeeingaben.
@@ -155,7 +159,7 @@ export function ProfileEditorPage({ view, document }: Readonly<{ view: VerbundVi
     if (next === 'review') setReviewStartedFor(localId);
   };
   const actions = (
-    <PackageActions saveState={editor.saveState} dirty={editor.dirty} canExport={canExport} busy={editor.busy} onSave={() => { void editor.save(); }} onExport={() => { void editor.exportDocument(); }} />
+    <PackageActions saveState={editor.saveState} dirty={editor.dirty} canExport={canExport} busy={editor.busy || locked} onSave={() => { void editor.save(); }} onExport={() => { void editor.exportDocument(); }} />
   );
 
   return (
@@ -165,9 +169,12 @@ export function ProfileEditorPage({ view, document }: Readonly<{ view: VerbundVi
         <Tabs tab={tab} onSelect={selectTab} counts={{ imports: editor.imports.length, references: view.edges.get(localId)?.length ?? 0, review: undefined }} ids={ids} />
         <div className="min-h-0 flex-1 space-y-4 p-4 md:overflow-y-auto">
           <WorkspaceNotices />
+          <CatalogPinNotice pin={document.catalogPin} busy={editor.busy || editor.dirty} onBind={() => { void editor.bindCatalogStand(); }} />
           {editor.message && <output className="block text-sm text-[var(--color-text-primary)]">{MESSAGES[editor.message]}</output>}
           <div role="tabpanel" id={ids.imports} aria-labelledby={`${ids.imports}-tab`} hidden={tab !== 'imports'}>
-            <ImportsTab editor={editor} analysis={analysis} analyzedBindings={analyzedBindings} options={options} oscalVersion={oscalVersion} />
+            <fieldset disabled={locked} className="min-w-0">
+              <ImportsTab editor={editor} analysis={analysis} analyzedBindings={analyzedBindings} options={options} oscalVersion={oscalVersion} />
+            </fieldset>
           </div>
           <div role="tabpanel" id={ids.references} aria-labelledby={`${ids.references}-tab`} hidden={tab !== 'references'}>
             <ReferenceEdges view={view} document={document} />
@@ -175,7 +182,9 @@ export function ProfileEditorPage({ view, document }: Readonly<{ view: VerbundVi
           <div role="tabpanel" id={ids.review} aria-labelledby={`${ids.review}-tab`} hidden={tab !== 'review'}>
             {/* Erst beim Öffnen geladen: der Prüf-Worker entsteht nicht auf jedem Profilaufruf. */}
             {reviewStartedFor === localId && (
+              <fieldset disabled={locked} className="min-w-0">
               <ReviewTab key={localId} localId={localId} documentSavedAt={editor.envelope.savedAt} editorDirty={editor.dirty} approval={{ onSubmit: editor.approve }} onDocumentAdopted={editor.adopt} />
+              </fieldset>
             )}
           </div>
         </div>
@@ -186,7 +195,7 @@ export function ProfileEditorPage({ view, document }: Readonly<{ view: VerbundVi
               <Button variant="secondary" className="min-h-touch" aria-haspopup="dialog" onClick={() => setSheet(true)}>
                 Paket <span className="ml-1 inline-flex min-w-4.5 justify-center rounded-full bg-[var(--color-text-primary)] px-1 text-2xs font-semibold tabular-nums text-[var(--color-text-inverse)]">{formatCount(resolvedCount)}</span>
               </Button>
-              <Button className="min-h-touch" disabled={editor.busy} onClick={() => { void editor.save(); }}>Speichern</Button>
+              <Button className="min-h-touch" disabled={editor.busy || locked} onClick={() => { void editor.save(); }}>Speichern</Button>
             </div>
           )}
         </div>

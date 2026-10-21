@@ -1,4 +1,5 @@
 import { StorageFailure, failure } from '@/adapters/workspaceStorageFailure';
+import type { CatalogDelivery } from '@/domain/workspaceCatalogPin';
 import type { WorkspaceClass1Artifact } from '@/domain/workspaceGraphModel';
 import type { BindingTarget, LocalId, WorkspaceResult } from '@/domain/workspaceModel';
 import type { ProfileAnalysis, ProfileAnalysisInput, ProfileSchemaCheck } from '@/state/workspaceProfileAnalysis';
@@ -51,12 +52,12 @@ type Write = <T>(operation: (store: WorkspacePort) => Promise<WorkspaceResult<T>
 const storageFailed = () => failure(new StorageFailure('WORKSPACE_STORAGE_FAILED'));
 
 /** Liest den Schnappschuss im Main Thread und leitet ihn im Worker ab. */
-async function analyze(port: WorkspacePort, input: ProfileAnalysisInput, class1: readonly WorkspaceClass1Artifact[]): Promise<WorkspaceResult<ProfileAnalysis>> {
+async function analyze(port: WorkspacePort, input: ProfileAnalysisInput, class1: readonly WorkspaceClass1Artifact[], delivery: CatalogDelivery): Promise<WorkspaceResult<ProfileAnalysis>> {
   const [{ profileAnalysisSnapshot }, { analyzeProfileInWorker }] = await Promise.all([
     import('@/state/workspaceProfileAnalysis'),
     import('@/adapters/profileWorkbench'),
   ]);
-  const snapshot = await profileAnalysisSnapshot(port, input, class1);
+  const snapshot = await profileAnalysisSnapshot(port, input, class1, delivery);
   if (!snapshot.ok) return snapshot;
   const analysis = await analyzeProfileInWorker(snapshot.value);
   return analysis ? { ok: true, value: analysis } : storageFailed();
@@ -72,13 +73,14 @@ async function checkSchema(source: unknown): Promise<ProfileSchemaCheck> {
   return result.ok ? { status: 'passed' } : { status: 'failed', code: result.diagnostic.code, path: result.diagnostic.path };
 }
 
-export function createWorkspaceDocuments({ port, write, quiet, class1, targets }: Readonly<{
+export function createWorkspaceDocuments({ port, write, quiet, class1, delivery, targets }: Readonly<{
   port: WorkspacePort | null;
   /** Schreibt und lädt danach die Verbundansicht neu. */
   write: Write;
   /** Schreibt ohne Neuladen; Fehler erscheinen als Speichermeldung. */
   quiet: Write;
   class1: readonly WorkspaceClass1Artifact[];
+  delivery: CatalogDelivery;
   targets: Map<LocalId, Map<string, PendingImportTarget>>;
 }>): WorkspaceDocuments {
   const read = <T,>(operation: (store: WorkspacePort) => Promise<WorkspaceResult<T>>): Promise<WorkspaceResult<T>> =>
@@ -100,7 +102,7 @@ export function createWorkspaceDocuments({ port, write, quiet, class1, targets }
     listReviewTrail: (localId) => read((store) => store.listReviewTrail(localId)),
     appendCheckpoint: (...args) => read((store) => store.appendCheckpoint(...args)),
     appendDecision: (...args) => read((store) => store.appendDecision(...args)),
-    analyzeProfile: (input) => read((store) => analyze(store, input, class1)),
+    analyzeProfile: (input) => read((store) => analyze(store, input, class1, delivery)),
     checkProfileSchema: (source) => checkSchema(source)
       .catch((): ProfileSchemaCheck => ({ status: 'failed', code: 'OSCAL_EXPORT_SOURCE_INVALID', path: '/' })),
     importTargets: (localId) => {
