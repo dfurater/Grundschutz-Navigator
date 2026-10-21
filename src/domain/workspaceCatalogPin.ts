@@ -16,7 +16,8 @@ import type { WorkspaceBinding, WorkspaceEnvelope } from '@/domain/workspaceMode
  */
 
 /** Ausgelieferter Stand je `artifactKey` in dieser Sitzung; fehlt ein Eintrag, ist der Katalog noch nicht geladen. */
-export type CatalogDelivery = ReadonlyMap<string, { readonly commit: string | null; readonly verified: boolean }>;
+export type CatalogDelivery = ReadonlyMap<string, DeliveredCatalog>;
+export interface DeliveredCatalog { readonly commit: string | null; readonly verified: boolean }
 
 export type CatalogPinState = 'bound' | 'pending' | 'unpinned' | 'not-delivered' | 'unverified' | 'invalid';
 
@@ -93,6 +94,30 @@ function pinnedCatalogArtifacts(bindings: readonly WorkspaceBinding[], pins: Rea
   return [...artifacts];
 }
 
+/** Zu prüfender Umfang eines Dokuments: keiner, ungültig (mit den gebundenen Katalogen) oder die Kataloge samt Paaren. */
+type PinScope =
+  | { readonly kind: 'none' }
+  | { readonly kind: 'invalid'; readonly bound: readonly string[] }
+  | { readonly kind: 'pinned'; readonly pins: ReadonlyMap<string, string>; readonly artifacts: readonly string[] };
+
+function pinScope(source: unknown, rootType: string, bindings: readonly WorkspaceBinding[]): PinScope {
+  const bound = boundCatalogArtifacts(bindings);
+  const pins = readCatalogPins(source, rootType);
+  const artifacts = pins === null ? null : pinnedCatalogArtifacts(bindings, pins);
+  if (pins === null || artifacts === null) {
+    return bound.length > 0 || carriesCatalogPair(source, rootType) ? { kind: 'invalid', bound } : { kind: 'none' };
+  }
+  return artifacts.length === 0 ? { kind: 'none' } : { kind: 'pinned', pins, artifacts };
+}
+
+/** Zustand eines einzelnen Katalogs aus ausgeliefertem Stand und Paar. */
+function catalogState(delivered: DeliveredCatalog | undefined, pin: string | undefined): CatalogPinState {
+  if (delivered === undefined) return 'pending';
+  if (!delivered.verified || delivered.commit === null) return 'unverified';
+  if (pin === undefined) return 'unpinned';
+  return pin === delivered.commit ? 'bound' : 'not-delivered';
+}
+
 /**
  * Bindungszustand eines gespeicherten Dokuments. `undefined` heißt: Das Dokument
  * verweist auf keinen BSI-Katalog und trägt kein Katalogpaar, ein Stand ist nicht zu prüfen.
@@ -103,29 +128,17 @@ export function catalogPinStatus(
   bindings: readonly WorkspaceBinding[],
   delivery: CatalogDelivery,
 ): CatalogPin | undefined {
-  const bound = boundCatalogArtifacts(bindings);
-  const pins = readCatalogPins(source, rootType);
-  const artifacts = pins === null ? null : pinnedCatalogArtifacts(bindings, pins);
-  if (pins === null || artifacts === null) {
-    return bound.length > 0 || carriesCatalogPair(source, rootType)
-      ? { state: 'invalid', code: CODES.invalid, offers: [], withheld: bound, pending: [] }
-      : undefined;
-  }
-  if (artifacts.length === 0) return undefined;
+  const scope = pinScope(source, rootType, bindings);
+  if (scope.kind === 'none') return undefined;
+  if (scope.kind === 'invalid') return { state: 'invalid', code: CODES.invalid, offers: [], withheld: scope.bound, pending: [] };
   // Der schwerste Befund bestimmt den Zustand; Angebote sammeln alle Kataloge mit anderem ausgeliefertem Stand.
   let state: CatalogPinState = 'bound';
   const offers: string[] = [];
   const withheld: string[] = [];
   const pending: string[] = [];
-  for (const artifactKey of artifacts) {
+  for (const artifactKey of scope.artifacts) {
     const catalogKey = catalogKeyByArtifact.get(artifactKey)!;
-    const delivered = delivery.get(artifactKey);
-    const pin = pins.get(catalogKey);
-    let found: CatalogPinState;
-    if (delivered === undefined) found = 'pending';
-    else if (!delivered.verified || delivered.commit === null) found = 'unverified';
-    else if (pin === undefined) found = 'unpinned';
-    else found = pin === delivered.commit ? 'bound' : 'not-delivered';
+    const found = catalogState(delivery.get(artifactKey), scope.pins.get(catalogKey));
     if (found === 'pending') pending.push(catalogKey);
     if (found === 'unpinned' || found === 'not-delivered') {
       offers.push(catalogKey);
@@ -159,6 +172,21 @@ export type CatalogPinWrite =
   | { readonly ok: true; readonly source: unknown }
   | { readonly ok: false; readonly code: string };
 
+/** Paar, das für einen Katalog zu ergänzen ist; leer bei passendem vorhandenem Paar, sonst der Grund der Ablehnung. */
+function missingPair(
+  catalogKey: string,
+  pins: ReadonlyMap<string, string>,
+  delivered: DeliveredCatalog | undefined,
+): { readonly ok: true; readonly props: RawOscalProp[] } | { readonly ok: false; readonly code: string } {
+  if (!delivered?.verified || delivered.commit === null) return { ok: false, code: WORKSPACE_DIAGNOSTIC_CODES.catalogPinUnverified };
+  const pin = pins.get(catalogKey);
+  if (pin !== undefined) {
+    return pin === delivered.commit ? { ok: true, props: [] } : { ok: false, code: WORKSPACE_DIAGNOSTIC_CODES.catalogPinNotDelivered };
+  }
+  const pair = createCatalogReferenceProjectProps({ catalogKey, commit: delivered.commit });
+  return pair.ok ? { ok: true, props: pair.props.map((prop) => ({ ...prop })) } : { ok: false, code: WORKSPACE_DIAGNOSTIC_CODES.catalogPinInvalid };
+}
+
 /**
  * Ergänzt für jeden gebundenen BSI-Katalog ohne Paar den ausgelieferten,
  * verifizierten Stand. Ein vorhandenes Paar bleibt unverändert; weicht es vom
@@ -170,31 +198,16 @@ export function withCatalogPins(
   bindings: readonly WorkspaceBinding[],
   delivery: CatalogDelivery,
 ): CatalogPinWrite {
-  const pins = readCatalogPins(source, rootType);
-  if (pins === null) {
-    return boundCatalogArtifacts(bindings).length > 0 || carriesCatalogPair(source, rootType)
-      ? { ok: false, code: WORKSPACE_DIAGNOSTIC_CODES.catalogPinInvalid }
-      : { ok: true, source };
-  }
   // Auch ein Paar ohne Bindung wird geprüft: Ein noch nicht zugeordneter Import behält seine Bewertungsgrundlage.
-  const artifacts = pinnedCatalogArtifacts(bindings, pins);
-  if (artifacts === null) return { ok: false, code: WORKSPACE_DIAGNOSTIC_CODES.catalogPinInvalid };
-  if (artifacts.length === 0) return { ok: true, source };
+  const scope = pinScope(source, rootType, bindings);
+  if (scope.kind === 'none') return { ok: true, source };
   const metadata = metadataOf(source, rootType);
-  if (metadata === undefined) return { ok: false, code: WORKSPACE_DIAGNOSTIC_CODES.catalogPinInvalid };
+  if (scope.kind === 'invalid' || metadata === undefined) return { ok: false, code: WORKSPACE_DIAGNOSTIC_CODES.catalogPinInvalid };
   const added: RawOscalProp[] = [];
-  for (const artifactKey of artifacts) {
-    const catalogKey = catalogKeyByArtifact.get(artifactKey)!;
-    const delivered = delivery.get(artifactKey);
-    if (!delivered?.verified || delivered.commit === null) return { ok: false, code: WORKSPACE_DIAGNOSTIC_CODES.catalogPinUnverified };
-    const pin = pins.get(catalogKey);
-    if (pin !== undefined) {
-      if (pin !== delivered.commit) return { ok: false, code: WORKSPACE_DIAGNOSTIC_CODES.catalogPinNotDelivered };
-      continue;
-    }
-    const pair = createCatalogReferenceProjectProps({ catalogKey, commit: delivered.commit });
-    if (!pair.ok) return { ok: false, code: WORKSPACE_DIAGNOSTIC_CODES.catalogPinInvalid };
-    added.push(...pair.props.map((prop) => ({ ...prop })));
+  for (const artifactKey of scope.artifacts) {
+    const pair = missingPair(catalogKeyByArtifact.get(artifactKey)!, scope.pins, delivery.get(artifactKey));
+    if (!pair.ok) return pair;
+    added.push(...pair.props);
   }
   if (added.length === 0) return { ok: true, source };
   const props = Array.isArray(metadata.props) ? metadata.props : [];
