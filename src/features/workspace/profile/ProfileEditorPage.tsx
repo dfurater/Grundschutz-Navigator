@@ -19,8 +19,9 @@ import { formatCount } from '@/features/workspace/profile/ProfileMarks';
 import { targetKey, useImportTargets } from '@/features/workspace/profile/useImportTargets';
 import { useProfileAnalysis } from '@/features/workspace/profile/useProfileAnalysis';
 import { useProfileEditor, type ProfileEditorMessage } from '@/features/workspace/profile/useProfileEditor';
+import { ReviewTab } from '@/features/workspace/review/ReviewTab';
 
-type Tab = 'imports' | 'references';
+type Tab = 'imports' | 'references' | 'review';
 
 const MESSAGES: Readonly<Record<ProfileEditorMessage, string>> = {
   'saved-as-draft': 'Das Schema ist nicht bestanden; das Profil ist als Entwurf gespeichert.',
@@ -29,10 +30,10 @@ const MESSAGES: Readonly<Record<ProfileEditorMessage, string>> = {
   'delete-failed': 'Das Profil wurde nicht gelöscht.',
 };
 
-function Tabs({ tab, onSelect, counts, ids }: Readonly<{ tab: Tab; onSelect: (tab: Tab) => void; counts: Readonly<Record<Tab, number>>; ids: Readonly<Record<Tab, string>> }>) {
+function Tabs({ tab, onSelect, counts, ids }: Readonly<{ tab: Tab; onSelect: (tab: Tab) => void; counts: Readonly<Record<Tab, number | undefined>>; ids: Readonly<Record<Tab, string>> }>) {
   const refs = useRef<Partial<Record<Tab, HTMLButtonElement | null>>>({});
-  const order: readonly Tab[] = ['imports', 'references'];
-  const labels: Readonly<Record<Tab, string>> = { imports: 'Importe', references: 'Referenzen' };
+  const order: readonly Tab[] = ['imports', 'references', 'review'];
+  const labels: Readonly<Record<Tab, string>> = { imports: 'Importe', references: 'Referenzen', review: 'Prüfung' };
   const move = (event: KeyboardEvent, current: Tab) => {
     if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return;
     event.preventDefault();
@@ -56,7 +57,7 @@ function Tabs({ tab, onSelect, counts, ids }: Readonly<{ tab: Tab; onSelect: (ta
           onClick={() => onSelect(entry)}
           onKeyDown={(event) => move(event, entry)}
         >
-          {labels[entry]} <span className="ml-0.5 text-xs tabular-nums">{counts[entry]}</span>
+          {labels[entry]} {counts[entry] !== undefined && <span className="ml-0.5 text-xs tabular-nums">{counts[entry]}</span>}
         </button>
       ))}
     </div>
@@ -122,7 +123,7 @@ function Panel({ children, footer }: Readonly<{ children: ReactNode; footer: Rea
  * bleibt fest; kein Dokumentwert erreicht Route, Titel oder Verlauf.
  */
 export function ProfileEditorPage({ view, document }: Readonly<{ view: VerbundView; document: WorkspaceDocumentView }>) {
-  const ids = { imports: useId(), references: useId() };
+  const ids = { imports: useId(), references: useId(), review: useId() };
   const sheetTitle = useId();
   const desktop = useMediaQuery(DESKTOP_QUERY);
   const localId = document.localId as LocalId;
@@ -155,7 +156,7 @@ export function ProfileEditorPage({ view, document }: Readonly<{ view: VerbundVi
     <div className="flex flex-col md:h-full desktop:flex-row">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <Toolbar view={view} document={document} title={document.title ?? 'Profile'} state={state} desktop={desktop} onDelete={() => setConfirming(true)} />
-        <Tabs tab={tab} onSelect={setTab} counts={{ imports: editor.imports.length, references: view.edges.get(localId)?.length ?? 0 }} ids={ids} />
+        <Tabs tab={tab} onSelect={setTab} counts={{ imports: editor.imports.length, references: view.edges.get(localId)?.length ?? 0, review: undefined }} ids={ids} />
         <div className="min-h-0 flex-1 space-y-4 p-4 md:overflow-y-auto">
           <WorkspaceNotices />
           {editor.message && <output className="block text-sm text-[var(--color-text-primary)]">{MESSAGES[editor.message]}</output>}
@@ -164,6 +165,10 @@ export function ProfileEditorPage({ view, document }: Readonly<{ view: VerbundVi
           </div>
           <div role="tabpanel" id={ids.references} aria-labelledby={`${ids.references}-tab`} hidden={tab !== 'references'}>
             <ReferenceEdges view={view} document={document} />
+          </div>
+          <div role="tabpanel" id={ids.review} aria-labelledby={`${ids.review}-tab`} hidden={tab !== 'review'}>
+            {/* Erst beim Öffnen geladen: der Prüf-Worker entsteht nicht auf jedem Profilaufruf. */}
+            {tab === 'review' && <ReviewTab localId={localId} editorDirty={editor.dirty} approval={{ onSubmit: editor.approve }} />}
           </div>
         </div>
         <div className="sticky bottom-0 z-10 shrink-0 bg-[var(--color-surface-base)] desktop:static">

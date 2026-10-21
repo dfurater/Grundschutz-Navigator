@@ -176,6 +176,20 @@ export function DatenschutzPage() {
           oder der lokalen Daten dieser Anwendung über die Browser-Einstellungen.
         </p>
         <p className="catalog-prose-text text-sm text-slate-700 leading-relaxed">
+          Im Reiter Prüfung eines Profils können Sie Prüfpunkte und
+          Prüfentscheidungen festhalten. Ein Prüfpunkt speichert einen
+          Inhalts-Hash und einen strukturellen Vergleich zum vorherigen
+          Prüfpunkt. Vom geprüften Inhalt bewahrt der Workspace nur eine
+          Vergleichskopie des zuletzt gesetzten Prüfpunkts auf; ältere Stände
+          liegen nicht mehr vor. Prüfentscheidungen und Begründungen bleiben im
+          Workspace dieses Browsers. Eine Freigabe schreibt Rolle, Partei und
+          Begründung in das Profil; diese Angaben sind in der exportierten Datei
+          enthalten. Eine elektronische Signatur und eine Identitätsprüfung
+          finden nicht statt. Prüfspur und Vergleichsbasis sind in der
+          Sicherungsdatei enthalten und werden mit dem Profil oder dem
+          Informationsverbund gelöscht.
+        </p>
+        <p className="catalog-prose-text text-sm text-slate-700 leading-relaxed">
           Der Betreiber hat keine Kopie Ihrer gespeicherten Dokumente und kann
           sie nicht wiederherstellen. Die exportierte Sicherungsdatei ist die
           einzige Sicherung. Ohne eine solche Datei

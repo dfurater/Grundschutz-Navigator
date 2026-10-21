@@ -5,7 +5,7 @@ import { WORKSPACE_BACKUP_WORKER_TIMEOUT_MS } from './workspaceBackupContract';
 import { CLASS_2_IMPORT_LIMITS, WORKSPACE_BACKUP_FRAME_DEPTH, WORKSPACE_BACKUP_MAX_BYTES } from '@/domain/class2ImportLimits.mjs';
 import { encodeOscalSource } from '@/domain/oscalImportTransport';
 import type { WorkspaceResult } from '@/domain/workspaceModel';
-const fixture = { format: 'gspp-workspace', storageSchemaVersion: 1, verbuende: [], documents: [], drafts: [], bindings: [], workspaceMeta: [{ id: 'workspace', storageSchemaVersion: 1, createdAt: '2026-10-16T12:00:00.000Z', savedAt: '2026-10-16T12:00:00.000Z' }] };
+const fixture = { format: 'gspp-workspace', storageSchemaVersion: 2, verbuende: [], documents: [], drafts: [], bindings: [], reviewTrail: [], reviewBaseline: [], workspaceMeta: [{ id: 'workspace', storageSchemaVersion: 2, createdAt: '2026-10-16T12:00:00.000Z', savedAt: '2026-10-16T12:00:00.000Z' }] };
 class FakeWorker {
   static instances: FakeWorker[] = [];
   onmessage?: (event: { data: unknown; origin: string }) => void;
@@ -118,7 +118,7 @@ it('tags verbund requests and rejects workspace frames on that restore path', as
 });
 it('adopts only the closed verbund form from the dedicated worker', async () => {
   const now = '2026-10-17T12:00:00.000Z';
-  const backup = { format: 'gspp-workspace-verbund', storageSchemaVersion: 1, verbuende: [{ verbundId: crypto.randomUUID(), name: 'Synthetic', createdAt: now, savedAt: now }], documents: [], drafts: [], bindings: [] };
+  const backup = { format: 'gspp-workspace-verbund', storageSchemaVersion: 2, verbuende: [{ verbundId: crypto.randomUUID(), name: 'Synthetic', createdAt: now, savedAt: now }], documents: [], drafts: [], bindings: [], reviewTrail: [], reviewBaseline: [] };
   const { result, worker } = start(parseVerbundBackup);
   stream(worker, backup);
   expect(await result).toEqual({ ok: true, value: backup });

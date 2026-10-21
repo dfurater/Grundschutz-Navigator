@@ -10,7 +10,8 @@
 // Reihenfolge der Objektschlüssel.
 // =============================================================================
 
-import { isJsonObject, type JsonObject } from '@/domain/jsonGuards';
+import { documentBody, documentContent } from '@/domain/documentContent';
+import { isJsonObject } from '@/domain/jsonGuards';
 
 function sameJson(a: unknown, b: unknown): boolean {
   if (a === b) return true;
@@ -22,19 +23,13 @@ function sameJson(a: unknown, b: unknown): boolean {
   return keys.length === Object.keys(b).length && keys.every((key) => Object.hasOwn(b, key) && sameJson(a[key], b[key]));
 }
 
-function profileBody(source: unknown): JsonObject | undefined {
-  return isJsonObject(source) && isJsonObject(source.profile) ? source.profile : undefined;
+function profileBody(source: unknown): ReturnType<typeof documentBody> {
+  return documentBody(source, 'profile');
 }
 
 /** Der Quellgraph ohne `profile.uuid` und `profile.metadata.last-modified`. */
 function content(source: unknown): unknown {
-  const copy = structuredClone(source);
-  const profile = profileBody(copy);
-  if (profile) {
-    delete profile.uuid;
-    if (isJsonObject(profile.metadata)) delete profile.metadata['last-modified'];
-  }
-  return copy;
+  return documentContent(source, 'profile');
 }
 
 export function sameProfileContent(a: unknown, b: unknown): boolean {

@@ -8,7 +8,7 @@ import { parseCatalogInWorker } from '@/state/catalogParseWorker';
 import { value, open, document, storedValuesAndIndexKeys } from '@/test/browser/workspaceStoreFixtures';
 import { createStartupCatalogSource } from '@/test/fixtures/startupCatalog';
 
-test('legt genau fünf Stores mit ausschließlich strukturellen Indizes an', async () => {
+test('legt die sieben aktuellen Stores mit ausschließlich strukturellen Indizes an', async () => {
   const store = await open();
   const verbund = value(await store.createVerbund('VERBUND_SENTINEL'));
   const imported = await document();
@@ -18,9 +18,11 @@ test('legt genau fünf Stores mit ausschließlich strukturellen Indizes an', asy
   const db = new Dexie(WORKSPACE_DATABASE_NAME);
   await db.open();
   try {
-    expect(db.tables.map(table => table.name).sort()).toEqual(['bindings', 'documents', 'drafts', 'verbuende', 'workspaceMeta']);
+    expect(db.tables.map(table => table.name).sort()).toEqual(['bindings', 'documents', 'drafts', 'reviewBaseline', 'reviewTrail', 'verbuende', 'workspaceMeta']);
     expect(db.table('documents').schema.primKey.keyPath).toBe('localId');
     expect(db.table('bindings').schema.primKey.keyPath).toEqual(['fromLocalId', 'pointer']);
+    expect(db.table('reviewTrail').schema.primKey.keyPath).toEqual(['localId', 'sequence']);
+    expect(db.table('reviewBaseline').schema.primKey.keyPath).toBe('localId');
     expect(db.table('documents').schema.indexes.map(index => index.name).sort()).toEqual(['oscalVersion', 'rootType', 'savedAt', 'verbundId']);
     for (const table of db.tables) {
       for (const index of table.schema.indexes) {

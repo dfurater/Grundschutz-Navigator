@@ -1,47 +1,48 @@
 import Dexie from 'dexie';
 import { afterEach, expect, test, vi } from 'vitest';
 import { migrateWorkspaceStorage } from '@/adapters/workspaceMigration';
-import { WORKSPACE_SCHEMA } from '@/adapters/workspaceStore';
+import { WORKSPACE_SCHEMA, WORKSPACE_SCHEMA_V1 } from '@/adapters/workspaceStore';
 import { makeSchemaValidOscalDocument } from '@/test/fixtures/oscalSchemaFixtures';
 import type { LocalId, VerbundId, WorkspaceBackup } from '@/domain/workspaceModel';
-import { validWorkspaceBackupStructure } from '@/adapters/workspaceBackupStructure';
+import { normalizeWorkspaceBackup } from '@/adapters/workspaceBackupStructure';
 
 const databases: Dexie[] = [];
 const names: string[] = [];
 const now = '2026-10-16T10:00:00.000Z';
-function fixture(): WorkspaceBackup {
-  const verbundId = crypto.randomUUID();
+type V1Backup = Omit<WorkspaceBackup, 'storageSchemaVersion' | 'reviewTrail' | 'reviewBaseline'> & { storageSchemaVersion: 1 };
+function fixture(): V1Backup {
+  const verbundId = crypto.randomUUID() as VerbundId;
   const documents = [0, 1].map(() => ({
-    localId: crypto.randomUUID(), verbundId, storageSchemaVersion: 1,
+    localId: crypto.randomUUID() as LocalId, verbundId, storageSchemaVersion: 1,
     rootType: 'catalog' as const, oscalVersion: '1.1.3', trustClass: 'class-2-local-user' as const,
     documentState: 'imported' as const, createdAt: now, savedAt: now,
     source: makeSchemaValidOscalDocument('catalog', '1.1.3'),
   }));
-  const backup = {
+  const backup: V1Backup = {
     format: 'gspp-workspace', storageSchemaVersion: 1,
     verbuende: [{ verbundId, name: 'Migration fixture', createdAt: now, savedAt: now }], documents,
     drafts: [{ localId: documents[0].localId, savedAt: now, source: { unfinished: 'Draft' } }],
     bindings: [{ fromLocalId: documents[0].localId, pointer: '/catalog/metadata/title', href: 'reference', target: { kind: 'local', localId: documents[1].localId } }],
     workspaceMeta: [{ id: 'workspace', storageSchemaVersion: 1, createdAt: now, savedAt: now }],
   };
-  if (!validWorkspaceBackupStructure(backup)) throw new Error('Invalid migration fixture');
+  if (!normalizeWorkspaceBackup(backup)) throw new Error('Invalid migration fixture');
   return backup;
 }
-async function seed(data: WorkspaceBackup) {
+async function seed(data: V1Backup) {
   const name = `gspp-migration-test-${crypto.randomUUID()}`;
   names.push(name);
   const db = new Dexie(name);
   databases.push(db);
-  db.version(1).stores(WORKSPACE_SCHEMA);
+  db.version(1).stores(WORKSPACE_SCHEMA_V1);
   await db.open();
-  for (const table of db.tables) await table.bulkAdd(data[table.name as keyof WorkspaceBackup] as object[]);
+  for (const table of db.tables) await table.bulkAdd(data[table.name as keyof V1Backup] as object[]);
   db.close();
   return name;
 }
 function upgrade(name: string, from = 1, to = 2) {
   const db = new Dexie(name);
   databases.push(db);
-  db.version(1).stores(WORKSPACE_SCHEMA);
+  db.version(1).stores(WORKSPACE_SCHEMA_V1);
   db.version(2).stores(WORKSPACE_SCHEMA).upgrade(tx => migrateWorkspaceStorage(tx, from, to));
   return db;
 }
@@ -102,7 +103,7 @@ test('ändert in einer Vorwärtsmigration nur Envelope- und Metaversionen', asyn
   await db.open();
   expect(db.verno).toBe(2);
   const result = await rows(db);
-  const expected = { ...data, documents: data.documents.map(row => ({ ...row, storageSchemaVersion: 2 })), workspaceMeta: data.workspaceMeta.map(row => ({ ...row, storageSchemaVersion: 2 })) };
+  const expected = { ...data, documents: data.documents.map(row => ({ ...row, storageSchemaVersion: 2 })), workspaceMeta: data.workspaceMeta.map(row => ({ ...row, storageSchemaVersion: 2 })), reviewTrail: [], reviewBaseline: [] };
   for (const table of db.tables) {
     const expectedRows = expected[table.name as keyof WorkspaceBackup] as object[];
     expect(canonical(result[table.name])).toBe(canonical([...expectedRows].sort((a, b) => String((a as Record<string, unknown>)[String(table.schema.primKey.keyPath)]).localeCompare(String((b as Record<string, unknown>)[String(table.schema.primKey.keyPath)])))));
@@ -169,6 +170,8 @@ test('migriert Quellen per Cursor ohne sammelnde Lese- oder Schreiboperationen',
   expect(result.drafts).toEqual(data.drafts);
   expect(result.bindings).toEqual(data.bindings);
   expect(result.verbuende).toEqual(data.verbuende);
+  expect(result.reviewTrail).toEqual([]);
+  expect(result.reviewBaseline).toEqual([]);
   expect(result.workspaceMeta).toEqual(data.workspaceMeta.map(row => ({ ...row, storageSchemaVersion: 2 })));
 });
 

@@ -1,7 +1,6 @@
 import Dexie, { type Transaction } from 'dexie';
 import { createWorkspaceStructureValidator } from '@/adapters/workspaceBackupStructure';
 import { bindsEnvelopeSource, withinSourceLimits } from '@/adapters/workspaceDraftSource';
-import { STORAGE_SCHEMA_VERSION } from '@/domain/workspaceModel';
 
 function invalid(): never { throw new Error('WORKSPACE_MIGRATION_INVALID'); }
 
@@ -31,15 +30,15 @@ function visitRows(transaction: Transaction, store: string, visit: (cursor: IDBC
   });
 }
 
-/** Runs only inside Dexie's versionchange transaction; source content is never rewritten. */
+/** Only v1 → v2 runs here; a future schema version adds its own step. */
 export async function migrateWorkspaceStorage(transaction: Transaction, fromVersion: number, toVersion: number): Promise<void> {
   try {
-    // This implementation knows only the current envelope shape and its next version.
-    if (fromVersion !== STORAGE_SCHEMA_VERSION || toVersion !== fromVersion + 1
-      || transaction.idbtrans.mode !== 'versionchange') invalid();
-    const stores = ['verbuende', 'documents', 'drafts', 'bindings', 'workspaceMeta'] as const;
+    // This implementation knows only the v1 envelope shape and its next version.
+    if (fromVersion !== 1 || toVersion !== 2 || transaction.idbtrans.mode !== 'versionchange') invalid();
+    // `transaction.storeNames` is the target schema: the five v1 stores plus the two empty v2 stores.
+    const stores = ['verbuende', 'documents', 'drafts', 'bindings', 'workspaceMeta', 'reviewTrail', 'reviewBaseline'] as const;
     if (transaction.storeNames.length !== stores.length || stores.some(name => !transaction.storeNames.includes(name))) invalid();
-    const validate = createWorkspaceStructureValidator();
+    const validate = createWorkspaceStructureValidator(1);
     await visitRows(transaction, 'verbuende', cursor => { if (!validate.verbuende(cursor.value)) invalid(); });
     await visitRows(transaction, 'documents', cursor => {
       const row = cursor.value;

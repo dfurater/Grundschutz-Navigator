@@ -55,6 +55,17 @@ export interface SeededWorkspace {
  * Component Definition; ohne POA&M. Ein zweiter Verbund hält ein eigenes Profile.
  */
 export async function seedWorkspace(): Promise<SeededWorkspace> {
+  try {
+    return await seedWorkspaceAttempt();
+  } catch (error) {
+    // Ein parallel abgeschlossenes deleteDatabase kann eine leere Hülle hinterlassen; einmal sauber neu aufsetzen.
+    if (!(error instanceof Error) || error.message !== 'WORKSPACE_SCHEMA_INVALID') throw error;
+    await resetWorkspace();
+    return seedWorkspaceAttempt();
+  }
+}
+
+async function seedWorkspaceAttempt(): Promise<SeededWorkspace> {
   const store = value(await WorkspaceStore.open());
   try {
     const verbundId = value(await store.createVerbund(SENTINEL_VERBUND)).verbundId;
