@@ -1,11 +1,12 @@
 import type { OscalRootKey } from '@/domain/oscalVersionMatrix';
 import type { OscalDiagnostic } from '@/domain/oscalDiagnostics';
+import type { DocumentDiff } from '@/domain/documentDiff';
 
 declare const localIdBrand: unique symbol;
 declare const verbundIdBrand: unique symbol;
 export type LocalId = string & { readonly [localIdBrand]: 'LocalId' };
 export type VerbundId = string & { readonly [verbundIdBrand]: 'VerbundId' };
-export const STORAGE_SCHEMA_VERSION = 1;
+export const STORAGE_SCHEMA_VERSION = 2;
 export type DocumentState = 'imported' | 'draft' | 'export-ready';
 
 /** A verbund name carries at least one non-whitespace character. */
@@ -49,6 +50,75 @@ export interface WorkspaceBinding {
   readonly target: BindingTarget;
 }
 
+/** Der versionierte Content-Hash-Vertrag; `version` 1 heißt SHA-256 über `sorted-json/1`. */
+export interface ContentHash {
+  readonly version: number;
+  readonly algorithm: string;
+  readonly value: string;
+}
+
+/** Der Dokumentstempel ohne Inhalt: was ein Schreibvorgang verändert. */
+export interface DocumentStamp {
+  readonly rootType: OscalRootKey;
+  readonly uuid: string;
+  /** ISO 8601 mit Zeitzone, aus `metadata.last-modified`. */
+  readonly lastModified: string;
+  readonly version: string;
+  readonly oscalVersion: string;
+}
+
+/** Der vollständige gebundene Stand eines Checkpoints oder einer Entscheidung. */
+export interface DocumentSnapshot extends DocumentStamp {
+  readonly contentHash: ContentHash;
+}
+
+export interface ReviewCheckpoint {
+  readonly localId: LocalId;
+  readonly sequence: number;
+  readonly kind: 'checkpoint';
+  readonly createdAt: string;
+  readonly documentState: DocumentState;
+  readonly stand: DocumentSnapshot;
+  readonly diff: DocumentDiff;
+}
+
+/** Vergleichskopie des zuletzt geprüften Stands; höchstens eine je Dokument. */
+export interface ReviewBaseline {
+  readonly localId: LocalId;
+  /** Checkpoint, zu dem die Vergleichskopie gehört. */
+  readonly sequence: number;
+  readonly stand: DocumentSnapshot;
+  readonly source: unknown;
+}
+
+export interface ReviewDecision {
+  readonly localId: LocalId;
+  readonly sequence: number;
+  readonly kind: 'decision';
+  readonly createdAt: string;
+  readonly decision: ReviewDecisionKind;
+  readonly stand: DocumentSnapshot;
+  /** Nur bei `approved`: die native Aktions-UUID. */
+  readonly actionUuid?: string;
+  /** Nur bei `withdrawn`: Zielaktion und deren Trail-Sequenz. */
+  readonly withdraws?: { readonly sequence: number; readonly actionUuid: string };
+  readonly roleId?: string;
+  readonly partyUuids?: readonly string[];
+  readonly reason?: string;
+}
+
+export type ReviewDecisionKind = 'reviewed' | 'changes-requested' | 'approved' | 'withdrawn';
+
+export type ReviewTrailRow = ReviewCheckpoint | ReviewDecision;
+
+/** Trail plus gespeicherter Dokumentstand; der Entwurf bleibt ein eigener CAS-Wert. */
+export interface ReviewTrailView {
+  readonly trail: readonly ReviewTrailRow[];
+  readonly stand: DocumentSnapshot;
+  readonly document: WorkspaceEnvelope;
+  readonly draftSavedAt: string | null;
+}
+
 export interface WorkspaceDraft {
   readonly localId: LocalId;
   readonly savedAt: string;
@@ -72,6 +142,8 @@ export interface WorkspaceBackup {
   readonly drafts: WorkspaceDraft[];
   readonly bindings: WorkspaceBinding[];
   readonly workspaceMeta: WorkspaceMeta[];
+  readonly reviewTrail: ReviewTrailRow[];
+  readonly reviewBaseline: ReviewBaseline[];
 }
 
 export type WorkspaceVerbundBackup = Omit<WorkspaceBackup, 'format' | 'workspaceMeta' | 'verbuende'> & {

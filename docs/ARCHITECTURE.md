@@ -118,6 +118,8 @@ src/                              # Anwendungsquellcode
 │   ├── componentDefinitionModel.ts   # Domänenmodell der Component Definition
 │   ├── controlRef.ts                 # Kataloggescopte interne Control-Referenzen
 │   ├── controlRelationships.ts       # Link-Relationen, Beschriftungen, eingehende Links
+│   ├── documentContent.ts            # Dokumentinhalt ohne Root-UUID und `last-modified`
+│   ├── documentDiff.ts               # Struktureller Checkpoint-Diff (Pfad, Art, Wertart)
 │   ├── germanCollation.ts            # Wiederverwendete deutsche Sortierkomparatoren
 │   ├── identifierQuery.ts            # Query-Vertrag für Kennungssuchen (UUID v4/v5)
 │   ├── integrity.ts                  # SHA-256 Integritätsprüfung
@@ -174,6 +176,8 @@ src/                              # Anwendungsquellcode
 │   ├── referenceResolution.ts        # Fail-closed OSCAL-Referenzauflösung auf source
 │   ├── repositoryPath.d.mts         # Typ des segmentweisen Pfadencodings
 │   ├── repositoryPath.mjs           # Repository-Pfadencoding mit expliziter Slash-Behandlung
+│   ├── reviewTrail.ts               # Prüfvertrag: Standvergleich, Entscheidungsfold, Freigabeaktion
+│   ├── rootUuidPolicy.ts            # Root-UUID-Erhalt je Neuanlage und Wiederverwendung
 │   ├── securityTargets.ts            # Schutzziel-Skala, Klassifikation, Facetten
 │   ├── sha1.d.mts                   # Typ der SHA-1-Kompression
 │   ├── sha1.mjs                     # SHA-1 (FIPS 180-4) für Git-Blob-IDs und UUIDv5
@@ -235,6 +239,7 @@ src/                              # Anwendungsquellcode
 │   ├── oscalSspReaders.ts            # Knotenleser, Referenzprüfungen und Diagnosen des SSP-Adapters
 │   ├── oscalSspSystem.ts             # SSP-Projektion von system-characteristics und system-implementation
 │   ├── profileWorkbench.ts           # Client des Profile-Workers für Verbundansicht, Analyse und Export
+│   ├── reviewTrailWork.ts            # Client des Prüf-Workers: Hash und Diff ohne In-Process-Fallback
 │   ├── workspaceBackup.ts            # Begrenzter Backup-Einstieg über einen Modul-Worker
 │   ├── workspaceBackupContract.ts    # Redigierte Backup-Diagnosen und Workerfrist
 │   ├── workspaceBackupProcessing.ts  # Backup-Validierung und Klasse-2-Dokumentprüfung
@@ -244,7 +249,7 @@ src/                              # Anwendungsquellcode
 │   ├── workspaceDocumentAdmission.ts # Zustandsabhängige Sourcevalidierung, Dokumentzustände und Referenzpointer
 │   ├── workspaceDraftSource.ts       # Sourcegrenzen und Root-Bindung ohne Schemaprüfung
 │   ├── workspaceMigration.ts         # Vorwärtsmigration in einer versionchange-Transaktion
-│   ├── workspaceRecoveryJson.ts      # Typisierte Graphkodierung für Rettungsexporte neuerer Schemas
+│   ├── workspaceRecoveryJson.ts      # Typisierte Graphkodierung für Rettungsexporte
 │   ├── workspaceRecoveryStorage.ts   # Nativer IndexedDB-Snapshot aller Stores neuerer Datenbanken
 │   ├── workspaceStorageFailure.ts    # Redigierte Speicherfehler und monotone Zeitstempel
 │   └── workspaceStore.ts             # Transaktionaler Dexie-Speicher für Informationsverbünde
@@ -375,6 +380,13 @@ src/                              # Anwendungsquellcode
 │       │   ├── useImportTargets.ts           # Wählbare Importziele des Verbunds und der Auslieferung
 │       │   ├── useProfileAnalysis.ts         # Verzögerte Analyse des Arbeitsstands
 │       │   └── useProfileEditor.ts           # Arbeitsstand, Autosave, Speichern und Export
+│       ├── review/                       # Prüf- und Freigabeansicht
+│       │   ├── CapabilityContract.tsx        # Was Workspace, `metadata.actions` und `metadata.revisions` tragen
+│       │   ├── DecisionForm.tsx              # Freigabeformular mit Rolle, Partei und Begründung
+│       │   ├── ReviewPanel.tsx               # Verlauf, Stand und Freigabe eines Dokuments
+│       │   ├── ReviewTab.tsx                 # Reiter Prüfung: Prüfpunkt, Entscheidungen und Freigabe
+│       │   ├── reviewView.ts                 # Ableitung der Anzeige aus Trail und Stand
+│       │   └── useReviewTrail.ts             # Trail laden, Prüfpunkt setzen, Entscheidung schreiben
 │       └── ssp/                          # SSP-Import und lesende Station
 │           ├── SspDocumentContent.tsx         # Ausgewähltes SSP ableiten, Inhalte und Modelldiagnosen lesen
 │           └── SspFields.tsx                  # Inaktive Textfelder und aufklappbare Listen der Projektion
@@ -423,6 +435,7 @@ src/                              # Anwendungsquellcode
 │   ├── oscalImport.worker.ts         # Klasse-2-Import
 │   ├── profileWorkbench.worker.ts    # Verbundansicht, Profilanalyse und Exportprüfung mit Schemastufe
 │   ├── profileWorkbenchRequests.ts   # Anfragearten des Profile-Workers
+│   ├── reviewTrail.worker.ts         # Content-Hash und struktureller Diff je Prüfanfrage
 │   └── workspaceBackup.worker.ts     # Backup-Eingangsprüfung
 ├── test/                         # Testinfrastruktur (siehe docs/OSCAL_ROUND_TRIP.md)
 │   ├── browser/                      # Chromium-Browser-Lane
@@ -628,7 +641,7 @@ Stufe 3 prüft mit `ajv` 8.20.0 gegen das gepinnte NIST-Schema der von Stufe 2 g
 
 Die Anwendung besitzt keine Dateiauswahl und keine Bearbeitungsoberfläche für eigene Dokumente. Der Klasse-1-Katalogladepfad verwendet die Integritätskette aus [INTEGRITY.md](./INTEGRITY.md).
 
-`src/adapters/workspaceStore.ts` öffnet auf ausdrücklichen Aufruf die IndexedDB-Datenbank `gspp-workspace` mit den Stores `verbuende`, `documents`, `drafts`, `bindings` und `workspaceMeta`. Die Domänentypen liegen in `src/domain/workspaceModel.ts`; `LocalId` und `VerbundId` besitzen getrennte `unique symbol`-Phantommarken. Klasse 1 besitzt dort keinen Inhaltsspeicher; Bindungen enthalten ausschließlich `artifactKey`-Verweise. Der Adapter bietet atomare Schreiboperationen mit `savedAt`-Konfliktprüfung für Dokumente und Entwürfe, Verbund- und Dokumentlöschung, Backup und Wiederherstellung. Unbekannte Lösch-IDs melden `WORKSPACE_DOCUMENT_NOT_FOUND` oder `WORKSPACE_VERBUND_NOT_FOUND`. `src/adapters/workspaceBackup.ts` startet für die Wiederherstellung einen eigenen Modul-Worker; enthaltene Dokumente außerhalb des Zustands `draft` durchlaufen dort einzeln die Klasse-2-Kette `processClass2OscalBytes()`, und das geprüfte Bündel kehrt in quittierten Fragmenten zurück. Speicher-Schema, Ressourcenlimits, Versionswechsel, Export- und Löschgrenzen stehen in [PERSISTENCE.md](./PERSISTENCE.md).
+`src/adapters/workspaceStore.ts` öffnet auf ausdrücklichen Aufruf die IndexedDB-Datenbank `gspp-workspace` mit den Stores `verbuende`, `documents`, `drafts`, `bindings`, `reviewTrail`, `reviewBaseline` und `workspaceMeta`. Die Domänentypen liegen in `src/domain/workspaceModel.ts`; `LocalId` und `VerbundId` besitzen getrennte `unique symbol`-Phantommarken. Klasse 1 besitzt dort keinen Inhaltsspeicher; Bindungen enthalten ausschließlich `artifactKey`-Verweise. Der Adapter bietet atomare Schreiboperationen mit `savedAt`-Konfliktprüfung für Dokumente und Entwürfe, Prüfpunkte und Workspace-Entscheidungen, Verbund- und Dokumentlöschung, Backup und Wiederherstellung. Unbekannte Lösch-IDs melden `WORKSPACE_DOCUMENT_NOT_FOUND` oder `WORKSPACE_VERBUND_NOT_FOUND`. `src/adapters/workspaceBackup.ts` startet für die Wiederherstellung einen eigenen Modul-Worker; enthaltene Dokumente außerhalb des Zustands `draft` durchlaufen dort einzeln die Klasse-2-Kette `processClass2OscalBytes()`, und das geprüfte Bündel kehrt in quittierten Fragmenten zurück. Speicher-Schema, Ressourcenlimits, Versionswechsel, Export- und Löschgrenzen stehen in [PERSISTENCE.md](./PERSISTENCE.md).
 
 Der separate Sync-Pfad (`scripts/sync-upstream-manifest.mjs` mit `scripts/upstream-artifacts.mjs`) vergleicht die vollständigen normalisierten Trees des bisherigen und des neuen Snapshots. Neue nicht registrierte Pfade werden als `unclassified` gemeldet, ohne ihren Blob zu fetchen oder sie auszuliefern.
 

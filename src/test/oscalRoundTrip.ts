@@ -42,7 +42,8 @@ import {
 import { validateAgainstPinnedSchema } from '@/domain/oscalSchemaValidation';
 import { createOscalDiagnostic } from '@/domain/oscalDiagnostics';
 import type { CatalogKey } from '@/domain/sourceRegistry';
-import type { OscalRootKey, OscalSchemaPin } from '@/domain/oscalVersionMatrix';
+import type { OscalSchemaPin } from '@/domain/oscalVersionMatrix';
+import { OSCAL_ROOT_UUID_POLICY } from '@/domain/rootUuidPolicy';
 import type { ExplicitSaveStamp } from '@/domain/profileSave';
 import {
   classifyJsonValueKind,
@@ -816,21 +817,10 @@ export async function runNoOpRoundTrip(input: OscalNoOpRunInput): Promise<OscalN
 
 /**
  * Root-UUID-Politik des Edit-Laufs (docs/PERSISTENCE.md §5, ADR-9
- * Festlegung 4): `reassign` vergibt die Dokument-UUID bei jedem Schreiben neu
- * (change-on-write), `keep` führt sie je Subjekt über Revisionen hinweg.
- * Die einzige Stelle, an der der Harnisch Wissen über Roots führt.
+ * Festlegung 4). Die Werte stehen in `src/domain/rootUuidPolicy.ts`, weil der
+ * Freigabepfad dieselbe Politik braucht.
  */
-export const OSCAL_ROOT_UUID_POLICY: Readonly<Record<OscalRootKey, 'reassign' | 'keep'>> =
-  Object.freeze({
-    catalog: 'reassign',
-    profile: 'reassign',
-    'component-definition': 'reassign',
-    'mapping-collection': 'reassign',
-    'system-security-plan': 'keep',
-    'assessment-plan': 'keep',
-    'assessment-results': 'keep',
-    'plan-of-action-and-milestones': 'keep',
-  });
+export { OSCAL_ROOT_UUID_POLICY };
 
 export type OscalEditPathSegment = string | number;
 

@@ -105,7 +105,7 @@ it('rejects crossed formats, invalid sources, newer schemas and oversized bytes 
   const selected = value(await store.exportVerbundBackup(a.verbundId));
   expect(await store.restoreBackup(bytes(selected), 'replace-workspace')).toMatchObject({ ok: false });
   const invalid = JSON.parse(selected); invalid.documents[0].source = { catalog: {} };
-  for (const input of [bytes(total), bytes(JSON.stringify(invalid)), bytes(selected.replace('"storageSchemaVersion":1', '"storageSchemaVersion":2')), new Uint8Array(WORKSPACE_BACKUP_MAX_BYTES + 1)]) {
+  for (const input of [bytes(total), bytes(JSON.stringify(invalid)), bytes(selected.replace('"storageSchemaVersion":2', '"storageSchemaVersion":3')), new Uint8Array(WORKSPACE_BACKUP_MAX_BYTES + 1)]) {
     expect(await store.restoreVerbundBackup(input, 'replace-verbund')).toMatchObject({ ok: false });
     expect(value(await store.exportBackup())).toBe(total);
   }
@@ -128,9 +128,9 @@ it('keeps each verbund restorable when the aggregate workspace exceeds the byte 
 }, 30_000);
 
 it('preserves unknown future data through the global export path', async () => {
-  await db.table('workspaceMeta').update('workspace', { storageSchemaVersion: 2, future: 'FUTURE_METADATA' });
+  await db.table('workspaceMeta').update('workspace', { storageSchemaVersion: 3, future: 'FUTURE_METADATA' });
   const backup = await db.transaction('r', db.tables, () => exportWorkspaceBackupSnapshot(db));
-  expect(JSON.parse(backup)).toMatchObject({ storageSchemaVersion: 2, workspaceMeta: [{ future: 'FUTURE_METADATA' }] });
+  expect(JSON.parse(backup)).toMatchObject({ storageSchemaVersion: 3, workspaceMeta: [{ future: 'FUTURE_METADATA' }] });
   expect(await store.exportVerbundBackup(a.verbundId)).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_SCHEMA_NEWER' } });
 });
 
@@ -263,8 +263,8 @@ it('exports out-of-line keys of newer stores and rejects stores named like bundl
   db.close();
   store.close();
   const next = new Dexie(WORKSPACE_DATABASE_NAME);
-  next.version(2).stores({ ...WORKSPACE_SCHEMA, futureStore: 'id', outbound: '' }).upgrade(async tx => {
-    await tx.table('workspaceMeta').update('workspace', { storageSchemaVersion: 2 });
+  next.version(3).stores({ ...WORKSPACE_SCHEMA, futureStore: 'id', outbound: '' }).upgrade(async tx => {
+    await tx.table('workspaceMeta').update('workspace', { storageSchemaVersion: 3 });
     await tx.table('futureStore').add({ id: 'inline' });
     const keys: IndexableTypePart[] = ['key-1', new Date('2026-10-17T00:00:00.000Z'), new Uint8Array([1, 2, 255]), Infinity, -Infinity];
     await tx.table('outbound').bulkAdd([{ value: 'TEXT' }, { value: 'DATE' }, { value: 'BINARY' }, { value: 'MAX' }, { value: 'MIN' }], keys);
@@ -279,7 +279,7 @@ it('exports out-of-line keys of newer stores and rejects stores named like bundl
   // Fehlschlag, wenn Schlüssel außerhalb der Datensätze fehlen, Datums-, Binär- oder ±Infinity-Schlüssel den Export brechen oder ein Store mit Schlüsselpfad Schlüssel erhält.
   expect(parsed.outOfLineKeys).toEqual({ outbound: [{ number: '-Infinity' }, { number: 'Infinity' }, { date: '2026-10-17T00:00:00.000Z' }, 'key-1', { binary: 'AQL/' }, [{ number: 'Infinity' }], ['a', { date: '1970-01-01T00:00:00.000Z' }]] });
   const reserved = new Dexie(WORKSPACE_DATABASE_NAME);
-  reserved.version(3).stores({ ...WORKSPACE_SCHEMA, futureStore: 'id', outbound: '', format: 'id' });
+  reserved.version(4).stores({ ...WORKSPACE_SCHEMA, futureStore: 'id', outbound: '', format: 'id' });
   await reserved.open();
   await expect(reserved.transaction('r', reserved.tables, () => exportWorkspaceBackupSnapshot(reserved))).rejects.toMatchObject({ code: 'WORKSPACE_SCHEMA_INVALID' });
   reserved.close();

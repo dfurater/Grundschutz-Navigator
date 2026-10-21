@@ -12,7 +12,8 @@ import { StorageFailure, failure } from '@/adapters/workspaceStorageFailure';
 export type WorkspacePort = Pick<WorkspaceStore,
   | 'schemaStatus' | 'listVerbuende' | 'listDocuments' | 'getDocument' | 'getDraft' | 'listBindings'
   | 'createVerbund' | 'renameVerbund' | 'deleteVerbund' | 'exportBackup' | 'estimate' | 'close'
-  | 'addDocument' | 'saveDocument' | 'autosaveDraft' | 'setBinding' | 'removeBinding' | 'deleteDocument'>;
+  | 'addDocument' | 'saveDocument' | 'autosaveDraft' | 'setBinding' | 'removeBinding' | 'deleteDocument'
+  | 'listReviewTrail' | 'appendCheckpoint' | 'appendDecision'>;
 
 export interface WorkspaceDocumentView {
   readonly localId: LocalId;

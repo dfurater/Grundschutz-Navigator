@@ -29,6 +29,11 @@ export interface WorkspaceDocuments {
   readonly autosaveDraft: Port<'autosaveDraft'>;
   readonly setBinding: Port<'setBinding'>;
   readonly deleteDocument: Port<'deleteDocument'>;
+  /** Prüfspur und gespeicherter Stand; die UI bildet die Fehlercodes selbst auf Texte ab. */
+  readonly listReviewTrail: Port<'listReviewTrail'>;
+  /** Schreibt nur Trail und Vergleichsbaseline, nie das Dokument. */
+  readonly appendCheckpoint: Port<'appendCheckpoint'>;
+  readonly appendDecision: Port<'appendDecision'>;
   /** Leitet den Verbundgraphen mit einem ungespeicherten Arbeitsstand ab; schreibt nichts. */
   readonly analyzeProfile: (input: ProfileAnalysisInput) => Promise<WorkspaceResult<ProfileAnalysis>>;
   /** Schemaprüfung einer ungespeicherten Quelle; entscheidet beim Speichern über `export-ready`. */
@@ -78,6 +83,7 @@ export function createWorkspaceDocuments({ port, write, quiet, class1, targets }
 }>): WorkspaceDocuments {
   const read = <T,>(operation: (store: WorkspacePort) => Promise<WorkspaceResult<T>>): Promise<WorkspaceResult<T>> =>
     port ? operation(port).catch(storageFailed) : Promise.resolve(storageFailed());
+  // Prüfentscheidungen ändern die Verbundansicht nicht; die Station zeigt ihre Codes selbst.
   return {
     getDocument: (localId) => read((store) => store.getDocument(localId)),
     getDraft: (localId) => read((store) => store.getDraft(localId)),
@@ -91,6 +97,9 @@ export function createWorkspaceDocuments({ port, write, quiet, class1, targets }
       if (result.ok) targets.delete(localId);
       return result;
     },
+    listReviewTrail: (localId) => read((store) => store.listReviewTrail(localId)),
+    appendCheckpoint: (...args) => read((store) => store.appendCheckpoint(...args)),
+    appendDecision: (...args) => read((store) => store.appendDecision(...args)),
     analyzeProfile: (input) => read((store) => analyze(store, input, class1)),
     checkProfileSchema: (source) => checkSchema(source)
       .catch((): ProfileSchemaCheck => ({ status: 'failed', code: 'OSCAL_EXPORT_SOURCE_INVALID', path: '/' })),

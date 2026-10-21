@@ -2,6 +2,10 @@
 
 <!-- Warum ist die Änderung nötig und was ändert sich auf Verhaltensebene? -->
 
+## Akzeptanzkriterien
+
+<!-- Alle AC aus dem Linear-Issue einzeln aufführen und ihre Erfüllung im PR nachvollziehbar machen. -->
+
 ## Reviewhinweise
 
 <!-- Bewusste Entscheidungen, verworfene Alternativen, Stellen für genaues Hinsehen sowie Risiko und Folgen (Breaking Change, Migration, Deploy-Effekt). -->

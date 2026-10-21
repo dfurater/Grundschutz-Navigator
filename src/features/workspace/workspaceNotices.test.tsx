@@ -131,6 +131,20 @@ describe('Speichermeldungen', () => {
     expect(listVerbuende.mock.calls.length).toBeGreaterThan(reads);
   });
 
+  it('bietet nach gescheiterter Migration einen Rettungsexport ohne normalen Store', async () => {
+    const open = vi.fn(() => Promise.resolve(failure(new StorageFailure('WORKSPACE_MIGRATION_FAILED'))));
+    renderAppShell([buildWorkspaceIndexUrl()], {
+      shell: () => (
+        <CatalogContext.Provider value={catalogState}>
+          <WorkspaceProvider open={open}><AppShell /></WorkspaceProvider>
+        </CatalogContext.Provider>
+      ),
+    });
+    const failed = await notice('Migration fehlgeschlagen');
+    expect(within(failed).getByText(/Vorzustand bleibt unverändert/)).toBeInTheDocument();
+    expect(within(failed).getByRole('button', { name: 'Sicherung exportieren' })).toBeEnabled();
+  });
+
   it('versucht ein gescheitertes Öffnen über „Neu laden“ erneut', async () => {
     const open = vi.fn()
       .mockResolvedValueOnce(failure(new StorageFailure('WORKSPACE_OPEN_TIMEOUT')))

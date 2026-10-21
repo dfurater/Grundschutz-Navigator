@@ -8,23 +8,25 @@ test('öffnet ein tatsächlich neueres Schema und exportiert zusätzliche Stores
   const store = await open();
   store.close();
   const next = new Dexie(WORKSPACE_DATABASE_NAME);
-  next.version(2).stores({ ...WORKSPACE_SCHEMA, futureStore: 'id' }).upgrade(async tx => {
-    await tx.table('workspaceMeta').update('workspace', { storageSchemaVersion: 2, unknown: ['FUTURE_META'] });
+  next.version(2).stores(WORKSPACE_SCHEMA);
+  next.version(3).stores({ ...WORKSPACE_SCHEMA, futureStore: 'id' }).upgrade(async tx => {
+    await tx.table('workspaceMeta').update('workspace', { storageSchemaVersion: 3, unknown: ['FUTURE_META'] });
     await tx.table('futureStore').add({ id: 'new', value: 'FUTURE_STORE' });
   });
   await next.open();
   next.close();
   const older = await open();
   expect(await older.createVerbund('No write')).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_SCHEMA_NEWER' } });
-  expect(JSON.parse(value(await older.exportBackup()))).toMatchObject({ storageSchemaVersion: 2, futureStore: [{ id: 'new', value: 'FUTURE_STORE' }], workspaceMeta: [{ unknown: ['FUTURE_META'] }] });
+  expect(JSON.parse(value(await older.exportBackup()))).toMatchObject({ storageSchemaVersion: 3, futureStore: [{ id: 'new', value: 'FUTURE_STORE' }], workspaceMeta: [{ unknown: ['FUTURE_META'] }] });
 });
 
 test('öffnet ein neueres Schema ohne bekannten Store und hält den Gesamtexport erreichbar', async () => {
   const store = await open();
   store.close();
   const next = new Dexie(WORKSPACE_DATABASE_NAME);
-  next.version(2).stores({ ...WORKSPACE_SCHEMA, drafts: null, draftsNext: 'localId' }).upgrade(async tx => {
-    await tx.table('workspaceMeta').update('workspace', { storageSchemaVersion: 2 });
+  next.version(2).stores(WORKSPACE_SCHEMA);
+  next.version(3).stores({ ...WORKSPACE_SCHEMA, drafts: null, draftsNext: 'localId' }).upgrade(async tx => {
+    await tx.table('workspaceMeta').update('workspace', { storageSchemaVersion: 3 });
     await tx.table('draftsNext').add({ localId: 'next', value: 'FUTURE_DRAFT' });
   });
   await next.open();
@@ -32,7 +34,7 @@ test('öffnet ein neueres Schema ohne bekannten Store und hält den Gesamtexport
   // Fehlschlag, wenn der Store alle bekannten Stores beim Öffnen bindet und open() am fehlenden `drafts` scheitert.
   const older = await open();
   const backup = JSON.parse(value(await older.exportBackup()));
-  expect(backup).toMatchObject({ storageSchemaVersion: 2, draftsNext: [{ localId: 'next', value: 'FUTURE_DRAFT' }] });
+  expect(backup).toMatchObject({ storageSchemaVersion: 3, draftsNext: [{ localId: 'next', value: 'FUTURE_DRAFT' }] });
   expect(backup).not.toHaveProperty('drafts');
   expect(value(await older.listVerbuende())).toEqual([]);
   for (const result of [await older.getDraft('next' as LocalId), await older.createVerbund('No write'), await older.exportVerbundBackup('missing' as Parameters<typeof older.exportVerbundBackup>[0])]) {
@@ -45,7 +47,7 @@ test('meldet einen fehlenden bekannten Store im aktuellen Schema als ungültig',
   store.close();
   await Dexie.delete(WORKSPACE_DATABASE_NAME);
   const current = new Dexie(WORKSPACE_DATABASE_NAME);
-  current.version(1).stores({ ...WORKSPACE_SCHEMA, drafts: null });
+  current.version(2).stores({ ...WORKSPACE_SCHEMA, drafts: null });
   await current.open();
   current.close();
   // Fehlschlag, wenn ein fehlender Store im aktuellen Schema als neueres Schema gilt oder als unklassifizierter Speicherfehler endet.
@@ -53,7 +55,7 @@ test('meldet einen fehlenden bekannten Store im aktuellen Schema als ungültig',
   expect(await reopened.getDraft('missing' as LocalId)).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_SCHEMA_INVALID' } });
 });
 
-test.each([2, 1])('exportiert ohne workspaceMeta nur ein neueres Schema (Version %i)', async version => {
+test.each([3, 2])('exportiert ohne workspaceMeta nur ein neueres Schema (Version %i)', async version => {
   const store = await open();
   store.close();
   await Dexie.delete(WORKSPACE_DATABASE_NAME);
@@ -64,12 +66,12 @@ test.each([2, 1])('exportiert ohne workspaceMeta nur ein neueres Schema (Version
   next.close();
   // Fehlschlag, wenn der Gesamtexport `workspaceMeta` ohne Existenzprüfung liest und ein neueres Schema ohne diesen Store nicht sichert.
   const older = await open();
-  if (version === 1) {
+  if (version === 2) {
     expect(await older.exportBackup()).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_SCHEMA_INVALID' } });
     return;
   }
   const backup = JSON.parse(value(await older.exportBackup()));
-  expect(backup).toMatchObject({ format: 'gspp-workspace', storageSchemaVersion: 2, workspaceMetaNext: [{ id: 'workspace', value: 'FUTURE_META' }] });
+  expect(backup).toMatchObject({ format: 'gspp-workspace', storageSchemaVersion: 3, workspaceMetaNext: [{ id: 'workspace', value: 'FUTURE_META' }] });
   expect(backup).not.toHaveProperty('workspaceMeta');
   expect(await older.createVerbund('No write')).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_SCHEMA_NEWER' } });
 });
@@ -117,8 +119,8 @@ test('neuere Schema-Version sperrt Schreiben und erhält unbekannte Felder beim 
   const envelope = value(await store.addDocument(verbund.verbundId, await document()));
   const db = new Dexie(WORKSPACE_DATABASE_NAME);
   await db.open();
-  await db.table('workspaceMeta').update('workspace', { storageSchemaVersion: 2, future: { sentinel: 'FUTURE_FIELD' } });
-  await db.table('documents').update(envelope.localId, { storageSchemaVersion: 2, future: 'FUTURE_DOC' });
+  await db.table('workspaceMeta').update('workspace', { storageSchemaVersion: 3, future: { sentinel: 'FUTURE_FIELD' } });
+  await db.table('documents').update(envelope.localId, { storageSchemaVersion: 3, future: 'FUTURE_DOC' });
   db.close();
   expect(await store.renameVerbund(verbund.verbundId, 'No')).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_SCHEMA_NEWER' } });
   store.close();
@@ -147,7 +149,7 @@ test('Backup stellt zwei Verbünde mit Dokumenten, Entwürfen und Bindungen verl
   expect(Date.parse(meta.savedAt)).toBeGreaterThan(Date.parse(expected.workspaceMeta[0].savedAt));
   expected.workspaceMeta[0].savedAt = meta.savedAt;
   expect(JSON.parse(restored)).toEqual(expected);
-  expect(await store.restoreBackup(new TextEncoder().encode(before.replace('"storageSchemaVersion":1', '"storageSchemaVersion":99')), 'replace-workspace')).toMatchObject({ ok: false });
+  expect(await store.restoreBackup(new TextEncoder().encode(before.replace('"storageSchemaVersion":2', '"storageSchemaVersion":99')), 'replace-workspace')).toMatchObject({ ok: false });
   expect(value(await store.exportBackup())).toBe(restored);
 });
 
@@ -253,7 +255,7 @@ test.each([
   store.close();
   await Dexie.delete(WORKSPACE_DATABASE_NAME);
   const next = new Dexie(WORKSPACE_DATABASE_NAME);
-  next.version(2).stores({ workspaceMeta: key, futureStore: '' });
+  next.version(3).stores({ workspaceMeta: key, futureStore: '' });
   await next.open();
   try {
     await next.table('workspaceMeta').bulkAdd(rows);
@@ -261,7 +263,7 @@ test.each([
     const older = await open();
     const before = await next.table('workspaceMeta').toArray();
     expect(JSON.parse(value(await older.exportBackup()))).toEqual({
-      format: 'gspp-workspace', storageSchemaVersion: 2,
+      format: 'gspp-workspace', storageSchemaVersion: 3,
       workspaceMeta: rows,
       futureStore: [{ source: { unknown: true }, backupSavedAt: 'FUTURE_FIELD' }],
       outOfLineKeys: { futureStore: ['separate-key'] },

@@ -1,6 +1,6 @@
 import type Dexie from 'dexie';
 import type { Collection } from 'dexie';
-import { STORAGE_SCHEMA_VERSION, type LocalId, type VerbundId, type WorkspaceBackup, type WorkspaceVerbundBackup, type WorkspaceMeta, type WorkspaceEnvelope, type WorkspaceDraft, type WorkspaceBinding, type WorkspaceVerbund } from '@/domain/workspaceModel';
+import { STORAGE_SCHEMA_VERSION, type LocalId, type VerbundId, type WorkspaceBackup, type WorkspaceVerbundBackup, type WorkspaceMeta, type WorkspaceEnvelope, type WorkspaceDraft, type WorkspaceBinding, type WorkspaceVerbund, type ReviewTrailRow, type ReviewBaseline } from '@/domain/workspaceModel';
 import { CLASS_2_IMPORT_LIMITS, WORKSPACE_BACKUP_MAX_BYTES } from '@/domain/class2ImportLimits.mjs';
 import { countObjectGraphNodesCapped, enforceClass2ObjectGraphInvariants, enforceWorkspaceBackupGraphInvariants } from '@/domain/oscalObjectGraph';
 import { serializeWorkspaceJson } from '@/domain/workspaceJson';
@@ -89,7 +89,7 @@ export async function exportWorkspaceBackupSnapshot(db: Dexie): Promise<string> 
   const stores: Record<string, unknown> = Object.create(null);
   // Newer database versions pass through without interpreting even the metadata store.
   let storageSchemaVersion = db.verno;
-  if (db.verno <= STORAGE_SCHEMA_VERSION) {
+  if (storageSchemaVersion <= STORAGE_SCHEMA_VERSION) {
     if (!db.tables.some(table => table.name === 'workspaceMeta')) reject('WORKSPACE_SCHEMA_INVALID');
     const meta = await db.table<WorkspaceMeta>('workspaceMeta').get('workspace');
     if (!meta || !Number.isInteger(meta.storageSchemaVersion) || meta.storageSchemaVersion < 1) reject('WORKSPACE_SCHEMA_INVALID');
@@ -119,16 +119,18 @@ export async function exportVerbundBackupSnapshot(db: Dexie, verbundId: VerbundI
   const meta = await db.table<WorkspaceMeta>('workspaceMeta').get('workspace');
   if (!meta || !Number.isInteger(meta.storageSchemaVersion) || meta.storageSchemaVersion < 1) reject('WORKSPACE_SCHEMA_INVALID');
   if (meta.storageSchemaVersion > STORAGE_SCHEMA_VERSION) reject('WORKSPACE_SCHEMA_NEWER');
-  // Frame of this export — root, `format`, `storageSchemaVersion`, four lists — plus the verbund row itself.
+  // Frame of this export — root, `format`, `storageSchemaVersion`, six lists — plus the verbund row itself.
   const budget: BackupBudget = {
     bytes: new TextEncoder().encode(serializeWorkspaceJson(verbund)).byteLength,
-    nodes: frameNodes(4) + countObjectGraphNodesCapped(verbund, CLASS_2_IMPORT_LIMITS.maxNodes),
+    nodes: frameNodes(6) + countObjectGraphNodesCapped(verbund, CLASS_2_IMPORT_LIMITS.maxNodes),
   };
   const documents = await readRows(db.table<WorkspaceEnvelope>('documents').where('verbundId').equals(verbundId), budget);
   const ids = new Set(documents.map(row => row.localId));
   const drafts = await readRows(db.table<WorkspaceDraft>('drafts').where('localId').anyOf([...ids]), budget);
   const bindings = await readRows(db.table<WorkspaceBinding>('bindings').filter(row => ids.has(row.fromLocalId)), budget);
-  return serializeBackup({ format: 'gspp-workspace-verbund', storageSchemaVersion: meta.storageSchemaVersion, verbuende: [verbund], documents, drafts, bindings });
+  const reviewTrail = await readRows(db.table<ReviewTrailRow>('reviewTrail').filter(row => ids.has(row.localId)), budget);
+  const reviewBaseline = await readRows(db.table<ReviewBaseline>('reviewBaseline').filter(row => ids.has(row.localId)), budget);
+  return serializeBackup({ format: 'gspp-workspace-verbund', storageSchemaVersion: meta.storageSchemaVersion, verbuende: [verbund], documents, drafts, bindings, reviewTrail, reviewBaseline });
 }
 
 /**
@@ -159,12 +161,17 @@ export function writtenRow<T extends { backupSavedAt?: string }>(row: T): T {
 
 /** Caller owns the single write transaction and has validated the whole bundle. */
 export async function restoreWorkspaceBackupSnapshot(db: Dexie, backup: WorkspaceBackup): Promise<void> {
-  const stamp = await restoredStamp(db, [...backup.verbuende, ...backup.documents, ...backup.drafts]);
+  const stamp = await restoredStamp(db, [
+    ...backup.verbuende, ...backup.documents, ...backup.drafts,
+    ...backup.reviewTrail.map(row => ({ savedAt: row.createdAt })),
+  ]);
   for (const table of db.tables) await table.clear();
   await db.table('verbuende').bulkAdd(backup.verbuende);
   await db.table('documents').bulkAdd(backup.documents.map(row => restoredRow(row, stamp)));
   await db.table('drafts').bulkAdd(backup.drafts.map(row => restoredRow(row, stamp)));
   await db.table('bindings').bulkAdd(backup.bindings);
+  await db.table('reviewTrail').bulkAdd(backup.reviewTrail);
+  await db.table('reviewBaseline').bulkAdd(backup.reviewBaseline);
   await db.table('workspaceMeta').bulkAdd(backup.workspaceMeta.map(row => ({ ...row, savedAt: stamp })));
 }
 
@@ -174,14 +181,21 @@ export async function restoreVerbundBackupSnapshot(db: Dexie, backup: WorkspaceV
   const documents = db.table<WorkspaceEnvelope, LocalId>('documents');
   const incoming = await documents.bulkGet(backup.documents.map(row => row.localId));
   if (incoming.some(row => row && row.verbundId !== verbundId)) reject('WORKSPACE_BACKUP_CONFLICT');
-  const stamp = await restoredStamp(db, [...backup.verbuende, ...backup.documents, ...backup.drafts]);
+  const stamp = await restoredStamp(db, [
+    ...backup.verbuende, ...backup.documents, ...backup.drafts,
+    ...backup.reviewTrail.map(row => ({ savedAt: row.createdAt })),
+  ]);
   const oldIds = new Set(await documents.where('verbundId').equals(verbundId).primaryKeys());
   await db.table<WorkspaceBinding>('bindings').filter(row => oldIds.has(row.fromLocalId) || (row.target.kind === 'local' && oldIds.has(row.target.localId))).delete();
   await db.table('drafts').bulkDelete([...oldIds]);
+  await db.table('reviewTrail').where('localId').anyOf([...oldIds]).delete();
+  await db.table('reviewBaseline').bulkDelete([...oldIds]);
   await documents.bulkDelete([...oldIds]);
   await db.table('verbuende').put(backup.verbuende[0]);
   await documents.bulkAdd(backup.documents.map(row => restoredRow(row, stamp)));
   await db.table('drafts').bulkAdd(backup.drafts.map(row => restoredRow(row, stamp)));
   await db.table('bindings').bulkAdd(backup.bindings);
+  await db.table('reviewTrail').bulkAdd(backup.reviewTrail);
+  await db.table('reviewBaseline').bulkAdd(backup.reviewBaseline);
   await db.table('workspaceMeta').update('workspace', { savedAt: stamp });
 }

@@ -17,7 +17,7 @@ function nodeAt(backup: Recovery, ...path: string[]): unknown[] {
 
 test('sichert Date und Binäransichten neuerer Stores mit eindeutigen Typen und Referenzen', async () => {
   const next = new Dexie(WORKSPACE_DATABASE_NAME);
-  next.version(2).stores({ futureStore: '' });
+  next.version(3).stores({ futureStore: '' });
   await next.open();
   try {
     const buffer = new Uint8Array([1, 2, 255, 4]).buffer;
@@ -48,7 +48,7 @@ test('sichert Date und Binäransichten neuerer Stores mit eindeutigen Typen und 
 test.each(['__proto__', 'constructor', 'toString'])('erhält den Store %s mit separatem Schlüssel', async name => {
   // Native creation also checks names that collide with JavaScript object members.
   await new Promise<void>((resolve, reject) => {
-    const request = indexedDB.open(WORKSPACE_DATABASE_NAME, 20);
+    const request = indexedDB.open(WORKSPACE_DATABASE_NAME, 30);
     request.onupgradeneeded = () => {
       request.result.createObjectStore(name);
       request.result.createObjectStore('futureStore');
@@ -83,7 +83,7 @@ test.each(['__proto__', 'constructor', 'toString'])('erhält den Store %s mit se
 
 test.each(['format', 'storageSchemaVersion', 'outOfLineKeys'])('lehnt einen Store mit dem Rahmenfeldnamen %s ohne Datenänderung ab', async name => {
   const next = new Dexie(WORKSPACE_DATABASE_NAME);
-  next.version(2).stores({ [name]: 'id' });
+  next.version(3).stores({ [name]: 'id' });
   await next.open();
   try {
     await next.table(name).add({ id: 'synthetic' });
@@ -95,7 +95,7 @@ test.each(['format', 'storageSchemaVersion', 'outOfLineKeys'])('lehnt einen Stor
 
 test('erhält Zyklen, Aliase, Arraylücken und besondere Werte im Rettungsgraph', async () => {
   const next = new Dexie(WORKSPACE_DATABASE_NAME);
-  next.version(2).stores({ futureStore: '' });
+  next.version(3).stores({ futureStore: '' });
   await next.open();
   try {
     const shared = { marker: 'shared' };
@@ -132,7 +132,7 @@ test('erhält Zyklen, Aliase, Arraylücken und besondere Werte im Rettungsgraph'
 
 test('bricht bei nicht unterstützten Werten redigiert ab und erhält den gespeicherten Bestand', async () => {
   const next = new Dexie(WORKSPACE_DATABASE_NAME);
-  next.version(2).stores({ futureStore: '' });
+  next.version(3).stores({ futureStore: '' });
   await next.open();
   try {
     await next.table('futureStore').add(new Blob(['PRIVATE_SYNTHETIC'], { type: 'text/plain' }), 'separate');
@@ -146,7 +146,7 @@ test('bricht bei nicht unterstützten Werten redigiert ab und erhält den gespei
 
 test.each(['buffer', 'typed', 'view'])('lehnt veränderbare Puffer ohne stillen Eigenschaftsverlust ab (%s)', async kind => {
   const next = new Dexie(WORKSPACE_DATABASE_NAME);
-  next.version(2).stores({ futureStore: '' });
+  next.version(3).stores({ futureStore: '' });
   await next.open();
   try {
     const buffer = Reflect.construct(ArrayBuffer, [4, { maxByteLength: 8 }]) as ArrayBuffer;
@@ -167,7 +167,7 @@ test.each(['buffer', 'typed', 'view'])('lehnt veränderbare Puffer ohne stillen 
 
 test('bricht die native Lesetransaktion nach einer Zeile ohne Teilbackup und ohne Datenänderung ab', async () => {
   const next = new Dexie(WORKSPACE_DATABASE_NAME);
-  next.version(2).stores({ futureStore: '' });
+  next.version(3).stores({ futureStore: '' });
   await next.open();
   try {
     await next.table('futureStore').bulkAdd([{ sentinel: 'PRIVATE_ONE' }, { sentinel: 'PRIVATE_TWO' }], ['one', 'two']);

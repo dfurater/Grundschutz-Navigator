@@ -207,6 +207,17 @@ describe('DatenschutzPage', () => {
       expect(section).toHaveTextContent(/Zugriff auf Ihr Browserprofil/);
     });
 
+    it('erklärt Prüfspur, Freigabe und deren Löschung', () => {
+      const { container } = render(<DatenschutzPage />);
+
+      expect(container).toHaveTextContent(/Ein Prüfpunkt speichert einen Inhalts-Hash und einen strukturellen Vergleich/);
+      expect(container).toHaveTextContent(/Vergleichskopie des zuletzt gesetzten Prüfpunkts/);
+      expect(container).toHaveTextContent(/ältere Stände liegen nicht mehr vor/);
+      expect(container).toHaveTextContent(/Freigabe schreibt Rolle, Partei und Begründung in das Profil/);
+      expect(container).toHaveTextContent(/elektronische Signatur und eine Identitätsprüfung finden nicht statt/);
+      expect(container).toHaveTextContent(/Prüfspur und Vergleichsbasis sind in der Sicherungsdatei enthalten/);
+    });
+
     it('nennt den Export als einzige Sicherung ohne Kopie beim Betreiber', () => {
       const { container } = render(<DatenschutzPage />);
 

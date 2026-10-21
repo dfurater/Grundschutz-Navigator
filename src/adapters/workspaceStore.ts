@@ -7,6 +7,8 @@ import {
   type DocumentState, type LocalId, type VerbundId, type WorkspaceBinding,
   type WorkspaceDraft, type WorkspaceEnvelope, type WorkspaceMeta, type WorkspaceDocumentSummary,
   type WorkspaceResult, type WorkspaceVerbund,
+  type ReviewBaseline, type ReviewCheckpoint, type ReviewDecision, type ReviewDecisionKind, type ReviewTrailRow,
+  type ReviewTrailView, type DocumentSnapshot,
 } from '@/domain/workspaceModel';
 import { snapshotDocument, assertAdmissible, assertState, pointerValue } from '@/adapters/workspaceDocumentAdmission';
 import { parseWorkspaceBackup, parseVerbundBackup } from '@/adapters/workspaceBackup';
@@ -15,18 +17,90 @@ import { serializeWorkspaceJson } from '@/domain/workspaceJson';
 import { exportNewerWorkspaceBackup } from '@/adapters/workspaceRecoveryStorage';
 import { exportWorkspaceBackupSnapshot, restoreWorkspaceBackupSnapshot, exportVerbundBackupSnapshot, restoreVerbundBackupSnapshot, writtenRow } from '@/adapters/workspaceBackupStorage';
 import { StorageFailure, failure, reject, timestamp } from '@/adapters/workspaceStorageFailure';
-import { deleteDatabase, withinDeadline } from '@/adapters/workspaceDatabaseLifecycle';
+import { deleteDatabase, storedDatabaseShape, withinDeadline } from '@/adapters/workspaceDatabaseLifecycle';
+import { migrateWorkspaceStorage } from '@/adapters/workspaceMigration';
+import { reviewTrailInWorker } from '@/adapters/reviewTrailWork';
+import { appendDecisionError, deriveReviewState, resolveActionReferences, REVIEW_ACTIONS_SYSTEM, REVIEW_ACTION_TYPE_APPROVED } from '@/domain/reviewTrail';
+import { documentBody } from '@/domain/documentContent';
+import { isJsonObject, readArray, type JsonObject } from '@/domain/jsonGuards';
 
 export const WORKSPACE_DATABASE_NAME = 'gspp-workspace';
 export const WORKSPACE_DELETE_BLOCKED_TIMEOUT_MS = 2_000;
 export const WORKSPACE_OPEN_TIMEOUT_MS = 2_000;
+
+/** Schema of the current version; the v1 shape stays available for the migration step. */
 export const WORKSPACE_SCHEMA = Object.freeze({
+  verbuende: 'verbundId',
+  documents: 'localId, verbundId, rootType, oscalVersion, savedAt',
+  drafts: 'localId',
+  bindings: '[fromLocalId+pointer], target.localId',
+  reviewTrail: '[localId+sequence], localId',
+  reviewBaseline: 'localId',
+  workspaceMeta: 'id',
+});
+
+export const WORKSPACE_SCHEMA_V1 = Object.freeze({
   verbuende: 'verbundId',
   documents: 'localId, verbundId, rootType, oscalVersion, savedAt',
   drafts: 'localId',
   bindings: '[fromLocalId+pointer], target.localId',
   workspaceMeta: 'id',
 });
+
+/** Die native Freigabe wird mit dem Dokumentenschreibvorgang atomar geschrieben. */
+export interface ReviewApprovalRequest {
+  /** UUID der Aktion, die der Aufrufer bereits in `metadata.actions` eingetragen hat. */
+  readonly actionUuid: string;
+  /** Trail-Sequenz, gegen die der Aufrufer gelesen hat; ein anderer Wert ist ein Konflikt. */
+  readonly expectedSequence: number;
+  readonly roleId: string;
+  readonly partyUuids: readonly string[];
+  readonly reason?: string;
+}
+
+interface StoreDocumentOptions {
+  readonly changedBindings?: readonly WorkspaceBinding[];
+  readonly state?: DocumentState;
+  readonly approval?: ReviewApprovalRequest;
+  readonly resetBaseline?: boolean;
+}
+
+/** `approved` läuft ausschließlich über `saveDocument`; hier bleiben die Workspace-Entscheidungen. */
+export interface ReviewDecisionRequest {
+  readonly decision: Exclude<ReviewDecisionKind, 'approved'>;
+  readonly expectedSequence: number;
+  readonly withdraws?: { readonly sequence: number; readonly actionUuid: string };
+  readonly roleId?: string;
+  readonly partyUuids?: readonly string[];
+  readonly reason?: string;
+}
+
+function approvalMatches(action: JsonObject, approval: ReviewApprovalRequest): boolean {
+  if (action.type !== REVIEW_ACTION_TYPE_APPROVED || action.system !== REVIEW_ACTIONS_SYSTEM) return false;
+  const responsible = readArray(action['responsible-parties']).filter(isJsonObject);
+  if (responsible.length !== 1) return false;
+  const parties = readArray(responsible[0]['party-uuids']);
+  const expected = new Set(approval.partyUuids);
+  return responsible[0]['role-id'] === approval.roleId && expected.size > 0 && expected.size === parties.length
+    && approval.partyUuids.length === parties.length
+    && parties.every(uuid => typeof uuid === 'string' && expected.has(uuid));
+}
+
+/** Checks an approval before any write and computes the stand it binds; a rejected gate throws. */
+async function approvalStandFor(document: Class2OscalImportedDocument, schemaValid: boolean, state: DocumentState | undefined, approval: ReviewApprovalRequest): Promise<WorkspaceResult<DocumentSnapshot>> {
+  // The approval gate holds for every caller: a schema-valid source and a stored state that is not draft.
+  if (state === 'draft') reject('REVIEW_APPROVAL_BLOCKED');
+  if (!schemaValid) reject('REVIEW_APPROVAL_SCHEMA');
+  // Schema validity is no reference resolution: a missing or ambiguous role/party stops before any write.
+  const metadata = documentBody(document.source, document.rootType)?.metadata;
+  const action = readArray(isJsonObject(metadata) ? metadata.actions : undefined)
+    .find(entry => isJsonObject(entry) && entry.uuid === approval.actionUuid);
+  if (!isJsonObject(action) || !approvalMatches(action, approval)) reject('REVIEW_APPROVAL_INVALID');
+  const findings = resolveActionReferences(action, metadata);
+  if (findings.length) reject(findings[0].code);
+  const work = await reviewTrailInWorker({ source: document.source, rootType: document.rootType, previous: null, baseSequence: null, diff: false });
+  return work.ok ? { ok: true, value: work.value.snapshot } : work;
+}
 
 /** No singleton, cached sources, search index or document-content event payloads. */
 export class WorkspaceStore {
@@ -36,9 +110,13 @@ export class WorkspaceStore {
   private get verbuende(): Table<WorkspaceVerbund, VerbundId> { return this.db.table('verbuende'); }
   private get drafts(): Table<WorkspaceDraft, LocalId> { return this.db.table('drafts'); }
   private get bindings(): Table<WorkspaceBinding, [LocalId, string]> { return this.db.table('bindings'); }
+  private get reviewTrail(): Table<ReviewTrailRow, [LocalId, number]> { return this.db.table('reviewTrail'); }
+  private get reviewBaseline(): Table<ReviewBaseline, LocalId> { return this.db.table('reviewBaseline'); }
   private get meta(): Table<WorkspaceMeta, string> { return this.db.table('workspaceMeta'); }
 
-  private constructor(db: Dexie) { this.db = db; }
+  /** Dexie reports a fallback version for an undeclared open, so the newer path is decided once from the native version. */
+  private readonly newerSchema: boolean;
+  private constructor(db: Dexie, newerSchema: boolean) { this.db = db; this.newerSchema = newerSchema; }
 
   /** IndexedDB queues every open behind a pending `deleteDatabase`; the deadline keeps that wait terminal. */
   static open(): Promise<WorkspaceResult<WorkspaceStore>> {
@@ -48,27 +126,65 @@ export class WorkspaceStore {
 
   private static async openDatabase(expired: () => boolean): Promise<WorkspaceResult<WorkspaceStore>> {
     let db = new Dexie(WORKSPACE_DATABASE_NAME);
+    let newerSchema = false;
     try {
       // Dynamic opening keeps newer databases readable without a downgrade.
       const exists = await Dexie.exists(WORKSPACE_DATABASE_NAME);
       // After the deadline nobody receives the store, so a late open must not recreate a deleted database.
       if (expired()) reject('WORKSPACE_OPEN_TIMEOUT');
-      if (!exists) {
-        db.version(STORAGE_SCHEMA_VERSION).stores(WORKSPACE_SCHEMA);
+      // A database deleted between the check and the shape read is reported as absent.
+      const stored = exists ? await storedDatabaseShape(WORKSPACE_DATABASE_NAME) : undefined;
+      if (!stored) {
+        if (expired()) reject('WORKSPACE_OPEN_TIMEOUT');
+        this.declareVersions(db);
         db.on('populate', transaction => {
           const now = timestamp();
           return transaction.table('workspaceMeta').add({ id: 'workspace', storageSchemaVersion: STORAGE_SCHEMA_VERSION, createdAt: now, savedAt: now });
         });
-      }
-      try { await db.open(); }
-      catch (error) {
-        if (!(error instanceof Error) || error.name !== 'VersionError') throw error;
-        db.close();
-        db = new Dexie(WORKSPACE_DATABASE_NAME);
         await db.open();
+      } else {
+        // Declared versions would reconcile and rewrite an unknown schema, so the stored shape decides the path.
+        newerSchema = stored.version > STORAGE_SCHEMA_VERSION;
+        const known = Object.keys(stored.version >= STORAGE_SCHEMA_VERSION ? WORKSPACE_SCHEMA : WORKSPACE_SCHEMA_V1);
+        if (newerSchema || known.some(store => !stored.stores.includes(store))) {
+          if (expired()) reject('WORKSPACE_OPEN_TIMEOUT');
+          db = new Dexie(WORKSPACE_DATABASE_NAME);
+          await db.open();
+        } else {
+          this.declareVersions(db);
+          await db.open();
+        }
       }
-      return { ok: true, value: new WorkspaceStore(db) };
+      return { ok: true, value: new WorkspaceStore(db, newerSchema) };
     } catch (error) { db.close(); return failure(error); }
+  }
+
+  /** Both versions are declared so an existing v1 database runs the same upgrade that a fresh one skips. */
+  private static declareVersions(db: Dexie): void {
+    db.version(1).stores(WORKSPACE_SCHEMA_V1);
+    db.version(STORAGE_SCHEMA_VERSION).stores(WORKSPACE_SCHEMA)
+      .upgrade(async (transaction) => {
+        try { await migrateWorkspaceStorage(transaction, 1, STORAGE_SCHEMA_VERSION); }
+        catch { reject('WORKSPACE_MIGRATION_FAILED'); }
+      });
+  }
+
+  /** Read-only rescue export after a failed migration; never creates a missing database. */
+  static exportRecoveryBackup(): Promise<WorkspaceResult<string>> {
+    return withinDeadline(WORKSPACE_OPEN_TIMEOUT_MS, 'WORKSPACE_OPEN_TIMEOUT', expired => WorkspaceStore.readRecoveryBackup(expired), () => undefined);
+  }
+
+  private static async readRecoveryBackup(expired: () => boolean): Promise<WorkspaceResult<string>> {
+    try {
+      if (!await Dexie.exists(WORKSPACE_DATABASE_NAME)) reject('WORKSPACE_STORAGE_FAILED');
+      if (expired()) reject('WORKSPACE_OPEN_TIMEOUT');
+      const db = new Dexie(WORKSPACE_DATABASE_NAME);
+      try {
+        await db.open();
+        if (expired()) reject('WORKSPACE_OPEN_TIMEOUT');
+        return await exportNewerWorkspaceBackup(db);
+      } finally { db.close(); }
+    } catch (error) { return failure(error); }
   }
 
   close(): void { this.db.close(); }
@@ -76,7 +192,7 @@ export class WorkspaceStore {
   private async read<T>(stores: readonly string[], operation: () => Promise<T>): Promise<WorkspaceResult<T>> {
     try {
       const present = new Set(this.db.tables.map(table => table.name));
-      if (stores.some(store => !present.has(store))) reject(this.db.verno > STORAGE_SCHEMA_VERSION ? 'WORKSPACE_SCHEMA_NEWER' : 'WORKSPACE_SCHEMA_INVALID');
+      if (stores.some(store => !present.has(store))) reject(this.newerSchema ? 'WORKSPACE_SCHEMA_NEWER' : 'WORKSPACE_SCHEMA_INVALID');
       return { ok: true, value: await this.db.transaction('r', [...stores], operation) };
     } catch (error) { return failure(error); }
   }
@@ -84,7 +200,7 @@ export class WorkspaceStore {
   /** Every savedAt written in one transaction is its stamp; workspaceMeta.savedAt therefore bounds every issued comparison value. Without `touchMeta` the operation is a restore and issues its own stamp (`restoredStamp()`). */
   private async write<T>(operation: (stamp: string) => Promise<T>, touchMeta = true): Promise<WorkspaceResult<T>> {
     try {
-      if (this.db.verno > STORAGE_SCHEMA_VERSION) reject('WORKSPACE_SCHEMA_NEWER');
+      if (this.newerSchema) reject('WORKSPACE_SCHEMA_NEWER');
       const value = await this.db.transaction('rw', this.db.tables, async () => {
         const meta = await this.meta.get('workspace');
         if (!meta || !Number.isInteger(meta.storageSchemaVersion) || meta.storageSchemaVersion < 1) reject('WORKSPACE_SCHEMA_INVALID');
@@ -100,7 +216,7 @@ export class WorkspaceStore {
 
   /** `newer`: the stored schema is above this build's version; writes stay locked, reading and the global export remain. */
   async schemaStatus(): Promise<WorkspaceResult<'current' | 'newer'>> {
-    if (this.db.verno > STORAGE_SCHEMA_VERSION) return { ok: true, value: 'newer' };
+    if (this.newerSchema) return { ok: true, value: 'newer' };
     const meta = await this.read(['workspaceMeta'], () => this.meta.get('workspace'));
     if (!meta.ok) return meta;
     return { ok: true, value: (meta.value?.storageSchemaVersion ?? 0) > STORAGE_SCHEMA_VERSION ? 'newer' : 'current' };
@@ -175,14 +291,26 @@ export class WorkspaceStore {
     return current;
   }
 
-  async saveDocument(localId: LocalId, expectedSavedAt: string, expectedDraftSavedAt: string | null, input: Class2OscalImportedDocument, changedBindings?: readonly WorkspaceBinding[], state?: DocumentState): Promise<WorkspaceResult<WorkspaceEnvelope>> {
+  async saveDocument(localId: LocalId, expectedSavedAt: string, expectedDraftSavedAt: string | null, input: Class2OscalImportedDocument, changedBindings?: readonly WorkspaceBinding[], state?: DocumentState, approval?: ReviewApprovalRequest): Promise<WorkspaceResult<WorkspaceEnvelope>> {
+    return this.storeDocument(localId, expectedSavedAt, expectedDraftSavedAt, input, { changedBindings, state, approval });
+  }
+
+  private async storeDocument(localId: LocalId, expectedSavedAt: string, expectedDraftSavedAt: string | null, input: Class2OscalImportedDocument, options: StoreDocumentOptions): Promise<WorkspaceResult<WorkspaceEnvelope>> {
+    const { changedBindings, state, approval, resetBaseline = false } = options;
     try {
       const bindingSnapshot = changedBindings === undefined ? undefined : structuredClone(changedBindings);
       if (state !== undefined) assertState(state);
       const { document, schemaValid } = await snapshotDocument(input, state);
-      return this.write(async stamp => {
+      let approvalStand: DocumentSnapshot | undefined;
+      if (approval) {
+        const prepared = await approvalStandFor(document, schemaValid, state, approval);
+        if (!prepared.ok) return prepared;
+        approvalStand = prepared.value;
+      }
+      return await this.write(async stamp => {
         const current = await this.current(localId, expectedSavedAt, expectedDraftSavedAt);
         assertAdmissible(state ?? current.documentState, schemaValid);
+        if (approval && (state ?? current.documentState) === 'draft') reject('REVIEW_APPROVAL_BLOCKED');
         if ((document.source as Record<string, { uuid?: string }>)[document.rootType]?.uuid === localId) reject('WORKSPACE_DOCUMENT_INVALID');
         const updated: WorkspaceEnvelope = { ...writtenRow(current), source: document.source, rootType: document.rootType, oscalVersion: document.oscalVersion, savedAt: stamp, documentState: state ?? current.documentState };
         await this.documents.put(updated);
@@ -195,13 +323,20 @@ export class WorkspaceStore {
           }
         }
         await this.drafts.delete(localId);
+        // A replaced document starts a new comparison line; older checkpoints stay history.
+        if (resetBaseline) await this.reviewBaseline.delete(localId);
+        if (approval && approvalStand) {
+          await this.appendDecisionRow(localId, 'approved', approval.expectedSequence, approvalStand, stamp, {
+            actionUuid: approval.actionUuid, roleId: approval.roleId, partyUuids: [...approval.partyUuids], reason: approval.reason,
+          });
+        }
         return updated;
       });
     } catch (error) { return failure(error); }
   }
 
   replaceDocument(localId: LocalId, expectedSavedAt: string, expectedDraftSavedAt: string | null, input: Class2OscalImportedDocument): Promise<WorkspaceResult<WorkspaceEnvelope>> {
-    return this.saveDocument(localId, expectedSavedAt, expectedDraftSavedAt, input);
+    return this.storeDocument(localId, expectedSavedAt, expectedDraftSavedAt, input, { resetBaseline: true });
   }
 
   async autosaveDraft(localId: LocalId, expectedSavedAt: string, expectedDraftSavedAt: string | null, source: unknown): Promise<WorkspaceResult<WorkspaceDraft>> {
@@ -216,6 +351,108 @@ export class WorkspaceStore {
         return draft;
       });
     } catch (error) { return failure(error); }
+  }
+
+  /** Trail plus Stand des gespeicherten Dokuments; der Hash entsteht im Worker. */
+  async listReviewTrail(localId: LocalId): Promise<WorkspaceResult<ReviewTrailView>> {
+    try {
+      const read = await this.read(['documents', 'drafts', 'reviewTrail'], async () => {
+        const document = await this.documents.get(localId);
+        if (!document) reject('WORKSPACE_DOCUMENT_NOT_FOUND');
+        return {
+          document,
+          draftSavedAt: (await this.drafts.get(localId))?.savedAt ?? null,
+          trail: await this.reviewTrail.where('localId').equals(localId).toArray(),
+        };
+      });
+      if (!read.ok) return read;
+      const work = await reviewTrailInWorker({ source: read.value.document.source, rootType: read.value.document.rootType, previous: null, baseSequence: null, diff: false });
+      if (!work.ok) return work;
+      return { ok: true, value: { trail: read.value.trail, stand: work.value.snapshot, document: read.value.document, draftSavedAt: read.value.draftSavedAt } };
+    } catch (error) { return failure(error); }
+  }
+
+  /** Ein Checkpoint schreibt nur Trail und Baseline, nie das Dokument. */
+  async appendCheckpoint(localId: LocalId, expectedSavedAt: string, expectedDraftSavedAt: string | null, expectedSequence: number): Promise<WorkspaceResult<ReviewCheckpoint>> {
+    try {
+      const read = await this.read(['documents', 'reviewBaseline'], async () => {
+        const document = await this.documents.get(localId);
+        if (!document) reject('WORKSPACE_DOCUMENT_NOT_FOUND');
+        return { document, baseline: await this.reviewBaseline.get(localId) };
+      });
+      if (!read.ok) return read;
+      const { document, baseline } = read.value;
+      const work = await reviewTrailInWorker({
+        source: document.source, rootType: document.rootType,
+        previous: baseline?.source ?? null, baseSequence: baseline?.sequence ?? null, diff: true,
+      });
+      if (!work.ok) return work;
+      const diff = work.value.diff;
+      if (!diff) reject('REVIEW_TRAIL_WORK_FAILED');
+      return await this.write(async stamp => {
+        const current = await this.current(localId, expectedSavedAt, expectedDraftSavedAt);
+        // A checkpoint binds a saved stand; an ungespeicherter Entwurf wäre sofort überholt.
+        if (current.documentState === 'draft' || await this.drafts.get(localId)) reject('REVIEW_CHECKPOINT_NOT_ALLOWED');
+        const last = await this.lastSequence(localId);
+        if (last !== expectedSequence) reject('WORKSPACE_SAVE_CONFLICT');
+        const checkpoint: ReviewCheckpoint = {
+          localId, sequence: last + 1, kind: 'checkpoint', createdAt: stamp,
+          documentState: current.documentState, stand: work.value.snapshot, diff,
+        };
+        await this.reviewTrail.add(checkpoint);
+        await this.reviewBaseline.put({ localId, sequence: checkpoint.sequence, stand: checkpoint.stand, source: document.source });
+        return checkpoint;
+      });
+    } catch (error) { return failure(error); }
+  }
+
+  /** Prüfung, Änderungsanforderung und Rücknahme; `approved` läuft über `saveDocument`. */
+  async appendDecision(localId: LocalId, expectedSavedAt: string, expectedDraftSavedAt: string | null, request: ReviewDecisionRequest): Promise<WorkspaceResult<ReviewDecision>> {
+    try {
+      const read = await this.read(['documents', 'reviewTrail'], async () => {
+        const document = await this.documents.get(localId);
+        if (!document) reject('WORKSPACE_DOCUMENT_NOT_FOUND');
+        const trail = await this.reviewTrail.where('localId').equals(localId).toArray();
+        const error = appendDecisionError(deriveReviewState(trail), request);
+        if (error) reject(error);
+        return document;
+      });
+      if (!read.ok) return read;
+      const work = await reviewTrailInWorker({ source: read.value.source, rootType: read.value.rootType, previous: null, baseSequence: null, diff: false });
+      if (!work.ok) return work;
+      return await this.write(async stamp => {
+        await this.current(localId, expectedSavedAt, expectedDraftSavedAt);
+        return this.appendDecisionRow(localId, request.decision, request.expectedSequence, work.value.snapshot, stamp, request);
+      });
+    } catch (error) { return failure(error); }
+  }
+
+  private async lastSequence(localId: LocalId): Promise<number> {
+    const last = await this.reviewTrail.where('localId').equals(localId).last();
+    return last?.sequence ?? 0;
+  }
+
+  /** Läuft in der Schreibtransaktion; Übergang und Ziel der Rücknahme werden dort erneut geprüft. */
+  private async appendDecisionRow(localId: LocalId, decision: ReviewDecisionKind, expectedSequence: number, stand: DocumentSnapshot, createdAt: string, extra: Partial<Pick<ReviewDecision, 'actionUuid' | 'withdraws' | 'roleId' | 'partyUuids' | 'reason'>>): Promise<ReviewDecision> {
+    const last = await this.lastSequence(localId);
+    if (last !== expectedSequence) reject('WORKSPACE_SAVE_CONFLICT');
+    const trail = await this.reviewTrail.where('localId').equals(localId).toArray();
+    const error = appendDecisionError(deriveReviewState(trail), { decision, withdraws: extra.withdraws });
+    if (error) reject(error);
+    if (extra.withdraws) {
+      const target = await this.reviewTrail.get([localId, extra.withdraws.sequence]);
+      if (target?.kind !== 'decision' || target.actionUuid !== extra.withdraws.actionUuid) reject('REVIEW_WITHDRAWAL_TARGET_UNKNOWN');
+    }
+    const row: ReviewDecision = {
+      localId, sequence: last + 1, kind: 'decision', createdAt, decision, stand,
+      ...(extra.actionUuid === undefined ? {} : { actionUuid: extra.actionUuid }),
+      ...(extra.withdraws === undefined ? {} : { withdraws: extra.withdraws }),
+      ...(extra.roleId === undefined ? {} : { roleId: extra.roleId }),
+      ...(extra.partyUuids === undefined ? {} : { partyUuids: extra.partyUuids }),
+      ...(extra.reason === undefined || extra.reason === '' ? {} : { reason: extra.reason }),
+    };
+    await this.reviewTrail.add(row);
+    return row;
   }
 
   private async putBinding(binding: WorkspaceBinding, expectedSavedAt?: string): Promise<void> {
@@ -264,6 +501,8 @@ export class WorkspaceStore {
     await this.bindings.where('target.localId').equals(localId).delete();
     await this.bindings.where('[fromLocalId+pointer]').between([localId, Dexie.minKey], [localId, Dexie.maxKey]).delete();
     await this.drafts.delete(localId);
+    await this.reviewTrail.where('localId').equals(localId).delete();
+    await this.reviewBaseline.delete(localId);
     await this.documents.delete(localId);
   }
   deleteDocument(localId: LocalId): Promise<WorkspaceResult<void>> {
@@ -278,7 +517,7 @@ export class WorkspaceStore {
     });
   }
 
-  exportBackup(): Promise<WorkspaceResult<string>> { return this.db.verno > STORAGE_SCHEMA_VERSION ? exportNewerWorkspaceBackup(this.db) : this.read(this.db.tables.map(table => table.name), () => exportWorkspaceBackupSnapshot(this.db)); }
+  exportBackup(): Promise<WorkspaceResult<string>> { return this.newerSchema ? exportNewerWorkspaceBackup(this.db) : this.read(this.db.tables.map(table => table.name), () => exportWorkspaceBackupSnapshot(this.db)); }
   exportVerbundBackup(verbundId: VerbundId): Promise<WorkspaceResult<string>> {
     return this.read(this.db.tables.map(table => table.name), () => exportVerbundBackupSnapshot(this.db, verbundId));
   }

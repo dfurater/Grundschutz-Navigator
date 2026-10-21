@@ -5,8 +5,11 @@ import { alignImportBindings, importHrefPointer, removeImport, shiftImportBindin
 import { exportProfileInWorker } from '@/adapters/profileWorkbench';
 import { isPinnedOscalVersion } from '@/domain/oscalVersionMatrix';
 import { commitExplicitSave, sameProfileContent } from '@/domain/profileSave';
+import { approvalAction, withApprovalAction, withReviewIdentities } from '@/domain/reviewTrail';
 import type { BindingTarget, LocalId, WorkspaceBinding, WorkspaceEnvelope } from '@/domain/workspaceModel';
 import { useWorkspace } from '@/hooks/useWorkspace';
+import type { ReviewApprovalRequest } from '@/adapters/workspaceStore';
+import type { DecisionSubmission } from '@/features/workspace/review/reviewView';
 import type { PendingImportTarget } from '@/state/workspaceDocuments';
 
 /** Wartezeit nach der letzten Änderung, bevor der Entwurf automatisch gesichert wird. */
@@ -27,6 +30,13 @@ export type ProfileSaveState =
 
 export type ProfileEditorMessage = 'saved-as-draft' | 'export-failed' | 'save-failed' | 'delete-failed';
 
+export interface ProfileApprovalInput extends DecisionSubmission {
+  /** Trail-Sequenz, gegen die der Aufrufer gelesen hat. */
+  readonly expectedSequence: number;
+}
+
+export type ProfileApprovalResult = { readonly ok: true } | { readonly ok: false; readonly code: string };
+
 export interface ProfileEditor {
   readonly status: 'loading' | 'ready' | 'failed';
   readonly envelope?: WorkspaceEnvelope;
@@ -46,6 +56,10 @@ export interface ProfileEditor {
   /** Ändert die Quelle und ordnet einem `href` ein Importziel zu. */
   readonly changeWithTarget: (patch: (source: unknown) => { source: unknown; href: string; index: number }, target: BindingTarget) => void;
   readonly save: () => Promise<void>;
+  /** Übernimmt einen neueren gespeicherten Stand nur ohne offene Eingaben; sonst bleibt der Konflikt erhalten. */
+  readonly adopt: (document: WorkspaceEnvelope) => Promise<'adopted' | 'blocked' | 'failed'>;
+  /** Schreibt die Freigabe als `metadata.actions` und den Trail in einem Dokumentenschreibvorgang. */
+  readonly approve: (input: ProfileApprovalInput) => Promise<ProfileApprovalResult>;
   readonly exportDocument: () => Promise<void>;
   /** Löscht das Dokument samt Entwurf und Bindungen; ein offener Autosave entfällt. */
   readonly remove: () => Promise<boolean>;
@@ -180,6 +194,29 @@ export function useProfileEditor(localId: LocalId): ProfileEditor {
     timer.current = setTimeout(() => { void flush(); }, PROFILE_AUTOSAVE_DELAY_MS);
   }, [flush]);
 
+  const adopt = useCallback(async (document: WorkspaceEnvelope): Promise<'adopted' | 'blocked' | 'failed'> => {
+    if (saving.current) return 'blocked';
+    const before = latest.current;
+    if (!before.envelope) return 'failed';
+    if (document.savedAt <= before.envelope.savedAt) return 'adopted';
+    const store = documentsRef.current;
+    const [draft, bindings] = await Promise.all([store.getDraft(localId), store.listBindings()]);
+    if (!draft.ok || !bindings.ok) return 'failed';
+    const current = latest.current;
+    // Eingaben oder ein anderer Übernahmeversuch während des Lesens: nicht still überschreiben.
+    if (current.envelope !== before.envelope || current.working !== before.working || current.unsaved) return 'blocked';
+    if (!sameProfileContent(current.envelope.source, current.working)) return 'blocked';
+    const source = draft.value?.source ?? document.source;
+    latest.current = { working: source, envelope: document, draftSavedAt: draft.value?.savedAt ?? null, unsaved: false };
+    setEnvelope(document);
+    setWorking(source);
+    const own = bindings.value.filter((binding) => binding.fromLocalId === localId);
+    setStored(draft.value ? alignImportBindings(own, document.source, draft.value.source) : own);
+    setMessage(undefined);
+    setSaveState(draft.value ? { kind: 'autosaved', at: draft.value.savedAt } : { kind: 'stored' });
+    return 'adopted';
+  }, [localId]);
+
   const change = useCallback((patch: (source: unknown) => unknown) => {
     const next = patch(latest.current.working);
     latest.current = { ...latest.current, working: next, unsaved: true };
@@ -211,35 +248,43 @@ export function useProfileEditor(localId: LocalId): ProfileEditor {
   const bindings = useMemo(() => editorBindings(localId, imports, stored, pendingTargets), [localId, imports, stored, pendingTargets]);
   const dirty = envelope !== undefined && !sameProfileContent(envelope.source, working);
 
-  const save = useCallback(async () => {
+  type CommitResult = { readonly ok: true; readonly documentState: 'export-ready' | 'draft' } | { readonly ok: false; readonly code: string };
+
+  const commit = useCallback(async (working: unknown, approval?: { readonly request: ReviewApprovalRequest; readonly requireSchema: boolean }): Promise<CommitResult> => {
     const state = latest.current;
-    const oscalVersion = state.envelope?.oscalVersion;
-    if (!state.envelope || busy || oscalVersion === undefined || !isPinnedOscalVersion(oscalVersion)) return;
+    const envelope = state.envelope;
+    const oscalVersion = envelope?.oscalVersion;
+    if (!envelope || oscalVersion === undefined || !isPinnedOscalVersion(oscalVersion)) return { ok: false, code: 'WORKSPACE_DOCUMENT_NOT_FOUND' };
+    if (saving.current) return { ok: false, code: 'WORKSPACE_SAVE_CONFLICT' };
     setBusy(true);
     setMessage(undefined);
     saving.current = true;
     let release = () => {};
     savingDone.current = new Promise<void>((resolve) => { release = resolve; });
-    const snapshot = state.working;
+    const snapshot = working;
+    // Freigaben speichern eine abgeleitete Quelle; offene Eingaben sind der Vergleich zum Startstand.
+    const startWorking = latest.current.working;
     let documentState: 'export-ready' | 'draft';
     let result: Awaited<ReturnType<typeof documents.saveDocument>>;
     try {
       await chain.current;
       clearTimeout(timer.current);
-      const { source } = commitExplicitSave(state.envelope.source, snapshot, { uuid: crypto.randomUUID(), lastModified: new Date().toISOString() });
+      const { source } = commitExplicitSave(envelope.source, snapshot, { uuid: crypto.randomUUID(), lastModified: new Date().toISOString() });
       const schema = await documents.checkProfileSchema(source);
+      // Eine Freigabe über einem schemawidrigen Stand wäre keine belastbare Freigabe.
+      if (approval?.requireSchema && schema.status !== 'passed') return { ok: false, code: 'REVIEW_APPROVAL_SCHEMA' };
       documentState = schema.status === 'passed' ? 'export-ready' : 'draft';
       const input = { source, context: { trustClass: 'class-2-local-user' as const }, rootType: 'profile' as const, oscalVersion };
-      result = await documents.saveDocument(localId, state.envelope.savedAt, latest.current.draftSavedAt, input, bindings, documentState);
+      result = await documents.saveDocument(localId, envelope.savedAt, latest.current.draftSavedAt, input, bindings, documentState, approval?.request);
     } finally {
       saving.current = false;
       release();
+      setBusy(false);
     }
-    setBusy(false);
     if (!result.ok) {
       setMessage('save-failed');
       if (latest.current.unsaved) schedule();
-      return;
+      return { ok: false, code: result.diagnostic.code };
     }
     // Nur Zuordnungen, die genau so gespeichert wurden; eine während des Speicherns geänderte bleibt offen.
     for (const binding of bindings) {
@@ -250,7 +295,7 @@ export function useProfileEditor(localId: LocalId): ProfileEditor {
     setEnvelope(result.value);
     setStored(bindings);
     // Eingaben während des Speicherns bleiben Arbeitsstand und gehen in den nächsten Entwurf.
-    const changedMeanwhile = latest.current.working !== snapshot;
+    const changedMeanwhile = latest.current.working !== startWorking;
     latest.current = { working: changedMeanwhile ? latest.current.working : result.value.source, envelope: result.value, draftSavedAt: null, unsaved: changedMeanwhile };
     if (changedMeanwhile) {
       setSaveState({ kind: 'pending' });
@@ -259,8 +304,38 @@ export function useProfileEditor(localId: LocalId): ProfileEditor {
       setWorking(result.value.source);
       setSaveState({ kind: 'saved', at: result.value.savedAt });
     }
-    if (documentState === 'draft') setMessage('saved-as-draft');
-  }, [busy, bindings, documents, localId, pending, schedule]);
+    return { ok: true, documentState };
+  }, [bindings, documents, localId, pending, schedule]);
+
+  const save = useCallback(async () => {
+    const result = await commit(latest.current.working);
+    if (result.ok && result.documentState === 'draft') setMessage('saved-as-draft');
+  }, [commit]);
+
+  const approve = useCallback(async (input: ProfileApprovalInput): Promise<ProfileApprovalResult> => {
+    const state = latest.current;
+    // Freigeben heißt: genau der gespeicherte Stand, ohne offene Eingaben und ohne Entwurfsstand.
+    if (!state.envelope || state.unsaved || dirty || state.envelope.documentState === 'draft') return { ok: false, code: 'REVIEW_APPROVAL_BLOCKED' };
+    const actionUuid = crypto.randomUUID();
+    const partyUuid = input.partyName ? crypto.randomUUID() : undefined;
+    const role = { id: input.roleId, title: input.roleTitle ?? input.roleId };
+    const partyUuids = [...input.partyUuids, ...(partyUuid ? [partyUuid] : [])];
+    try {
+      const action = approvalAction({ uuid: actionUuid, date: new Date().toISOString(), roleId: role.id, partyUuids, reason: input.reason });
+      const identified = withReviewIdentities(state.envelope.source, 'profile', {
+        role,
+        ...(partyUuid ? { party: { uuid: partyUuid, name: input.partyName ?? '' } } : {}),
+      });
+      const source = withApprovalAction(identified, 'profile', action);
+      const result = await commit(source, {
+        requireSchema: true,
+        request: { actionUuid, expectedSequence: input.expectedSequence, roleId: role.id, partyUuids, reason: input.reason },
+      });
+      return result.ok ? { ok: true } : { ok: false, code: result.code };
+    } catch {
+      return { ok: false, code: 'REVIEW_APPROVAL_INVALID' };
+    }
+  }, [commit, dirty]);
 
   const exportDocument = useCallback(async () => {
     const current = latest.current.envelope;
@@ -295,6 +370,6 @@ export function useProfileEditor(localId: LocalId): ProfileEditor {
   return {
     status, envelope, working, imports, dirty, saveState, busy, message, bindings,
     targetFor: (entry) => targetOf(entry, stored, pendingTargets),
-    change, changeWithTarget, removeImportAt, save, exportDocument, remove,
+    change, changeWithTarget, removeImportAt, save, adopt, approve, exportDocument, remove,
   };
 }
