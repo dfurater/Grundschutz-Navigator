@@ -128,7 +128,7 @@ describe('deriveEvidenceReadModel', () => {
   });
 
   it('bewertet vorhandene, nicht lesbare Ablaufwerte und unmögliche Kalenderdaten als not-evaluable', () => {
-    const unreadable = [null, 123, {}, '2026-02-30T00:00:00Z', '2027-02-29T00:00:00Z', '2026-04-31T00:00:00Z', '2026-12-31T24:00:00Z', '2026-12-31T00:00:00+15:00'];
+    const unreadable = [null, 123, {}, '2026-02-30T00:00:00Z', '2027-02-29T00:00:00Z', '2026-04-31T00:00:00Z', '2026-13-01T00:00:00Z', '2026-12-31T24:00:00Z', '2026-12-31T00:00:00+15:00', '2026-12-31T00:00:00+05:15'];
     const model = derive(
       poam({
         observations: [

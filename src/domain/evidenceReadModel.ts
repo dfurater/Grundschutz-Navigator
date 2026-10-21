@@ -110,15 +110,30 @@ function vocabulary(value: unknown, documented: ReadonlySet<string>): Vocabulary
     .map((entry) => ({ value: entry, status: documented.has(entry) ? 'documented' : 'undocumented' }));
 }
 
-/**
- * Muster von `DateTimeWithTimezoneDatatype`, wortgleich in allen gepinnten AR- und POA&M-Schemas (v1.1.2–v1.2.2).
- * Es schließt unmögliche Kalenderdaten und fehlende Offsets aus, die `Date.parse` sonst normalisieren würde.
- */
-const DATE_TIME_WITH_TIMEZONE =
-  /^(((2000|2400|2800|(19|2[0-9](0[48]|[2468][048]|[13579][26])))-02-29)|(((19|2[0-9])[0-9]{2})-02-(0[1-9]|1[0-9]|2[0-8]))|(((19|2[0-9])[0-9]{2})-(0[13578]|10|12)-(0[1-9]|[12][0-9]|3[01]))|(((19|2[0-9])[0-9]{2})-(0[469]|11)-(0[1-9]|[12][0-9]|30)))T(2[0-3]|[01][0-9]):([0-5][0-9]):([0-5][0-9])(\.[0-9]+)?(Z|(-((0[0-9]|1[0-2]):00|0[39]:30)|\+((0[0-9]|1[0-4]):00|(0[34569]|10):30|(0[58]|12):45)))$/;
+/** OSCAL `dateTime-with-timezone`: ohne Offset wäre der Zeitpunkt von der Gerätezeitzone abhängig. */
+const DATE_TIME_WITH_TIMEZONE = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(\.\d+)?(Z|[+-](\d{2}):(\d{2}))$/;
 
+/** Offset-Minuten, die `DateTimeWithTimezoneDatatype` in den gepinnten AR- und POA&M-Schemas zulässt. */
+const OFFSET_MINUTES = new Set([0, 30, 45]);
+
+/** `Date.parse` normalisiert unmögliche Angaben wie `2026-02-30`; deshalb vorher jede Komponente prüfen. */
 function parseTimestamp(value: unknown): number {
-  return typeof value === 'string' && DATE_TIME_WITH_TIMEZONE.test(value) ? Date.parse(value) : Number.NaN;
+  const match = typeof value === 'string' ? DATE_TIME_WITH_TIMEZONE.exec(value) : null;
+  if (match === null) return Number.NaN;
+  const [year, month, day, hour, minute, second] = match.slice(1, 7).map(Number);
+  const offsetHour = Number(match[9] ?? 0);
+  const offsetMinute = Number(match[10] ?? 0);
+  const calendarDay = new Date(Date.UTC(year, month - 1, day));
+  const valid =
+    calendarDay.getUTCFullYear() === year &&
+    calendarDay.getUTCMonth() === month - 1 &&
+    calendarDay.getUTCDate() === day &&
+    hour <= 23 &&
+    minute <= 59 &&
+    second <= 59 &&
+    offsetHour <= 14 &&
+    OFFSET_MINUTES.has(offsetMinute);
+  return valid ? Date.parse(match[0]) : Number.NaN;
 }
 
 /** Nimmt die Rohwerte: ein vorhandenes, aber nicht lesbares `expires` ist kein fehlendes. */
