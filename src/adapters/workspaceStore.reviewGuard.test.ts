@@ -67,7 +67,7 @@ describe('ReviewGuard in the write transaction (GSPP-362)', () => {
 
       value(await store.appendCheckpoint(subject.localId, current.savedAt, null, 0, guard));
       expect(guard).toHaveBeenCalledTimes(1);
-      const [localId, members, bindings] = guard.mock.calls[0]!;
+      const [localId, members, bindings] = guard.mock.calls[0];
       expect(localId).toBe(subject.localId);
       expect(members.map(member => member.localId).sort()).toEqual([subject.localId, sibling.localId].sort());
       expect(bindings).toEqual([expect.objectContaining({ fromLocalId: subject.localId, target: { kind: 'local', localId: sibling.localId } })]);

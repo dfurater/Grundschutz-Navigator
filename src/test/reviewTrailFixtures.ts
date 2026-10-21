@@ -32,7 +32,10 @@ export async function reviewTrailWorkMock() {
   };
 }
 
-export function value<T>(result: WorkspaceResult<T>): T { if (!result.ok) throw new Error(result.diagnostic.code); return result.value; }
+export function value<T>(result: WorkspaceResult<T>): T {
+  if (!result.ok) throw new Error(result.diagnostic.code);
+  return result.value;
+}
 export const bytes = (text: string) => new TextEncoder().encode(text);
 
 export const APPROVAL_UUID = '99999999-9999-4999-8999-999999999999';
