@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { Button } from '@/components/Button';
 import type { LocalId, WorkspaceEnvelope } from '@/domain/workspaceModel';
 import { INPUT } from '@/features/workspace/profile/ProfileMarks';
@@ -24,12 +24,13 @@ export interface ReviewTabProps {
   readonly approval?: {
     readonly onSubmit: (input: ReviewApprovalInput) => Promise<ReviewApprovalResult>;
   };
-  /** Übernimmt einen in einem anderen Tab gespeicherten Stand in den Editor, ohne offene Eingaben zu verwerfen. */
-  readonly onDocumentAdopted?: (document: WorkspaceEnvelope) => Promise<boolean>;
+  /** Übernimmt einen in einem anderen Tab gespeicherten Stand nur ohne offene Eingaben. */
+  readonly onDocumentAdopted?: (document: WorkspaceEnvelope) => Promise<'adopted' | 'blocked' | 'failed'>;
 }
 
-function approvalBlockedReason(readOnly: boolean, draft: boolean): string | undefined {
+function approvalBlockedReason(readOnly: boolean, draft: boolean, staleStand: boolean): string | undefined {
   if (readOnly) return 'Dieses Dokument ist in dieser Ansicht schreibgeschützt; eine Freigabe ist nur an der Profil-Station möglich.';
+  if (staleStand) return 'Der gespeicherte Stand ist neuer als der Editor; offene Eingaben bleiben erhalten. Bitte die Seite neu laden, um den Konflikt aufzulösen.';
   if (draft) return 'Bitte zuerst speichern; die Freigabe schreibt den gespeicherten Stand.';
   return undefined;
 }
@@ -68,17 +69,20 @@ export function ReviewTab({ localId, documentSavedAt, editorDirty = false, appro
   const [approvalMessage, setApprovalMessage] = useState<string>();
   const [approving, setApproving] = useState(false);
   const [formGeneration, setFormGeneration] = useState(0);
-  const adoptedSavedAt = useRef<string | undefined>(undefined);
+  const [adoption, setAdoption] = useState<{ readonly savedAt: string; readonly status: 'pending' | 'adopted' | 'blocked' | 'failed' }>();
 
   useEffect(() => {
     const loaded = review.view?.document;
     if (!loaded || documentSavedAt === undefined || !onDocumentAdopted || loaded.savedAt === documentSavedAt) return;
-    if (adoptedSavedAt.current === loaded.savedAt) return;
-    adoptedSavedAt.current = loaded.savedAt;
-    void onDocumentAdopted(loaded).then((ok) => {
-      if (!ok) setApprovalMessage('Der geänderte Dokumentstand konnte nicht übernommen werden; bitte die Seite neu laden.');
+    if (adoption?.savedAt === loaded.savedAt) return;
+    const loadedSavedAt = loaded.savedAt;
+    void Promise.resolve().then(() => setAdoption({ savedAt: loadedSavedAt, status: 'pending' }));
+    void onDocumentAdopted(loaded).then((result) => {
+      setAdoption({ savedAt: loadedSavedAt, status: result });
+      if (result === 'blocked') setApprovalMessage('Der gespeicherte Stand wurde in einem anderen Tab geändert. Deine offenen Eingaben bleiben erhalten; bitte die Seite neu laden, um den Konflikt aufzulösen.');
+      if (result === 'failed') setApprovalMessage('Der geänderte Dokumentstand konnte nicht übernommen werden; bitte die Seite neu laden.');
     });
-  }, [documentSavedAt, onDocumentAdopted, review.view]);
+  }, [adoption, documentSavedAt, onDocumentAdopted, review.view]);
 
   if (review.status === 'failed') return <output className="block text-sm text-[var(--color-text-primary)]">{MESSAGES['load-failed']}</output>;
   if (!review.view) return <output className="block text-sm text-[var(--color-text-secondary)]">Prüfspur wird geladen…</output>;
@@ -87,7 +91,10 @@ export function ReviewTab({ localId, documentSavedAt, editorDirty = false, appro
   const document = view.document;
   const metadata = metadataOf(document.source, document.rootType);
   const { roles, parties } = reviewIdentities(metadata);
-  const pendingAdoption = documentSavedAt !== undefined && onDocumentAdopted !== undefined && document.savedAt !== documentSavedAt;
+  const standMismatch = documentSavedAt !== undefined && document.savedAt !== documentSavedAt;
+  const adoptionPending = adoption?.savedAt === document.savedAt && adoption.status === 'pending';
+  const adoptionAdopted = adoption?.savedAt === document.savedAt && adoption.status === 'adopted';
+  const pendingAdoption = standMismatch && onDocumentAdopted !== undefined && (adoption?.savedAt !== document.savedAt || adoptionPending || adoptionAdopted);
   const refreshing = review.refreshing || pendingAdoption;
   const reviewView = buildReviewView({ trail: view.trail, stand: view.stand, editorDirty, refreshing, metadata });
   const sequence = view.trail.at(-1)?.sequence ?? 0;
@@ -95,7 +102,7 @@ export function ReviewTab({ localId, documentSavedAt, editorDirty = false, appro
   const checkpointReason = draft
     ? 'Bitte zuerst speichern; ein Entwurf oder ungespeicherter Arbeitsstand lässt sich nicht als Prüfpunkt binden.'
     : undefined;
-  const approvalReason = approvalBlockedReason(approval === undefined, draft);
+  const approvalReason = approvalBlockedReason(approval === undefined, draft, standMismatch);
   const canReview = reviewView.derived.state === 'none' || reviewView.derived.state === 'changes-requested';
   const canRequestChanges = reviewView.derived.state === 'reviewed' || reviewView.derived.state === 'approved' || reviewView.derived.state === 'none';
   const withdrawTarget = reviewView.derived.state === 'approved' ? reviewView.derived.actionUuid : undefined;

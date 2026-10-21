@@ -274,9 +274,41 @@ describe('Bearbeiten, Autosave, Speichern und Export', () => {
     const checkpoint = await within(main()).findByRole('button', { name: 'Prüfpunkt setzen' }, WAIT);
     fireEvent.click(checkpoint);
     expect(await within(main()).findByText(/Der gespeicherte Stand hat sich geändert; die Prüfspur wurde neu geladen/)).toBeInTheDocument();
-    await waitFor(() => expect(checkpoint).toBeEnabled(), WAIT);
-    fireEvent.click(checkpoint);
+    const checkpointAgain = await within(main()).findByRole('button', { name: 'Prüfpunkt setzen' }, WAIT);
+    await waitFor(() => expect(checkpointAgain).toBeEnabled(), WAIT);
+    fireEvent.click(checkpointAgain);
+    await waitFor(async () => {
+      const trail = await readStore((store) => store.listReviewTrail(localId));
+      expect(trail.trail).toHaveLength(1);
+    }, WAIT);
     expect(await within(main()).findByText(/Letzter Prüfpunkt/, undefined, WAIT)).toBeInTheDocument();
+  });
+
+  it('erhält offene Eingaben bei einem fremden Speicherstand und überschreibt ihn nicht', async () => {
+    const { localId } = await createdProfile();
+    fireEvent.click(await within(main()).findByRole('button', { name: '+ Muster' }));
+    fireEvent.click(within(main()).getByRole('button', { name: 'Speichern' }));
+    await waitFor(() => expect(within(main()).getAllByText('Gültig').length).toBeGreaterThan(0), WAIT);
+    await openTab(/^Prüfung/);
+    const current = (await readStore((store) => store.getDocument(localId)))!;
+    const draft = await readStore((store) => store.getDraft(localId));
+    await openTab(/^Importe/);
+    fireEvent.click(within(main()).getByRole('button', { name: '+ Muster' }));
+    const external = await readStore((store) => store.saveDocument(localId, current.savedAt, draft?.savedAt ?? null, local('profile', '1.1.3', 'Extern geändert')));
+    expect(profileBody(external).metadata.title).toBe('Extern geändert');
+    await openTab(/^Prüfung/);
+    const reviewed = await within(main()).findByRole('button', { name: 'Als geprüft markieren' }, WAIT);
+    fireEvent.click(reviewed);
+    expect(await within(main()).findByText(/Der gespeicherte Stand hat sich geändert; die Prüfspur wurde neu geladen/)).toBeInTheDocument();
+    expect(await within(main()).findByText(/Der gespeicherte Stand wurde in einem anderen Tab geändert\. Deine offenen Eingaben bleiben erhalten/)).toBeInTheDocument();
+    const stored = (await readStore((store) => store.getDocument(localId)))!;
+    expect(profileBody(stored).metadata.title).toBe('Extern geändert');
+    await waitFor(() => expect(reviewed).toBeEnabled(), WAIT);
+    fireEvent.click(reviewed);
+    await waitFor(async () => {
+      const trail = await readStore((store) => store.listReviewTrail(localId));
+      expect(trail.trail.some((row) => row.kind === 'decision' && row.decision === 'reviewed')).toBe(true);
+    }, WAIT);
   });
 
   it('behält eine Eingabe während des Speicherns als Arbeitsstand und sichert sie danach als Entwurf', async () => {

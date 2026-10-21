@@ -64,6 +64,8 @@ export function useReviewTrail(localId: ReviewTrailView['document']['localId'], 
   useEffect(() => { documentsRef.current = documents; }, [documents]);
   const running = useRef(false);
   const request = useRef(0);
+  // Dokument und Speicherstand der angezeigten Prüfspur; ein bereits geladener Stand wird nicht erneut gelesen.
+  const loadedStand = useRef<string>(undefined);
 
   const reload = useCallback(async () => {
     const ticket = ++request.current;
@@ -77,14 +79,18 @@ export function useReviewTrail(localId: ReviewTrailView['document']['localId'], 
       setLoading(false);
       return;
     }
+    loadedStand.current = `${result.value.document.localId}|${result.value.document.savedAt}`;
     setView(result.value);
     setStatus('ready');
     setLoading(false);
   }, [localId]);
 
-  // Jeder gespeicherte Dokumentstand löst einen neuen Lesevorgang aus; ein Checkpoint allein nicht.
+  // Jeder noch nicht geladene Dokumentstand löst einen Lesevorgang aus; ein Checkpoint allein nicht.
   // Der Microtask hält den Effekt frei von synchronen Zustandswechseln.
-  useEffect(() => { void Promise.resolve().then(reload); }, [reload, documentSavedAt]);
+  useEffect(() => {
+    if (documentSavedAt !== undefined && loadedStand.current === `${localId}|${documentSavedAt}`) return;
+    void Promise.resolve().then(reload);
+  }, [localId, reload, documentSavedAt]);
 
   const run = useCallback(async (operation: () => Promise<{ readonly ok: boolean; readonly code?: string }>): Promise<boolean> => {
     if (running.current) return false;

@@ -56,8 +56,8 @@ export interface ProfileEditor {
   /** Ändert die Quelle und ordnet einem `href` ein Importziel zu. */
   readonly changeWithTarget: (patch: (source: unknown) => { source: unknown; href: string; index: number }, target: BindingTarget) => void;
   readonly save: () => Promise<void>;
-  /** Übernimmt einen neueren gespeicherten Stand, ohne offene Eingaben zu verwerfen. */
-  readonly adopt: (document: WorkspaceEnvelope) => Promise<boolean>;
+  /** Übernimmt einen neueren gespeicherten Stand nur ohne offene Eingaben; sonst bleibt der Konflikt erhalten. */
+  readonly adopt: (document: WorkspaceEnvelope) => Promise<'adopted' | 'blocked' | 'failed'>;
   /** Schreibt die Freigabe als `metadata.actions` und den Trail in einem Dokumentenschreibvorgang. */
   readonly approve: (input: ProfileApprovalInput) => Promise<ProfileApprovalResult>;
   readonly exportDocument: () => Promise<void>;
@@ -194,31 +194,28 @@ export function useProfileEditor(localId: LocalId): ProfileEditor {
     timer.current = setTimeout(() => { void flush(); }, PROFILE_AUTOSAVE_DELAY_MS);
   }, [flush]);
 
-  const adopt = useCallback(async (document: WorkspaceEnvelope) => {
-    if (saving.current) return false;
-    const current = latest.current;
-    if (!current.envelope) return false;
-    if (document.savedAt <= current.envelope.savedAt) return true;
+  const adopt = useCallback(async (document: WorkspaceEnvelope): Promise<'adopted' | 'blocked' | 'failed'> => {
+    if (saving.current) return 'blocked';
+    const before = latest.current;
+    if (!before.envelope) return 'failed';
+    if (document.savedAt <= before.envelope.savedAt) return 'adopted';
     const store = documentsRef.current;
     const [draft, bindings] = await Promise.all([store.getDraft(localId), store.listBindings()]);
-    if (!draft.ok || !bindings.ok) return false;
-    const dirtyNow = current.unsaved || !sameProfileContent(current.envelope.source, current.working);
+    if (!draft.ok || !bindings.ok) return 'failed';
+    const current = latest.current;
+    // Eingaben oder ein anderer Übernahmeversuch während des Lesens: nicht still überschreiben.
+    if (current.envelope !== before.envelope || current.working !== before.working || current.unsaved) return 'blocked';
+    if (!sameProfileContent(current.envelope.source, current.working)) return 'blocked';
     const source = draft.value?.source ?? document.source;
-    const nextWorking = dirtyNow ? current.working : source;
-    latest.current = { working: nextWorking, envelope: document, draftSavedAt: draft.value?.savedAt ?? null, unsaved: dirtyNow };
+    latest.current = { working: source, envelope: document, draftSavedAt: draft.value?.savedAt ?? null, unsaved: false };
     setEnvelope(document);
-    setWorking(nextWorking);
+    setWorking(source);
     const own = bindings.value.filter((binding) => binding.fromLocalId === localId);
     setStored(draft.value ? alignImportBindings(own, document.source, draft.value.source) : own);
     setMessage(undefined);
-    if (dirtyNow) {
-      setSaveState({ kind: 'pending' });
-      schedule();
-    } else {
-      setSaveState(draft.value ? { kind: 'autosaved', at: draft.value.savedAt } : { kind: 'stored' });
-    }
-    return true;
-  }, [localId, schedule]);
+    setSaveState(draft.value ? { kind: 'autosaved', at: draft.value.savedAt } : { kind: 'stored' });
+    return 'adopted';
+  }, [localId]);
 
   const change = useCallback((patch: (source: unknown) => unknown) => {
     const next = patch(latest.current.working);

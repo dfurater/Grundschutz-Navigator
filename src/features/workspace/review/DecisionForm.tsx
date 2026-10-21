@@ -72,6 +72,7 @@ export function DecisionForm({ roles, parties, disabledReason, busy = false, fin
           </ul>
         </div>
       )}
+      <fieldset disabled={busy} className="m-0 min-w-0 space-y-4 border-0 p-0">
       <div className="space-y-1">
         <label htmlFor={roleFieldId} className="flex flex-wrap items-baseline gap-2 text-sm font-medium text-[var(--color-text-primary)]">
           Rolle <OscalKey>metadata.roles</OscalKey>
@@ -137,6 +138,7 @@ export function DecisionForm({ roles, parties, disabledReason, busy = false, fin
           Die Freigabe wird als Aktion in <span className="font-mono">metadata.actions</span> gespeichert. Es findet keine elektronische Signatur und keine Identitätsprüfung statt.
         </p>
       </div>
+      </fieldset>
     </form>
   );
 }

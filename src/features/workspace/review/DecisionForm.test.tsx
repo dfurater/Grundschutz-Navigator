@@ -73,6 +73,9 @@ describe('DecisionForm', () => {
     expect(submit).toBeEnabled();
     rerender(<DecisionForm roles={roles} parties={parties} busy onSubmit={onSubmit} />);
     expect(submit).toBeDisabled();
+    expect(screen.getByRole('combobox', { name: 'Rolle metadata.roles' })).toBeDisabled();
+    expect(screen.getByRole('checkbox', { name: 'Alice Beispiel (party-1)' })).toBeDisabled();
+    expect(screen.getByRole('textbox', { name: /Begründung/ })).toBeDisabled();
     expect(screen.getByRole('form', { name: 'Freigabe erfassen' })).toHaveAttribute('aria-busy', 'true');
     fireEvent.click(submit);
     expect(onSubmit).not.toHaveBeenCalled();
