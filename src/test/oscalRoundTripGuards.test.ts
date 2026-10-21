@@ -113,6 +113,16 @@ describe('Statischer Vertragscheck: keine eigene Versionsliste', () => {
   });
 });
 
+describe('Statischer Vertragscheck: keine eigene Zeit- oder UUID-Quelle', () => {
+  it('bezieht Zeitstempel und Dokument-UUID des Edit-Laufs ausschließlich aus dem injizierten Stempel', () => {
+    const source = readFileSync('src/test/oscalRoundTrip.ts', 'utf8');
+
+    for (const forbidden of ['Date.now', 'new Date(', 'crypto.randomUUID']) {
+      expect(source.includes(forbidden), forbidden).toBe(false);
+    }
+  });
+});
+
 /** Katalog mit externem und internem href in den Metadaten-Links. */
 function CATALOG_122_WITH_EXTERNAL_HREFS(): Record<string, unknown> {
   const document = CATALOG_MAX();
