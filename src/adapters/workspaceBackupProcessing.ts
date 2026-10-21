@@ -22,6 +22,19 @@ async function verifyBaselines(backup: WorkspaceBackup | WorkspaceVerbundBackup)
   return 'ok';
 }
 
+/** Entwürfe binden nur Root und Version; jedes andere Dokument durchläuft die Klasse-2-Kette des Import-Workers. */
+async function documentsAdmissible(backup: WorkspaceBackup | WorkspaceVerbundBackup): Promise<boolean> {
+  for (const envelope of backup.documents) {
+    if (envelope.documentState === 'draft') {
+      if (!bindsEnvelopeSource(envelope.source, envelope.rootType, envelope.oscalVersion)) return false;
+      continue;
+    }
+    const imported = await processClass2OscalBytes(new TextEncoder().encode(serializeWorkspaceJson(envelope.source)), { trustClass: 'class-2-local-user' });
+    if (!imported.ok || imported.document.rootType !== envelope.rootType || imported.document.oscalVersion !== envelope.oscalVersion) return false;
+  }
+  return true;
+}
+
 /**
  * Closed restore format. Runs inside the backup module worker; every persisted document source outside state draft
  * traverses the class-2 chain of the import worker in this worker, so compiled schema cells serve all documents of one
@@ -35,17 +48,8 @@ async function processBackupBytes<T extends WorkspaceBackup | WorkspaceVerbundBa
     serializeWorkspaceJson(parsed.source);
     const backup = adopt(parsed.source);
     if (!backup) return rejectWorkspaceBackup();
-    for (const draft of backup.drafts) {
-      if (!withinSourceLimits(draft.source)) return rejectWorkspaceBackup('WORKSPACE_BACKUP_RESOURCE_REJECTED');
-    }
-    for (const envelope of backup.documents) {
-      if (envelope.documentState === 'draft') {
-        if (!bindsEnvelopeSource(envelope.source, envelope.rootType, envelope.oscalVersion)) return rejectWorkspaceBackup('WORKSPACE_BACKUP_DOCUMENT_REJECTED');
-        continue;
-      }
-      const imported = await processClass2OscalBytes(new TextEncoder().encode(serializeWorkspaceJson(envelope.source)), { trustClass: 'class-2-local-user' });
-      if (!imported.ok || imported.document.rootType !== envelope.rootType || imported.document.oscalVersion !== envelope.oscalVersion) return rejectWorkspaceBackup('WORKSPACE_BACKUP_DOCUMENT_REJECTED');
-    }
+    if (!backup.drafts.every(draft => withinSourceLimits(draft.source))) return rejectWorkspaceBackup('WORKSPACE_BACKUP_RESOURCE_REJECTED');
+    if (!await documentsAdmissible(backup)) return rejectWorkspaceBackup('WORKSPACE_BACKUP_DOCUMENT_REJECTED');
     const baseline = await verifyBaselines(backup);
     if (baseline === 'invalid') return rejectWorkspaceBackup();
     if (baseline === 'failed') return rejectWorkspaceBackup('WORKSPACE_BACKUP_WORKER_FAILURE');
