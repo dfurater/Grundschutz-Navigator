@@ -184,6 +184,7 @@ src/                              # Anwendungsquellcode
 │   ├── __snapshots__/                # Pfadbasierter Versionsdrift des Assessment-Plan-Schemas
 │   ├── oscalAssessmentPlan.ts        # Versionierte Raw-Typen des Assessment Plans
 │   ├── assessmentPlanModel.ts        # Projektion des Prüfplans und explizite SSP-/Katalogbindung
+│   ├── evidenceReadModel.ts          # Evidenz aus Assessment Results und POA&M: Gültigkeit, Ressourcen, UUID-Referenzen
 │   ├── systemSecurityPlanModel.ts    # Domänenmodell des SSP
 │   ├── systemSecurityPlanSystemModel.ts # Domänenmodell der SSP-Systembeschreibung
 │   ├── taxonomyVocabulary.ts         # Auflösung von Praktiken und Themen

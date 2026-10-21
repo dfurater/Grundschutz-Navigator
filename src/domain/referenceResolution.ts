@@ -91,9 +91,11 @@ interface IndexedResource {
 interface ResourceIndex {
   readonly entries: readonly IndexedResource[];
   readonly byUuid: ReadonlyMap<string, IndexedResource>;
+  /** Kleingeschriebene UUID → Ressource; `null`, wenn mehrere Schreibweisen dieselbe UUID tragen. */
+  readonly byLowerCaseUuid: ReadonlyMap<string, IndexedResource | null>;
 }
 
-interface PreparedReferenceResolutionContext extends ReferenceResolutionContext {
+interface PreparedReferenceResolutionContext extends ReferenceClassifierContext {
   readonly resourceIndex: ResourceIndex;
   readonly resourceIndexes: Map<ReferenceDocument, ResourceIndex>;
   readonly resourceClassifications?: WeakMap<JsonObject, ResolvedResource>;
@@ -199,25 +201,44 @@ function createResourceIndex(
 ): ResourceIndex {
   const entries = getBackMatterResources(document).map((resource, index) => ({ resource, index }));
   const byUuid = new Map<string, IndexedResource>();
+  const byLowerCaseUuid = new Map<string, IndexedResource | null>();
   for (const entry of entries) {
     const { resource } = entry;
     const uuid = readString(resource.uuid);
-    if (uuid && !byUuid.has(uuid)) {
+    if (!uuid) continue;
+    if (!byUuid.has(uuid)) {
       byUuid.set(uuid, entry);
     }
+    const lower = uuid.toLowerCase();
+    const known = byLowerCaseUuid.get(lower);
+    const sameSpelling = known !== undefined && known !== null && readString(known.resource.uuid) === uuid;
+    if (known === undefined) byLowerCaseUuid.set(lower, entry);
+    else if (!sameSpelling) byLowerCaseUuid.set(lower, null);
   }
-  return { entries, byUuid };
+  return { entries, byUuid, byLowerCaseUuid };
+}
+
+/**
+ * OSCAL-UUIDs erlauben beide Schreibweisen der Hexziffern. Die exakte Schreibweise gewinnt;
+ * sonst trifft das Fragment nur eine eindeutige Ressource, nie still die erste mehrerer Schreibweisen.
+ */
+function lookupResource(index: ResourceIndex, fragment: string): IndexedResource | undefined {
+  return index.byUuid.get(fragment) ?? lookupResourceByOtherCase(index, fragment);
+}
+
+function lookupResourceByOtherCase(index: ResourceIndex, fragment: string): IndexedResource | undefined {
+  return index.byLowerCaseUuid.get(fragment.toLowerCase()) ?? undefined;
 }
 
 function prepareReferenceResolutionContext(
-  input: ReferenceResolutionContext,
+  input: ReferenceClassifierContext,
 ): PreparedReferenceResolutionContext {
   const resourceIndexes = new Map<ReferenceDocument, ResourceIndex>();
   resourceIndexes.set(input.document, createResourceIndex(input.document));
 
   return {
     ...input,
-    resourceIndex: resourceIndexes.get(input.document) ?? { entries: [], byUuid: new Map() },
+    resourceIndex: resourceIndexes.get(input.document) ?? { entries: [], byUuid: new Map(), byLowerCaseUuid: new Map() },
     resourceIndexes,
   };
 }
@@ -341,7 +362,7 @@ function resolveExplicitDocumentReference(
   }
 
   const documentContext = withReferenceDocument(context, document);
-  const indexedResource = documentContext.resourceIndex.byUuid.get(fragment);
+  const indexedResource = lookupResource(documentContext.resourceIndex, fragment);
   if (!indexedResource) {
     return unresolvedReference(
       input,
@@ -469,18 +490,19 @@ function resolveFragmentReference(
   const target = input.href.slice(1);
   if (!target) return unresolvedReference(input, context, 'fragment-not-found');
 
-  const indexedResource = context.resourceIndex.byUuid.get(target);
-  if (indexedResource) {
+  const resolveIndexed = (indexedResource: IndexedResource | undefined): ResolvedOscalReference | null => {
+    if (!indexedResource) return null;
     const resolvedResource = resolveResource(
       indexedResource.resource,
       `/${context.document.rootType}/back-matter/resources/${indexedResource.index}`,
       context,
       resolveResourceLinks,
     );
-    if (resolvedResource) {
-      return { ...input, kind: 'resource', resource: resolvedResource };
-    }
-  }
+    return resolvedResource ? { ...input, kind: 'resource', resource: resolvedResource } : null;
+  };
+
+  const exactResource = resolveIndexed(context.resourceIndex.byUuid.get(target));
+  if (exactResource) return exactResource;
 
   const catalogKey = context.document.context.catalogKey;
   const control = catalogKey && context.catalogsByKey
@@ -488,6 +510,13 @@ function resolveFragmentReference(
     : null;
   if (control && catalogKey) {
     return { ...input, kind: 'control', catalogKey, control };
+  }
+
+  // Ein exaktes lokales Control-Ziel geht dem Schreibweisen-Fallback vor; der Klassifikator projiziert es.
+  const localControl = context.localControlLookup?.(target);
+  if (localControl !== 'found' && localControl !== 'ambiguous') {
+    const otherCaseResource = resolveIndexed(lookupResourceByOtherCase(context.resourceIndex, target));
+    if (otherCaseResource) return otherCaseResource;
   }
 
   return unresolvedReference(input, context, 'fragment-not-found');
