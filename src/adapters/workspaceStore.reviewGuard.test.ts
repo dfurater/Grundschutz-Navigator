@@ -27,7 +27,7 @@ describe('ReviewGuard in the write transaction (GSPP-362)', () => {
       const binding: WorkspaceBinding = { fromLocalId: envelope.localId, pointer: '/catalog/metadata/title', href: 'APPROVED', target: { kind: 'local', localId: other.localId } };
       const approval: ReviewApprovalRequest = { actionUuid: APPROVAL_UUID, expectedSequence: 0, roleId: ROLE_ID, partyUuids: [PARTY_UUID] };
 
-      expect(await store.saveDocument(envelope.localId, before.savedAt, draft.savedAt, await imported(catalogSource({ title: 'APPROVED' })), [binding], undefined, approval, locked))
+      expect(await store.saveDocument(envelope.localId, before.savedAt, draft.savedAt, await imported(catalogSource({ title: 'APPROVED' })), [binding], undefined, { request: approval, guard: locked }))
         .toMatchObject({ ok: false, diagnostic: { code: 'X' } });
       expect(value(await store.getDocument(envelope.localId))).toEqual(before);
       expect(value(await store.listBindings())).toEqual(bindingsBefore);

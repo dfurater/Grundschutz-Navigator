@@ -1,5 +1,5 @@
 import { StorageFailure, failure } from '@/adapters/workspaceStorageFailure';
-import type { ReviewGuard } from '@/adapters/workspaceStore';
+import type { ReviewApprovalRequest, ReviewGuard } from '@/adapters/workspaceStore';
 import type { CatalogDelivery } from '@/domain/workspaceCatalogPin';
 import { WORKSPACE_DIAGNOSTIC_CODES } from '@/domain/workspaceDiagnostics';
 import type { WorkspaceClass1Artifact } from '@/domain/workspaceGraphModel';
@@ -15,6 +15,7 @@ import type { WorkspacePort } from '@/state/workspaceVerbundView';
  */
 
 type Port<K extends keyof WorkspacePort> = WorkspacePort[K];
+type Save = Parameters<Port<'saveDocument'>>;
 
 /** Ungespeicherte Zuordnung eines Imports; der `href` prüft, dass der Import an dem Pointer noch derselbe ist. */
 export interface PendingImportTarget {
@@ -27,7 +28,8 @@ export interface WorkspaceDocuments {
   readonly getDraft: Port<'getDraft'>;
   readonly listBindings: Port<'listBindings'>;
   readonly addDocument: Port<'addDocument'>;
-  readonly saveDocument: Port<'saveDocument'>;
+  /** Der Katalog-Guard wird hier ergänzt; Aufrufer reichen nur die Freigabe. */
+  readonly saveDocument: (localId: Save[0], savedAt: Save[1], draftSavedAt: Save[2], input: Save[3], bindings?: Save[4], state?: Save[5], approval?: ReviewApprovalRequest) => ReturnType<Port<'saveDocument'>>;
   /** Schreibt nur den Entwurf; die Verbundansicht bleibt, weil sie Entwürfe nicht liest. */
   readonly autosaveDraft: Port<'autosaveDraft'>;
   readonly setBinding: Port<'setBinding'>;
@@ -109,7 +111,7 @@ export function createWorkspaceDocuments({ port, write, quiet, class1, delivery,
     addDocument: (...args) => write((store) => store.addDocument(...args)),
     // Eine Freigabe ist eine Prüfentscheidung und braucht den gebundenen Bezugsstand.
     saveDocument: (localId, savedAt, draftSavedAt, input, bindings, state, approval) => write(async (store) =>
-      store.saveDocument(localId, savedAt, draftSavedAt, input, bindings, state, approval, approval ? await reviewGuard(delivery) : undefined)),
+      store.saveDocument(localId, savedAt, draftSavedAt, input, bindings, state, approval ? { request: approval, guard: await reviewGuard(delivery) } : undefined)),
     autosaveDraft: (...args) => quiet((store) => store.autosaveDraft(...args)),
     setBinding: (...args) => write((store) => store.setBinding(...args)),
     deleteDocument: async (localId) => {

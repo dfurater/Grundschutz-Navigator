@@ -58,6 +58,12 @@ export interface ReviewApprovalRequest {
   readonly reason?: string;
 }
 
+/** Freigabe und Katalogsperre eines Speichervorgangs; der Guard läuft in derselben Transaktion. */
+export interface ReviewApprovalWrite {
+  readonly request: ReviewApprovalRequest;
+  readonly guard?: ReviewGuard;
+}
+
 interface StoreDocumentOptions {
   readonly changedBindings?: readonly WorkspaceBinding[];
   readonly state?: DocumentState;
@@ -299,8 +305,8 @@ export class WorkspaceStore {
     return current;
   }
 
-  async saveDocument(localId: LocalId, expectedSavedAt: string, expectedDraftSavedAt: string | null, input: Class2OscalImportedDocument, changedBindings?: readonly WorkspaceBinding[], state?: DocumentState, approval?: ReviewApprovalRequest, guard?: ReviewGuard): Promise<WorkspaceResult<WorkspaceEnvelope>> {
-    return this.storeDocument(localId, expectedSavedAt, expectedDraftSavedAt, input, { changedBindings, state, approval, guard });
+  async saveDocument(localId: LocalId, expectedSavedAt: string, expectedDraftSavedAt: string | null, input: Class2OscalImportedDocument, changedBindings?: readonly WorkspaceBinding[], state?: DocumentState, approval?: ReviewApprovalWrite): Promise<WorkspaceResult<WorkspaceEnvelope>> {
+    return this.storeDocument(localId, expectedSavedAt, expectedDraftSavedAt, input, { changedBindings, state, approval: approval?.request, guard: approval?.guard });
   }
 
   private async storeDocument(localId: LocalId, expectedSavedAt: string, expectedDraftSavedAt: string | null, input: Class2OscalImportedDocument, options: StoreDocumentOptions): Promise<WorkspaceResult<WorkspaceEnvelope>> {
