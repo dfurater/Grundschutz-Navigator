@@ -1063,16 +1063,16 @@ export async function runEditRoundTrip(input: OscalEditRunInput): Promise<OscalE
   const bound = bindFixture(input);
   if (!bound.ok) return editRunNotCompared(bound.resourceLimit, bound.binding, { status: 'not-run' });
   const { source, rootType } = bound.success;
-  // Orakel vor dem Callback sichern: Ein Schreibpfad, der Stempel oder
-  // Edit-Wert per Referenz umschreibt, darf seine eigene Erwartung nicht verschieben.
+  // Orakel vor dem Callback sichern: Ein Schreibpfad, der Stempel, Edit-Pfad
+  // oder Edit-Wert per Referenz umschreibt, darf seine eigene Erwartung nicht verschieben.
   const stamp: ExplicitSaveStamp = Object.freeze({
     uuid: input.stamp.uuid,
     lastModified: input.stamp.lastModified,
   });
-  const editValue = structuredClone(input.edit.value);
+  const edit = structuredClone(input.edit);
 
   const policy = OSCAL_ROOT_UUID_POLICY[rootType];
-  const editExpectation = expectedEditDifference(source, input.edit);
+  const editExpectation = expectedEditDifference(source, edit);
   const expected: JsonGraphDifference[] = [editExpectation.difference];
   if (policy === 'reassign') {
     expected.push({ path: `$.${rootType}.uuid`, kind: 'value-changed', leftKind: 'string', rightKind: 'string' });
@@ -1116,7 +1116,7 @@ export async function runEditRoundTrip(input: OscalEditRunInput): Promise<OscalE
   const presentKeys = new Set(differences.map(differenceKey));
   // Der Edit-Eintrag zählt nur, wenn der Export auch den Edit-Wert trägt.
   const editValueApplied = compareJsonGraphs(
-    editValue,
+    edit.value,
     valueAt(imported, editExpectation.segments),
   ).length === 0;
   const unexpected = differences.filter((difference) => !expectedKeys.has(differenceKey(difference)));

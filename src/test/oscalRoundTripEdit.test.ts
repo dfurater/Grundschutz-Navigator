@@ -405,6 +405,22 @@ describe('Edit-Lauf: Orakel und Versionsgrenze', () => {
     expect(result.graph.missing.map((difference) => difference.path)).toEqual(['$.catalog.metadata.props[2]']);
   });
 
+  it('lässt einen Schreibpfad, der den Edit-Pfad umschreibt, nicht bestehen', async () => {
+    const path: OscalEditPathSegment[] = ['catalog', 'metadata', 'title'];
+    const result = await runEditRoundTrip({
+      fixtureText: JSON.stringify(maximal('catalog')),
+      edit: { op: 'replace', path, value: '1.2.2' },
+      stamp: STAMP,
+      exportDocument: (parsed, stamp) => {
+        path[2] = 'oscal-version';
+        return referenceEditor({ op: 'replace', path: ['catalog', 'metadata', 'title'], value: 'Falscher Titel' })(parsed, stamp);
+      },
+    });
+
+    expect(result.status).toBe('failed');
+    expect(result.graph.missing.map((difference) => difference.path)).toEqual(['$.catalog.metadata.title']);
+  });
+
   it('weist einen Edit mit Wechsel der OSCAL-Version ab', async () => {
     const result = await runReference(maximal('catalog'), {
       op: 'replace',

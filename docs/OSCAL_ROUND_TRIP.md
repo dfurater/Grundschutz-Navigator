@@ -69,8 +69,8 @@ Gesamtstatus `passed` oder `failed`.
   Der Harnisch hat keine eigene Zeit- oder UUID-Quelle; ein statischer Test im
   Guard-File belegt das.
 * **Schreibpfad** `exportDocument(parsed, stamp)`: erhält private Kopien des
-  geparsten Originals und des Stempels; Stempel und Edit-Wert für den
-  Vergleich sichert der Harnisch vor dem Aufruf. Ein Ergebnis ohne JSON-Darstellung oder eine
+  geparsten Originals und des Stempels; Stempel und Edit-Operation (Pfad und
+  Wert) für den Vergleich sichert der Harnisch vor dem Aufruf. Ein Ergebnis ohne JSON-Darstellung oder eine
   Ausnahme im Callback ergibt den Bindungsgrund `export-not-serializable`.
 * **Stufen 1–2** laufen wie im No-op-Lauf, **Stufen 3–5** gegen das
   reimportierte Exportartefakt über dieselbe `evaluateStages()`.
