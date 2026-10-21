@@ -748,6 +748,13 @@ export interface CatalogState {
    * Katalog wird nicht erneut geladen. Fehlt in Testzuständen ohne Provider.
    */
   requestCatalog?: (catalogKey: CatalogKey) => void;
+  /**
+   * Wiederholt den Ladepfad eines Katalogs nach einem Fehler: setzt dessen
+   * Fehlerzustand zurück und startet genau einen neuen Request. Ohne Fehler
+   * oder während eines laufenden Requests bleibt der Aufruf wirkungslos. Fehlt
+   * in Testzuständen ohne Provider.
+   */
+  retryCatalog?: (catalogKey: CatalogKey) => void;
 
   /* Projektionen des aktiven Katalogs — unveränderte Zugriffsform. */
   catalogDocument: CatalogDocument | null;
