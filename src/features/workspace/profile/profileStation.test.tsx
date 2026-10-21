@@ -472,7 +472,7 @@ describe('Kopie eines eingelesenen Profils', () => {
     Object.defineProperty(file, 'size', { value: CLASS_2_IMPORT_LIMITS.maxBytes + 1 });
     const read = vi.spyOn(file, 'arrayBuffer');
     fireEvent.change(main().querySelector<HTMLInputElement>('input[type="file"]')!, { target: { files: [file] } });
-    expect(await within(main()).findByRole('status', undefined, WAIT)).toHaveTextContent('Nicht aufgenommen');
+    expect(await within(main()).findByRole('alert', undefined, WAIT)).toHaveTextContent('Nicht aufgenommen');
     expect(read).not.toHaveBeenCalled();
     expect(within(main()).getByRole('button', { name: 'Profil-Datei einlesen' })).toBeEnabled();
   });
@@ -482,7 +482,7 @@ describe('Kopie eines eingelesenen Profils', () => {
     await within(main()).findByRole('button', { name: 'Profil-Datei einlesen' });
     const input = main().querySelector<HTMLInputElement>('input[type="file"]')!;
     fireEvent.change(input, { target: { files: [new File([JSON.stringify(makeSchemaValidOscalDocument('catalog', '1.1.3'))], 'katalog.json')] } });
-    expect(await within(main()).findByRole('status', undefined, WAIT)).toHaveTextContent('Nicht aufgenommen');
+    expect(await within(main()).findByRole('alert', undefined, WAIT)).toHaveTextContent('Nicht aufgenommen');
     expect(await storedProfiles(seeded.verbundId)).toHaveLength(1);
   });
 });

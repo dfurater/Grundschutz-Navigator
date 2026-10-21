@@ -165,6 +165,17 @@ export function DatenschutzPage() {
           auch für deren Kopien, etwa in Betriebssystem-Backups oder bei Dritten.
         </p>
         <p className="catalog-prose-text text-sm text-slate-700 leading-relaxed">
+          An der Station SSP lesen Sie eine lokale OSCAL-JSON-Datei ein. Die
+          Anwendung prüft die Datei ausschließlich in Ihrem Browser, speichert
+          sie im gewählten Informationsverbund und zeigt die dokumentierte
+          Systembeschreibung und Umsetzung lesend an. Die Datei wird nicht
+          hochgeladen; ihre Verweise und eingebetteten Ressourcen werden nicht
+          abgerufen oder ausgeführt. Die gespeicherte Kopie bleibt nach dem
+          Schließen des Tabs erhalten und ist in der Sicherungsdatei enthalten.
+          Zum Entfernen dient die Löschung des zugehörigen Informationsverbunds
+          oder der lokalen Daten dieser Anwendung über die Browser-Einstellungen.
+        </p>
+        <p className="catalog-prose-text text-sm text-slate-700 leading-relaxed">
           Der Betreiber hat keine Kopie Ihrer gespeicherten Dokumente und kann
           sie nicht wiederherstellen. Die exportierte Sicherungsdatei ist die
           einzige Sicherung. Ohne eine solche Datei
