@@ -3,8 +3,8 @@ import type { ReviewApprovalRequest, ReviewGuard } from '@/adapters/workspaceSto
 import type { CatalogDelivery } from '@/domain/workspaceCatalogPin';
 import { WORKSPACE_DIAGNOSTIC_CODES } from '@/domain/workspaceDiagnostics';
 import type { WorkspaceClass1Artifact } from '@/domain/workspaceGraphModel';
-import type { BindingTarget, LocalId, WorkspaceResult } from '@/domain/workspaceModel';
-import type { ProfileAnalysis, ProfileAnalysisInput, ProfileSchemaCheck } from '@/state/workspaceProfileAnalysis';
+import type { BindingTarget, LocalId, VerbundId, WorkspaceResult } from '@/domain/workspaceModel';
+import type { ProfileAnalysis, ProfileAnalysisBasis, ProfileAnalysisInput, ProfileSchemaCheck } from '@/state/workspaceProfileAnalysis';
 import type { WorkspacePort } from '@/state/workspaceVerbundView';
 
 /*
@@ -26,6 +26,10 @@ export interface PendingImportTarget {
 }
 
 export interface WorkspaceDocuments {
+  readonly analysisRevision: number;
+  /** Ändert sich synchron nach erfolgreichem Schreiben oder explizitem Neuladen. */
+  readonly analysisVersion: () => number;
+  readonly loadProfileAnalysisBasis: (verbundId: VerbundId) => Promise<WorkspaceResult<ProfileAnalysisBasis>>;
   readonly getDocument: Port<'getDocument'>;
   readonly getDraft: Port<'getDraft'>;
   readonly listBindings: Port<'listBindings'>;
@@ -93,7 +97,7 @@ async function checkSchema(source: unknown): Promise<ProfileSchemaCheck> {
   return result.ok ? { status: 'passed' } : { status: 'failed', code: result.diagnostic.code, path: result.diagnostic.path };
 }
 
-export function createWorkspaceDocuments({ port, write, quiet, class1, delivery, targets }: Readonly<{
+export function createWorkspaceDocuments({ port, write, quiet, class1, delivery, targets, analysisVersion = () => 0, analysisRevision = 0 }: Readonly<{
   port: WorkspacePort | null;
   /** Schreibt und lädt danach die Verbundansicht neu. */
   write: Write;
@@ -102,11 +106,20 @@ export function createWorkspaceDocuments({ port, write, quiet, class1, delivery,
   class1: readonly WorkspaceClass1Artifact[];
   delivery: CatalogDelivery;
   targets: Map<LocalId, Map<string, PendingImportTarget>>;
+  analysisVersion?: () => number;
+  /** Recreates the document context when the synchronous version advances. */
+  analysisRevision?: number;
 }>): WorkspaceDocuments {
   const read = <T,>(operation: (store: WorkspacePort) => Promise<WorkspaceResult<T>>): Promise<WorkspaceResult<T>> =>
     port ? operation(port).catch(storageFailed) : Promise.resolve(storageFailed());
   // Prüfentscheidungen ändern die Verbundansicht nicht; die Station zeigt ihre Codes selbst.
   return {
+    analysisRevision,
+    analysisVersion,
+    loadProfileAnalysisBasis: (verbundId) => read(async (store) => {
+      const { loadProfileAnalysisBasis } = await import('@/state/workspaceProfileAnalysis');
+      return loadProfileAnalysisBasis(store, verbundId, class1, delivery);
+    }),
     getDocument: (localId) => read((store) => store.getDocument(localId)),
     getDraft: (localId) => read((store) => store.getDraft(localId)),
     listBindings: () => read((store) => store.listBindings()),

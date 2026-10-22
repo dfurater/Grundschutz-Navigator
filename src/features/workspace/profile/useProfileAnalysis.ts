@@ -1,9 +1,11 @@
-import { useContext, useEffect, useState } from 'react';
+import { useContext, useEffect, useMemo, useState } from 'react';
 import { SUPPORTED_CATALOGS, type CatalogKey } from '@/domain/sourceRegistry';
 import type { LocalId, VerbundId, WorkspaceBinding } from '@/domain/workspaceModel';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { CatalogContext } from '@/state/CatalogContext';
 import type { ProfileAnalysis } from '@/state/workspaceProfileAnalysis';
+import { createProfileAnalysisSession } from '@/state/workspaceProfileAnalysisSession';
+import type { WorkspaceDocuments } from '@/state/workspaceDocuments';
 
 /** Wartezeit nach der letzten Änderung, bevor Graph, Schema und Resolution neu abgeleitet werden. */
 export const PROFILE_ANALYSIS_DELAY_MS = 250;
@@ -23,7 +25,10 @@ export function useProfileAnalysis(verbundId: VerbundId, localId: LocalId, sourc
 } {
   const { documents } = useWorkspace();
   const { requestCatalog } = useContext(CatalogContext);
-  const [state, setState] = useState<{ analysis: ProfileAnalysis | null; failed: boolean; source: unknown; bindings: readonly WorkspaceBinding[] }>({ analysis: null, failed: false, source: undefined, bindings: [] });
+  const session = useMemo(() => createProfileAnalysisSession(), [verbundId, localId]);
+  const [state, setState] = useState<{ analysis: ProfileAnalysis | null; failed: boolean; source: unknown; bindings: readonly WorkspaceBinding[]; documents?: WorkspaceDocuments; session?: typeof session }>({ analysis: null, failed: false, source: undefined, bindings: [] });
+
+  useEffect(() => () => session.dispose(), [session]);
 
   useEffect(() => {
     for (const binding of bindings) {
@@ -36,17 +41,20 @@ export function useProfileAnalysis(verbundId: VerbundId, localId: LocalId, sourc
 
   useEffect(() => {
     if (source === undefined) return;
-    let active = true;
+    const controller = new AbortController();
     const timer = setTimeout(() => {
-      void documents.analyzeProfile({ verbundId, localId, source, bindings }).then((result) => {
-        if (active) setState({ analysis: result.ok ? result.value : null, failed: !result.ok, source, bindings });
+      void session.analyze(documents, { verbundId, localId, source, bindings }, controller.signal).then((result) => {
+        if (!controller.signal.aborted && (result.ok || result.diagnostic.code !== 'WORKSPACE_OPERATION_CANCELLED')) {
+          setState({ analysis: result.ok ? result.value : null, failed: !result.ok, source, bindings, documents, session });
+        }
       });
     }, PROFILE_ANALYSIS_DELAY_MS);
     return () => {
-      active = false;
+      controller.abort();
       clearTimeout(timer);
     };
-  }, [documents, verbundId, localId, source, bindings]);
+  }, [documents, verbundId, localId, source, bindings, session]);
 
-  return { analysis: state.analysis, failed: state.failed, analyzedBindings: state.bindings, current: state.source === source && state.bindings === bindings };
+  const current = state.source === source && state.bindings === bindings && state.documents === documents && state.session === session;
+  return { analysis: state.analysis, failed: current && state.failed, analyzedBindings: state.bindings, current };
 }

@@ -92,6 +92,15 @@ export function WorkspaceProvider({ open = openWorkspaceStore, children }: Reado
   const [selectedVerbundId, setSelectedVerbundId] = useState<string | null>(null);
   const [loaded, setLoaded] = useState<VerbundViewState | null>(null);
   const [revision, setRevision] = useState(0);
+  const [analysisRevision, setAnalysisRevision] = useState(0);
+  const [analysisEpoch] = useState(() => {
+    let version = 0;
+    return { read: () => version, advance: () => ++version };
+  });
+  const analysisVersion = analysisEpoch.read;
+  const invalidateAnalysis = useCallback(() => {
+    setAnalysisRevision(analysisEpoch.advance());
+  }, [analysisEpoch]);
   const openRef = useRef(open);
   const startedRef = useRef(false);
   const autosaves = useRef(new Set<AutosaveFlush>());
@@ -194,21 +203,24 @@ export function WorkspaceProvider({ open = openWorkspaceStore, children }: Reado
   const write = useCallback(async <T,>(operation: (store: WorkspacePort) => Promise<WorkspaceResult<T>>): Promise<WorkspaceResult<T>> => {
     if (!port) return storageFailed();
     const result = await operation(port);
-    if (result.ok) setRevision((value) => value + 1);
-    else if (result.diagnostic.code !== 'WORKSPACE_OPERATION_CANCELLED') report(result.diagnostic);
+    if (result.ok) {
+      invalidateAnalysis();
+      setRevision((value) => value + 1);
+    } else if (result.diagnostic.code !== 'WORKSPACE_OPERATION_CANCELLED') report(result.diagnostic);
     return result;
-  }, [port, report]);
+  }, [port, report, invalidateAnalysis]);
 
   const quiet = useCallback(async <T,>(operation: (store: WorkspacePort) => Promise<WorkspaceResult<T>>): Promise<WorkspaceResult<T>> => {
     if (!port) return storageFailed();
     const result = await operation(port).catch(storageFailed);
-    if (!result.ok) report(result.diagnostic);
+    if (result.ok) invalidateAnalysis();
+    else report(result.diagnostic);
     return result;
-  }, [port, report]);
+  }, [port, report, invalidateAnalysis]);
 
   const documents = useMemo(
-    () => createWorkspaceDocuments({ port, write, quiet, class1, delivery, targets: importTargets }),
-    [port, write, quiet, class1, delivery, importTargets],
+    () => createWorkspaceDocuments({ port, write, quiet, class1, delivery, targets: importTargets, analysisVersion, analysisRevision }),
+    [port, write, quiet, class1, delivery, importTargets, analysisVersion, analysisRevision],
   );
 
   const registerAutosave = useCallback((flush: AutosaveFlush) => {
@@ -233,6 +245,7 @@ export function WorkspaceProvider({ open = openWorkspaceStore, children }: Reado
     activate,
     selectVerbund: setSelectedVerbundId,
     reload: () => {
+      invalidateAnalysis();
       setNotices((current) => withoutNotice(withoutNotice(current, 'conflict'), 'storage-failed'));
       setRevision((current) => current + 1);
       // Ein gescheitertes Öffnen wird erneut versucht, eine gescheiterte Schemaprüfung
@@ -279,7 +292,7 @@ export function WorkspaceProvider({ open = openWorkspaceStore, children }: Reado
     registerAutosave,
     flushAutosaves,
     documents,
-  }), [status, verbuende, writable, delivery, notices, verbund, activate, checkSchema, write, port, report, registerAutosave, flushAutosaves, documents, importTargets]);
+  }), [status, verbuende, writable, delivery, notices, verbund, activate, checkSchema, write, port, report, registerAutosave, flushAutosaves, documents, importTargets, invalidateAnalysis]);
 
   return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>;
 }
