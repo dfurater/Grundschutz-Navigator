@@ -17,6 +17,7 @@ import { useWorkspace } from '@/hooks/useWorkspace';
 import { NewProfileForm } from '@/features/workspace/profile/NewProfileForm';
 import { NewSspForm } from '@/features/workspace/ssp/NewSspForm';
 import { WorkspaceFileImport } from '@/features/workspace/WorkspaceFileImport';
+import { PoamProgressList } from '@/features/workspace/poam/PoamProgressList';
 
 const PANEL = 'rounded-md border border-[var(--color-border-default)] bg-[var(--color-surface-base)]';
 const PANEL_LABEL = 'px-4 pt-3 text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)]';
@@ -158,6 +159,7 @@ function VerbundContent({ view, station }: Readonly<{ view: VerbundView; station
             {shown.map((document) => <DocumentRow key={document.localId} verbundId={verbund.verbundId} document={document} />)}
           </ul>
         )}
+        {station === 'poam' && <PoamProgressList verbundId={verbund.verbundId} documents={documents} />}
       </section>
       <Diagnostics diagnostics={diagnostics} />
     </div>

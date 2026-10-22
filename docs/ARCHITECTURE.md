@@ -194,6 +194,7 @@ src/                              # Anwendungsquellcode
 │   ├── assessmentPlanModel.ts        # Projektion des Prüfplans und explizite SSP-/Katalogbindung
 │   ├── assessmentResultsModel.ts     # Projektion der Prüfergebnisse und explizite AP-/SSP-/Katalogbindung
 │   ├── poamModel.ts                  # POA&M-Projektion und expliziter SSP-/AR-Kontext
+│   ├── poamProgress.ts               # Frist, Fristzustand, Verantwortliche und Abschluss je `poam-item`
 │   ├── evidenceObservationReferences.ts # Klassifikation der `related-observations`-Referenzen für AR und POA&M
 │   ├── evidenceReadModel.ts          # Evidenz aus Assessment Results und POA&M: Gültigkeit, Ressourcen, UUID-Referenzen
 │   ├── systemSecurityPlanModel.ts    # Domänenmodell des SSP
@@ -410,6 +411,8 @@ src/                              # Anwendungsquellcode
 │       │   ├── ReviewTab.tsx                 # Reiter Prüfung: Prüfpunkt, Entscheidungen und Freigabe
 │       │   ├── reviewView.ts                 # Ableitung der Anzeige aus Trail und Stand
 │       │   └── useReviewTrail.ts             # Trail laden, Prüfpunkt setzen, Entscheidung schreiben
+│       ├── poam/                         # POA&M-Station
+│       │   └── PoamProgressList.tsx          # Lesende Fristenliste über alle POA&Ms des Verbunds
 │       └── ssp/                          # SSP-Station
 │           ├── NewSspForm.tsx                 # Neuanlage: Titel, dann Baseline
 │           ├── SspDocumentContent.tsx         # Ausgewähltes SSP ableiten, Inhalte und Modelldiagnosen lesen
@@ -812,7 +815,7 @@ Der Arbeitsroutenraum umfasst vier Routenformen; ihre Muster und Builder stehen 
 | --- | --- | --- |
 | `/informationsverbuende` | Übersicht: Verbünde anlegen, umbenennen, mit Bestätigung löschen, Sicherung exportieren | `VerbundOverviewPage` |
 | `/informationsverbuende/:verbundId` | Verbund mit Orientierung, allen Dokumenten und Diagnosen | `VerbundPage` |
-| `/informationsverbuende/:verbundId/station/:station` | Dokumentliste gefiltert auf den Root-Typ einer Station | `VerbundPage` |
+| `/informationsverbuende/:verbundId/station/:station` | Dokumentliste gefiltert auf den Root-Typ einer Station; an der Station `poam` zusätzlich der Umsetzungsfortschritt | `VerbundPage` |
 | `/informationsverbuende/:verbundId/dokument/:localId` | Referenzkanten eines Dokuments mit Feld, Pflicht und Zustand; für Root `profile` und `system-security-plan` die Bearbeitungsansicht, für SSPs zusätzlich die lesende Inhaltsansicht | `DocumentReferenceDetailPage` |
 
 `verbundId` und `localId` sind die vom Speicher vergebenen UUIDs (`docs/PERSISTENCE.md` §5); `station` stammt aus der geschlossenen Menge `profile`, `ssp`, `assessment`, `poam` (`WORKSPACE_STATIONS` in `src/domain/workspaceStations.ts`). Die Builder werfen bei jedem anderen Wert, ohne ihn in die Fehlermeldung zu übernehmen. Eine Route mit unbekannter oder ungültiger Identität, einer unbekannten Station oder einem Dokument eines anderen Verbunds zeigt einen eigenen Nicht-gefunden-Zustand (`WorkspaceStatePage`). Die Seiten setzen feste Titel aus `PAGE_TITLES`; Verbundname, Dokumenttitel und andere Dokumentwerte erscheinen nur im Seiteninhalt, nie in Route, Verlaufszustand oder `document.title`. Eingaben im Bereich schreiben nichts in die URL; die Kopfzeilensuche bleibt die Katalogsuche auf `/suche`.
@@ -822,6 +825,10 @@ Den Bereichswechsel trägt `AreaSwitch` (`src/components/AreaSwitch.tsx`): auf d
 Die Shell teilt Kopf, Suche, Schublade und Footer zwischen beiden Bereichen. `ShellSidebar` (`src/app/ShellSidebar.tsx`) zeigt im Katalogbereich den Katalog-Explorer und im Bereich Informationsverbünde die `StationSidebar` des Verbunds aus der Route; die Übersicht hat keine Arbeitsnavigation, das `<aside>` ist dort auf dem Desktop ausgeblendet. Die Stationen tragen den OSCAL-Modellnamen als Titel und die Erklärzeile aus ADR-11, sind ohne Reihenfolge erreichbar und zeigen die Dokumentanzahl; eine leere Station ist eine Lücke ohne Sperre. Außerhalb des Desktops trägt die Verbundseite zusätzlich die waagerecht scrollende `StationStrip`. Im Bereich Informationsverbünde blendet der Footer die Integritätsanzeige des Katalogs aus (`showVerification`).
 
 Katalog- und Arbeitsbereich teilen keine Seitenkomponenten: Code unter `src/features/workspace/` liest Klasse-2-Daten ausschließlich über `useWorkspace()`, Katalogseiten ausschließlich über `useCatalog()`. Jedes lokale Dokument trägt das Label „Eigene Daten · kein Integritätsnachweis“ und das Statuswort „Entwurf“ (`documentState` `draft`) oder „Gültig“ (`imported`, `export-ready`; beide setzen beim Speichern ein schemagültiges Dokument voraus). Die Dokumentliste ordnet nach Root-Typ entlang der Stationen, dann nach Titel; `assessment-plan` und `assessment-results` stehen als zwei Dokumente, `component-definition` und lokale `catalog` nur in der ungefilterten Liste. Die Dokumentdetailansicht zeigt jede Kante aus `buildWorkspaceGraph()` mit JSON Pointer, Pflicht (`DOCUMENT_REFERENCE_REQUIREMENT` für die acht Dokumentverweise, sonst „keine Angabe“) und Zustand; ein externer `href` steht als Text mit „extern, nicht aufgelöst“ und ist kein Link.
+
+### POA&M-Station
+
+`VerbundPage` zeigt an der Station `poam` unter der Dokumentliste `PoamProgressList` (`src/features/workspace/poam/PoamProgressList.tsx`). Die Liste lädt jede gespeicherte POA&M-Quelle des Verbunds über `useWorkspace().documents.getDocument()`, leitet sie mit `parsePoamDocument()` ab und bildet mit `derivePoamProgress()` aus `src/domain/poamProgress.ts` je `poam-item` eine Zeile. Entwürfe aus dem Autosave fließen nicht ein. Offene und abgeschlossene Maßnahmen stehen in getrennten, gezählten Abschnitten. Die Sortierung nach Frist, Verantwortlichen oder Stand liegt im Komponentenzustand und erreicht die URL nicht. Die Liste schreibt nicht in den Speicher; jede Zeile verlinkt die Dokumentroute des POA&M. Die Frist erscheint als unveränderter Quellwert mit Zeitzonenangabe, der Fristzustand mit dem Zeitpunkt seiner Berechnung.
 
 ### SSP-Station
 
