@@ -59,6 +59,9 @@ export interface ProfileAnalysisSnapshot {
   readonly delivery: CatalogDelivery;
 }
 
+/** Gespeicherter Verbundstand ohne die veränderliche Arbeitskopie des Editors. */
+export type ProfileAnalysisBasis = Pick<ProfileAnalysisSnapshot, 'members' | 'bindings' | 'class1Artifacts' | 'delivery'>;
+
 /** Schemaprüfung über die Klasse-2-Kette ab den Bytes; nur innerhalb eines Workers aufrufen. */
 export async function checkSchemaInProcess(source: unknown): Promise<ProfileSchemaCheck> {
   let bytes: Uint8Array;
@@ -124,31 +127,43 @@ export async function profileAnalysisSnapshot(
   class1Artifacts: readonly WorkspaceClass1Artifact[] = [],
   delivery: CatalogDelivery = new Map(),
 ): Promise<WorkspaceResult<ProfileAnalysisSnapshot>> {
-  const loaded = await loadMembers(port, input.verbundId);
+  const basis = await loadProfileAnalysisBasis(port, input.verbundId, class1Artifacts, delivery);
+  return basis.ok ? { ok: true, value: withProfileAnalysisInput(basis.value, input) } : basis;
+}
+
+/** Liest nur die Basis; Quellen und Editor-Bindungen werden je Analyse frisch eingesetzt. */
+export async function loadProfileAnalysisBasis(
+  port: WorkspacePort, verbundId: VerbundId,
+  class1Artifacts: readonly WorkspaceClass1Artifact[] = [], delivery: CatalogDelivery = new Map(),
+): Promise<WorkspaceResult<ProfileAnalysisBasis>> {
+  const loaded = await loadMembers(port, verbundId);
   if (!loaded.ok) return loaded;
   const stored = await port.listBindings();
   if (!stored.ok) return stored;
+  const ids = new Set(loaded.value.map((member) => member.localId));
+  return { ok: true, value: { members: loaded.value, bindings: stored.value.filter((binding) => ids.has(binding.fromLocalId)), class1Artifacts, delivery } };
+}
+
+/** Reine Projektion; weder der Basisstand noch die Arbeitskopie werden verändert. */
+export function withProfileAnalysisInput(basis: ProfileAnalysisBasis, input: ProfileAnalysisInput): ProfileAnalysisSnapshot {
+  const { delivery, class1Artifacts } = basis;
   // Ein gesperrtes Dokument bleibt beim gespeicherten Stand; sonst zählt das Paar, das Speichern schreiben würde.
-  const saved = loaded.value.find((member) => member.localId === input.localId);
-  const savedPin = saved && catalogPinStatus(saved.source, saved.rootType, stored.value.filter((binding) => binding.fromLocalId === input.localId), delivery);
+  const saved = basis.members.find((member) => member.localId === input.localId);
+  const savedPin = saved && catalogPinStatus(saved.source, saved.rootType, basis.bindings.filter((binding) => binding.fromLocalId === input.localId), delivery);
   const preview = savedPin && savedPin.state !== 'bound' ? undefined : withCatalogPins(input.source, 'profile', input.bindings, delivery);
   const pinned = preview?.ok ? preview.source : input.source;
-  const members = loaded.value.map((member) => member.localId === input.localId ? { ...member, source: pinned } : member);
-  const memberIds = new Set<string>(members.map((member) => member.localId));
+  const members = basis.members.map((member) => member.localId === input.localId ? { ...member, source: pinned } : member);
   const bindings = [
-    ...stored.value.filter((binding) => memberIds.has(binding.fromLocalId) && binding.fromLocalId !== input.localId),
+    ...basis.bindings.filter((binding) => binding.fromLocalId !== input.localId),
     ...input.bindings,
   ];
   const bound = new Set(bindings.flatMap((binding) => binding.target.kind === 'class-1' ? [binding.target.artifactKey] : []));
   return {
-    ok: true,
-    value: {
-      localId: input.localId,
-      source: input.source,
-      members,
-      bindings,
-      class1Artifacts: class1Artifacts.filter((artifact) => bound.has(artifact.artifactKey)),
-      delivery,
-    },
+    localId: input.localId,
+    source: input.source,
+    members,
+    bindings,
+    class1Artifacts: class1Artifacts.filter((artifact) => bound.has(artifact.artifactKey)),
+    delivery,
   };
 }

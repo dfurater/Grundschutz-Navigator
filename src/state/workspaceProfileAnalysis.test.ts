@@ -1,10 +1,29 @@
 import { describe, expect, it } from 'vitest';
 import { setSelectedControl } from '@/domain/profileAuthoring';
 import { addImport } from '@/domain/profileImportList';
-import { deriveProfileAnalysis } from '@/state/workspaceProfileAnalysis';
+import { deriveProfileAnalysis, profileAnalysisSnapshot, withProfileAnalysisInput } from '@/state/workspaceProfileAnalysis';
 import { bind, body, member } from '@/test/fixtures/workspaceGraph';
+import type { WorkspacePort } from '@/state/workspaceVerbundView';
 
 describe('Profilanalyse über zwei Importziele', () => {
+  it('setzt Quelle und Bindungen ohne Mutation der wiederverwendeten Basis ein', async () => {
+    const profile = member('profile', 'p');
+    const catalog = member('catalog', 'a');
+    const bindings = [bind(profile, '/profile/imports/0/href', catalog)];
+    const basis = { members: [profile, catalog], bindings, class1Artifacts: [], delivery: new Map() };
+    const input = { verbundId: profile.verbundId, localId: profile.localId, source: {}, bindings: [] };
+    const port = {
+      listDocuments: async () => ({ ok: true, value: [profile, catalog] }),
+      getDocument: async (id: string) => ({ ok: true, value: basis.members.find((m) => m.localId === id) }),
+      listBindings: async () => ({ ok: true, value: bindings }),
+    } as unknown as WorkspacePort;
+    const expected = await profileAnalysisSnapshot(port, input);
+    expect(expected).toEqual({ ok: true, value: withProfileAnalysisInput(basis, input) });
+    expect(basis.members[0]).toBe(profile);
+    expect(basis.bindings).toEqual(bindings);
+    expect(withProfileAnalysisInput(basis, { ...input, source: profile.source, bindings }).members[0].source).toEqual(profile.source);
+  });
+
   it('führt gleichlautende control/@id zweier Ziele nicht zusammen', async () => {
     const profile = member('profile', 'p');
     const first = member('catalog', 'a');
