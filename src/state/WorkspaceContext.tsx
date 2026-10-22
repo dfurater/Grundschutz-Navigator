@@ -216,10 +216,9 @@ export function WorkspaceProvider({ open = openWorkspaceStore, children }: Reado
   const quiet = useCallback(async <T,>(operation: (store: WorkspacePort) => Promise<WorkspaceResult<T>>): Promise<WorkspaceResult<T>> => {
     if (!port) return storageFailed();
     const result = await operation(port).catch(storageFailed);
-    if (result.ok) invalidateAnalysis();
-    else report(result.diagnostic);
+    if (!result.ok) report(result.diagnostic);
     return result;
-  }, [port, report, invalidateAnalysis]);
+  }, [port, report]);
 
   const documents = useMemo(
     () => createWorkspaceDocuments({ port, write, quiet, class1, delivery, targets: importTargets, analysisVersion }),

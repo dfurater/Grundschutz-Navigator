@@ -26,7 +26,7 @@ function setup(strict = false, withBaseline = false) {
     return worker;
   }));
   const listDocuments = vi.fn(() => ok([PROFILE]));
-  const port = fakePort({ listDocuments, getDocument: () => ok(PROFILE), autosaveDraft: () => ok(undefined) as never, deleteDocument: () => ok(undefined) });
+  const port = fakePort({ listDocuments, getDocument: () => ok(PROFILE), autosaveDraft: () => ok(undefined) as never, saveDocument: () => ok(PROFILE), deleteDocument: () => ok(undefined) });
   let catalogs = EMPTY_CATALOG_STATE;
   const wrapper = ({ children }: { children: ReactNode }) => {
     const content = <CatalogContext.Provider value={catalogs}><WorkspaceProvider open={() => ok(port)}>{children}</WorkspaceProvider></CatalogContext.Provider>;
@@ -106,12 +106,51 @@ describe('Lebenszyklus der Profilanalyse', () => {
     hook.unmount();
   });
 
-  it('invalidiert nach Entwurf, Dokumentlöschung, Reload und Katalogwechsel', async () => {
+  it('erhält bei Autosave Ergebnis, Analyseversion und Basis ohne weitere Anfrage', async () => {
+    const hook = setup();
+    await hook.tick();
+    const documents = hook.result.current.workspace.documents;
+    const version = documents.analysisVersion();
+    const analysis = hook.result.current.analysis;
+    await act(async () => { await documents.autosaveDraft(PROFILE.localId, PROFILE.savedAt, null, {}); });
+    expect(hook.result.current.current).toBe(true);
+    expect(documents.analysisVersion()).toBe(version);
+    expect(hook.result.current.analysis).toBe(analysis);
+    await hook.tick();
+    expect(hook.listDocuments).toHaveBeenCalledOnce();
+    expect(hook.workers).toHaveLength(1);
+    expect(hook.workers[0].postMessage).toHaveBeenCalledOnce();
+    expect(hook.workers[0].terminate).not.toHaveBeenCalled();
+    hook.rerender({ source: {}, localId: PROFILE.localId, verbundId: PROFILE.verbundId });
+    await hook.tick();
+    expect(hook.listDocuments).toHaveBeenCalledOnce();
+    expect(hook.workers[0].postMessage.mock.calls[1][0]).not.toHaveProperty('basis');
+    hook.unmount();
+  });
+
+  it('lässt eine beim Autosave laufende Analyse ohne Abbruch oder Ersatz fertig werden', async () => {
+    const hook = setup();
+    hook.silence();
+    await hook.tick();
+    await act(async () => { await hook.result.current.workspace.documents.autosaveDraft(PROFILE.localId, PROFILE.savedAt, null, {}); });
+    expect(hook.workers[0].terminate).not.toHaveBeenCalled();
+    await hook.tick();
+    expect(hook.listDocuments).toHaveBeenCalledOnce();
+    expect(hook.workers).toHaveLength(1);
+    expect(hook.workers[0].postMessage).toHaveBeenCalledOnce();
+    const request = hook.workers[0].postMessage.mock.calls[0][0] as { requestId: number };
+    await act(async () => { hook.workers[0].emitMessage({ type: 'analysis', requestId: request.requestId, analysis: ANALYSIS }); });
+    expect(hook.result.current.current).toBe(true);
+    expect(hook.result.current.failed).toBe(false);
+    hook.unmount();
+  });
+
+  it('invalidiert nach Speichern, Dokumentlöschung, Reload und Katalogwechsel', async () => {
     const hook = setup();
     await hook.tick();
     const originalDocuments = hook.result.current.workspace.documents;
     const version = originalDocuments.analysisVersion();
-    await act(async () => { await originalDocuments.autosaveDraft(PROFILE.localId, PROFILE.savedAt, null, {}); });
+    await act(async () => { await originalDocuments.saveDocument(PROFILE.localId, PROFILE.savedAt, null, {} as never); });
     expect(hook.result.current.current).toBe(false);
     expect(hook.result.current.workspace.documents.analysisVersion()).toBe(version + 1);
     await hook.tick();
