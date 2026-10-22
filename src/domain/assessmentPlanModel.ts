@@ -15,7 +15,8 @@ export const ASSESSMENT_PLAN_ROOT_TYPE = 'assessment-plan' as const;
 export type ApReference =
   | {
       readonly status: 'resolved';
-      readonly origin: 'local' | 'ssp';
+      /** `assessment-plan` nur in Assessment Results mit gebundenem Plan. */
+      readonly origin: 'local' | 'ssp' | 'assessment-plan';
       readonly path: string;
     }
   | { readonly status: 'not-resolvable-in-context'; readonly reason: string }

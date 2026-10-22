@@ -30,6 +30,22 @@ export interface ArDeriveState extends ApDeriveState {
 }
 export type ArScope = 'local' | 'assets' | 'document' | 'assessment-plan' | 'ssp';
 
+const ORIGIN: Readonly<Record<ArScope, 'local' | 'assessment-plan' | 'ssp'>> = {
+  local: 'local',
+  assets: 'local',
+  document: 'local',
+  'assessment-plan': 'assessment-plan',
+  ssp: 'ssp',
+};
+/** Index eines Bereichs; `available` ist nur für Plan und SSP an eine gültige Bindung geknüpft. */
+function scopeIndex(state: ArDeriveState, scope: ArScope): { index: Index; available: boolean; bound: boolean } {
+  if (scope === 'ssp')
+    return { index: state.ssp, available: state.sspAvailable, bound: state.options.ssp !== undefined };
+  if (scope === 'assessment-plan')
+    return { index: state.plan, available: state.planAvailable, bound: state.options.assessmentPlan !== undefined };
+  return { index: state[scope], available: true, bound: true };
+}
+
 /** Löst in der Reihenfolge `scopes` auf; ein nicht gebundener Kontext ergibt keine Fehldiagnose. */
 export function arReference(
   state: ArDeriveState,
@@ -46,21 +62,13 @@ export function arReference(
   const key = type === 'role' ? id : id.toLowerCase();
   let missingContext: string | undefined;
   for (const scope of scopes) {
-    const binding = scope === 'ssp' ? state.options.ssp : state.options.assessmentPlan;
-    const available =
-      scope === 'ssp' ? state.sspAvailable : scope === 'assessment-plan' ? state.planAvailable : true;
+    const { index, available, bound } = scopeIndex(state, scope);
     if (!available) {
-      missingContext ??= `${scope}-${binding === undefined ? 'not-supplied' : 'binding-invalid'}`;
+      missingContext ??= `${scope}-${bound ? 'binding-invalid' : 'not-supplied'}`;
       continue;
     }
-    const index = { local: state.local, assets: state.assets, document: state.document, 'assessment-plan': state.plan, ssp: state.ssp }[scope];
     const hits = index.get(type)?.get(key) ?? [];
-    if (hits.length === 1)
-      return {
-        status: 'resolved',
-        origin: scope === 'ssp' || scope === 'assessment-plan' ? scope : 'local',
-        path: hits[0],
-      };
+    if (hits.length === 1) return { status: 'resolved', origin: ORIGIN[scope], path: hits[0] };
     if (hits.length > 1) {
       diagnose(state, code, path);
       return { status: 'unresolved', reason: 'identity-ambiguous' };
@@ -111,17 +119,30 @@ export function origin(node: JsonObject, path: string, state: ArDeriveState): Ar
 export function origins(node: JsonObject, path: string, state: ArDeriveState): readonly ArOrigin[] {
   return readObjectArrayField(node, 'origins', path, state).map((entry) => origin(entry.node, entry.path, state));
 }
+const SUBJECT_TYPES = new Set(['component', 'inventory-item', 'user', 'party', 'location', 'resource']);
 export function subjectReferences(
   node: JsonObject,
   path: string,
   state: ArDeriveState,
 ): readonly ArSubjectReference[] {
-  return readObjectArrayField(node, 'subjects', path, state).map(({ node: subject, path: sp }) => ({
-    ...readElements(subject, sp, state),
-    subjectUuid: stringField(subject, 'subject-uuid', sp, state, true),
-    type: stringField(subject, 'type', sp, state, true),
-    title: stringField(subject, 'title', sp, state),
-  }));
+  return readObjectArrayField(node, 'subjects', path, state).map(({ node: subject, path: sp }) => {
+    const subjectUuid = stringField(subject, 'subject-uuid', sp, state, true);
+    const type = stringField(subject, 'type', sp, state, true);
+    return {
+      ...readElements(subject, sp, state),
+      subjectUuid,
+      type,
+      title: stringField(subject, 'title', sp, state),
+      reference:
+        type === undefined || !SUBJECT_TYPES.has(type)
+          ? { status: 'not-resolvable-in-context' as const, reason: 'subject-type-not-supported' }
+          : arReference(state, type, subjectUuid, `${sp}/subject-uuid`, 'SUBJECT_REFERENCE_UNRESOLVED', [
+              'local',
+              'assessment-plan',
+              'ssp',
+            ]),
+    };
+  });
 }
 /** Der Zustand stammt aus dem Evidenz-Read-Model; fehlende Ziele diagnostiziert es selbst. */
 export function relatedObservations(
@@ -155,18 +176,24 @@ export function diagnoseTaskCycles(tasks: readonly ApTask[], state: ArDeriveStat
   collect(tasks);
   const done = new Set<string>();
   const active = new Set<string>();
-  const visit = (id: string) => {
-    if (done.has(id)) return;
-    active.add(id);
-    for (const edge of edges.get(id) ?? []) {
-      if (active.has(edge.to)) diagnose(state, 'TASK_DEPENDENCY_CYCLE', edge.path);
-      else visit(edge.to);
+  // Eigener Stapel statt Rekursion: eine lange Abhängigkeitskette darf den Aufrufstapel nicht sprengen.
+  for (const start of edges.keys()) {
+    if (done.has(start)) continue;
+    const stack = [{ id: start, next: 0 }];
+    active.add(start);
+    while (stack.length > 0) {
+      const frame = stack[stack.length - 1];
+      const edge = edges.get(frame.id)?.[frame.next++];
+      if (edge === undefined) {
+        active.delete(frame.id);
+        done.add(frame.id);
+        stack.pop();
+      } else if (active.has(edge.to)) {
+        diagnose(state, 'TASK_DEPENDENCY_CYCLE', edge.path);
+      } else if (!done.has(edge.to)) {
+        active.add(edge.to);
+        stack.push({ id: edge.to, next: 0 });
+      }
     }
-    active.delete(id);
-    done.add(id);
-  };
-  edges.forEach((_, id) => visit(id));
-}
-export function cloneIndex(index: Index): Index {
-  return new Map([...index].map(([type, byId]) => [type, new Map([...byId].map(([id, paths]) => [id, [...paths]]))]));
+  }
 }

@@ -44,7 +44,7 @@ describe('Befundkette', () => {
     expect(result.observations[0].description).toBe('<script>alert(1)</script>');
     expect(result.observations[0].origins[0].actors[0].reference).toMatchObject({ status: 'resolved', origin: 'local' });
     expect(result.observations[0].origins[0].relatedTasks[0].reference.status).toBe('resolved');
-    expect(result.observations[0].evidence?.subjects[0].state).toBe('resolved-in-context');
+    expect(result.observations[0].subjects[0].reference).toMatchObject({ status: 'resolved', origin: 'local' });
     expect(result.risks[0]).toMatchObject({ status: 'open', remediations: [{ lifecycle: 'planned' }] });
     expect(result.risks[0].riskLog[0].relatedResponses[0].reference.status).toBe('resolved');
     expect(result.risks[0].relatedObservations[0].reference?.state).toBe('resolved');
@@ -97,6 +97,16 @@ describe('Kontextbindung', () => {
       /OSCAL_AR_TRUST_CLASS_REJECTED/,
     );
   });
+  it('löst Aufgabenabhängigkeiten gegen den gebundenen Plan auf', () => {
+    const source = makeFullAssessmentResults();
+    Object.assign(firstResult(source)['local-definitions'].tasks[0], { dependencies: [{ 'task-uuid': AP_UUIDS.task }] });
+    const dependency = (options = {}) =>
+      parse(source, options).results[0].localDefinitions.tasks[0].dependencies[0].reference;
+    expect(dependency()).toEqual({ status: 'not-resolvable-in-context', reason: 'assessment-plan-not-supplied' });
+    const assessmentPlan = parseAssessmentPlanDocument(makeBoundAssessmentPlanSource(), context);
+    expect(dependency({ assessmentPlan })).toMatchObject({ status: 'resolved', origin: 'assessment-plan' });
+    expect(parse(source, { assessmentPlan }).diagnostics).toEqual([]);
+  });
   it('löst implementation-statement-uuid nur gegen ein gebundenes SSP auf', () => {
     const source = makeFullAssessmentResults();
     const finding = source['assessment-results'].results[0].findings[0];
@@ -137,6 +147,61 @@ describe('Referenzdiagnosen', () => {
     ])
       expect(codes(view)).toContain(code);
     expect(JSON.stringify(view.diagnostics)).not.toMatch(/0000000001|script|Prüf/);
+  });
+  it('löst Subjekte nur im lokalen Bereich ihres eigenen Ergebnisses auf', () => {
+    const source = makeFullAssessmentResults();
+    const body = source['assessment-results'];
+    const [first] = body.results;
+    // Die Komponente liegt nur im zweiten Ergebnis; das erste darf sie nicht sehen.
+    body.results = [
+      { ...first, 'local-definitions': { ...first['local-definitions'], components: [] } },
+      {
+        ...makeMinimalAssessmentResults()['assessment-results'].results[0],
+        uuid: AR_UUIDS.missing,
+        'local-definitions': first['local-definitions'],
+      },
+    ] as typeof body.results;
+    const assessmentPlan = parseAssessmentPlanDocument(makeBoundAssessmentPlanSource(), context);
+    const ssp = parseSspDocument(makeFullSsp(), context);
+    const view = parse(source, { assessmentPlan, ssp });
+    const [observation] = view.results[0].observations;
+    expect(observation.subjects[0].reference).toMatchObject({ status: 'unresolved', reason: 'identity-not-found' });
+    expect(observation.evidence?.subjects[0].state).toBe('not-resolvable-in-context');
+    expect(view.diagnostics).toContainEqual(
+      expect.objectContaining({
+        code: 'OSCAL_AR_SUBJECT_REFERENCE_UNRESOLVED',
+        path: '/assessment-results/results/0/observations/0/subjects/0/subject-uuid',
+      }),
+    );
+  });
+  it('meldet mehrdeutige Risiko-UUIDs, statt den ersten Treffer zu wählen', () => {
+    const source = makeFullAssessmentResults();
+    const [result] = source['assessment-results'].results;
+    result.risks.push(structuredClone(result.risks[0]));
+    const view = parse(source);
+    expect(view.results[0].findings[0].relatedRisks[0].reference).toEqual({
+      status: 'unresolved',
+      reason: 'identity-ambiguous',
+    });
+    expect(codes(view)).toEqual(
+      expect.arrayContaining(['OSCAL_AR_RISK_UUID_DUPLICATE', 'OSCAL_AR_RISK_REFERENCE_UNRESOLVED']),
+    );
+  });
+  it('prüft lange Abhängigkeitsketten ohne Stapelüberlauf', () => {
+    const uuid = (i: number) => `00000000-0000-4000-8000-${i.toString(16).padStart(12, '0')}`;
+    const source = makeMinimalAssessmentResults();
+    const length = 20_000;
+    Object.assign(source['assessment-results'].results[0], {
+      'local-definitions': {
+        tasks: Array.from({ length }, (_, i) => ({
+          uuid: uuid(i),
+          type: 'action',
+          title: 'Kette',
+          ...(i + 1 < length ? { dependencies: [{ 'task-uuid': uuid(i + 1) }] } : {}),
+        })),
+      },
+    });
+    expect(parse(source).diagnostics).toEqual([]);
   });
   it('meldet zyklische Aufgabenabhängigkeiten', () => {
     const source = makeFullAssessmentResults();

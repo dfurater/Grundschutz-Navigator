@@ -34,7 +34,13 @@ export interface ApDeriveState extends RootDeriveFrame {
   readonly ssp: Map<string, Map<string, string[]>>;
   readonly assets: Map<string, Map<string, string[]>>;
   sspAvailable: boolean;
+  /** Nur Assessment Results: Identitäten des ausdrücklich gebundenen Assessment Plans. */
+  readonly plan?: Map<string, Map<string, string[]>>;
+  planAvailable?: boolean;
+  readonly planBound?: boolean;
 }
+/** Aufgaben und Aktivitäten eines Assessment-Results-Dokuments dürfen im gebundenen Plan liegen. */
+const PLAN_TYPES = new Set(['task', 'activity']);
 export function diagnose(state: ApDeriveState, code: string, path: string): void {
   state.diagnostics.push(
     createOscalDiagnostic({
@@ -191,6 +197,17 @@ export function reference(
   if (local.length > 1) {
     diagnose(state, code, path);
     return { status: 'unresolved', reason: 'identity-ambiguous' };
+  }
+  if (state.plan !== undefined && PLAN_TYPES.has(type)) {
+    if (!state.planAvailable)
+      return {
+        status: 'not-resolvable-in-context',
+        reason: state.planBound ? 'assessment-plan-binding-invalid' : 'assessment-plan-not-supplied',
+      };
+    const planned = state.plan.get(type)?.get(key) ?? [];
+    if (planned.length === 1) return { status: 'resolved', origin: 'assessment-plan', path: planned[0] };
+    diagnose(state, code, path);
+    return { status: 'unresolved', reason: planned.length > 1 ? 'identity-ambiguous' : 'identity-not-found' };
   }
   if (external && !state.sspAvailable)
     return {

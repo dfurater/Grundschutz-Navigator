@@ -51,6 +51,8 @@ export interface ArSubjectReference extends ApElements {
   readonly subjectUuid?: string;
   readonly type?: string;
   readonly title?: string;
+  /** Auflösung im lokalen Bereich des eigenen `result`, danach Assessment Plan und SSP. */
+  readonly reference: ArReference;
 }
 export interface AssessmentObservation extends ApEntity {
   readonly origins: readonly ArOrigin[];

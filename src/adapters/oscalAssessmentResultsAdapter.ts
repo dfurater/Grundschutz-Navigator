@@ -37,7 +37,6 @@ import { parts, reviewedControls } from '@/adapters/oscalAssessmentPlanSelection
 import { activities, tasks } from '@/adapters/oscalAssessmentPlanTasks';
 import {
   AR_BASE_PATH,
-  cloneIndex,
   diagnoseTaskCycles,
   origins,
   subjectReferences,
@@ -105,7 +104,9 @@ function indexDocument(root: JsonObject, local: JsonObject, state: ArDeriveState
 }
 /** Je `result` ein eigener lokaler Identitätsbereich über dem Dokumentbereich. */
 function resultState(result: JsonObject, rp: string, state: ArDeriveState): ArDeriveState {
-  const scoped: ArDeriveState = { ...state, local: cloneIndex(state.local), assets: new Map() };
+  // Flache Kopie: Die inneren Maps der dokumentweiten Typen (Rollen, Parteien, Orte, Aktivitäten,
+  // Ressourcen) werden geteilt; ein `result` indexiert nur eigene Typen und legt dafür neue Maps an.
+  const scoped: ArDeriveState = { ...state, local: new Map(state.local), assets: new Map() };
   const local = isJsonObject(result['local-definitions']) ? result['local-definitions'] : {};
   const lp = `${rp}/local-definitions`;
   indexNodes(scoped, local, 'components', 'component', lp, 'COMPONENT_UUID_DUPLICATE');
@@ -210,6 +211,7 @@ export function deriveAssessmentResults(
     sspAvailable: false,
     plan: new Map(),
     planAvailable: false,
+    planBound: options.assessmentPlan !== undefined,
     document: new Map(),
     evidenceByPath: new Map(),
     observationReferences: new Map(),
@@ -223,8 +225,10 @@ export function deriveAssessmentResults(
   const resultNodes = readObjectArrayField(root, 'results', AR_BASE_PATH, state);
   const scopes = resultNodes.map(({ node, path }) => resultState(node, path, state));
 
+  // Nur dokumentweite Bereiche: die Evidenzableitung kennt keine Ergebnisgrenze, lokale
+  // Definitionen eines `result` lösen ausschließlich über `subjects[].reference` auf.
   const contextUuids = new Set(
-    [state.ssp, state.plan, ...scopes.map((scope) => scope.local)].flatMap((index) =>
+    [state.ssp, state.plan, state.local].flatMap((index) =>
       SUBJECT_TYPES.flatMap((type) => [...(index.get(type)?.keys() ?? [])]),
     ),
   );
