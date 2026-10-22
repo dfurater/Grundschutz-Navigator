@@ -21,6 +21,7 @@ type Severity = 'error' | 'warn' | 'off';
 
 /** Satz in ARCHITECTURE.md, der eine Regel mit ihrer Stufe beschreibt. */
 const CLAIMS: ReadonlyArray<{ readonly rule: string; readonly severity: Severity; readonly marker: string }> = [
+  { rule: '@typescript-eslint/no-deprecated', severity: 'error', marker: 'läuft ESLint zusätzlich mit Typinformation' },
   { rule: '@typescript-eslint/await-thenable', severity: 'error', marker: 'läuft ESLint zusätzlich mit Typinformation' },
   { rule: '@typescript-eslint/no-floating-promises', severity: 'error', marker: 'läuft ESLint zusätzlich mit Typinformation' },
   { rule: '@typescript-eslint/no-floating-promises', severity: 'off', marker: 'ist nur `no-floating-promises` abgeschaltet' },

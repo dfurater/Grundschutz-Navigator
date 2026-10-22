@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type MutableRefObject } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { downloadBlob } from '@/adapters/browserDownload';
 import type { ReviewApprovalRequest } from '@/adapters/workspaceStore';
 import { isPinnedOscalVersion, type OscalRootKey } from '@/domain/oscalVersionMatrix';
@@ -51,9 +51,9 @@ export interface DocumentEditorCore<M extends string> {
   /** Gespeicherte ausgehende Bindungen, am Arbeitsstand ausgerichtet. */
   readonly stored: readonly WorkspaceBinding[];
   readonly setStored: (update: (current: readonly WorkspaceBinding[]) => readonly WorkspaceBinding[]) => void;
-  readonly latest: MutableRefObject<Latest>;
+  readonly latest: React.RefObject<Latest>;
   /** Läuft ein explizites Speichern? */
-  readonly saving: MutableRefObject<boolean>;
+  readonly saving: React.RefObject<boolean>;
   readonly change: (patch: (source: unknown) => unknown) => void;
   /**
    * Explizites Speichern von `working`: `prepare` bestimmt Quelle, Zustand und

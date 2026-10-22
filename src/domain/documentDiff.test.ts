@@ -82,11 +82,11 @@ describe('diffDocuments', () => {
   });
 
   it('rejects traversal beyond node or depth bounds', () => {
-    expect(() => run(next(), next({ values: [1, 2, 3] }), { maxNodes: 2 })).toThrowError(new Error('REVIEW_DIFF_LIMIT'));
-    expect(() => run(next(), next({ deep: { deeper: { deepest: 1 } } }), { maxDepth: 2 })).toThrowError(new Error('REVIEW_DIFF_LIMIT'));
+    expect(() => run(next(), next({ values: [1, 2, 3] }), { maxNodes: 2 })).toThrow(new Error('REVIEW_DIFF_LIMIT'));
+    expect(() => run(next(), next({ deep: { deeper: { deepest: 1 } } }), { maxDepth: 2 })).toThrow(new Error('REVIEW_DIFF_LIMIT'));
   });
 
   it('rejects non-JSON values', () => {
-    expect(() => run(next(), next({ bad: undefined }))).toThrowError(new Error('REVIEW_DIFF_INVALID'));
+    expect(() => run(next(), next({ bad: undefined }))).toThrow(new Error('REVIEW_DIFF_INVALID'));
   });
 });

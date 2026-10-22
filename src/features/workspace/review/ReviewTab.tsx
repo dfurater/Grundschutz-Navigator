@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useState } from 'react';
 import { Button } from '@/components/Button';
 import type { LocalId, WorkspaceEnvelope } from '@/domain/workspaceModel';
 import { INPUT } from '@/features/workspace/profile/ProfileMarks';
@@ -144,7 +144,7 @@ export function ReviewTab({ localId, documentSavedAt, editorDirty = false, appro
         Prüfpunkte und Entscheidungen bleiben im Workspace dieses Browsers. Nur eine Freigabe wird als Aktion in das Dokument geschrieben.
       </p>
       {review.message && <output className="block text-sm text-[var(--color-text-primary)]">{MESSAGES[review.message]}</output>}
-      <form className="space-y-3" onSubmit={(event: FormEvent) => event.preventDefault()}>
+      <form className="space-y-3" onSubmit={(event: React.SubmitEvent<HTMLFormElement>) => event.preventDefault()}>
         <h3 className="text-base font-semibold text-[var(--color-text-primary)]">Entscheidungen</h3>
         <div className="space-y-1">
           <label htmlFor={`${localId}-decision-reason`} className="text-sm font-medium text-[var(--color-text-primary)]">

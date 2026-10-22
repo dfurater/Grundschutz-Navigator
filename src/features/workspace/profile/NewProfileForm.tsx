@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { buildWorkspaceDocumentUrl } from '@/app/routes';
 import { Button } from '@/components/Button';
@@ -37,7 +37,7 @@ export function NewProfileForm({ view, onCancel }: Readonly<{ view: VerbundView;
   const pending = useRef<AbortController | undefined>(undefined);
   useEffect(() => () => pending.current?.abort(), []);
 
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
+  const submit = async (event: React.SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!ready || !target) return;
     const oscalVersion = target.oscalVersion;

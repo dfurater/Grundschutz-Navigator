@@ -277,6 +277,7 @@ export default defineConfig(
       },
     },
     rules: {
+      '@typescript-eslint/no-deprecated': 'error',
       '@typescript-eslint/await-thenable': 'error',
       '@typescript-eslint/no-floating-promises': 'error',
     },

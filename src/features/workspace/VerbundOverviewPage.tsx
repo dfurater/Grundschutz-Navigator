@@ -1,4 +1,4 @@
-import { useId, useState, type FormEvent } from 'react';
+import { useId, useState } from 'react';
 import { Link } from 'react-router';
 import { PageTitle } from '@/app/PageTitle';
 import { PAGE_TITLES } from '@/app/pageTitles';
@@ -26,7 +26,7 @@ function NameForm({ label, submitLabel, initial = '', disabled, onSubmit, onCanc
   const [name, setName] = useState(initial);
   // Während des Speicherns ist das Formular gesperrt: ein Doppelklick legt keinen zweiten Verbund an.
   const [saving, setSaving] = useState(false);
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = (event: React.SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (saving || !isVerbundName(name)) return;
     setSaving(true);

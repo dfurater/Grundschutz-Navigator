@@ -350,11 +350,11 @@ describe('Gestaltungssystem-Regel gegen Tailwind-Ausgabe (GSPP-533)', () => {
   });
 });
 
-describe('Type-aware Promise-Gate (GSPP-199)', () => {
+describe('Type-aware Gate', () => {
   it.each([
     'src/domain/integrity.ts',
     'src/features/catalog/ControlTable.tsx',
-  ])('aktiviert den Project Service und beide Regeln als Fehler für %s', async (filePath) => {
+  ])('aktiviert den Project Service und die typabhängigen Regeln als Fehler für %s', async (filePath) => {
     const config = await eslint.calculateConfigForFile(filePath);
 
     expect(config.languageOptions.parserOptions.projectService).toBe(true);
@@ -363,9 +363,10 @@ describe('Type-aware Promise-Gate (GSPP-199)', () => {
     }
   });
 
-  it('prüft Fehl-await auch in Tests, nicht aber schwebende Promises', async () => {
+  it('prüft Fehl-await und abgekündigte APIs auch in Tests, nicht aber schwebende Promises', async () => {
     const config = await eslint.calculateConfigForFile('src/domain/integrity.test.ts');
 
+    expect(config.rules['@typescript-eslint/no-deprecated']).toEqual([2]);
     expect(config.rules['@typescript-eslint/await-thenable']).toEqual([2]);
     expect(config.rules['@typescript-eslint/no-floating-promises']).toEqual([0]);
   });
