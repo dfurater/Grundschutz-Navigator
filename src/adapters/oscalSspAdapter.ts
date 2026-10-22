@@ -31,6 +31,7 @@ import { resolveOscalReference } from '@/domain/referenceResolution';
 import {
   checkRoleAssignmentReferences,
   diagnose,
+  uuidKey,
   readMetadataIdentities,
   readObjectField,
   SSP_ADAPTER_DIAGNOSTIC_CODES,
@@ -135,6 +136,18 @@ function deriveImportProfile(body: JsonObject, state: SspDeriveState): SspImport
   };
 }
 
+/** Rollen-`id` und Party-`uuid` sind dokumentweit eindeutig; jede Wiederholung wird an ihrem Feld diagnostiziert. */
+function checkUniqueIdentities(entries: unknown, field: string, toKey: (value: string) => string, path: string, code: string, state: SspDeriveState): void {
+  const seen = new Set<string>();
+  readArray(entries).forEach((entry, index) => {
+    const value = isJsonObject(entry) ? readString(entry[field]) : undefined;
+    if (value === undefined) return;
+    const key = toKey(value);
+    if (seen.has(key)) diagnose(state, code, `${path}/${index}/${field}`);
+    seen.add(key);
+  });
+}
+
 /**
  * `metadata.responsible-parties` und die `responsible-parties` jeder
  * `metadata.actions`-Zeile verweisen auf `metadata.roles` und
@@ -144,6 +157,8 @@ function checkMetadataReferences(rootBody: JsonObject, state: SspDeriveState): v
   const metadata = rootBody.metadata;
   if (!isJsonObject(metadata)) return;
   const path = `${SSP_BASE_PATH}/metadata`;
+  checkUniqueIdentities(metadata.roles, 'id', (value) => value, `${path}/roles`, SSP_ADAPTER_DIAGNOSTIC_CODES.ROLE_ID_DUPLICATE, state);
+  checkUniqueIdentities(metadata.parties, 'uuid', uuidKey, `${path}/parties`, SSP_ADAPTER_DIAGNOSTIC_CODES.PARTY_UUID_DUPLICATE, state);
   checkRoleAssignmentReferences(metadata, path, state, 'responsible-parties');
   readArray(metadata.actions).forEach((action, index) => {
     if (isJsonObject(action)) checkRoleAssignmentReferences(action, `${path}/actions/${index}`, state, 'responsible-parties');

@@ -1,5 +1,6 @@
 import { useContext, useEffect, useState } from 'react';
-import { buildTargetControlIndex } from '@/domain/profileTargetControls';
+import { buildWorkspaceCatalog } from '@/domain/workspaceCatalog';
+import type { CatalogPin } from '@/domain/workspaceCatalogPin';
 import { SUPPORTED_CATALOGS, type CatalogKey } from '@/domain/sourceRegistry';
 import type { BindingTarget, VerbundId } from '@/domain/workspaceModel';
 import { useWorkspace } from '@/hooks/useWorkspace';
@@ -10,11 +11,13 @@ export type BaselineControls = readonly string[] | null;
 
 /**
  * Anforderungen der gebundenen Baseline: ein BSI-Katalog erst nach bestandener
- * Hashprüfung, ein lokaler Catalog über seinen Quellgraphen, ein lokales Profil
+ * Hashprüfung und nur, solange das Dokument an genau den ausgelieferten Stand
+ * gebunden ist (`pin`), ein lokaler Catalog über dieselbe Katalogprojektion wie
+ * der Verbundgraph (mehrdeutige IDs machen ihn unauflösbar), ein lokales Profil
  * über die Auflösung im Worker. `control/@id` ist nur innerhalb dieser einen
  * Baseline eindeutig.
  */
-export function useBaselineControls(verbundId: VerbundId, target: BindingTarget | undefined): BaselineControls {
+export function useBaselineControls(verbundId: VerbundId, target: BindingTarget | undefined, pin: CatalogPin | undefined): BaselineControls {
   const { catalogs, requestCatalog } = useContext(CatalogContext);
   const { documents } = useWorkspace();
   const [local, setLocal] = useState<{ key: string; ids: BaselineControls }>();
@@ -31,7 +34,10 @@ export function useBaselineControls(verbundId: VerbundId, target: BindingTarget 
     void (async (): Promise<BaselineControls> => {
       const document = await documents.getDocument(localId);
       if (!document.ok || !document.value) return null;
-      if (document.value.rootType === 'catalog') return buildTargetControlIndex(document.value.source)?.ids ?? null;
+      if (document.value.rootType === 'catalog') {
+        const catalog = buildWorkspaceCatalog(document.value.source);
+        return catalog.status === 'success' ? [...catalog.catalog.controlsById.keys()] : null;
+      }
       if (document.value.rootType !== 'profile') return null;
       const bindings = await documents.listBindings();
       if (!bindings.ok) return null;
@@ -43,6 +49,8 @@ export function useBaselineControls(verbundId: VerbundId, target: BindingTarget 
   }, [documents, localId, verbundId]);
 
   if (entry) {
+    // Ein anderer als der gebundene Stand bewertet nie still um (applyCatalogPins hält ihn aus dem Graphen).
+    if (pin && pin.state !== 'bound') return null;
     const loaded = catalogs.get(entry.catalogKey as CatalogKey);
     return loaded?.verification?.valid === true && loaded.catalog ? loaded.catalog.controls.map((control) => control.id) : null;
   }

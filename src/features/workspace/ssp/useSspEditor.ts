@@ -120,10 +120,12 @@ export function useSspEditor(localId: LocalId): SspEditor {
   // Ein offener Entwurf wird dabei mitgespeichert: Er ist sonst unter der Sperre nicht mehr zu sichern.
   const bindCatalogStand = useCallback(() => commitSsp(true), [commitSsp]);
 
-  const exportDocument = useCallback(() => exportWith(exportSspInWorker, 'ssp.json'), [exportWith]);
+  // Eine ungespeicherte Baseline-Wahl ist eine offene Änderung, auch wenn die Quelle gleich bleibt.
+  const dirty = core.dirty || pendingBaseline !== undefined;
+  const exportDocument = useCallback(async () => { if (!dirty) await exportWith(exportSspInWorker, 'ssp.json'); }, [dirty, exportWith]);
 
   return {
-    status: core.status, envelope: core.envelope, working, dirty: core.dirty, saveState: core.saveState, busy: core.busy, message: core.message,
+    status: core.status, envelope: core.envelope, working, dirty, saveState: core.saveState, busy: core.busy, message: core.message,
     baseline, baselineBindable, apply, chooseBaseline, save, bindCatalogStand, exportDocument, remove: core.remove, adopt: core.adopt,
   };
 }

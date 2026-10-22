@@ -17,7 +17,7 @@ import { ReferenceEdges } from '@/features/workspace/ReferenceEdges';
 import { ReviewSection } from '@/features/workspace/review/ReviewSection';
 import { PackageActions } from '@/features/workspace/profile/PackagePanel';
 import { SECTION_LABEL } from '@/features/workspace/profile/ProfileMarks';
-import { useImportTargets } from '@/features/workspace/profile/useImportTargets';
+import { targetKey, useImportTargets } from '@/features/workspace/profile/useImportTargets';
 import {
   BaselineSection, CharacteristicsSection, ControlImplementationSection, ImplementationSection, MetadataSection,
 } from '@/features/workspace/ssp/SspFormSections';
@@ -67,7 +67,7 @@ export function SspEditorPage({ view, document }: Readonly<{ view: VerbundView; 
   const localId = document.localId as LocalId;
   const editor = useSspEditor(localId);
   const options = useImportTargets(view);
-  const controls = useBaselineControls(view.verbund.verbundId as VerbundId, editor.baseline);
+  const controls = useBaselineControls(view.verbund.verbundId as VerbundId, editor.baseline, document.catalogPin);
   const [confirming, setConfirming] = useState(false);
   const navigate = useNavigate();
 
@@ -96,7 +96,8 @@ export function SspEditorPage({ view, document }: Readonly<{ view: VerbundView; 
             <BaselineSection editor={editor} options={options} />
             <CharacteristicsSection editor={editor} />
             <ImplementationSection editor={editor} />
-            <ControlImplementationSection editor={editor} controls={controls} />
+            {/* Ein Baseline-Wechsel setzt die offene Anforderungswahl zurück. */}
+            <ControlImplementationSection key={editor.baseline ? targetKey(editor.baseline) : 'ohne-baseline'} editor={editor} controls={controls} />
           </fieldset>
           <SspDocumentContent key={`${localId}:${editor.envelope.savedAt}`} localId={localId} />
           <ReferenceEdges view={view} document={document} />

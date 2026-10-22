@@ -5,6 +5,9 @@ import { addSspItem, moveSspItem, readSspValue, removeSspItem, setSspValue, type
 import { INPUT, OscalKey, SECTION_LABEL } from '@/features/workspace/profile/ProfileMarks';
 import type { SspEditor } from '@/features/workspace/ssp/useSspEditor';
 
+/** Zeilen je Ausschnitt einer bearbeitbaren Liste; weitere erscheinen schrittweise wie in der lesenden Ansicht. */
+export const ROW_PAGE = 50;
+
 const REQUIRED_MARK = 'text-xs font-medium text-[var(--color-text-muted)]';
 
 /** OSCAL-Schlüssel eines Pfads für die Feldbeschriftung, ohne Listenindizes. */
@@ -116,6 +119,7 @@ export function SspRowList({ editor, path, title, required = false, uuidKeyed, n
   const headingId = useId();
   const items = readArray(readSspValue(editor.working, path));
   const rows = useRowKeys(items, uuidKeyed);
+  const [visible, setVisible] = useState(ROW_PAGE);
   const removeAt = (index: number) => {
     if (editor.apply((source) => (remove ?? ((current, at) => removeSspItem(current, path, at)))(source, index))) rows.removed(index);
   };
@@ -132,7 +136,7 @@ export function SspRowList({ editor, path, title, required = false, uuidKeyed, n
       </h3>
       {items.length > 0 && (
         <ul className="divide-y divide-[var(--color-border-subtle)] rounded-md border border-[var(--color-border-default)]">
-          {items.map((item, index) => {
+          {items.slice(0, visible).map((item, index) => {
             const label = rowTitle(item, index);
             return (
               <li key={rows.keyAt(item, index)} aria-label={label} className="space-y-3 p-3">
@@ -146,6 +150,11 @@ export function SspRowList({ editor, path, title, required = false, uuidKeyed, n
             );
           })}
         </ul>
+      )}
+      {visible < items.length && (
+        <Button variant="secondary" size="sm" className="min-h-touch tabular-nums desktop:min-h-0" onClick={() => setVisible((count) => count + ROW_PAGE)}>
+          Weitere Einträge · {visible} von {items.length}
+        </Button>
       )}
       {newItem && (
         <Button variant="secondary" size="sm" className="min-h-touch desktop:min-h-0" onClick={() => { if (editor.apply((source) => addSspItem(source, path, newItem()))) rows.added(); }}>

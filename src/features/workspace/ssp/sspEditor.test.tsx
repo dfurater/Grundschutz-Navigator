@@ -222,7 +222,8 @@ describe('Referenzen und Bindungen', () => {
     expect(within(main()).queryByRole('radio', { name: /Fremdes Profil/ })).not.toBeInTheDocument();
 
     fireEvent.click(within(main()).getByRole('radio', { name: /catalog-gspp/ }));
-    await waitFor(() => expect(requirements).not.toHaveTextContent('nicht auflösbar im aktuellen Kontext'));
+    // Der Baseline-Wechsel hängt den Abschnitt neu ein.
+    await waitFor(() => expect(within(main()).getByRole('region', { name: /^Anforderungen/ })).not.toHaveTextContent('nicht auflösbar im aktuellen Kontext'));
     await click('Speichern');
     await waitFor(async () => {
       const bindings = (await readStore((store) => store.listBindings())).filter((binding) => binding.fromLocalId === imported.localId);
@@ -278,10 +279,10 @@ describe('Abweisungen und Zuordnungen', () => {
     fireEvent.click(await within(main()).findByRole('radio', { name: /catalog-gspp/ }, WAIT));
     const select = await within(main()).findByRole('combobox', { name: /^Neue Anforderung/ }, WAIT);
     fireEvent.change(select, { target: { value: 'GC.1.2' } });
-    const add = within(main()).getByRole('button', { name: 'Anforderung hinzufügen' });
-    expect(add).toBeEnabled();
+    const add = () => within(main()).getByRole('button', { name: 'Anforderung hinzufügen' });
+    expect(add()).toBeEnabled();
     fireEvent.click(within(main()).getByRole('radio', { name: /Lokaler Katalog/ }));
-    await waitFor(() => expect(add).toBeDisabled(), WAIT);
+    await waitFor(() => expect(add()).toBeDisabled(), WAIT);
   });
 
   it('übernimmt keinen neueren Stand, solange eine Baseline-Wahl ungespeichert ist', async () => {
@@ -300,6 +301,26 @@ describe('Abweisungen und Zuordnungen', () => {
     // Ohne Übernahme bleibt der ältere Vergleichsstand: Speichern meldet den Konflikt, statt die neuere Bindung zu überschreiben.
     await click('Speichern');
     expect(await within(main()).findByText('In einem anderen Tab geändert', undefined, WAIT)).toBeInTheDocument();
+  });
+
+  it('führt eine ungespeicherte Baseline-Wahl als Entwurf und sperrt den Export', async () => {
+    const relative = await addSsp(seeded.verbundId, withSspBody(makeFullSsp(), (body) => { body['import-profile'].href = 'profile.json'; }));
+    renderArea(buildWorkspaceDocumentUrl(seeded.verbundId, relative.localId), withGspp());
+    await waitFor(() => expect(within(main()).getAllByText('Gültig').length).toBeGreaterThan(0), WAIT);
+    fireEvent.click(await within(main()).findByRole('radio', { name: /catalog-gspp/ }, WAIT));
+    await waitFor(() => expect(within(main()).getAllByText('Entwurf').length).toBeGreaterThan(0), WAIT);
+    expect(within(main()).getByRole('button', { name: 'Export' })).toBeDisabled();
+  });
+
+  it('bewertet Anforderungen nicht gegen einen BSI-Katalog, an dessen Stand das SSP nicht gebunden ist', async () => {
+    const unpinned = await addSsp(seeded.verbundId, makeFullSsp());
+    await readStore((store) => store.setBinding({
+      fromLocalId: unpinned.localId, pointer: '/system-security-plan/import-profile/href', href: `#${SSP_FIXTURE_IDS.baselineResource}`,
+      target: { kind: 'class-1', artifactKey: 'catalog-gspp' },
+    }, unpinned.savedAt));
+    renderArea(buildWorkspaceDocumentUrl(seeded.verbundId, unpinned.localId), withGspp());
+    await waitFor(() => expect(main().querySelector('[data-catalog-pin="unpinned"]')).toBeInTheDocument(), WAIT);
+    expect(within(main()).getByRole('region', { name: /^Anforderungen/ })).toHaveTextContent('nicht auflösbar im aktuellen Kontext');
   });
 
   it('navigiert nach einem abgebrochenen Anlegen nicht mehr', async () => {
@@ -335,6 +356,18 @@ describe('Listenzeilen und Löschung', () => {
     await click('Rolle 1 · zweite entfernen');
     expect(ids()).toHaveLength(1);
     expect(ids()[0].value).toBe('erste');
+  });
+
+  it('rendert große Listen schrittweise', async () => {
+    const many = withSspBody(makeFullSsp(), (body) => {
+      body['system-characteristics']['system-ids'] = Array.from({ length: 60 }, (_, index) => ({ id: `SYS-${index}` }));
+    });
+    const imported = await addSsp(seeded.verbundId, many);
+    renderArea(buildWorkspaceDocumentUrl(seeded.verbundId, imported.localId), withGspp());
+    const list = await within(main()).findByRole('region', { name: /^Systemkennungen/ }, WAIT);
+    expect(within(list).getAllByRole('listitem')).toHaveLength(50);
+    fireEvent.click(within(list).getByRole('button', { name: /Weitere Einträge · 50 von 60/ }));
+    expect(within(list).getAllByRole('listitem')).toHaveLength(60);
   });
 
   it('löscht ein SSP erst nach Bestätigung samt Bindungen', async () => {

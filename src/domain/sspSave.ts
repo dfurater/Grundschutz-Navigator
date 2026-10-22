@@ -45,6 +45,8 @@ const READINESS_BLOCKERS: ReadonlySet<string> = new Set([
   SSP_ADAPTER_DIAGNOSTIC_CODES.COMPONENT_REFERENCE_UNRESOLVED,
   SSP_ADAPTER_DIAGNOSTIC_CODES.ROLE_REFERENCE_UNRESOLVED,
   SSP_ADAPTER_DIAGNOSTIC_CODES.PARTY_REFERENCE_UNRESOLVED,
+  SSP_ADAPTER_DIAGNOSTIC_CODES.ROLE_ID_DUPLICATE,
+  SSP_ADAPTER_DIAGNOSTIC_CODES.PARTY_UUID_DUPLICATE,
 ]);
 
 function firstFailure(source: unknown, codes: ReadonlySet<string>): SspReferenceFailure | undefined {
@@ -64,7 +66,7 @@ export function sspSaveBlocker(source: unknown): SspReferenceFailure | undefined
   return firstFailure(source, SAVE_BLOCKERS);
 }
 
-/** Erste unauflösbare `component-uuid`, `role-id` oder Party-UUID; sie verhindert `export-ready`. */
+/** Erste unauflösbare `component-uuid`, `role-id` oder Party-UUID oder ein mehrdeutiges Rollen- oder Parteiziel; sie verhindert `export-ready`. */
 export function sspReadinessBlocker(source: unknown): SspReferenceFailure | undefined {
   return firstFailure(source, READINESS_BLOCKERS);
 }
