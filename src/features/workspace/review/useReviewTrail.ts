@@ -18,7 +18,8 @@ export type ReviewTrailMessage =
   | 'withdrawal-unknown'
   | 'conflict'
   | 'work-failed'
-  | 'decision-failed';
+  | 'decision-failed'
+  | 'catalog-locked';
 
 export interface ReviewDecisionInput {
   readonly decision: Exclude<ReviewDecisionKind, 'approved'>;
@@ -48,7 +49,7 @@ export function reviewTrailMessage(code: string): ReviewTrailMessage {
     case 'REVIEW_WITHDRAWAL_DUPLICATE': return 'decision-not-allowed';
     case 'REVIEW_TRAIL_WORK_FAILED': return 'work-failed';
     case 'WORKSPACE_DOCUMENT_NOT_FOUND': return 'load-failed';
-    default: return 'decision-failed';
+    default: return code.startsWith('OSCAL_WORKSPACE_CATALOG_PIN_') ? 'catalog-locked' : 'decision-failed';
   }
 }
 

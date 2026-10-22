@@ -66,6 +66,21 @@ Es gibt **keinen** Rückweg aus dem Arbeitsbereich nach außen außer dem vom Nu
 
 Der letzte Punkt ist eine Modelltatsache: `hash` existiert im OSCAL-Modell ausschließlich unter `back-matter/resource/rlinks/hashes` und beschreibt dort eine *referenzierte* Ressource. Ein Dokument-Selbsthash existiert nicht; ein Verifikationsindikator im Sinne von Klasse 1 ist für ein lokales Dokument **prinzipiell unmöglich**.
 
+### Bindung an einen Katalogstand
+
+Ein lokales Dokument mit einer Bindung auf einen BSI-Katalog trägt je Katalog das Paar `assessed-against-catalog-key`/`assessed-against-catalog-commit` auf `metadata.props` ([PROJECT_PROPS.md](PROJECT_PROPS.md)). Das Paar ist der einzige Katalogbezug im Arbeitsbereich; Katalogbytes liegen in keinem Store. `src/domain/workspaceCatalogPin.ts` setzt das um:
+
+- Die Neuanlage von Profil und SSP und jedes explizite Speichern eines Profils oder SSP ergänzen für eine Katalogbindung ohne Paar den ausgelieferten Stand (`withCatalogPins`). Ein vorhandenes Paar bleibt unverändert.
+- Ausgeliefert ist ein Stand, wenn der in der Sitzung geladene Katalog die Hashprüfung aus [INTEGRITY.md](INTEGRITY.md) bestanden hat und `source.commit_sha` seines Manifests dem Paar entspricht. Die Auslieferungstiefe je `catalogKey` ist eins: Der Build liefert nur den aktuellen Stand unter `public/data/` aus.
+- `catalogPinStatus` liefert je Dokument `bound`, `pending` (Katalog noch nicht geladen), `unpinned` (kein Paar), `not-delivered` (anderer ausgelieferter Stand), `unverified` (Hashprüfung nicht bestanden) oder `invalid` (Projekt-Props sperren den Schreibpfad oder ein Paar nennt einen nicht unterstützten Katalog). Außer `bound` ist jeder Zustand ein Schreibschutz für Bearbeiten, Speichern und Prüfentscheidungen jedes Dokumenttyps; Lesen, Export und Löschen bleiben möglich.
+- Ein vorhandenes Paar wird auch ohne gespeicherte Katalogbindung geprüft: Der Dateiimport legt ein Dokument mit leerem Bindungssatz an, und ein noch nicht zugeordneter Import behält die Bewertungsgrundlage aus seiner Quelle. Ist der Katalog eines solchen Paars in der Sitzung noch nicht geladen, fordert der `WorkspaceProvider` ihn an.
+- Die Sperre wirkt entlang lokaler Bindungen weiter (`applyCatalogPins`, zyklussicher): Importiert ein SSP ein lokales Profil, dessen Stand nicht gebunden ist, erbt das SSP den Zustand als `inherited`. Eine geerbte Sperre betrifft nur Prüfpunkte, Prüfentscheidungen und Freigaben (`reviewLocked`), nicht das Bearbeiten (`editLocked`); die Diagnose steht beim referenzierten Dokument. `createWorkspaceDocuments` übergibt dieselbe Ableitung als `ReviewGuard` an `appendCheckpoint`, `appendDecision` und ein Speichern mit Freigabe; `WorkspaceStore` wertet sie in der Schreibtransaktion gegen die dort gelesenen Dokumente und Bindungen des Verbunds aus. Die Sperre besteht damit nicht nur in der Oberfläche, und ein anderer Tab kann sie zwischen Prüfung und Schreiben nicht umgehen. Geerbt wird nur über lokale Bindungen, deren Referenz die Quelle noch trägt.
+- `applyCatalogPins` hält je Bindung jede Katalogbindung aus dem Dokumentgraphen heraus, deren Katalog kein Paar hat oder deren Paar nicht dem ausgelieferten Stand entspricht, bei `invalid` alle Katalogbindungen des Dokuments; die Kante zeigt „Gebundener Katalogstand gesperrt“ und löst gegen keinen anderen Stand auf. Die Anwendung lädt dafür nichts aus dem Upstream nach.
+- Die Diagnosecodes `OSCAL_WORKSPACE_CATALOG_PIN_MISSING`, `…_NOT_DELIVERED`, `…_UNVERIFIED` und `…_INVALID` tragen nur Code und Pfad `/metadata/props`, keinen Schlüssel und keinen Commit.
+- Ein Profil oder SSP ohne Paar bietet die Aktion „An ausgelieferten Stand binden“ an; sie schreibt das Paar als explizites Speichern und übernimmt dabei einen offenen Entwurf. Die Neuanlage von Profil und SSP wählt einen BSI-Katalog erst nach bestandener Hashprüfung als Ziel. Ein vorhandenes Paar ändert die Anwendung nicht.
+
+Der Katalog-Viewer wertet keine Paare aus und zeigt stets den zuletzt ausgelieferten Stand.
+
 ## 3. Speichervertrag
 
 ### Datenbank und Stores

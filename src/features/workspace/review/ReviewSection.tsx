@@ -7,10 +7,11 @@ import { ReviewTab } from '@/features/workspace/review/ReviewTab';
  * Aufklappbare Prüfspur einer Dokumentseite; der Worker startet erst beim
  * Aufklappen. Eine Bearbeitungsansicht reicht Arbeitsstand und
  * Speicherzeitpunkt durch, damit der Prüfstand einem geänderten oder neu
- * gespeicherten Dokument folgt.
+ * gespeicherten Dokument folgt. `locked` sperrt die Prüfaktionen.
  */
-export function ReviewSection({ localId, documentSavedAt, editorDirty, onDocumentAdopted }: Readonly<{
+export function ReviewSection({ localId, locked, documentSavedAt, editorDirty, onDocumentAdopted }: Readonly<{
   localId: LocalId;
+  locked: boolean;
   documentSavedAt?: string;
   editorDirty?: boolean;
   onDocumentAdopted?: (document: WorkspaceEnvelope) => Promise<'adopted' | 'blocked' | 'failed'>;
@@ -22,9 +23,9 @@ export function ReviewSection({ localId, documentSavedAt, editorDirty, onDocumen
         Prüfung und Freigabe
       </summary>
       {open && (
-        <div className="border-t border-[var(--color-border-default)] p-4">
+        <fieldset disabled={locked} className="min-w-0 border-t border-[var(--color-border-default)] p-4">
           <ReviewTab key={localId} localId={localId} documentSavedAt={documentSavedAt} editorDirty={editorDirty} onDocumentAdopted={onDocumentAdopted} />
-        </div>
+        </fieldset>
       )}
     </details>
   );

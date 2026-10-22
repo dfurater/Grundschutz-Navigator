@@ -242,7 +242,7 @@ export function useDocumentEditor<M extends string>({ localId, rootType, sameCon
       setBusy(false);
     }
     // Eine Abweisung vor dem Schreiben hält den Autosave ebenso am Laufen wie ein gescheitertes Schreiben.
-    if (!prepared.ok || result === undefined || !result.ok) {
+    if (!prepared.ok || !result?.ok) {
       if (latest.current.unsaved) schedule();
       if (!prepared.ok) return prepared;
       setMessage('save-failed');

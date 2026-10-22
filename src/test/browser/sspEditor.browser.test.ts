@@ -14,6 +14,7 @@ import { CatalogContext } from '@/state/CatalogContext';
 import { WorkspaceProvider } from '@/state/WorkspaceContext';
 import { createA11yCatalogState } from '@/test/browser/a11yCatalogState';
 import { assertNoAxeViolations } from '@/test/browser/axeAssertions';
+import { makeSchemaValidOscalDocument } from '@/test/fixtures/oscalSchemaFixtures';
 import { makeFullSsp, makeMinimalSsp, SSP_FIXTURE_IDS } from '@/test/fixtures/systemSecurityPlans';
 import { readStore, resetWorkspace, seedWorkspace, value } from '@/test/workspaceAreaFixture';
 import '@/index.css';
@@ -133,6 +134,10 @@ describe.each(LAYOUTS)('$name ($width px)', ({ name, width, height, touch }) => 
 
 test('Neuanlage per Tastatur, Speichern und Export im echten Worker bleiben lokal', async () => {
   const seeded = await seedWorkspace();
+  // Die BSI-Kataloge des Testzustands sind ungeprüft und damit keine Baseline; gewählt wird ein lokaler Catalog.
+  await readStore((store) => store.addDocument(seeded.verbundId, {
+    source: makeSchemaValidOscalDocument('catalog', '1.2.2'), context: { trustClass: 'class-2-local-user' }, rootType: 'catalog', oscalVersion: '1.2.2',
+  }));
   const created = vi.spyOn(URL, 'createObjectURL');
   const { shell, router: current } = await renderAt(buildStationUrl(seeded.verbundId, 'ssp'));
   await expect.poll(() => button(shell, 'Neues SSP')).toBeTruthy();
@@ -141,9 +146,11 @@ test('Neuanlage per Tastatur, Speichern und Export im echten Worker bleiben loka
   await expect.poll(() => shell.querySelector('form input')).toBeTruthy();
   shell.querySelector<HTMLInputElement>('form input')!.focus();
   await userEvent.keyboard(SENTINEL);
-  await userEvent.tab();
-  await expect.poll(() => (document.activeElement as HTMLInputElement | null)?.type).toBe('radio');
+  // Die Gruppe „Eigene Daten“ trägt den lokalen Catalog; die Wahl erfolgt dort per Leertaste.
+  const local = shell.querySelector<HTMLInputElement>('[role="radiogroup"][aria-label="Eigene Daten"] input[type="radio"]')!;
+  local.focus();
   await userEvent.keyboard(' ');
+  await expect.poll(() => local.checked).toBe(true);
   await userEvent.keyboard('{Enter}');
   await expect.poll(() => current.state.location.pathname, { timeout: 15_000 }).toMatch(/\/dokument\//);
   await editorReady(shell);

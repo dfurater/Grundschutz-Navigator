@@ -7,6 +7,8 @@ import type { VerbundView, WorkspaceDocumentView } from '@/state/workspaceVerbun
 import { ReferenceEdges } from '@/features/workspace/ReferenceEdges';
 import { FOCUS_RING, OriginLabel, ValidityBadge } from '@/features/workspace/DocumentMarks';
 import { WorkspaceNotices } from '@/features/workspace/WorkspaceNotices';
+import { CatalogPinNotice } from '@/features/workspace/CatalogPinNotice';
+import { reviewLocked } from '@/domain/workspaceCatalogPin';
 import { WorkspaceStatePage, useRoutedVerbund } from '@/features/workspace/WorkspaceStatePage';
 import { ProfileEditorPage } from '@/features/workspace/profile/ProfileEditorPage';
 import { ReviewSection } from '@/features/workspace/review/ReviewSection';
@@ -31,8 +33,9 @@ function DocumentDetail({ view, document }: Readonly<{ view: VerbundView; docume
         </div>
       </header>
       <WorkspaceNotices />
+      <CatalogPinNotice pin={document.catalogPin} />
       <ReferenceEdges view={view} document={document} />
-      <ReviewSection localId={document.localId} />
+      <ReviewSection localId={document.localId} locked={reviewLocked(document.catalogPin)} />
     </div>
   );
 }

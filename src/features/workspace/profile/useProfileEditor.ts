@@ -4,6 +4,7 @@ import { alignImportBindings, importHrefPointer, removeImport, shiftImportBindin
 import { exportProfileInWorker } from '@/adapters/profileWorkbench';
 import { commitExplicitSave, sameProfileContent } from '@/domain/profileSave';
 import { approvalAction, withApprovalAction, withReviewIdentities } from '@/domain/reviewTrail';
+import { catalogPinsForSave } from '@/domain/workspaceCatalogPin';
 import type { BindingTarget, LocalId, WorkspaceBinding, WorkspaceEnvelope } from '@/domain/workspaceModel';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import type { ReviewApprovalRequest } from '@/adapters/workspaceStore';
@@ -15,7 +16,7 @@ const IMPORT_POINTER = /^\/profile\/imports\/\d+\/href$/;
 
 export type ProfileSaveState = DocumentSaveState;
 
-export type ProfileEditorMessage = DocumentEditorCoreMessage | 'saved-as-draft';
+export type ProfileEditorMessage = DocumentEditorCoreMessage | 'saved-as-draft' | 'catalog-locked';
 
 export interface ProfileApprovalInput extends DecisionSubmission {
   /** Trail-Sequenz, gegen die der Aufrufer gelesen hat. */
@@ -43,6 +44,8 @@ export interface ProfileEditor {
   /** Ändert die Quelle und ordnet einem `href` ein Importziel zu. */
   readonly changeWithTarget: (patch: (source: unknown) => { source: unknown; href: string; index: number }, target: BindingTarget) => void;
   readonly save: () => Promise<void>;
+  /** Bindet ein Dokument ohne Katalogpaar bestätigt an den ausgelieferten, verifizierten Stand. */
+  readonly bindCatalogStand: () => Promise<void>;
   /** Übernimmt einen neueren gespeicherten Stand nur ohne offene Eingaben; sonst bleibt der Konflikt erhalten. */
   readonly adopt: (document: WorkspaceEnvelope) => Promise<'adopted' | 'blocked' | 'failed'>;
   /** Schreibt die Freigabe als `metadata.actions` und den Trail in einem Dokumentenschreibvorgang. */
@@ -91,10 +94,10 @@ function editorBindings(localId: LocalId, imports: readonly ProfileImportView[],
  * Speichern mit change-on-write und Export aus dem gespeicherten Stand.
  */
 export function useProfileEditor(localId: LocalId): ProfileEditor {
-  const { documents } = useWorkspace();
+  const { documents, catalogDelivery } = useWorkspace();
   const pending = documents.importTargets(localId);
   const hasPendingBindings = useCallback(() => pending.size > 0, [pending]);
-  const core = useDocumentEditor<'saved-as-draft'>({ localId, rootType: 'profile', sameContent: sameProfileContent, alignBindings: alignImportBindings, hasPendingBindings });
+  const core = useDocumentEditor<'saved-as-draft' | 'catalog-locked'>({ localId, rootType: 'profile', sameContent: sameProfileContent, alignBindings: alignImportBindings, hasPendingBindings });
   const { working, stored, setStored, change, commit, saving, latest, dirty, setMessage, exportWith } = core;
   // Spiegel der Map aus dem Arbeitsbereich, damit neue Zuordnungen neu rendern.
   const [pendingTargets, setPendingTargets] = useState<ReadonlyMap<string, PendingImportTarget>>(() => new Map(pending));
@@ -120,9 +123,16 @@ export function useProfileEditor(localId: LocalId): ProfileEditor {
   const imports = useMemo(() => readProfileImports(working), [working]);
   const bindings = useMemo(() => editorBindings(localId, imports, stored, pendingTargets), [localId, imports, stored, pendingTargets]);
 
-  const commitProfile = useCallback((source: unknown, approval?: { readonly request: ReviewApprovalRequest; readonly requireSchema: boolean }): Promise<CommitResult> =>
+  const commitProfile = useCallback((source: unknown, approval?: { readonly request: ReviewApprovalRequest; readonly requireSchema: boolean }, rebind = false): Promise<CommitResult> =>
     commit(source, async (storedSource, snapshot) => {
-      const { source: next } = commitExplicitSave(storedSource, snapshot, { uuid: crypto.randomUUID(), lastModified: new Date().toISOString() });
+      // Schreibschutz aus dem gespeicherten Stand; neue Katalogbindungen erhalten das Paar des ausgelieferten Stands.
+      // Vor change-on-write: Ein ergänztes Paar ist eine Inhaltsänderung mit neuer UUID und `last-modified`.
+      const pinned = catalogPinsForSave({ source: storedSource, rootType: 'profile', bindings: stored }, snapshot, bindings, catalogDelivery, rebind);
+      if (!pinned.ok) {
+        setMessage('catalog-locked');
+        return pinned;
+      }
+      const { source: next } = commitExplicitSave(storedSource, pinned.source, { uuid: crypto.randomUUID(), lastModified: new Date().toISOString() });
       const schema = await documents.checkProfileSchema(next);
       // Eine Freigabe über einem schemawidrigen Stand wäre keine belastbare Freigabe.
       if (approval?.requireSchema && schema.status !== 'passed') return { ok: false, code: 'REVIEW_APPROVAL_SCHEMA' };
@@ -134,12 +144,17 @@ export function useProfileEditor(localId: LocalId): ProfileEditor {
         if (assigned?.href === binding.href && sameTarget(assigned.target, binding.target)) pending.delete(binding.pointer);
       }
       setPendingTargets(new Map(pending));
-    }), [bindings, commit, documents, pending]);
+    }), [bindings, catalogDelivery, commit, documents, pending, setMessage, stored]);
 
   const save = useCallback(async () => {
     const result = await commitProfile(latest.current.working);
     if (result.ok && result.documentState === 'draft') setMessage('saved-as-draft');
   }, [commitProfile, latest, setMessage]);
+
+  // Ein offener Entwurf wird dabei mitgespeichert: Er ist sonst unter der Sperre nicht mehr zu sichern.
+  const bindCatalogStand = useCallback(async () => {
+    await commitProfile(latest.current.working, undefined, true);
+  }, [commitProfile, latest]);
 
   const approve = useCallback(async (input: ProfileApprovalInput): Promise<ProfileApprovalResult> => {
     const state = latest.current;
@@ -171,6 +186,6 @@ export function useProfileEditor(localId: LocalId): ProfileEditor {
   return {
     status: core.status, envelope: core.envelope, working, imports, dirty, saveState: core.saveState, busy: core.busy, message: core.message, bindings,
     targetFor: (entry) => targetOf(entry, stored, pendingTargets),
-    change, changeWithTarget, removeImportAt, save, adopt: core.adopt, approve, exportDocument, remove: core.remove,
+    change, changeWithTarget, removeImportAt, save, bindCatalogStand, adopt: core.adopt, approve, exportDocument, remove: core.remove,
   };
 }

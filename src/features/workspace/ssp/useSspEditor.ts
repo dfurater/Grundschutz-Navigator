@@ -3,13 +3,16 @@ import { exportSspInWorker } from '@/adapters/sspWorkbench';
 import { readString } from '@/domain/jsonGuards';
 import { SSP_ADAPTER_DIAGNOSTIC_CODES } from '@/adapters/oscalSspReaders';
 import { readSspValue, setBaselineTitle, sspBaselineBindable, SspPatchError, SSP_IMPORT_PROFILE_POINTER } from '@/domain/sspAuthoring';
+import { catalogPinsForSave } from '@/domain/workspaceCatalogPin';
 import { commitSspSave, sameSspContent, sspReadinessBlocker, sspSaveBlocker } from '@/domain/sspSave';
 import type { BindingTarget, LocalId, WorkspaceBinding, WorkspaceEnvelope } from '@/domain/workspaceModel';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { useDocumentEditor, type DocumentEditorCoreMessage, type DocumentSaveState } from '@/features/workspace/useDocumentEditor';
 import type { PendingImportTarget } from '@/state/workspaceDocuments';
 
-export type SspEditorMessage = DocumentEditorCoreMessage | 'saved-as-draft' | 'component-unresolved' | 'component-referenced' | 'patch-failed';
+type SspMessage = 'saved-as-draft' | 'component-unresolved' | 'component-referenced' | 'patch-failed' | 'catalog-locked';
+
+export type SspEditorMessage = DocumentEditorCoreMessage | SspMessage;
 
 export interface SspEditor {
   readonly status: 'loading' | 'ready' | 'failed';
@@ -27,6 +30,8 @@ export interface SspEditor {
   readonly apply: (patch: (source: unknown) => unknown) => boolean;
   readonly chooseBaseline: (target: BindingTarget, title: string) => void;
   readonly save: () => Promise<void>;
+  /** Bindet ein SSP ohne Katalogpaar bestätigt an den ausgelieferten, verifizierten Stand. */
+  readonly bindCatalogStand: () => Promise<void>;
   readonly exportDocument: () => Promise<void>;
   readonly remove: () => Promise<boolean>;
   /** Übernimmt einen neueren gespeicherten Stand nur ohne offene Eingaben. */
@@ -44,11 +49,11 @@ function baselineHref(source: unknown): string | undefined {
  * eine Bindung am Pointer `import-profile.href`, nie ein aufgelöster Verweis.
  */
 export function useSspEditor(localId: LocalId): SspEditor {
-  const { documents } = useWorkspace();
+  const { documents, catalogDelivery } = useWorkspace();
   // Ungespeicherte Baseline-Wahl im Arbeitsspeicher des Tabs, wie die Importziele der Profile.
   const pending = documents.importTargets(localId);
   const hasPendingBindings = useCallback(() => pending.has(SSP_IMPORT_PROFILE_POINTER), [pending]);
-  const core = useDocumentEditor<'saved-as-draft' | 'component-unresolved' | 'component-referenced' | 'patch-failed'>({ localId, rootType: 'system-security-plan', sameContent: sameSspContent, hasPendingBindings });
+  const core = useDocumentEditor<SspMessage>({ localId, rootType: 'system-security-plan', sameContent: sameSspContent, hasPendingBindings });
   const { working, stored, change, commit, latest, setMessage, exportWith } = core;
   const [pendingBaseline, setPendingBaseline] = useState<PendingImportTarget | undefined>(() => pending.get(SSP_IMPORT_PROFILE_POINTER));
 
@@ -84,11 +89,17 @@ export function useSspEditor(localId: LocalId): SspEditor {
     setPendingBaseline(choice);
   }, [change, latest, pending]);
 
-  const save = useCallback(async () => {
+  const commitSsp = useCallback(async (rebind: boolean) => {
     const result = await commit(latest.current.working, async (storedSource, snapshot) => {
       const blocker = sspSaveBlocker(snapshot);
       if (blocker) return { ok: false, code: blocker.code };
-      const { source } = commitSspSave(storedSource, snapshot, new Date().toISOString());
+      // Schreibschutz aus dem gespeicherten Stand; eine Bindung an einen BSI-Katalog erhält das Paar des ausgelieferten Stands.
+      const pinned = catalogPinsForSave({ source: storedSource, rootType: 'system-security-plan', bindings: stored }, snapshot, bindings, catalogDelivery, rebind);
+      if (!pinned.ok) {
+        setMessage('catalog-locked');
+        return pinned;
+      }
+      const { source } = commitSspSave(storedSource, pinned.source, new Date().toISOString());
       const schema = await documents.checkProfileSchema(source);
       const ready = schema.status === 'passed' && sspReadinessBlocker(source) === undefined;
       return { ok: true, source, documentState: ready ? 'export-ready' : 'draft', bindings };
@@ -103,12 +114,16 @@ export function useSspEditor(localId: LocalId): SspEditor {
     });
     if (!result.ok && result.code === SSP_ADAPTER_DIAGNOSTIC_CODES.COMPONENT_REFERENCE_UNRESOLVED) setMessage('component-unresolved');
     else if (result.ok && result.documentState === 'draft') setMessage('saved-as-draft');
-  }, [bindings, commit, documents, latest, pending, setMessage]);
+  }, [bindings, catalogDelivery, commit, documents, latest, pending, setMessage, stored]);
+
+  const save = useCallback(() => commitSsp(false), [commitSsp]);
+  // Ein offener Entwurf wird dabei mitgespeichert: Er ist sonst unter der Sperre nicht mehr zu sichern.
+  const bindCatalogStand = useCallback(() => commitSsp(true), [commitSsp]);
 
   const exportDocument = useCallback(() => exportWith(exportSspInWorker, 'ssp.json'), [exportWith]);
 
   return {
     status: core.status, envelope: core.envelope, working, dirty: core.dirty, saveState: core.saveState, busy: core.busy, message: core.message,
-    baseline, baselineBindable, apply, chooseBaseline, save, exportDocument, remove: core.remove, adopt: core.adopt,
+    baseline, baselineBindable, apply, chooseBaseline, save, bindCatalogStand, exportDocument, remove: core.remove, adopt: core.adopt,
   };
 }

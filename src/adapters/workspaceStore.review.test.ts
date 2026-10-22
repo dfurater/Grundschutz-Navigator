@@ -4,67 +4,19 @@
 import 'fake-indexeddb/auto';
 import Dexie from 'dexie';
 import { expect, it, vi } from 'vitest';
-import type { OscalRootKey } from '@/domain/oscalVersionMatrix';
-import type { WorkspaceResult } from '@/domain/workspaceModel';
 
-vi.mock('@/adapters/oscalImportGate', async () => {
-  const { processClass2OscalBytes } = await import('@/domain/oscalClass2Import');
-  return { importClass2OscalDocument: processClass2OscalBytes };
-});
-vi.mock('@/adapters/reviewTrailWork', async () => {
-  const { documentSnapshot } = await import('@/domain/reviewTrail');
-  const { diffDocuments } = await import('@/domain/documentDiff');
-  const { createOscalDiagnostic } = await import('@/domain/oscalDiagnostics');
-  return {
-    reviewTrailInWorker: vi.fn(async (request: { source: unknown; rootType: OscalRootKey; previous: unknown; baseSequence: number | null; diff: boolean }) => {
-      const snapshot = await documentSnapshot(request.source, request.rootType);
-      if (!snapshot) return { ok: false, diagnostic: createOscalDiagnostic({ code: 'REVIEW_TRAIL_WORK_FAILED', stage: 'domain', validator: { name: 'gspp-review-trail', version: '1' }, path: '/' }) };
-      return {
-        ok: true,
-        value: {
-          snapshot,
-          ...(request.diff ? { diff: diffDocuments({ base: request.previous ?? {}, next: request.source, rootType: request.rootType, baseSequence: request.baseSequence }) } : {}),
-        },
-      };
-    }),
-  };
-});
+vi.mock('@/adapters/oscalImportGate', async () => (await import('@/test/reviewTrailFixtures')).importGateMock());
+vi.mock('@/adapters/reviewTrailWork', async () => (await import('@/test/reviewTrailFixtures')).reviewTrailWorkMock());
 vi.mock('@/adapters/workspaceBackup', async () => {
   const { processWorkspaceBackupBytes, processVerbundBackupBytes } = await import('@/adapters/workspaceBackupProcessing');
   return { parseWorkspaceBackup: processWorkspaceBackupBytes, parseVerbundBackup: processVerbundBackupBytes };
 });
 import { WorkspaceStore, WORKSPACE_DATABASE_NAME, type ReviewApprovalRequest } from './workspaceStore';
 import { reviewTrailInWorker } from './reviewTrailWork';
-import { approvalAction } from '@/domain/reviewTrail';
 import { createOscalDiagnostic } from '@/domain/oscalDiagnostics';
 import { makeSchemaValidOscalDocument } from '@/test/fixtures/oscalSchemaFixtures';
 import type { Class2OscalImportedDocument } from '@/domain/oscalClass2Import';
-
-function value<T>(result: WorkspaceResult<T>): T { if (!result.ok) throw new Error(result.diagnostic.code); return result.value; }
-const bytes = (text: string) => new TextEncoder().encode(text);
-
-const APPROVAL_UUID = '99999999-9999-4999-8999-999999999999';
-const PARTY_UUID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
-const ROLE_ID = 'approver';
-
-async function imported(source: Record<string, unknown>): Promise<Class2OscalImportedDocument> {
-  const result = await (await import('@/adapters/oscalImportGate')).importClass2OscalDocument(bytes(JSON.stringify(source)), { trustClass: 'class-2-local-user' });
-  if (!result.ok) throw new Error(result.diagnostic.code);
-  return result.document;
-}
-
-interface ApprovalSource { title?: string; roles?: unknown[] | null; parties?: unknown[] | null; action?: boolean }
-function catalogSource({ title = 'DOCUMENT', roles, parties, action = true }: ApprovalSource = {}): Record<string, unknown> {
-  const source = makeSchemaValidOscalDocument('catalog', '1.1.3');
-  const metadata = (source.catalog as { metadata: Record<string, unknown> }).metadata;
-  metadata.title = title;
-  if (roles !== null) metadata.roles = roles ?? [{ id: ROLE_ID, title: 'Approver' }];
-  if (parties !== null) metadata.parties = parties ?? [{ uuid: PARTY_UUID, type: 'organization', name: 'Synthetic' }];
-  if (action) {
-    metadata.actions = [approvalAction({ uuid: APPROVAL_UUID, date: '2026-10-21T10:00:00Z', roleId: ROLE_ID, partyUuids: [PARTY_UUID], reason: 'Geprüft' })];
-  }
-  return source;
-}
+import { APPROVAL_UUID, PARTY_UUID, ROLE_ID, bytes, catalogSource, imported, value } from '@/test/reviewTrailFixtures';
 
 const workerFailure = { ok: false, diagnostic: createOscalDiagnostic({ code: 'REVIEW_TRAIL_WORK_FAILED', stage: 'domain', validator: { name: 'gspp-review-trail', version: '1' }, path: '/' }) } as const;
 
@@ -163,9 +115,9 @@ it('rejects an approval on the draft path regardless of the caller', async () =>
     delete (invalid.catalog as { metadata: Record<string, unknown> }).metadata.title;
     const input: Class2OscalImportedDocument = { source: invalid, context: { trustClass: 'class-2-local-user' }, rootType: 'catalog', oscalVersion: '1.1.3' };
 
-    expect(await store.saveDocument(envelope.localId, before.savedAt, draftBefore, input, undefined, 'draft', approval)).toMatchObject({ ok: false, diagnostic: { code: 'REVIEW_APPROVAL_BLOCKED' } });
-    expect(await store.saveDocument(envelope.localId, before.savedAt, draftBefore, input, undefined, undefined, approval)).toMatchObject({ ok: false, diagnostic: { code: 'REVIEW_APPROVAL_SCHEMA' } });
-    expect(await store.saveDocument(envelope.localId, before.savedAt, draftBefore, await imported(catalogSource()), undefined, 'draft', approval)).toMatchObject({ ok: false, diagnostic: { code: 'REVIEW_APPROVAL_BLOCKED' } });
+    expect(await store.saveDocument(envelope.localId, before.savedAt, draftBefore, input, undefined, 'draft', { request: approval })).toMatchObject({ ok: false, diagnostic: { code: 'REVIEW_APPROVAL_BLOCKED' } });
+    expect(await store.saveDocument(envelope.localId, before.savedAt, draftBefore, input, undefined, undefined, { request: approval })).toMatchObject({ ok: false, diagnostic: { code: 'REVIEW_APPROVAL_SCHEMA' } });
+    expect(await store.saveDocument(envelope.localId, before.savedAt, draftBefore, await imported(catalogSource()), undefined, 'draft', { request: approval })).toMatchObject({ ok: false, diagnostic: { code: 'REVIEW_APPROVAL_BLOCKED' } });
     const after = value(await store.listReviewTrail(envelope.localId));
     expect(value(await store.getDocument(envelope.localId))).toEqual(before);
     expect(after.draftSavedAt).toBe(draftBefore);
@@ -185,7 +137,7 @@ it('enforces the decision transitions and withdraws only an issued approval', as
     value(await store.appendDecision(envelope.localId, envelope.savedAt, null, { decision: 'reviewed', expectedSequence: 2 }));
     expect(await store.appendDecision(envelope.localId, envelope.savedAt, null, { decision: 'withdrawn', expectedSequence: 3, withdraws: { sequence: 9, actionUuid: APPROVAL_UUID } })).toMatchObject({ ok: false, diagnostic: { code: 'REVIEW_WITHDRAWAL_TARGET_UNKNOWN' } });
 
-    const approved = value(await store.saveDocument(envelope.localId, envelope.savedAt, null, await imported(catalogSource({ title: 'APPROVED' })), undefined, undefined, { actionUuid: APPROVAL_UUID, expectedSequence: 3, roleId: ROLE_ID, partyUuids: [PARTY_UUID] }));
+    const approved = value(await store.saveDocument(envelope.localId, envelope.savedAt, null, await imported(catalogSource({ title: 'APPROVED' })), undefined, undefined, { request: { actionUuid: APPROVAL_UUID, expectedSequence: 3, roleId: ROLE_ID, partyUuids: [PARTY_UUID] } }));
     const view = value(await store.listReviewTrail(envelope.localId));
     expect(view.trail.at(-1)).toMatchObject({ sequence: 4, kind: 'decision', decision: 'approved', actionUuid: APPROVAL_UUID });
     expect(view.stand.contentHash.value).toMatch(/^[a-f0-9]{64}$/);
@@ -211,16 +163,16 @@ it('writes an approval only when the action resolves and the document write succ
       [await imported(catalogSource({ parties: [{ uuid: PARTY_UUID, type: 'organization', name: 'One' }, { uuid: PARTY_UUID, type: 'organization', name: 'Two' }] })), 'REVIEW_PARTY_AMBIGUOUS'],
     ] as const;
     for (const [input, code] of cases) {
-      expect(await store.saveDocument(envelope.localId, before.savedAt, null, input, undefined, undefined, approval)).toMatchObject({ ok: false, diagnostic: { code } });
+      expect(await store.saveDocument(envelope.localId, before.savedAt, null, input, undefined, undefined, { request: approval })).toMatchObject({ ok: false, diagnostic: { code } });
       expect(value(await store.getDocument(envelope.localId))).toEqual(before);
       expect(value(await store.listReviewTrail(envelope.localId)).trail).toEqual([]);
     }
     // A stale expected sequence and a mismatched action shape both stop before the write.
-    expect(await store.saveDocument(envelope.localId, before.savedAt, null, await imported(catalogSource()), undefined, undefined, { ...approval, expectedSequence: 7 })).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_SAVE_CONFLICT' } });
-    expect(await store.saveDocument(envelope.localId, before.savedAt, null, await imported(catalogSource()), undefined, undefined, { ...approval, roleId: 'other' })).toMatchObject({ ok: false, diagnostic: { code: 'REVIEW_APPROVAL_INVALID' } });
+    expect(await store.saveDocument(envelope.localId, before.savedAt, null, await imported(catalogSource()), undefined, undefined, { request: { ...approval, expectedSequence: 7 } })).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_SAVE_CONFLICT' } });
+    expect(await store.saveDocument(envelope.localId, before.savedAt, null, await imported(catalogSource()), undefined, undefined, { request: { ...approval, roleId: 'other' } })).toMatchObject({ ok: false, diagnostic: { code: 'REVIEW_APPROVAL_INVALID' } });
     expect(value(await store.getDocument(envelope.localId))).toEqual(before);
 
-    const saved = value(await store.saveDocument(envelope.localId, before.savedAt, null, await imported(catalogSource({ title: 'APPROVED' })), undefined, undefined, approval));
+    const saved = value(await store.saveDocument(envelope.localId, before.savedAt, null, await imported(catalogSource({ title: 'APPROVED' })), undefined, undefined, { request: approval }));
     expect(saved.savedAt > before.savedAt).toBe(true);
     expect(value(await store.listReviewTrail(envelope.localId)).trail).toMatchObject([{ sequence: 1, kind: 'decision', decision: 'approved', actionUuid: APPROVAL_UUID, roleId: ROLE_ID, partyUuids: [PARTY_UUID] }]);
   } finally { store.close(); }

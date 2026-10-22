@@ -10,7 +10,7 @@ import type { LocalId, VerbundId, WorkspaceEnvelope } from '@/domain/workspaceMo
 import { makeSchemaValidOscalDocument } from '@/test/fixtures/oscalSchemaFixtures';
 import { WorkspaceStore } from '@/adapters/workspaceStore';
 import { makeFullSsp, makeMinimalSsp, SSP_FIXTURE_IDS, withSspBody } from '@/test/fixtures/systemSecurityPlans';
-import { EMPTY_CATALOG_STATE, mainLandmark as main, renderWorkspaceArea as renderArea } from '@/test/renderWorkspaceArea';
+import { mainLandmark as main, renderWorkspaceArea as renderArea, withLoadedCatalog } from '@/test/renderWorkspaceArea';
 import { readStore, resetWorkspace, seedWorkspace, type SeededWorkspace } from '@/test/workspaceAreaFixture';
 
 vi.mock('@/adapters/oscalImportGate', async () => (await import('@/test/workspaceNodeWorkers')).inProcessImportGate());
@@ -38,11 +38,10 @@ afterEach(async () => {
 
 /** catalog-gspp mit bestandener Hashprüfung und zwei Anforderungen. */
 function withGspp(): CatalogState {
-  const loaded = {
-    catalogKey: 'gspp', catalogDocument: { source: makeSchemaValidOscalDocument('catalog', '1.1.3') }, verification: { valid: true },
-    catalog: { metadata: { title: 'Anwenderkatalog' }, controls: [{ id: 'GC.1.1' }, { id: 'GC.1.2' }] },
-  } as unknown as LoadedCatalogState;
-  return { ...EMPTY_CATALOG_STATE, catalogs: new Map<CatalogKey, LoadedCatalogState>([['gspp', loaded]]) };
+  const state = withLoadedCatalog(true);
+  const loaded = state.catalogs.get('gspp' as CatalogKey)!;
+  const catalog = { metadata: { title: 'Anwenderkatalog' }, controls: [{ id: 'GC.1.1' }, { id: 'GC.1.2' }] };
+  return { ...state, catalogs: new Map<CatalogKey, LoadedCatalogState>([['gspp' as CatalogKey, { ...loaded, catalog } as unknown as LoadedCatalogState]]) };
 }
 
 function sspBody(envelope: WorkspaceEnvelope | undefined) {

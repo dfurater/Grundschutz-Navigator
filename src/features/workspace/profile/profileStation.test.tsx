@@ -12,7 +12,8 @@ import { makeSchemaValidOscalDocument } from '@/test/fixtures/oscalSchemaFixture
 import { makeProfileSource, profileSpecFor } from '@/test/fixtures/profiles';
 import { CLASS_2_IMPORT_LIMITS } from '@/domain/oscalImportContract';
 import { REVIEW_ACTIONS_SYSTEM } from '@/domain/reviewTrail';
-import { EMPTY_CATALOG_STATE, mainLandmark as main, renderWorkspaceArea as renderArea } from '@/test/renderWorkspaceArea';
+import { EMPTY_CATALOG_STATE, TEST_CATALOG_COMMIT, mainLandmark as main, renderWorkspaceArea as renderArea, withLoadedCatalog } from '@/test/renderWorkspaceArea';
+import { readCatalogPins } from '@/domain/workspaceCatalogPin';
 import { readStore, resetWorkspace, seedWorkspace, type SeededWorkspace } from '@/test/workspaceAreaFixture';
 
 vi.mock('@/adapters/oscalImportGate', async () => (await import('@/test/workspaceNodeWorkers')).inProcessImportGate());
@@ -38,10 +39,7 @@ afterEach(async () => {
   await resetWorkspace();
 });
 
-function withGspp(valid = true): CatalogState {
-  const loaded = { catalogKey: 'gspp', catalogDocument: { source: makeSchemaValidOscalDocument('catalog', '1.1.3') }, verification: { valid } } as unknown as LoadedCatalogState;
-  return { ...EMPTY_CATALOG_STATE, catalogs: new Map<CatalogKey, LoadedCatalogState>([['gspp', loaded]]) };
-}
+const withGspp = (valid = true): CatalogState => withLoadedCatalog(valid);
 
 function local(rootType: OscalRootKey, version: PinnedOscalVersion, title: string, change?: (body: Record<string, unknown>) => void) {
   const source = makeSchemaValidOscalDocument(rootType, version);
@@ -57,6 +55,13 @@ function add(verbundId: VerbundId, input: ReturnType<typeof local>, state: Docum
 
 function profileBody(envelope: WorkspaceEnvelope | undefined) {
   return (envelope?.source as { profile: { uuid: string; metadata: Record<string, string>; imports: Record<string, unknown>[]; 'back-matter'?: { resources: { uuid: string }[] } } }).profile;
+}
+
+/** Ein Stand aus einem anderen Tab; er behält das Katalogpaar des gespeicherten Profils. */
+function externalProfile(current: WorkspaceEnvelope) {
+  return local('profile', '1.1.3', 'Extern geändert', (body) => {
+    (body.metadata as Record<string, unknown>).props = (profileBody(current).metadata as Record<string, unknown>).props;
+  });
 }
 
 async function storedProfiles(verbundId: VerbundId) {
@@ -100,6 +105,8 @@ describe('Neuanlage über das Importziel', () => {
     expect(stored?.derivedFrom).toBeUndefined();
     expect(main()).not.toHaveTextContent(/Verifiziert/);
     expect(body.metadata['oscal-version']).toBe('1.1.3');
+    // Das Profil ist an den ausgelieferten, verifizierten Stand gebunden: nur das Referenzpaar, keine Katalogbytes.
+    expect(readCatalogPins(stored?.source, 'profile')).toEqual(new Map([['gspp', TEST_CATALOG_COMMIT]]));
     const href = body.imports[0].href as string;
     expect(href).toMatch(/^#[0-9a-f-]{36}$/);
     expect(body['back-matter']?.resources.map((resource) => resource.uuid)).toEqual([href.slice(1)]);
@@ -122,6 +129,18 @@ describe('Neuanlage über das Importziel', () => {
     expect(radio.closest('label')!).toHaveTextContent('BSI-Katalog · nicht verifiziert');
     expect(radio).toBeDisabled();
     expect(main()).not.toHaveTextContent('BSI-geprüft');
+  });
+
+  it('legt ein Profil auf einem BSI-Katalog erst nach dessen Hashprüfung an, auch wenn es vorher gewählt wurde', async () => {
+    const loading = { catalogKey: 'gspp', catalogDocument: null, catalog: null, verification: null, error: null, loading: true } as unknown as LoadedCatalogState;
+    let catalogs: CatalogState = { ...EMPTY_CATALOG_STATE, catalogs: new Map<CatalogKey, LoadedCatalogState>([['gspp', loading]]) };
+    const { rerenderApp } = renderArea(buildStationUrl(seeded.verbundId, 'profile'), () => catalogs);
+    await openNewProfile('Paket');
+    fireEvent.click(await within(main()).findByRole('radio', { name: /catalog-gspp/ }));
+    expect(within(main()).getByRole('button', { name: 'Profil anlegen' })).toBeDisabled();
+    catalogs = withGspp();
+    rerenderApp();
+    await waitFor(() => expect(within(main()).getByRole('button', { name: 'Profil anlegen' })).toBeEnabled());
   });
 
   it('zeigt einen Katalog mit Ladefehler als nicht ladbar und nicht wählbar', async () => {
@@ -270,7 +289,7 @@ describe('Bearbeiten, Autosave, Speichern und Export', () => {
     await waitFor(() => expect(within(main()).getAllByText('Gültig').length).toBeGreaterThan(0), WAIT);
     await openTab(/^Prüfung/);
     const current = (await readStore((store) => store.getDocument(localId)))!;
-    await readStore((store) => store.saveDocument(localId, current.savedAt, null, local('profile', '1.1.3', 'Extern geändert')));
+    await readStore((store) => store.saveDocument(localId, current.savedAt, null, externalProfile(current)));
     const checkpoint = await within(main()).findByRole('button', { name: 'Prüfpunkt setzen' }, WAIT);
     fireEvent.click(checkpoint);
     expect(await within(main()).findByText(/Der gespeicherte Stand hat sich geändert; die Prüfspur wurde neu geladen/)).toBeInTheDocument();
@@ -294,7 +313,7 @@ describe('Bearbeiten, Autosave, Speichern und Export', () => {
     const draft = await readStore((store) => store.getDraft(localId));
     await openTab(/^Importe/);
     fireEvent.click(within(main()).getByRole('button', { name: '+ Muster' }));
-    const external = await readStore((store) => store.saveDocument(localId, current.savedAt, draft?.savedAt ?? null, local('profile', '1.1.3', 'Extern geändert')));
+    const external = await readStore((store) => store.saveDocument(localId, current.savedAt, draft?.savedAt ?? null, externalProfile(current)));
     expect(profileBody(external).metadata.title).toBe('Extern geändert');
     await openTab(/^Prüfung/);
     const reviewed = await within(main()).findByRole('button', { name: 'Als geprüft markieren' }, WAIT);

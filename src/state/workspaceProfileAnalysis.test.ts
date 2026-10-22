@@ -15,7 +15,7 @@ describe('Profilanalyse über zwei Importziele', () => {
     const working = { ...profile, source };
     const bindings = [bind(working, '/profile/imports/0/href', first), bind(working, '/profile/imports/1/href', second)];
 
-    const analysis = await deriveProfileAnalysis({ localId: profile.localId, source, members: [working, first, second], bindings, class1Artifacts: [] });
+    const analysis = await deriveProfileAnalysis({ localId: profile.localId, source, members: [working, first, second], bindings, class1Artifacts: [], delivery: new Map() });
 
     const [first0, second1] = ['/profile/imports/0/href', '/profile/imports/1/href'].map((pointer) => analysis.targets.get(pointer));
     expect(first0?.ids).toEqual(['ac-1']);

@@ -29,6 +29,12 @@ function Target({ view, edge }: Readonly<{ view: VerbundView; edge: WorkspaceEdg
   );
 }
 
+function edgeStateLabel(edge: WorkspaceEdgeView): string {
+  if (edge.catalogWithheld) return 'Gebundener Katalogstand gesperrt';
+  if (edge.class1Unavailable) return 'BSI-Katalog in dieser Sitzung nicht geladen';
+  return EDGE_STATE_LABELS[edge.state];
+}
+
 function EdgeRow({ view, edge }: Readonly<{ view: VerbundView; edge: WorkspaceEdgeView }>) {
   return (
     <li data-edge-state={edge.state} className="px-4 py-3">
@@ -39,7 +45,7 @@ function EdgeRow({ view, edge }: Readonly<{ view: VerbundView; edge: WorkspaceEd
         <dd className="text-sm">{referenceRequirement(edge.kind) ?? 'keine Angabe'}</dd>
         <dt className={TERM}>Zustand</dt>
         <dd className="text-sm">
-          {edge.class1Unavailable ? 'BSI-Katalog in dieser Sitzung nicht geladen' : EDGE_STATE_LABELS[edge.state]}
+          {edgeStateLabel(edge)}
           {edge.diagnosticCode && <span className="ml-2 font-mono text-xs text-[var(--color-text-secondary)]">{edge.diagnosticCode}</span>}
         </dd>
         {(edge.href !== undefined || edge.targetLocalId !== undefined) && (

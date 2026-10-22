@@ -5,12 +5,14 @@ import { Button } from '@/components/Button';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { IconDownload } from '@/components/icons';
 import { missingSspStructure } from '@/domain/sspRequirements';
+import { editLocked, reviewLocked } from '@/domain/workspaceCatalogPin';
 import type { LocalId, VerbundId } from '@/domain/workspaceModel';
 import { DESKTOP_QUERY } from '@/hooks/breakpointQueries';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import type { VerbundView, WorkspaceDocumentView } from '@/state/workspaceVerbundView';
 import { EditorPanel, EditorToolbar } from '@/features/workspace/EditorFrame';
 import { WorkspaceNotices } from '@/features/workspace/WorkspaceNotices';
+import { CatalogPinNotice } from '@/features/workspace/CatalogPinNotice';
 import { ReferenceEdges } from '@/features/workspace/ReferenceEdges';
 import { ReviewSection } from '@/features/workspace/review/ReviewSection';
 import { PackageActions } from '@/features/workspace/profile/PackagePanel';
@@ -31,6 +33,7 @@ const MESSAGES: Readonly<Record<SspEditorMessage, string>> = {
   'component-unresolved': 'Nicht gespeichert: Eine component-uuid zeigt auf keine Komponente.',
   'component-referenced': 'Die Komponente bleibt: Eine Umsetzungsaussage verweist auf sie.',
   'patch-failed': 'Die Änderung passt nicht zur Struktur des Dokuments und wurde nicht übernommen.',
+  'catalog-locked': 'Der gebundene Katalogstand gibt das Speichern nicht frei; das SSP wurde nicht gespeichert.',
 };
 
 /** Offene Pflichtstruktur des Arbeitsstands als Liste mit OSCAL-Pfad. */
@@ -74,6 +77,8 @@ export function SspEditorPage({ view, document }: Readonly<{ view: VerbundView; 
   const missing = missingSspStructure(editor.working);
   const state = editor.envelope.documentState === 'draft' || editor.dirty ? 'draft' : 'export-ready';
   const canExport = editor.envelope.documentState === 'export-ready' && !editor.dirty && !editor.busy;
+  // Schreibschutz durch den Katalogstand: Lesen, Export und Löschen bleiben, Bearbeiten und Prüfen nicht.
+  const locked = editLocked(document.catalogPin);
   const save = () => { void editor.save(); };
   const exportDocument = () => { void editor.exportDocument(); };
 
@@ -83,26 +88,29 @@ export function SspEditorPage({ view, document }: Readonly<{ view: VerbundView; 
         <EditorToolbar view={view} document={document} station="ssp" backLabel="SSP" deleteLabel="SSP löschen…" title={document.title ?? 'SSP'} state={state} desktop={desktop} onDelete={() => setConfirming(true)} />
         <div className="min-h-0 flex-1 space-y-4 p-4 md:overflow-y-auto">
           <WorkspaceNotices />
+          <CatalogPinNotice pin={document.catalogPin} busy={editor.busy} onBind={() => { void editor.bindCatalogStand(); }} />
           {editor.message && <output className="block text-sm text-[var(--color-text-primary)]">{MESSAGES[editor.message]}</output>}
           {!desktop && <OpenStructure missing={missing} />}
-          <MetadataSection editor={editor} />
-          <BaselineSection editor={editor} options={options} />
-          <CharacteristicsSection editor={editor} />
-          <ImplementationSection editor={editor} />
-          <ControlImplementationSection editor={editor} controls={controls} />
+          <fieldset disabled={locked} className="min-w-0 space-y-4">
+            <MetadataSection editor={editor} />
+            <BaselineSection editor={editor} options={options} />
+            <CharacteristicsSection editor={editor} />
+            <ImplementationSection editor={editor} />
+            <ControlImplementationSection editor={editor} controls={controls} />
+          </fieldset>
           <SspDocumentContent key={`${localId}:${editor.envelope.savedAt}`} localId={localId} />
           <ReferenceEdges view={view} document={document} />
-          <ReviewSection localId={localId} documentSavedAt={editor.envelope.savedAt} editorDirty={editor.dirty} onDocumentAdopted={editor.adopt} />
+          <ReviewSection localId={localId} locked={reviewLocked(document.catalogPin)} documentSavedAt={editor.envelope.savedAt} editorDirty={editor.dirty} onDocumentAdopted={editor.adopt} />
         </div>
         {!desktop && (
           <div className="sticky bottom-0 z-10 grid shrink-0 grid-cols-2 gap-2 border-t border-[var(--color-border-default)] bg-[var(--color-surface-base)] p-3 pb-safe shadow-footer">
             <Button variant="secondary" icon={IconDownload} className="min-h-touch" disabled={!canExport} onClick={exportDocument}>Export</Button>
-            <Button className="min-h-touch" disabled={editor.busy} onClick={save}>Speichern</Button>
+            <Button className="min-h-touch" disabled={editor.busy || locked} onClick={save}>Speichern</Button>
           </div>
         )}
       </div>
       {desktop && (
-        <EditorPanel label="Speichern und Export" footer={<PackageActions saveState={editor.saveState} dirty={editor.dirty} canExport={canExport} busy={editor.busy} onSave={save} onExport={exportDocument} />}>
+        <EditorPanel label="Speichern und Export" footer={<PackageActions saveState={editor.saveState} dirty={editor.dirty} canExport={canExport} busy={editor.busy || locked} onSave={save} onExport={exportDocument} />}>
           <OpenStructure missing={missing} />
         </EditorPanel>
       )}
