@@ -29,6 +29,7 @@
 
 import { resolveOscalReference } from '@/domain/referenceResolution';
 import {
+  checkRoleAssignmentReferences,
   diagnose,
   readMetadataIdentities,
   readObjectField,
@@ -42,7 +43,7 @@ import { deriveSystemCharacteristics, deriveSystemImplementation } from '@/adapt
 import type { SspDeriveState } from '@/adapters/oscalSspReaders';
 import { readRootMetadata } from '@/domain/oscalRootDispatch';
 import { openRootDerive } from '@/adapters/oscalRootDocumentParse';
-import { readString, type JsonObject } from '@/domain/jsonGuards';
+import { isJsonObject, readArray, readString, type JsonObject } from '@/domain/jsonGuards';
 import { createOscalDiagnostic } from '@/domain/oscalDiagnostics';
 import type { OscalDiagnostic } from '@/domain/oscalDiagnostics';
 import {
@@ -134,6 +135,21 @@ function deriveImportProfile(body: JsonObject, state: SspDeriveState): SspImport
   };
 }
 
+/**
+ * `metadata.responsible-parties` und die `responsible-parties` jeder
+ * `metadata.actions`-Zeile verweisen auf `metadata.roles` und
+ * `metadata.parties` desselben Dokuments.
+ */
+function checkMetadataReferences(rootBody: JsonObject, state: SspDeriveState): void {
+  const metadata = rootBody.metadata;
+  if (!isJsonObject(metadata)) return;
+  const path = `${SSP_BASE_PATH}/metadata`;
+  checkRoleAssignmentReferences(metadata, path, state, 'responsible-parties');
+  readArray(metadata.actions).forEach((action, index) => {
+    if (isJsonObject(action)) checkRoleAssignmentReferences(action, `${path}/actions/${index}`, state, 'responsible-parties');
+  });
+}
+
 /* ------------------------------------------------------------------ */
 /*  Ableitung                                                          */
 /* ------------------------------------------------------------------ */
@@ -171,6 +187,7 @@ export function deriveSystemSecurityPlan(
     diagnose(state, SSP_ADAPTER_DIAGNOSTIC_CODES.STRUCTURE_UNEXPECTED, SSP_BASE_PATH);
   }
 
+  checkMetadataReferences(rootBody, state);
   const importProfile = deriveImportProfile(rootBody, state);
   const systemCharacteristics = deriveSystemCharacteristics(rootBody, state);
   // Vor `control-implementation`: deren `by-components` lösen gegen die Komponenten auf.

@@ -8,6 +8,7 @@ import { PINNED_OSCAL_VERSIONS, type PinnedOscalVersion } from '@/domain/oscalVe
 import type { CatalogKey } from '@/domain/sourceRegistry';
 import type { LocalId, VerbundId, WorkspaceEnvelope } from '@/domain/workspaceModel';
 import { makeSchemaValidOscalDocument } from '@/test/fixtures/oscalSchemaFixtures';
+import { WorkspaceStore } from '@/adapters/workspaceStore';
 import { makeFullSsp, makeMinimalSsp, SSP_FIXTURE_IDS, withSspBody } from '@/test/fixtures/systemSecurityPlans';
 import { EMPTY_CATALOG_STATE, mainLandmark as main, renderWorkspaceArea as renderArea } from '@/test/renderWorkspaceArea';
 import { readStore, resetWorkspace, seedWorkspace, type SeededWorkspace } from '@/test/workspaceAreaFixture';
@@ -248,6 +249,56 @@ describe('Referenzen und Bindungen', () => {
     renderArea(buildWorkspaceDocumentUrl(seeded.verbundId, ap.localId), withGspp());
     const edges = await within(main()).findByRole('region', { name: 'Referenzkanten' }, WAIT);
     await waitFor(() => expect(edges.querySelector('[data-edge-state="resolved"]')).toHaveTextContent('/assessment-plan/import-ssp/href'), WAIT);
+  });
+});
+
+describe('Abweisungen und Zuordnungen', () => {
+  it('sichert offene Eingaben weiter als Entwurf, nachdem das Speichern eine dangling component-uuid abgewiesen hat', async () => {
+    const dangling = await addSsp(seeded.verbundId, withSspBody(makeFullSsp(), (body) => { body['system-implementation'].components.pop(); }));
+    renderArea(buildWorkspaceDocumentUrl(seeded.verbundId, dangling.localId), withGspp());
+    await type('metadata.title', 'Entwurf nach Abweisung');
+    await click('Speichern');
+    expect(await within(main()).findByText(/component-uuid zeigt auf keine Komponente/, undefined, WAIT)).toBeInTheDocument();
+    await waitFor(async () => expect(sspBody(await readStore((store) => store.getDraft(dangling.localId)) as never).metadata.title).toBe('Entwurf nach Abweisung'), WAIT);
+  });
+
+  it('bietet für einen externen import-profile.href keine Baseline-Bindung an', async () => {
+    const external = await addSsp(seeded.verbundId, withSspBody(makeFullSsp(), (body) => { body['import-profile'].href = 'https://example.invalid/profile.json'; }));
+    renderArea(buildWorkspaceDocumentUrl(seeded.verbundId, external.localId), withGspp());
+    expect(await within(main()).findByText('Externer Verweis · nicht bindbar', undefined, WAIT)).toBeInTheDocument();
+    expect(within(main()).queryByRole('radio', { name: /catalog-gspp/ })).not.toBeInTheDocument();
+    expect(await within(main()).findByRole('region', { name: /^Anforderungen/ })).toHaveTextContent('nicht auflösbar im aktuellen Kontext');
+  });
+
+  it('verwirft eine gewählte Anforderung, die die neue Baseline nicht führt', async () => {
+    const catalog = makeSchemaValidOscalDocument('catalog', '1.2.2');
+    (catalog.catalog as { metadata: { title: string } }).metadata.title = 'Lokaler Katalog';
+    await readStore((store) => store.addDocument(seeded.verbundId, { source: catalog, context: { trustClass: 'class-2-local-user' }, rootType: 'catalog', oscalVersion: '1.2.2' }));
+    const imported = await addSsp(seeded.verbundId, makeFullSsp());
+    renderArea(buildWorkspaceDocumentUrl(seeded.verbundId, imported.localId), withGspp());
+    fireEvent.click(await within(main()).findByRole('radio', { name: /catalog-gspp/ }, WAIT));
+    const select = await within(main()).findByRole('combobox', { name: /^Neue Anforderung/ }, WAIT);
+    fireEvent.change(select, { target: { value: 'GC.1.2' } });
+    const add = within(main()).getByRole('button', { name: 'Anforderung hinzufügen' });
+    expect(add).toBeEnabled();
+    fireEvent.click(within(main()).getByRole('radio', { name: /Lokaler Katalog/ }));
+    await waitFor(() => expect(add).toBeDisabled(), WAIT);
+  });
+
+  it('navigiert nach einem abgebrochenen Anlegen nicht mehr', async () => {
+    let release = () => {};
+    const original = WorkspaceStore.prototype.addDocument;
+    vi.spyOn(WorkspaceStore.prototype, 'addDocument').mockImplementation(async function (this: WorkspaceStore, ...args: Parameters<WorkspaceStore['addDocument']>) {
+      await new Promise<void>((resolve) => { release = resolve; });
+      return original.apply(this, args);
+    });
+    const router = await createSsp();
+    fireEvent.click(within(main()).getByRole('radio', { name: /catalog-gspp/ }));
+    fireEvent.click(within(main()).getByRole('button', { name: 'SSP anlegen' }));
+    fireEvent.click(within(main()).getByRole('button', { name: 'Abbrechen' }));
+    release();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(router.state.location.pathname).toBe(buildStationUrl(seeded.verbundId, 'ssp'));
   });
 });
 

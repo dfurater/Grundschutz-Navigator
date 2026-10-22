@@ -9,7 +9,11 @@
 // Root-UUID ist `per-subject` und wird von keiner Änderung berührt.
 // =============================================================================
 
+import { uuidKey } from '@/adapters/oscalSspReaders';
 import { isJsonObject, readArray, readString, type JsonObject } from '@/domain/jsonGuards';
+import { resolveSchemaBinding } from '@/domain/oscalVersionMatrix';
+import { createReferenceDocument, localFragmentUuid, resolveOscalReference } from '@/domain/referenceResolution';
+import { isBindableReference } from '@/domain/workspaceGraphContext';
 
 /** Neue SSPs tragen diese `oscal-version` (Vorgabe des Projektinhabers). */
 export const NEW_SSP_OSCAL_VERSION = '1.2.2';
@@ -42,10 +46,28 @@ export function sspBody(source: unknown): JsonObject | undefined {
   return isJsonObject(source) && isJsonObject(source['system-security-plan']) ? source['system-security-plan'] : undefined;
 }
 
-/** `metadata.oscal-version` eines SSP-Quellgraphen. */
+/**
+ * Die gebundene Schemaversion eines SSP-Quellgraphen, wie der Root-Dispatch
+ * sie für Klasse 2 bildet (`v1.1.2` bindet 1.1.2); der Quellwert bleibt.
+ */
 export function sspOscalVersion(source: unknown): string | undefined {
   const metadata = sspBody(source)?.metadata;
-  return isJsonObject(metadata) ? readString(metadata['oscal-version']) : undefined;
+  const declared = isJsonObject(metadata) ? readString(metadata['oscal-version']) : undefined;
+  const binding = resolveSchemaBinding({ rootType: 'system-security-plan', oscalVersion: declared, acceptVersionPrefix: true });
+  return binding.ok ? binding.pin.oscalVersion : undefined;
+}
+
+/**
+ * Lässt sich `import-profile.href` an ein Dokument binden? Dieselbe Regel wie
+ * im Verbundgraphen: Ein externer oder unsicherer Verweis erhält nie ein
+ * Workspace-Ziel (`isBindableReference()`).
+ */
+export function sspBaselineBindable(source: unknown): boolean {
+  const href = readString(readSspValue(source, ['import-profile', 'href']));
+  const oscalVersion = sspOscalVersion(source);
+  if (href === undefined || oscalVersion === undefined) return false;
+  const document = createReferenceDocument({ source, context: { trustClass: 'class-2-local-user' }, rootType: 'system-security-plan', oscalVersion });
+  return isBindableReference(resolveOscalReference({ href, path: SSP_IMPORT_PROFILE_POINTER }, { document }));
 }
 
 /** `system-implementation.users`: Pflicht in 1.1.2 und 1.1.3, optional ab 1.2.1. */
@@ -72,24 +94,23 @@ function checkSegment(segment: string | number): void {
   if (typeof segment === 'string' && FORBIDDEN_KEYS.has(segment)) throw new SspPatchError('SSP_PATH_INVALID');
 }
 
+function asContainer(value: unknown): JsonObject | unknown[] {
+  if (!isJsonObject(value) && !Array.isArray(value)) throw new SspPatchError('SSP_PATH_INVALID');
+  return value;
+}
+
+/** Ein Schritt entlang des Pfads; Listen werden über Indizes, Objekte über Schlüssel betreten. */
+function child(node: JsonObject | unknown[], segment: string | number, create: boolean): JsonObject | unknown[] {
+  checkSegment(segment);
+  if (Array.isArray(node)) return asContainer(typeof segment === 'number' ? node[segment] : undefined);
+  if (typeof segment !== 'string') throw new SspPatchError('SSP_PATH_INVALID');
+  if (!Object.hasOwn(node, segment) && create) node[segment] = {};
+  return asContainer(node[segment]);
+}
+
 /** Container am Pfad in einer Kopie; fehlende Objekte entlang des Pfads entstehen, Listen nie. */
 function containerAt(body: JsonObject, path: SspPath, create: boolean): JsonObject | unknown[] {
-  let node: JsonObject | unknown[] = body;
-  for (const segment of path) {
-    checkSegment(segment);
-    if (Array.isArray(node)) {
-      const next: unknown = typeof segment === 'number' ? node[segment] : undefined;
-      if (!isJsonObject(next) && !Array.isArray(next)) throw new SspPatchError('SSP_PATH_INVALID');
-      node = next;
-      continue;
-    }
-    if (typeof segment !== 'string') throw new SspPatchError('SSP_PATH_INVALID');
-    if (!Object.hasOwn(node, segment) && create) node[segment] = {};
-    const next: unknown = node[segment];
-    if (!isJsonObject(next) && !Array.isArray(next)) throw new SspPatchError('SSP_PATH_INVALID');
-    node = next;
-  }
-  return node;
+  return path.reduce<JsonObject | unknown[]>((node, segment) => child(node, segment, create), body);
 }
 
 function editable(source: unknown): { copy: unknown; body: JsonObject } {
@@ -166,7 +187,7 @@ export function moveSspItem(source: unknown, listPath: SspPath, from: number, to
 function referencesComponent(node: unknown, uuid: string): boolean {
   if (Array.isArray(node)) return node.some((item) => referencesComponent(item, uuid));
   if (!isJsonObject(node)) return false;
-  return Object.entries(node).some(([key, value]) => (key === 'component-uuid' && value === uuid) || referencesComponent(value, uuid));
+  return Object.entries(node).some(([key, value]) => (key === 'component-uuid' && typeof value === 'string' && uuidKey(value) === uuid) || referencesComponent(value, uuid));
 }
 
 /** Entfernt eine Komponente; eine Komponente, auf die eine `component-uuid` zeigt, bleibt. */
@@ -174,7 +195,7 @@ export function removeSspComponent(source: unknown, index: number): unknown {
   const component = readArray(readSspValue(source, ['system-implementation', 'components']))[index];
   const uuid = isJsonObject(component) ? readString(component.uuid) : undefined;
   const body = sspBody(source);
-  if (uuid !== undefined && referencesComponent(body, uuid)) throw new SspPatchError('SSP_COMPONENT_REFERENCED');
+  if (uuid !== undefined && referencesComponent(body, uuidKey(uuid))) throw new SspPatchError('SSP_COMPONENT_REFERENCED');
   return removeSspItem(source, ['system-implementation', 'components'], index);
 }
 
@@ -225,8 +246,9 @@ export function createSspSource(input: NewSspInput): { source: JsonObject; href:
 /** Schreibt den Titel der Baseline-Ressource, auf die `import-profile.href` zeigt; sonst bleibt die Quelle. */
 export function setBaselineTitle(source: unknown, title: string): unknown {
   const href = readString(readSspValue(source, ['import-profile', 'href']));
-  if (href === undefined || !href.startsWith('#')) return source;
+  const fragment = href === undefined ? null : localFragmentUuid(href);
+  if (fragment === null) return source;
   const resources = readArray(readSspValue(source, ['back-matter', 'resources']));
-  const index = resources.findIndex((resource) => isJsonObject(resource) && readString(resource.uuid)?.toLowerCase() === href.slice(1).toLowerCase());
+  const index = resources.findIndex((resource) => isJsonObject(resource) && readString(resource.uuid)?.toLowerCase() === fragment);
   return index < 0 ? source : setSspValue(source, ['back-matter', 'resources', index, 'title'], title);
 }

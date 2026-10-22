@@ -1,4 +1,4 @@
-import { useId, useState, type FormEvent } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router';
 import { buildWorkspaceDocumentUrl } from '@/app/routes';
 import { Button } from '@/components/Button';
@@ -25,6 +25,9 @@ export function NewProfileForm({ view, onCancel }: Readonly<{ view: VerbundView;
   const [title, setTitle] = useState('');
   const [target, setTarget] = useState<ImportTargetOption>();
   const [saving, setSaving] = useState(false);
+  // Abbrechen, Verbundwechsel oder Verlassen der Station beenden ein laufendes Anlegen ohne Navigation.
+  const pending = useRef<AbortController | undefined>(undefined);
+  useEffect(() => () => pending.current?.abort(), []);
   const ready = isProfileTitle(title) && target !== undefined && writable && !saving;
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
@@ -33,6 +36,8 @@ export function NewProfileForm({ view, onCancel }: Readonly<{ view: VerbundView;
     const oscalVersion = target.oscalVersion;
     if (!isPinnedOscalVersion(oscalVersion)) return;
     setSaving(true);
+    const controller = new AbortController();
+    pending.current = controller;
     const resourceUuid = crypto.randomUUID();
     const { source, href } = createProfileSource({
       uuid: crypto.randomUUID(), resourceUuid, title: target.title, profileTitle: title.trim(),
@@ -41,7 +46,8 @@ export function NewProfileForm({ view, onCancel }: Readonly<{ view: VerbundView;
     // Dokument und Bindung in einer Transaktion: Ohne gültige Bindung entsteht kein Profil.
     const added = await documents.addDocument(view.verbund.verbundId as VerbundId, {
       source, context: { trustClass: 'class-2-local-user' }, rootType: 'profile', oscalVersion,
-    }, 'draft', [{ pointer: importHrefPointer(0), href, target: target.target }]);
+    }, 'draft', [{ pointer: importHrefPointer(0), href, target: target.target }], controller.signal);
+    if (controller.signal.aborted) return;
     if (!added.ok) {
       setSaving(false);
       return;
@@ -66,7 +72,7 @@ export function NewProfileForm({ view, onCancel }: Readonly<{ view: VerbundView;
       </fieldset>
       <div className="flex flex-wrap gap-2">
         <Button type="submit" className="min-h-touch desktop:min-h-0" disabled={!ready}>Profil anlegen</Button>
-        <Button variant="ghost" className="min-h-touch desktop:min-h-0" onClick={onCancel}>Abbrechen</Button>
+        <Button variant="ghost" className="min-h-touch desktop:min-h-0" onClick={() => { pending.current?.abort(); onCancel(); }}>Abbrechen</Button>
       </div>
     </form>
   );

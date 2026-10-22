@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { buildStationUrl } from '@/app/routes';
 import { Button } from '@/components/Button';
@@ -11,6 +11,8 @@ import { useMediaQuery } from '@/hooks/useMediaQuery';
 import type { VerbundView, WorkspaceDocumentView } from '@/state/workspaceVerbundView';
 import { EditorPanel, EditorToolbar } from '@/features/workspace/EditorFrame';
 import { WorkspaceNotices } from '@/features/workspace/WorkspaceNotices';
+import { ReferenceEdges } from '@/features/workspace/ReferenceEdges';
+import { ReviewSection } from '@/features/workspace/review/ReviewSection';
 import { PackageActions } from '@/features/workspace/profile/PackagePanel';
 import { SECTION_LABEL } from '@/features/workspace/profile/ProfileMarks';
 import { useImportTargets } from '@/features/workspace/profile/useImportTargets';
@@ -53,11 +55,11 @@ function OpenStructure({ missing }: Readonly<{ missing: readonly string[] }>) {
 /**
  * Bearbeitungsansicht eines SSP auf der Dokumentroute: Metadaten, Baseline,
  * Systemmerkmale, Systemimplementierung und Anforderungsliste, offene
- * Pflichtstruktur, Speichern und Export. `children` trägt die Bereiche, die
- * jede Dokumentseite zeigt (Referenzen, Prüfung). Der Seitentitel bleibt fest;
+ * Pflichtstruktur, Speichern und Export, darunter lesende Ansicht, Referenzen
+ * und Prüfspur. Der Seitentitel bleibt fest;
  * kein Dokumentwert erreicht Route, Titel oder Verlauf.
  */
-export function SspEditorPage({ view, document, children }: Readonly<{ view: VerbundView; document: WorkspaceDocumentView; children: ReactNode }>) {
+export function SspEditorPage({ view, document }: Readonly<{ view: VerbundView; document: WorkspaceDocumentView }>) {
   const desktop = useMediaQuery(DESKTOP_QUERY);
   const localId = document.localId as LocalId;
   const editor = useSspEditor(localId);
@@ -89,7 +91,8 @@ export function SspEditorPage({ view, document, children }: Readonly<{ view: Ver
           <ImplementationSection editor={editor} />
           <ControlImplementationSection editor={editor} controls={controls} />
           <SspDocumentContent key={`${localId}:${editor.envelope.savedAt}`} localId={localId} />
-          {children}
+          <ReferenceEdges view={view} document={document} />
+          <ReviewSection localId={localId} documentSavedAt={editor.envelope.savedAt} editorDirty={editor.dirty} onDocumentAdopted={editor.adopt} />
         </div>
         {!desktop && (
           <div className="sticky bottom-0 z-10 grid shrink-0 grid-cols-2 gap-2 border-t border-[var(--color-border-default)] bg-[var(--color-surface-base)] p-3 pb-safe shadow-footer">

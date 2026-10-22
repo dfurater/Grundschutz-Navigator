@@ -22,7 +22,10 @@ function text(item: unknown, field: string): string | undefined {
 }
 
 function rowTitle(kind: string, field: string) {
-  return (item: unknown, index: number) => `${kind} ${index + 1}${text(item, field) ? ` · ${text(item, field)}` : ''}`;
+  return (item: unknown, index: number) => {
+    const value = text(item, field);
+    return value ? `${kind} ${index + 1} · ${value}` : `${kind} ${index + 1}`;
+  };
 }
 
 export function FormSection({ title, children }: Readonly<{ title: string; children: ReactNode }>) {
@@ -73,8 +76,10 @@ export function BaselineSection({ editor, options }: Readonly<{ editor: SspEdito
       <p className="flex flex-wrap items-baseline gap-x-2 text-sm text-[var(--color-text-secondary)]">
         <OscalKey>import-profile.href</OscalKey><span className="break-all font-mono text-xs">{href ?? '–'}</span>
       </p>
-      <ImportTargetPicker name={name} options={options} selected={editor.baseline ? targetKey(editor.baseline) : undefined}
-        onSelect={(option) => editor.chooseBaseline(option.target, option.title)} />
+      {editor.baselineBindable
+        ? <ImportTargetPicker name={name} options={options} selected={editor.baseline ? targetKey(editor.baseline) : undefined}
+            onSelect={(option) => editor.chooseBaseline(option.target, option.title)} />
+        : <p className="text-sm text-[var(--color-text-secondary)]">Externer Verweis · nicht bindbar</p>}
     </FormSection>
   );
 }
@@ -149,8 +154,10 @@ export function ControlImplementationSection({ editor, controls }: Readonly<{ ed
   const selectId = useId();
   const [choice, setChoice] = useState('');
   const known = controls === null ? undefined : new Set(controls);
+  // Eine Wahl aus einer früheren Baseline gilt nicht mehr, sobald die aktuelle sie nicht führt.
+  const current = known === undefined || known.has(choice) ? choice : '';
   const add = () => {
-    const controlId = choice.trim();
+    const controlId = current.trim();
     if (controlId === '') return;
     if (editor.apply((source) => addSspItem(source, [ci, 'implemented-requirements'], { uuid: crypto.randomUUID(), 'control-id': controlId }))) setChoice('');
   };
@@ -179,13 +186,13 @@ export function ControlImplementationSection({ editor, controls }: Readonly<{ ed
           {controls === null
             ? <input id={selectId} className={`${INPUT} font-mono`} value={choice} autoComplete="off" onChange={(event) => setChoice(event.target.value)} />
             : (
-              <select id={selectId} className={`${INPUT} font-mono`} value={choice} onChange={(event) => setChoice(event.target.value)}>
+              <select id={selectId} className={`${INPUT} font-mono`} value={current} onChange={(event) => setChoice(event.target.value)}>
                 <option value="">–</option>
                 {controls.map((id) => <option key={id} value={id}>{id}</option>)}
               </select>
             )}
         </div>
-        <Button variant="secondary" className="min-h-touch desktop:min-h-0" disabled={choice.trim() === ''} onClick={add}>Anforderung hinzufügen</Button>
+        <Button variant="secondary" className="min-h-touch desktop:min-h-0" disabled={current.trim() === ''} onClick={add}>Anforderung hinzufügen</Button>
       </div>
     </FormSection>
   );

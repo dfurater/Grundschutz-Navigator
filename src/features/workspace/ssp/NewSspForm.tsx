@@ -1,4 +1,4 @@
-import { useId, useState, type FormEvent } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router';
 import { buildWorkspaceDocumentUrl } from '@/app/routes';
 import { Button } from '@/components/Button';
@@ -25,6 +25,9 @@ export function NewSspForm({ view, onCancel }: Readonly<{ view: VerbundView; onC
   const [title, setTitle] = useState('');
   const [target, setTarget] = useState<ImportTargetOption>();
   const [saving, setSaving] = useState(false);
+  // Abbrechen, Verbundwechsel oder Verlassen der Station beenden ein laufendes Anlegen ohne Navigation.
+  const pending = useRef<AbortController | undefined>(undefined);
+  useEffect(() => () => pending.current?.abort(), []);
   const [failed, setFailed] = useState(false);
   const ready = isSspTitle(title) && target !== undefined && writable && !saving;
 
@@ -33,6 +36,8 @@ export function NewSspForm({ view, onCancel }: Readonly<{ view: VerbundView; onC
     if (!ready || !target) return;
     setSaving(true);
     setFailed(false);
+    const controller = new AbortController();
+    pending.current = controller;
     const { source, href } = createSspSource({
       uuid: crypto.randomUUID(), resourceUuid: crypto.randomUUID(), title, baselineTitle: target.title,
       lastModified: new Date().toISOString(),
@@ -40,7 +45,8 @@ export function NewSspForm({ view, onCancel }: Readonly<{ view: VerbundView; onC
     // Dokument und Bindung in einer Transaktion: Ohne gültige Bindung entsteht kein SSP.
     const added = await documents.addDocument(view.verbund.verbundId as VerbundId, {
       source, context: { trustClass: 'class-2-local-user' }, rootType: 'system-security-plan', oscalVersion: NEW_SSP_OSCAL_VERSION,
-    }, 'draft', [{ pointer: SSP_IMPORT_PROFILE_POINTER, href, target: target.target }]);
+    }, 'draft', [{ pointer: SSP_IMPORT_PROFILE_POINTER, href, target: target.target }], controller.signal);
+    if (controller.signal.aborted) return;
     if (!added.ok) {
       setSaving(false);
       setFailed(true);
@@ -67,7 +73,7 @@ export function NewSspForm({ view, onCancel }: Readonly<{ view: VerbundView; onC
       {failed && <p role="alert" className="text-sm text-[var(--color-danger-text)]">Das SSP wurde nicht angelegt.</p>}
       <div className="flex flex-wrap gap-2">
         <Button type="submit" className="min-h-touch desktop:min-h-0" disabled={!ready}>SSP anlegen</Button>
-        <Button variant="ghost" className="min-h-touch desktop:min-h-0" onClick={onCancel}>Abbrechen</Button>
+        <Button variant="ghost" className="min-h-touch desktop:min-h-0" onClick={() => { pending.current?.abort(); onCancel(); }}>Abbrechen</Button>
       </div>
     </form>
   );

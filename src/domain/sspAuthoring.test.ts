@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   addSspItem, createSspSource, moveSspItem, readSspValue, removeSspComponent, removeSspItem, setBaselineTitle,
-  setSspValue, SspPatchError,
+  setSspValue, sspBaselineBindable, SspPatchError,
 } from '@/domain/sspAuthoring';
 import { missingSspStructure } from '@/domain/sspRequirements';
 import { PINNED_OSCAL_VERSIONS } from '@/domain/oscalVersionMatrix';
@@ -93,6 +93,18 @@ describe('Patches', () => {
     expect(readSspValue(removeSspComponent(free, 2), ['system-implementation', 'components'])).toHaveLength(2);
   });
 
+  it('erkennt eine component-uuid in anderer Schreibweise als Verweis, wie der Adapter', () => {
+    const upper = withSspBody(makeFullSsp(), (body) => {
+      body['system-implementation'].components[0].uuid = SSP_FIXTURE_IDS.thisSystem.toUpperCase();
+    });
+    expect(() => removeSspComponent(upper, 0)).toThrow(expect.objectContaining({ code: 'SSP_COMPONENT_REFERENCED' }));
+  });
+
+  it('bindet eine Baseline nur an einen nicht externen Verweis', () => {
+    expect(sspBaselineBindable(makeFullSsp())).toBe(true);
+    expect(sspBaselineBindable(setSspValue(makeFullSsp(), ['import-profile', 'href'], 'https://example.invalid/profile.json'))).toBe(false);
+  });
+
   it('schreibt den Titel der Baseline-Ressource und lässt die übrigen Ressourcen unverändert', () => {
     const next = setBaselineTitle(makeFullSsp(), 'Neue Baseline');
     const resources = readSspValue(next, ['back-matter', 'resources']) as { uuid: string; title: string }[];
@@ -110,6 +122,14 @@ describe('Versionsabhängige Pflichtführung', () => {
     const withoutUsers = withSspBody(makeMinimalSsp(version), (body) => { Reflect.deleteProperty(body['system-implementation'], 'users'); });
     const expected = version.startsWith('1.1.') ? [`${ROOT}/system-implementation/users`] : [];
     expect(missingSspStructure(withoutUsers)).toEqual(expected);
+  });
+
+  it('liest die Version wie der Root-Dispatch: v1.1.2 bindet 1.1.2', () => {
+    const prefixed = withSspBody(makeMinimalSsp('1.1.2'), (body) => {
+      body.metadata['oscal-version'] = 'v1.1.2';
+      Reflect.deleteProperty(body['system-implementation'], 'users');
+    });
+    expect(missingSspStructure(prefixed)).toEqual([`${ROOT}/system-implementation/users`]);
   });
 
   it.each(PINNED_OSCAL_VERSIONS)('%s: protocol.name ist nur in 1.1.2 Pflicht', (version) => {

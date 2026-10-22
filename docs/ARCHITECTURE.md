@@ -391,6 +391,7 @@ src/                              # Anwendungsquellcode
 │       │   ├── CapabilityContract.tsx        # Was Workspace, `metadata.actions` und `metadata.revisions` tragen
 │       │   ├── DecisionForm.tsx              # Freigabeformular mit Rolle, Partei und Begründung
 │       │   ├── ReviewPanel.tsx               # Verlauf, Stand und Freigabe eines Dokuments
+│       │   ├── ReviewSection.tsx             # Aufklappbare Prüfspur einer Dokumentseite, folgt dem Arbeitsstand einer Bearbeitungsansicht
 │       │   ├── ReviewTab.tsx                 # Reiter Prüfung: Prüfpunkt, Entscheidungen und Freigabe
 │       │   ├── reviewView.ts                 # Ableitung der Anzeige aus Trail und Stand
 │       │   └── useReviewTrail.ts             # Trail laden, Prüfpunkt setzen, Entscheidung schreiben

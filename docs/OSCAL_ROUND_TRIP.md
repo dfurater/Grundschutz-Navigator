@@ -35,7 +35,7 @@ Ergebnis:
 3. **Export und Reimport** — Ohne `exportDocument` ist der Export die
    Identität. Ein Serializer wird als `exportDocument` eingereicht, der
    No-op-Pfad bleibt dabei unverändert; `src/domain/profileExport.test.ts`
-   reicht so den Profil-Export (`toDerivedProfileTree()` aus
+   reicht so den Profil-Export (`toDerivedOscalTree()` aus
    `src/domain/profileExport.ts`) ein.
    Geprüft wird das **reimportierte Exportartefakt**.
    Ein Exportergebnis ohne JSON-Darstellung — `JSON.stringify` liefert kein

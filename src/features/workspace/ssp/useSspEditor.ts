@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { exportSspInWorker } from '@/adapters/sspWorkbench';
 import { readString } from '@/domain/jsonGuards';
 import { SSP_ADAPTER_DIAGNOSTIC_CODES } from '@/adapters/oscalSspReaders';
-import { readSspValue, setBaselineTitle, SspPatchError, SSP_IMPORT_PROFILE_POINTER } from '@/domain/sspAuthoring';
+import { readSspValue, setBaselineTitle, sspBaselineBindable, SspPatchError, SSP_IMPORT_PROFILE_POINTER } from '@/domain/sspAuthoring';
 import { commitSspSave, sameSspContent, sspReadinessBlocker, sspSaveBlocker } from '@/domain/sspSave';
 import type { BindingTarget, LocalId, WorkspaceBinding, WorkspaceEnvelope } from '@/domain/workspaceModel';
 import { useWorkspace } from '@/hooks/useWorkspace';
@@ -21,12 +21,16 @@ export interface SspEditor {
   readonly message?: SspEditorMessage;
   /** Ziel der Baseline des Arbeitsstands: gespeicherte Bindung oder ungespeicherte Wahl. */
   readonly baseline?: BindingTarget;
+  /** `import-profile.href` kann eine Bindung tragen; ein externer Verweis kann es nie. */
+  readonly baselineBindable: boolean;
   /** Wendet einen Patch an; ein abgewiesener Patch ändert nichts und meldet seinen Grund. */
   readonly apply: (patch: (source: unknown) => unknown) => boolean;
   readonly chooseBaseline: (target: BindingTarget, title: string) => void;
   readonly save: () => Promise<void>;
   readonly exportDocument: () => Promise<void>;
   readonly remove: () => Promise<boolean>;
+  /** Übernimmt einen neueren gespeicherten Stand nur ohne offene Eingaben. */
+  readonly adopt: (document: WorkspaceEnvelope) => Promise<'adopted' | 'blocked' | 'failed'>;
 }
 
 function baselineHref(source: unknown): string | undefined {
@@ -48,12 +52,15 @@ export function useSspEditor(localId: LocalId): SspEditor {
   const [pendingBaseline, setPendingBaseline] = useState<PendingImportTarget | undefined>(() => pending.get(SSP_IMPORT_PROFILE_POINTER));
 
   const href = baselineHref(working);
+  // Dieselbe Klassifikation wie im Verbundgraphen: Ein externer Verweis nutzt nie eine Bindung.
+  const baselineBindable = useMemo(() => sspBaselineBindable(working), [working]);
   const storedBaseline = stored.find((binding) => binding.pointer === SSP_IMPORT_PROFILE_POINTER && binding.href === href);
-  const baseline = (pendingBaseline?.href === href ? pendingBaseline?.target : undefined) ?? storedBaseline?.target;
-  const bindings = useMemo((): WorkspaceBinding[] => [
+  const chosen = (pendingBaseline?.href === href ? pendingBaseline?.target : undefined) ?? storedBaseline?.target;
+  const baseline = baselineBindable ? chosen : undefined;
+  const bindings = useMemo((): readonly WorkspaceBinding[] => baselineBindable ? [
     ...stored.filter((binding) => binding.pointer !== SSP_IMPORT_PROFILE_POINTER),
     ...(baseline && href !== undefined ? [{ fromLocalId: localId, pointer: SSP_IMPORT_PROFILE_POINTER, href, target: baseline }] : []),
-  ], [stored, baseline, href, localId]);
+  ] : stored, [baselineBindable, stored, baseline, href, localId]);
 
   const apply = useCallback((patch: (source: unknown) => unknown) => {
     let next: unknown;
@@ -101,6 +108,6 @@ export function useSspEditor(localId: LocalId): SspEditor {
 
   return {
     status: core.status, envelope: core.envelope, working, dirty: core.dirty, saveState: core.saveState, busy: core.busy, message: core.message,
-    baseline, apply, chooseBaseline, save, exportDocument, remove: core.remove,
+    baseline, baselineBindable, apply, chooseBaseline, save, exportDocument, remove: core.remove, adopt: core.adopt,
   };
 }

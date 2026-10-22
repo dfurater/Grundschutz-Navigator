@@ -7,9 +7,7 @@ import { useWorkspace } from '@/hooks/useWorkspace';
 
 /** Wartezeit nach der letzten Änderung, bevor der Entwurf automatisch gesichert wird. */
 export const DOCUMENT_AUTOSAVE_DELAY_MS = 800;
-
-// Meldet, dass ein explizites Speichern begonnen hat; es wird außerhalb der Kette
-// abgewartet, weil `save()` selbst auf `chain.current` wartet.
+// Ein explizites Speichern hat begonnen; außerhalb der Kette abwarten, weil `save()` auf `chain.current` wartet.
 const FLUSH_RESTART = Symbol('flush-restart');
 
 export type DocumentSaveState =
@@ -95,7 +93,7 @@ export function useDocumentEditor<M extends string>({ localId, rootType, sameCon
   const [envelope, setEnvelope] = useState<WorkspaceEnvelope>();
   const [status, setStatus] = useState<DocumentEditorCore<M>['status']>('loading');
   const [working, setWorking] = useState<unknown>();
-  const [stored, setStoredState] = useState<readonly WorkspaceBinding[]>([]);
+  const [stored, setStored] = useState<readonly WorkspaceBinding[]>([]);
   const [saveState, setSaveState] = useState<DocumentSaveState>({ kind: 'stored' });
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<DocumentEditorCoreMessage | M>();
@@ -113,7 +111,6 @@ export function useDocumentEditor<M extends string>({ localId, rootType, sameCon
   const options = useRef({ rootType, sameContent, alignBindings });
   useEffect(() => { options.current = { rootType, sameContent, alignBindings }; }, [rootType, sameContent, alignBindings]);
 
-  const setStored = useCallback((update: (current: readonly WorkspaceBinding[]) => readonly WorkspaceBinding[]) => setStoredState(update), []);
   const ownBindings = useCallback((all: readonly WorkspaceBinding[], document: WorkspaceEnvelope, draftSource: unknown) => {
     const own = all.filter((binding) => binding.fromLocalId === localId);
     const align = options.current.alignBindings;
@@ -133,7 +130,7 @@ export function useDocumentEditor<M extends string>({ localId, rootType, sameCon
       latest.current = { working: source, envelope: document.value, draftSavedAt: draft.value?.savedAt ?? null, unsaved: false };
       setEnvelope(document.value);
       setWorking(source);
-      setStoredState(ownBindings(bindings.value, document.value, draft.value?.source));
+      setStored(ownBindings(bindings.value, document.value, draft.value?.source));
       setSaveState(draft.value ? { kind: 'autosaved', at: draft.value.savedAt } : { kind: 'stored' });
       setStatus('ready');
     });
@@ -201,7 +198,7 @@ export function useDocumentEditor<M extends string>({ localId, rootType, sameCon
     latest.current = { working: source, envelope: document, draftSavedAt: draft.value?.savedAt ?? null, unsaved: false };
     setEnvelope(document);
     setWorking(source);
-    setStoredState(ownBindings(bindings.value, document, draft.value?.source));
+    setStored(ownBindings(bindings.value, document, draft.value?.source));
     setMessage(undefined);
     setSaveState(draft.value ? { kind: 'autosaved', at: draft.value.savedAt } : { kind: 'stored' });
     return 'adopted';
@@ -228,29 +225,31 @@ export function useDocumentEditor<M extends string>({ localId, rootType, sameCon
     savingDone.current = new Promise<void>((resolve) => { release = resolve; });
     // Freigaben speichern eine abgeleitete Quelle; offene Eingaben sind der Vergleich zum Startstand.
     const startWorking = latest.current.working;
-    let prepared: Extract<PreparedSave, { ok: true }>;
-    let result: Awaited<ReturnType<typeof documents.saveDocument>>;
+    let prepared: PreparedSave;
+    let result: Awaited<ReturnType<typeof documents.saveDocument>> | undefined;
     try {
       await chain.current;
       clearTimeout(timer.current);
-      const outcome = await prepare(envelope.source, working);
-      if (!outcome.ok) return outcome;
-      prepared = outcome;
-      const input = { source: prepared.source, context: { trustClass: 'class-2-local-user' as const }, rootType: envelope.rootType, oscalVersion };
-      result = await documents.saveDocument(localId, envelope.savedAt, latest.current.draftSavedAt, input, prepared.bindings, prepared.documentState, prepared.approval);
+      prepared = await prepare(envelope.source, working);
+      if (prepared.ok) {
+        const input = { source: prepared.source, context: { trustClass: 'class-2-local-user' as const }, rootType: envelope.rootType, oscalVersion };
+        result = await documents.saveDocument(localId, envelope.savedAt, latest.current.draftSavedAt, input, prepared.bindings, prepared.documentState, prepared.approval);
+      }
     } finally {
       saving.current = false;
       release();
       setBusy(false);
     }
-    if (!result.ok) {
-      setMessage('save-failed');
+    // Eine Abweisung vor dem Schreiben hält den Autosave ebenso am Laufen wie ein gescheitertes Schreiben.
+    if (!prepared.ok || result === undefined || !result.ok) {
       if (latest.current.unsaved) schedule();
-      return { ok: false, code: result.diagnostic.code };
+      if (!prepared.ok) return prepared;
+      setMessage('save-failed');
+      return { ok: false, code: result?.ok === false ? result.diagnostic.code : 'WORKSPACE_STORAGE_FAILED' };
     }
     onSaved?.(prepared.bindings);
     setEnvelope(result.value);
-    setStoredState(prepared.bindings);
+    setStored(prepared.bindings);
     // Eingaben während des Speicherns bleiben Arbeitsstand und gehen in den nächsten Entwurf.
     const changedMeanwhile = latest.current.working !== startWorking;
     latest.current = { working: changedMeanwhile ? latest.current.working : result.value.source, envelope: result.value, draftSavedAt: null, unsaved: changedMeanwhile };
