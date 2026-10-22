@@ -15,7 +15,7 @@ export interface PoamProgressRow {
   readonly title?: string;
   /** `target-id` der über `related-findings` aufgelösten Findings. */
   readonly requirementIds: readonly string[];
-  /** Früheste Frist als unveränderter Quellwert mit Dokument-Offset. */
+  /** Früheste lesbare Frist der aufgelösten Risiken als unveränderter Quellwert mit Dokument-Offset; auch Sortierschlüssel. */
   readonly deadline?: string;
   readonly deadlineState: DeadlineState;
   /** `metadata.roles[].title` je `role-id`, sonst die Kennung. */
@@ -94,10 +94,10 @@ function progressRow(item: PoamItem, { risks: riskIndex, findings, now, roleTitl
     const ms = instant(value);
     return ms === undefined || value === undefined ? [] : [{ value, ms }];
   });
-  const known = candidates.reduce<{ value: string; ms: number } | undefined>(
+  const earliest = candidates.reduce<{ value: string; ms: number } | undefined>(
     (best, entry) => (best === undefined || entry.ms < best.ms ? entry : best), undefined);
-  // Ein nicht auflösbares Risiko kann eine frühere Frist tragen: Nur eine bereits überschrittene bekannte Frist bleibt belegt.
-  const earliest = unresolvedRisks > 0 && (known === undefined || known.ms >= now) ? undefined : known;
+  // Ein nicht auflösbares Risiko kann eine frühere Frist tragen: Nur eine bereits überschrittene bekannte Frist belegt einen Zustand.
+  const stateDeadline = unresolvedRisks > 0 && (earliest === undefined || earliest.ms >= now) ? undefined : earliest;
   const requirementIds = item.relatedFindings
     .map((related) => resolvedLocal(findings, related.findingUuid, related.reference)?.target?.targetId)
     .filter((id): id is string => id !== undefined);
@@ -110,7 +110,7 @@ function progressRow(item: PoamItem, { risks: riskIndex, findings, now, roleTitl
     title: item.title,
     requirementIds: [...new Set(requirementIds)],
     deadline: earliest?.value,
-    deadlineState: deadlineState(earliest?.ms, now),
+    deadlineState: deadlineState(stateDeadline?.ms, now),
     responsible: [...new Set(tasks.flatMap((task) => task.responsibleRoles.map((role) => roleTitles.get(role.roleId) ?? role.roleId)))],
     riskStatuses: risks.flatMap((risk) => (risk.status === undefined ? [] : [risk.status])),
     lifecycles,

@@ -84,6 +84,17 @@ describe('derivePoamProgress', () => {
     expect(rowsOf(withoutResponses)[0]).toMatchObject({ unresolvedRisks: 0, lifecycles: [], completed: false, riskStatuses: ['open'] });
   });
 
+  it('überspringt Risiken ohne oder mit doppelter UUID beim Auflösen', () => {
+    const source = withBody((body) => {
+      const original = risk(body);
+      const withoutUuid = { ...structuredClone(original), deadline: '2026-01-01T00:00:00Z' };
+      delete (withoutUuid as Record<string, unknown>).uuid;
+      body.risks.push(withoutUuid as never, { ...structuredClone(original), deadline: '2026-02-01T00:00:00Z' } as never);
+    });
+    // Die Doppelung macht den Verweis mehrdeutig; das Risiko ohne UUID ist nie ein Ziel.
+    expect(rowsOf(source)[0]).toMatchObject({ unresolvedRisks: 1, completed: false, deadlineState: 'ohne Frist', deadline: undefined });
+  });
+
   it('wertet ein unmögliches Kalenderdatum nicht als Frist', () => {
     expect(rowsOf(withBody((body) => { risk(body).deadline = '2026-02-30T10:00:00Z'; }))[0]).toMatchObject({ deadlineState: 'ohne Frist', deadline: undefined });
   });
@@ -95,7 +106,7 @@ describe('derivePoamProgress', () => {
       body['poam-items'][0]['related-risks'].push({ 'risk-uuid': '00000000-0000-4000-8000-0000000003fe' });
     });
     expect(rowsOf(withDangling('2026-12-01T00:00:00Z'))[0]).toMatchObject({
-      unresolvedRisks: 1, completed: false, deadlineState: 'ohne Frist', deadline: undefined,
+      unresolvedRisks: 1, completed: false, deadlineState: 'ohne Frist', deadline: '2026-12-01T00:00:00Z',
     });
     expect(rowsOf(withDangling('2026-10-01T00:00:00Z'))[0]).toMatchObject({
       unresolvedRisks: 1, completed: false, deadlineState: 'überschritten', deadline: '2026-10-01T00:00:00Z',

@@ -49,6 +49,7 @@ function Row({ verbundId, row }: Readonly<{ verbundId: string; row: ProgressRow 
       <span className="flex w-60 shrink-0 flex-wrap items-center gap-1.5">
         <span className="font-mono text-xs tabular-nums text-[var(--color-text-primary)]">{row.deadline ?? '—'}</span>
         {!row.completed && <span data-deadline-state={row.deadlineState} className={`${MARK} ${STATE_TONE[row.deadlineState]}`}>{row.deadlineState}</span>}
+        {row.unresolvedRisks > 0 && <span className="basis-full text-xs tabular-nums text-[var(--color-text-secondary)]">{row.unresolvedRisks === 1 ? '1 Risikoverweis' : `${row.unresolvedRisks} Risikoverweise`} nicht auflösbar</span>}
       </span>
       <span className="min-w-0 flex-1 basis-56 space-y-0.5">
         <Link to={buildWorkspaceDocumentUrl(verbundId, row.localId)} className={`flex min-h-touch items-center rounded text-sm text-[var(--color-text-primary)] hover:underline desktop:min-h-0 ${FOCUS_RING}`}>
@@ -63,7 +64,6 @@ function Row({ verbundId, row }: Readonly<{ verbundId: string; row: ProgressRow 
       <span className="w-48 shrink-0 space-y-1">
         <Stand row={row} />
         {row.riskStatuses.length > 0 && <span className="block font-mono text-xs text-[var(--color-text-muted)]">risk.status {row.riskStatuses.join(', ')}</span>}
-        {row.unresolvedRisks > 0 && <span className="block text-xs text-[var(--color-text-secondary)]">{row.unresolvedRisks === 1 ? '1 Risikoverweis' : `${row.unresolvedRisks} Risikoverweise`} nicht auflösbar</span>}
       </span>
     </li>
   );
