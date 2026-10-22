@@ -27,7 +27,7 @@ export const ASSESSMENT_RESULTS_ROOT_TYPE = 'assessment-results' as const;
 export type ArReference =
   | {
       readonly status: 'resolved';
-      readonly origin: 'local' | 'assessment-plan' | 'ssp';
+      readonly origin: 'local' | 'assessment-plan' | 'assessment-results' | 'ssp';
       readonly path: string;
     }
   | { readonly status: 'not-resolvable-in-context'; readonly reason: string }

@@ -26,7 +26,12 @@ describe('NIST-POA&M-Orakel', () => {
         { at: new Date('2026-10-22T00:00:00Z') },
       );
       expect((await validatePoamSchema(document)).ok, entry.fileName).toBe(true);
-      expect(document.view.diagnostics, entry.fileName).toEqual([]);
+      expect(document.view.diagnostics.map(({ code, path }) => ({ code, path })), entry.fileName).toEqual([{
+        code: 'OSCAL_POAM_RISK_REFERENCE_UNRESOLVED',
+        path: '/plan-of-action-and-milestones/poam-items/0/related-risks/0/risk-uuid',
+      }]);
+      // NIST-Beispiel: Die UUID gehört einem mitigating-factor, nicht einem risk.
+      expect(document.view.poamItems[0].relatedRisks[0].reference).toMatchObject({ status: 'unresolved', reason: 'identity-type-mismatch' });
       expect(document.view.importSsp?.status).toBe('not-resolvable-in-context');
       expect(document.view.poamItems).toHaveLength(2);
       expect(document.view.observations.map((o) => o.evidence?.validity)).toEqual(['no-expiry-declared', 'expired']);

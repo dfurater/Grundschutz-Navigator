@@ -6,6 +6,7 @@ import { AR_UUIDS, makeFullAssessmentResults } from '@/test/fixtures/assessmentR
 import { parsePoamDocument } from './oscalPoamDocument';
 import { parseAssessmentResultsDocument } from './oscalAssessmentResultsDocument';
 import { parseSspDocument } from './oscalSspDocument';
+import { countPoamUuids } from './oscalPoamReaders';
 import { makeFullSsp } from '@/test/fixtures/systemSecurityPlans';
 import { afterEach, vi } from 'vitest';
 import { stubNoNetwork, expectNoNetworkCalls } from '@/test/noNetwork';
@@ -146,5 +147,61 @@ describe('POA&M-Root', () => {
     const invalid = parsePoamDocument(source, context, { assessmentResults: { ...assessmentResults, source: {} } });
     expect(invalid.view.diagnostics.map((d) => d.code)).toContain('OSCAL_POAM_ASSESSMENT_RESULTS_BINDING_INVALID');
     expect(() => parsePoamDocument(source, context, { assessmentResults: { ...assessmentResults, context: { trustClass: 'class-1-unverified-public' } } })).toThrow(/OSCAL_POAM_TRUST_CLASS_REJECTED/);
+  });
+  it.each(['missing', 'duplicate'])('diagnostiziert %s Beobachtungsziele im ausdrücklich gebundenen AR', (testCase) => {
+    const source = makeFullPoam();
+    Reflect.deleteProperty(source['plan-of-action-and-milestones'], 'observations');
+    const arSource = makeFullAssessmentResults();
+    const arResult = arSource['assessment-results'].results[0];
+    if (testCase === 'missing') arResult.observations.splice(0, 1);
+    else arResult.observations.push(structuredClone(arResult.observations[0]));
+    const assessmentResults = parseAssessmentResultsDocument(arSource, context);
+    const view = parsePoamDocument(source, context, { assessmentResults }).view;
+    expect(view.poamItems[0].relatedObservations[0].reference?.state).toBe(testCase === 'missing' ? 'missing-in-context' : 'ambiguous-in-context');
+    expect(view.diagnostics.map((d) => d.code)).toContain(testCase === 'missing' ? 'OSCAL_EVIDENCE_OBSERVATION_NOT_FOUND_IN_CONTEXT' : 'OSCAL_EVIDENCE_OBSERVATION_AMBIGUOUS_IN_CONTEXT');
+    expect(JSON.stringify(view.diagnostics)).not.toContain(AR_UUIDS.observation);
+  });
+  it('behandelt Risiko- und Response-Verweise in Findings und Risikologs wie Item-Verweise', () => {
+    const source = makeFullPoam();
+    const root = source['plan-of-action-and-milestones'];
+    root.risks[0].remediations.splice(0);
+    const assessmentResults = parseAssessmentResultsDocument(makeFullAssessmentResults(), context);
+    const bound = parsePoamDocument(source, context, { assessmentResults }).view;
+    expect(bound.risks[0].riskLog[0].relatedResponses[0].reference).toMatchObject({ status: 'resolved', origin: 'assessment-results' });
+    expect(parse(source).risks[0].riskLog[0].relatedResponses[0].reference.status).toBe('not-resolvable-in-context');
+    Reflect.deleteProperty(root, 'risks');
+    const noAr = parse(source);
+    expect(noAr.findings[0].relatedRisks[0].reference.status).toBe('not-resolvable-in-context');
+    expect(parsePoamDocument(source, context, { assessmentResults }).view.findings[0].relatedRisks[0].reference).toMatchObject({ status: 'resolved', origin: 'assessment-results' });
+  });
+  it.each([false, true])('löst lokale Prüfplattform-Actors auf und weist Duplikate ab: %s', (duplicate) => {
+    const source = makeFullPoam();
+    const root = source['plan-of-action-and-milestones'];
+    const platform = { uuid: AR_UUIDS.result };
+    Object.assign(root['local-definitions'], { 'assessment-assets': { 'assessment-platforms': duplicate ? [platform, structuredClone(platform)] : [platform] } });
+    Object.assign(root['poam-items'][0], { origins: [{ actors: [{ type: 'assessment-platform', 'actor-uuid': AR_UUIDS.result }] }] });
+    const view = parse(source);
+    expect(view.poamItems[0].origins[0].actors[0].reference.status).toBe(duplicate ? 'unresolved' : 'resolved');
+    expect(view.diagnostics.map((d) => d.code)).toEqual(duplicate ? expect.arrayContaining(['OSCAL_POAM_PLATFORM_UUID_DUPLICATE', 'OSCAL_POAM_ACTOR_REFERENCE_UNRESOLVED']) : []);
+  });
+  it.each(['component', 'resource', 'mitigating-factor'])('weist ein lokales %s-Ziel vor einem passenden AR-Risiko zurück', (type) => {
+    const source = makeFullPoam();
+    const root = source['plan-of-action-and-milestones'];
+    const target = type === 'component' ? AR_UUIDS.component : type === 'resource' ? AR_UUIDS.resource : AR_UUIDS.missing;
+    Object.assign(root.risks[0], { 'mitigating-factors': [{ uuid: AR_UUIDS.missing, description: 'Minderung' }] });
+    root['poam-items'][0]['related-risks'][0]['risk-uuid'] = target;
+    const arSource = makeFullAssessmentResults();
+    Object.assign(arSource['assessment-results'].results[0].risks[0], { uuid: target });
+    const assessmentResults = parseAssessmentResultsDocument(arSource, context);
+    for (const view of [parse(source), parsePoamDocument(source, context, { assessmentResults }).view]) {
+      expect(view.poamItems[0].relatedRisks[0].reference).toMatchObject({ status: 'unresolved', reason: 'identity-type-mismatch' });
+      expect(view.diagnostics.map((d) => d.code)).toContain('OSCAL_POAM_RISK_REFERENCE_UNRESOLVED');
+    }
+  });
+  it('zählt verschachtelte lokale Identitäten ohne Nutzlastkopien oder zyklischen Abstieg', () => {
+    const body: Record<string, unknown> = { uuid: AR_UUIDS.risk, props: [{ uuid: AR_UUIDS.risk.toUpperCase(), name: 'synthetic', value: 'private' }] };
+    body.self = body;
+    expect(countPoamUuids(body)).toEqual(new Map([[AR_UUIDS.risk, 2]]));
+    expect(body.self).toBe(body);
   });
 });

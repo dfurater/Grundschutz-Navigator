@@ -14,7 +14,7 @@ import {
 } from '@/adapters/oscalAssessmentPlanReaders';
 import { deriveFinding, deriveRisk } from '@/adapters/oscalAssessmentResultsFindings';
 import { diagnoseTaskCycles, origins, subjectReferences } from '@/adapters/oscalAssessmentResultsReaders';
-import { POAM_BASE_PATH, poamItem, type PoamDeriveState } from '@/adapters/oscalPoamReaders';
+import { countPoamUuids, POAM_BASE_PATH, poamItem, type PoamDeriveState } from '@/adapters/oscalPoamReaders';
 
 export { POAM_ROOT_TYPE } from '@/domain/poamModel';
 export class PoamTrustClassError extends Error {
@@ -91,11 +91,13 @@ export function derivePoam(body: unknown, context: OscalDocumentContext, options
     ssp: new Map(),
     assets: new Map(),
     document: new Map(),
+    documentUuidCounts: countPoamUuids(frame.rootBody),
     plan: new Map(),
     planAssets: new Map(),
     planAvailable: false,
     resultsContext: new Map(),
     resultsAvailable: false,
+    resultsBound: options.assessmentResults !== undefined,
     sspAvailable: false,
     evidenceByPath: new Map(),
     observationReferences: new Map(),
@@ -112,6 +114,9 @@ export function derivePoam(body: unknown, context: OscalDocumentContext, options
   const backMatter = objectField(root, 'back-matter', POAM_BASE_PATH, state);
   if (backMatter !== null) indexNodes(state, backMatter, 'resources', 'resource', `${POAM_BASE_PATH}/back-matter`);
   const assessmentAssets = deriveAssets(local, state, lp);
+  const assetSource = objectField(local, 'assessment-assets', lp, state);
+  if (assetSource !== null)
+    indexNodes(state, assetSource, 'assessment-platforms', 'assessment-platform', `${lp}/assessment-assets`, 'PLATFORM_UUID_DUPLICATE', state.assets);
   const contextUuids = new Set(
     [state.local, state.ssp].flatMap((index) =>
       ['component', 'inventory-item', 'user', 'party', 'location'].flatMap((type) =>
@@ -119,16 +124,18 @@ export function derivePoam(body: unknown, context: OscalDocumentContext, options
       ),
     ),
   );
-  const observationContextUuids = new Set(
-    [...(state.resultsContext.get('observation') ?? [])].filter(([, paths]) => paths.length === 1).map(([uuid]) => uuid),
-  );
+  const observationContext = {
+    counts: new Map([...(state.resultsContext.get('observation') ?? [])].map(([uuid, paths]) => [uuid, paths.length])),
+    available: state.resultsAvailable,
+  };
   const evidence = deriveEvidenceReadModel({
     source: { [POAM_ROOT_TYPE]: root },
     rootType: POAM_ROOT_TYPE,
     oscalVersion: state.oscalVersion ?? 'unknown',
     at: options.at ?? new Date(),
     contextUuids,
-    observationContextUuids,
+    observationContext,
+    documentUuidCounts: state.documentUuidCounts,
   });
   for (const observation of evidence.observations) state.evidenceByPath.set(observation.path, observation);
   for (const reference of evidence.observationReferences) state.observationReferences.set(reference.path, reference);

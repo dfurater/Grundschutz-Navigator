@@ -50,6 +50,8 @@ export type UuidReferenceState =
   | 'resolved-in-context'
   | 'not-resolvable-in-context'
   | 'ambiguous-in-document'
+  | 'ambiguous-in-context'
+  | 'missing-in-context'
   | 'type-mismatch'
   | 'missing-in-document';
 
@@ -99,8 +101,13 @@ export interface EvidenceReadModelInput {
   readonly at: Date;
   /** UUIDs, die der Aufrufer aus anderen Workspace-Dokumenten bereitstellt. */
   readonly contextUuids?: ReadonlySet<string>;
-  /** Typisierter Beobachtungskontext; ohne Angabe gilt der bisherige gemeinsame Kontext. */
-  readonly observationContextUuids?: ReadonlySet<string>;
+  /** Typisierte AR-Trefferzahlen mit explizitem Bindungszustand. */
+  readonly observationContext?: {
+    readonly counts: ReadonlyMap<string, number>;
+    readonly available: boolean;
+  };
+  /** Normalisierte Häufigkeiten aller lokalen UUID-Identitäten für typisierte POA&M-Verweise. */
+  readonly documentUuidCounts?: ReadonlyMap<string, number>;
 }
 
 /** Abgelaufene oder nicht bewertbare Beobachtungen tragen keine positive Nachweisaussage. */
@@ -282,11 +289,16 @@ export function deriveEvidenceReadModel(input: EvidenceReadModelInput): Evidence
   // In AR ist `observation-uuid` dokumentintern, der Kontext darf ein fehlendes Ziel nicht verdecken.
   // Im POA&M ist sie eine fachliche UUID-Übernahme aus Assessment Results.
   const isAssessmentResults = rootType === 'assessment-results';
-  const observationContext = isAssessmentResults ? new Set<string>() : lowerCaseSet(input.observationContextUuids ?? contextUuids);
+  const observationContextCounts = new Map<string, number>();
+  for (const [uuid, count] of input.observationContext?.counts ?? []) {
+    const key = uuid.toLowerCase();
+    observationContextCounts.set(key, (observationContextCounts.get(key) ?? 0) + count);
+  }
+  const observationContext = isAssessmentResults ? new Set<string>() : lowerCaseSet(input.observationContext?.counts.keys() ?? contextUuids);
   const nonObservationUuids = lowerCaseSet([
     ...resourceUuids,
     ...containers.flatMap(({ node, path }) => ['risks', 'findings', 'poam-items'].flatMap((key) => objectsAt(node, key, path).flatMap(({ node: item }) => readString(item.uuid) ?? []))),
-    ...(input.observationContextUuids === undefined ? [] : [...contextUuids].filter((uuid) => !observationContext.has(uuid))),
+    ...(input.observationContext === undefined ? [] : [...contextUuids].filter((uuid) => !observationContext.has(uuid))),
   ]);
   const missingObservationCode = isAssessmentResults ? 'OSCAL_EVIDENCE_OBSERVATION_NOT_FOUND' : null;
   const referrerKeys = isAssessmentResults ? ['findings', 'risks'] : ['poam-items', 'findings', 'risks'];
@@ -298,13 +310,20 @@ export function deriveEvidenceReadModel(input: EvidenceReadModelInput): Evidence
           if (uuid === undefined) return [];
           const uuidPath = `${path}/observation-uuid`;
           const key = uuid.toLowerCase();
-          if ((observationCounts.get(key) ?? 0) > 1) {
+          if ((input.documentUuidCounts?.get(key) ?? observationCounts.get(key) ?? 0) > 1) {
             diagnose('OSCAL_EVIDENCE_OBSERVATION_AMBIGUOUS', uuidPath);
             return [{ path: uuidPath, uuid, state: 'ambiguous-in-document' }];
           }
-          if (!isAssessmentResults && !observationUuids.has(key) && nonObservationUuids.has(key)) {
+          if (!isAssessmentResults && !observationUuids.has(key) && (nonObservationUuids.has(key) || input.documentUuidCounts?.has(key))) {
             diagnose('OSCAL_EVIDENCE_OBSERVATION_TYPE_MISMATCH', uuidPath);
             return [{ path: uuidPath, uuid, state: 'type-mismatch' }];
+          }
+          if (!isAssessmentResults && !observationUuids.has(key) && input.observationContext?.available === true) {
+            const count = observationContextCounts.get(key) ?? 0;
+            if (count === 1) return [{ path: uuidPath, uuid, state: 'resolved-in-context' }];
+            const ambiguous = count > 1;
+            diagnose(ambiguous ? 'OSCAL_EVIDENCE_OBSERVATION_AMBIGUOUS_IN_CONTEXT' : 'OSCAL_EVIDENCE_OBSERVATION_NOT_FOUND_IN_CONTEXT', uuidPath);
+            return [{ path: uuidPath, uuid, state: ambiguous ? 'ambiguous-in-context' : 'missing-in-context' }];
           }
           return [{ path: uuidPath, uuid, state: uuidState(uuid, uuidPath, observationUuids, observationContext, missingObservationCode) }];
         }),

@@ -10,7 +10,7 @@ export const POAM_ROOT_TYPE = 'plan-of-action-and-milestones' as const;
 export type PoamObservation = AssessmentObservation;
 export type PoamFinding = AssessmentFinding;
 export type PoamRisk = AssessmentRisk;
-export type PoamReference = ArReference | { readonly status: 'resolved'; readonly origin: 'assessment-results'; readonly path: string };
+export type PoamReference = ArReference;
 export interface PoamItem extends ApEntity {
   /** Lokaler Quellpfad; auch ohne optionale OSCAL-UUID adressierbar. */
   readonly key: string;
