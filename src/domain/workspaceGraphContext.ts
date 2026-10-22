@@ -64,6 +64,11 @@ export function prepareWorkspaceDocument(document: WorkspaceGraphDocument): Prep
   };
 }
 
+/** Absolute and unsafe URIs never acquire a workspace target; every other classification may use a binding. */
+export function isBindableReference(reference: { readonly kind: string; readonly reason?: unknown }): boolean {
+  return !(reference.kind === 'external' || (reference.kind === 'unresolved' && reference.reason === 'unsafe-protocol'));
+}
+
 /** Classify before consulting a binding: absolute URIs never acquire a workspace target. */
 export function evaluateWorkspaceDocumentReference(
   prepared: PreparedWorkspaceDocument,
@@ -77,7 +82,7 @@ export function evaluateWorkspaceDocumentReference(
     return { ...edge, state: 'missing-source', diagnostic: importSourceMissing(reference.path) };
   }
   const classification = prepared.classify({ href: reference.href, path: reference.path });
-  if (classification.kind === 'external' || (classification.kind === 'unresolved' && classification.reason === 'unsafe-protocol')) {
+  if (!isBindableReference(classification)) {
     return { ...edge, state: 'external' };
   }
   const matches = bindings.get(`${workspaceDocumentToken(prepared.document.key)}|${reference.path}`) ?? [];
@@ -123,7 +128,7 @@ function internalReferenceEdge(
     if (reference.state === 'ambiguous') return ambiguous();
     return { ...edge, state: 'resolved', to: { document: prepared.document.key, kind: 'control', localId: reference.controlId } };
   }
-  if (reference.kind === 'external' || (reference.kind === 'unresolved' && reference.reason === 'unsafe-protocol')) {
+  if (!isBindableReference(reference)) {
     return { ...edge, state: 'external' };
   }
   if (reference.kind === 'unresolved' && reference.reason === 'fragment-not-found') {

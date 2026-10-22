@@ -230,6 +230,41 @@ describe('Dokumentinterne Referenzen', () => {
       code: codes.PARTY_REFERENCE_UNRESOLVED,
       path: '/system-security-plan/system-characteristics/responsible-parties/0/party-uuids/0',
     },
+    {
+      name: 'eine role-id in metadata.responsible-parties ohne Rolle',
+      mutate: (body: RawOscalSystemSecurityPlan) => {
+        Object.assign(body.metadata, { 'responsible-parties': [{ 'role-id': 'unbekannte-rolle', 'party-uuids': [SSP_FIXTURE_IDS.party] }] });
+      },
+      code: codes.ROLE_REFERENCE_UNRESOLVED,
+      path: '/system-security-plan/metadata/responsible-parties/0/role-id',
+    },
+    {
+      name: 'eine Party-UUID in metadata.actions ohne Partei',
+      mutate: (body: RawOscalSystemSecurityPlan) => {
+        Object.assign(body.metadata, { actions: [{
+          uuid: '66666666-0000-4000-8000-0000000000fe', type: 'approved', system: 'https://example.invalid/ns',
+          'responsible-parties': [{ 'role-id': 'system-owner', 'party-uuids': ['66666666-0000-4000-8000-0000000000fd'] }],
+        }] });
+      },
+      code: codes.PARTY_REFERENCE_UNRESOLVED,
+      path: '/system-security-plan/metadata/actions/0/responsible-parties/0/party-uuids/0',
+    },
+    {
+      name: 'zwei Rollen mit derselben id',
+      mutate: (body: RawOscalSystemSecurityPlan) => {
+        body.metadata.roles = [...(body.metadata.roles ?? []), { id: 'system-owner', title: 'Zweite Systemverantwortung' }];
+      },
+      code: codes.ROLE_ID_DUPLICATE,
+      path: '/system-security-plan/metadata/roles/1/id',
+    },
+    {
+      name: 'zwei Parteien mit derselben uuid in anderer Schreibweise',
+      mutate: (body: RawOscalSystemSecurityPlan) => {
+        body.metadata.parties = [...(body.metadata.parties ?? []), { uuid: SSP_FIXTURE_IDS.party.toUpperCase(), type: 'person', name: 'Zweite Partei' }];
+      },
+      code: codes.PARTY_UUID_DUPLICATE,
+      path: '/system-security-plan/metadata/parties/1/uuid',
+    },
   ])('diagnostiziert $name und liefert das Dokument', ({ mutate, code, path }) => {
     const plan = derive(withSspBody(makeFullSsp(), mutate));
 

@@ -15,6 +15,7 @@ import { Button } from '@/components/Button';
 import type { VerbundId } from '@/domain/workspaceModel';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { NewProfileForm } from '@/features/workspace/profile/NewProfileForm';
+import { NewSspForm } from '@/features/workspace/ssp/NewSspForm';
 import { WorkspaceFileImport } from '@/features/workspace/WorkspaceFileImport';
 
 const PANEL = 'rounded-md border border-[var(--color-border-default)] bg-[var(--color-surface-base)]';
@@ -100,6 +101,19 @@ function ProfileStationActions({ view }: Readonly<{ view: VerbundView }>) {
   );
 }
 
+/** Aktionen der Station SSP: Neuanlage mit Baseline-Wahl und Aufnahme einer SSP-Datei. */
+function SspStationActions({ view }: Readonly<{ view: VerbundView }>) {
+  const { writable } = useWorkspace();
+  const [creating, setCreating] = useState(false);
+  if (creating) return <NewSspForm view={view} onCancel={() => setCreating(false)} />;
+  return (
+    <div className="flex flex-wrap items-center gap-2 px-4 pt-3">
+      <Button className="min-h-touch desktop:min-h-0" disabled={!writable} onClick={() => setCreating(true)}>Neues SSP</Button>
+      <WorkspaceFileImport verbundId={view.verbund.verbundId as VerbundId} rootType="system-security-plan" rejectionCode="OSCAL_ROOT_NOT_SSP" label="SSP" />
+    </div>
+  );
+}
+
 function VerbundContent({ view, station }: Readonly<{ view: VerbundView; station: WorkspaceStation | undefined }>) {
   const { verbund, documents, diagnostics } = view;
   const shown = station
@@ -134,7 +148,7 @@ function VerbundContent({ view, station }: Readonly<{ view: VerbundView; station
         </h2>
         {station && <p className="px-4 text-xs text-[var(--color-text-secondary)]">{STATION_DEFINITIONS[station].explanation}</p>}
         {station === 'profile' && <ProfileStationActions key={verbund.verbundId} view={view} />}
-        {station === 'ssp' && <div className="px-4 pt-3"><WorkspaceFileImport key={verbund.verbundId} verbundId={verbund.verbundId} rootType="system-security-plan" rejectionCode="OSCAL_ROOT_NOT_SSP" label="SSP" /></div>}
+        {station === 'ssp' && <SspStationActions key={verbund.verbundId} view={view} />}
         {shown.length === 0 ? (
           <p className="px-4 pb-3 pt-2 text-sm text-[var(--color-text-secondary)]">
             {station ? 'An dieser Station liegt noch kein Dokument.' : 'Dieser Informationsverbund enthält noch kein Dokument.'}

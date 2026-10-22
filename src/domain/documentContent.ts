@@ -44,3 +44,18 @@ export function documentContent(source: unknown, rootType: OscalRootKey): unknow
   const content: JsonObject = Object.fromEntries(Object.entries(body).filter(([key]) => key !== 'uuid'));
   return withRoot(copy, rootType, withMetadata(content, body.metadata));
 }
+
+function sameJson(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (Array.isArray(a) || Array.isArray(b)) {
+    return Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((item, index) => sameJson(item, b[index]));
+  }
+  if (!isJsonObject(a) || !isJsonObject(b)) return Object.is(a, b);
+  const keys = Object.keys(a);
+  return keys.length === Object.keys(b).length && keys.every((key) => Object.hasOwn(b, key) && sameJson(a[key], b[key]));
+}
+
+/** Inhaltsgleichheit zweier Quellgraphen, unabhängig von der Reihenfolge der Objektschlüssel. */
+export function sameDocumentContent(a: unknown, b: unknown, rootType: OscalRootKey): boolean {
+  return sameJson(documentContent(a, rootType), documentContent(b, rootType));
+}

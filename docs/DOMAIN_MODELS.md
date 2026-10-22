@@ -1031,7 +1031,9 @@ Der Weg eines SSP in die Anwendung ist die Klasse-2-Importgrenze:
 `parseSspDocument()`. Stufe 4 bleibt `not-checked`; die Referenzprüfungen
 unten sind Modelldiagnosen des Adapters.
 
-Die SSP-Station (`src/features/workspace/ssp/`) nimmt ausschließlich schema-geprüfte SSP-JSON-Dateien auf. `SspDocumentContent` lädt das ausgewählte Dokument über den Workspace-Port und zeigt die Projektion von `parseSspDocument()` mit Modelldiagnosen. `SspFields` beschränkt den lesenden Feldbaum auf fachliche Projektionsfelder; aufgelöste Referenzobjekte und strukturelle Diagnosepfade stehen außerhalb dieses Baums. Fremde `props` und nicht projizierte Inhalte bleiben in `source` erhalten. Der Import und die Anzeige ändern weder Root-UUID noch `metadata.last-modified`.
+Die SSP-Station (`src/features/workspace/ssp/`) nimmt ausschließlich schema-geprüfte SSP-JSON-Dateien auf oder legt ein SSP über `createSspSource()` als `draft` an. `SspDocumentContent` lädt das ausgewählte Dokument über den Workspace-Port und zeigt die Projektion von `parseSspDocument()` mit Modelldiagnosen. `SspFields` beschränkt den lesenden Feldbaum auf fachliche Projektionsfelder; aufgelöste Referenzobjekte und strukturelle Diagnosepfade stehen außerhalb dieses Baums. Fremde `props` und nicht projizierte Inhalte bleiben in `source` erhalten. Der Import und die Anzeige ändern weder Root-UUID noch `metadata.last-modified`.
+
+Bearbeitet wird ausschließlich `source`, nie die Projektion. Die Patches in `src/domain/sspAuthoring.ts` (`setSspValue()`, `addSspItem()`, `removeSspItem()`, `moveSspItem()`, `removeSspComponent()`, `setBaselineTitle()`) klonen die Quelle und ändern genau den adressierten Wert; unbekannte Felder, fremde `props`, `links`, `remarks` und `back-matter` bleiben unverändert. Ein Wert aus Leerraum entfernt den Schlüssel, eine geleerte Liste entfällt. `missingSspStructure()` in `src/domain/sspRequirements.ts` liefert die offene Pflichtstruktur je `oscal-version` als JSON Pointer. `commitSspSave()` in `src/domain/sspSave.ts` lässt die Root-UUID unverändert und setzt `last-modified` nur bei Inhaltsänderung. `sspSaveBlocker()` und `sspReadinessBlocker()` lesen die Referenzdiagnosen des Adapters: Eine `component-uuid` ohne Komponente verhindert das Speichern, eine unauflösbare `component-uuid`, `role-id` oder Party-UUID oder eine mehrfach vergebene Rollen-`id` oder Party-`uuid` den Zustand `export-ready`. `exportSspDocument()` in `src/domain/sspExport.ts` baut den Graphen über `createOscalDerivedGraph()`, prüft ihn mit `processClass2OscalValue()` gegen das gepinnte Schema der deklarierten Version und mit derselben Referenzprüfung; die Constraint-Stufe ist `not-checked`.
 
 ### Umsetzungsstatus je Komponente
 
@@ -1136,6 +1138,8 @@ keiner Diagnose. Modelldiagnosen verwerfen ein Dokument nie.
 | `OSCAL_SSP_BY_COMPONENT_DUPLICATE` | dieselbe `component-uuid` zweimal in den `by-components` einer Anforderung oder eines Statements |
 | `OSCAL_SSP_ROLE_REFERENCE_UNRESOLVED` | `role-id` ohne Rolle in `metadata.roles` |
 | `OSCAL_SSP_PARTY_REFERENCE_UNRESOLVED` | Party-UUID ohne Partei in `metadata.parties` |
+| `OSCAL_SSP_ROLE_ID_DUPLICATE` | zwei Rollen in `metadata.roles` mit derselben `id` |
+| `OSCAL_SSP_PARTY_UUID_DUPLICATE` | zwei Parteien in `metadata.parties` mit derselben `uuid` |
 | `OSCAL_SSP_CONTROL_ID_MISSING` | `implemented-requirement` ohne `control-id` |
 | `OSCAL_SSP_CONTROL_REFERENCE_UNRESOLVED` | gebundene Baseline kennt die `control-id` nicht |
 

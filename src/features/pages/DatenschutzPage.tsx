@@ -165,15 +165,21 @@ export function DatenschutzPage() {
           auch für deren Kopien, etwa in Betriebssystem-Backups oder bei Dritten.
         </p>
         <p className="catalog-prose-text text-sm text-slate-700 leading-relaxed">
-          An der Station SSP lesen Sie eine lokale OSCAL-JSON-Datei ein. Die
-          Anwendung prüft die Datei ausschließlich in Ihrem Browser, speichert
-          sie im gewählten Informationsverbund und zeigt die dokumentierte
-          Systembeschreibung und Umsetzung lesend an. Die Datei wird nicht
-          hochgeladen; ihre Verweise und eingebetteten Ressourcen werden nicht
-          abgerufen oder ausgeführt. Die gespeicherte Kopie bleibt nach dem
-          Schließen des Tabs erhalten und ist in der Sicherungsdatei enthalten.
-          Zum Entfernen dient die Löschung des zugehörigen Informationsverbunds
-          oder der lokalen Daten dieser Anwendung über die Browser-Einstellungen.
+          An der Station SSP legen Sie einen System Security Plan an oder lesen
+          eine lokale OSCAL-JSON-Datei ein. Die Anwendung prüft die Datei
+          ausschließlich in Ihrem Browser und speichert sie im gewählten
+          Informationsverbund. Systembeschreibung, Komponenten, Benutzer und
+          Anforderungen bearbeiten Sie in diesem Browser; Änderungen sichert die
+          Anwendung automatisch als Entwurf, bis Sie sie ausdrücklich speichern.
+          Nichts davon wird hochgeladen; Verweise wie die Baseline und
+          eingebettete Ressourcen werden nicht abgerufen oder ausgeführt. Ein
+          gespeicherter, gültiger SSP lässt sich als OSCAL-JSON-Datei auf Ihr
+          Gerät exportieren. Die gespeicherte Kopie bleibt nach dem Schließen
+          des Tabs erhalten und ist in der Sicherungsdatei enthalten. Einen
+          einzelnen SSP samt Entwurf und Bindungen löschen Sie nach Bestätigung
+          über „SSP löschen…“; daneben dienen die Löschung des zugehörigen
+          Informationsverbunds oder der lokalen Daten dieser Anwendung über die
+          Browser-Einstellungen.
         </p>
         <p className="catalog-prose-text text-sm text-slate-700 leading-relaxed">
           Im Reiter Prüfung eines Profils können Sie Prüfpunkte und

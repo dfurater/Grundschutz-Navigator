@@ -10,30 +10,16 @@
 // Reihenfolge der Objektschlüssel.
 // =============================================================================
 
-import { documentBody, documentContent } from '@/domain/documentContent';
+import { documentBody, sameDocumentContent } from '@/domain/documentContent';
 import { isJsonObject } from '@/domain/jsonGuards';
-
-function sameJson(a: unknown, b: unknown): boolean {
-  if (a === b) return true;
-  if (Array.isArray(a) || Array.isArray(b)) {
-    return Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((item, index) => sameJson(item, b[index]));
-  }
-  if (!isJsonObject(a) || !isJsonObject(b)) return Object.is(a, b);
-  const keys = Object.keys(a);
-  return keys.length === Object.keys(b).length && keys.every((key) => Object.hasOwn(b, key) && sameJson(a[key], b[key]));
-}
 
 function profileBody(source: unknown): ReturnType<typeof documentBody> {
   return documentBody(source, 'profile');
 }
 
-/** Der Quellgraph ohne `profile.uuid` und `profile.metadata.last-modified`. */
-function content(source: unknown): unknown {
-  return documentContent(source, 'profile');
-}
-
+/** Gleichheit der Quellgraphen ohne `profile.uuid` und `profile.metadata.last-modified`. */
 export function sameProfileContent(a: unknown, b: unknown): boolean {
-  return sameJson(content(a), content(b));
+  return sameDocumentContent(a, b, 'profile');
 }
 
 export interface ExplicitSaveStamp {

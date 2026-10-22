@@ -140,7 +140,7 @@ describe('Bindung an einen BSI-Katalog', () => {
     });
   });
 
-  it('sperrt die Prüfung eines Nicht-Profils, dessen Katalogstand nicht ausgeliefert ist', async () => {
+  it('sperrt ein SSP ohne Katalogpaar und bindet es erst über die bestätigte Aktion', async () => {
     const store = value(await WorkspaceStore.open());
     let localId;
     try {
@@ -154,9 +154,11 @@ describe('Bindung an einen BSI-Katalog', () => {
     } finally { store.close(); }
     renderArea(buildWorkspaceDocumentUrl(seeded.verbundId, localId!), withLoadedCatalog(true));
     await waitFor(() => expect(main().querySelector('[data-catalog-pin="unpinned"]')).toBeInTheDocument());
-    expect(within(main()).queryByRole('button', { name: 'An ausgelieferten Stand binden' })).not.toBeInTheDocument();
+    for (const button of within(main()).getAllByRole('button', { name: 'Speichern' })) expect(button).toBeDisabled();
     fireEvent.click(within(main()).getByText('Prüfung und Freigabe'));
     await waitFor(() => expect(main().querySelector('details fieldset')).toBeDisabled());
+    fireEvent.click(within(main()).getByRole('button', { name: 'An ausgelieferten Stand binden' }));
+    await waitFor(async () => expect(JSON.stringify((await readStore((store) => store.getDocument(localId!)))?.source)).toContain(TEST_CATALOG_COMMIT));
   });
 
   it('meldet einen manipulierten Stand mit redigierter Diagnose und sperrt das Bearbeiten', async () => {

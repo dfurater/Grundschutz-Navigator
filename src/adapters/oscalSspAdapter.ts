@@ -29,7 +29,9 @@
 
 import { resolveOscalReference } from '@/domain/referenceResolution';
 import {
+  checkRoleAssignmentReferences,
   diagnose,
+  uuidKey,
   readMetadataIdentities,
   readObjectField,
   SSP_ADAPTER_DIAGNOSTIC_CODES,
@@ -42,7 +44,7 @@ import { deriveSystemCharacteristics, deriveSystemImplementation } from '@/adapt
 import type { SspDeriveState } from '@/adapters/oscalSspReaders';
 import { readRootMetadata } from '@/domain/oscalRootDispatch';
 import { openRootDerive } from '@/adapters/oscalRootDocumentParse';
-import { readString, type JsonObject } from '@/domain/jsonGuards';
+import { isJsonObject, readArray, readString, type JsonObject } from '@/domain/jsonGuards';
 import { createOscalDiagnostic } from '@/domain/oscalDiagnostics';
 import type { OscalDiagnostic } from '@/domain/oscalDiagnostics';
 import {
@@ -134,6 +136,35 @@ function deriveImportProfile(body: JsonObject, state: SspDeriveState): SspImport
   };
 }
 
+/** Rollen-`id` und Party-`uuid` sind dokumentweit eindeutig; jede Wiederholung wird an ihrem Feld diagnostiziert. */
+function checkUniqueIdentities(entries: unknown, field: string, toKey: (value: string) => string, path: string, code: string, state: SspDeriveState): void {
+  const seen = new Set<string>();
+  readArray(entries).forEach((entry, index) => {
+    const value = isJsonObject(entry) ? readString(entry[field]) : undefined;
+    if (value === undefined) return;
+    const key = toKey(value);
+    if (seen.has(key)) diagnose(state, code, `${path}/${index}/${field}`);
+    seen.add(key);
+  });
+}
+
+/**
+ * `metadata.responsible-parties` und die `responsible-parties` jeder
+ * `metadata.actions`-Zeile verweisen auf `metadata.roles` und
+ * `metadata.parties` desselben Dokuments.
+ */
+function checkMetadataReferences(rootBody: JsonObject, state: SspDeriveState): void {
+  const metadata = rootBody.metadata;
+  if (!isJsonObject(metadata)) return;
+  const path = `${SSP_BASE_PATH}/metadata`;
+  checkUniqueIdentities(metadata.roles, 'id', (value) => value, `${path}/roles`, SSP_ADAPTER_DIAGNOSTIC_CODES.ROLE_ID_DUPLICATE, state);
+  checkUniqueIdentities(metadata.parties, 'uuid', uuidKey, `${path}/parties`, SSP_ADAPTER_DIAGNOSTIC_CODES.PARTY_UUID_DUPLICATE, state);
+  checkRoleAssignmentReferences(metadata, path, state, 'responsible-parties');
+  readArray(metadata.actions).forEach((action, index) => {
+    if (isJsonObject(action)) checkRoleAssignmentReferences(action, `${path}/actions/${index}`, state, 'responsible-parties');
+  });
+}
+
 /* ------------------------------------------------------------------ */
 /*  Ableitung                                                          */
 /* ------------------------------------------------------------------ */
@@ -171,6 +202,7 @@ export function deriveSystemSecurityPlan(
     diagnose(state, SSP_ADAPTER_DIAGNOSTIC_CODES.STRUCTURE_UNEXPECTED, SSP_BASE_PATH);
   }
 
+  checkMetadataReferences(rootBody, state);
   const importProfile = deriveImportProfile(rootBody, state);
   const systemCharacteristics = deriveSystemCharacteristics(rootBody, state);
   // Vor `control-implementation`: deren `by-components` lösen gegen die Komponenten auf.

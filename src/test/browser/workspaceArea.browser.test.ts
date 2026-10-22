@@ -142,7 +142,8 @@ describe.each(LAYOUTS.filter((layout) => layout.touch))('Touchziele $name', ({ n
           && !element.classList.contains('resize-handle'));
       expect(targets.length).toBeGreaterThan(0);
       for (const target of targets) {
-        const box = target.getBoundingClientRect();
+        // Optionsfelder bedient man über ihre umschließende Beschriftung; sie ist das Touchziel.
+        const box = (target.matches('input[type="radio"], input[type="checkbox"]') ? target.closest('label') ?? target : target).getBoundingClientRect();
         const label = `${name} ${path}: ${target.textContent || target.getAttribute('aria-label')}`;
         expect(box.height, label).toBeGreaterThanOrEqual(44);
         expect(box.width, label).toBeGreaterThanOrEqual(44);

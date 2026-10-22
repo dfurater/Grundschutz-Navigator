@@ -57,6 +57,10 @@ export const SSP_ADAPTER_DIAGNOSTIC_CODES = Object.freeze({
   ROLE_REFERENCE_UNRESOLVED: 'OSCAL_SSP_ROLE_REFERENCE_UNRESOLVED',
   /** Party-UUID ohne passende Partei in `metadata.parties`. */
   PARTY_REFERENCE_UNRESOLVED: 'OSCAL_SSP_PARTY_REFERENCE_UNRESOLVED',
+  /** Zwei Rollen in `metadata.roles` tragen dieselbe `id`; ein Verweis darauf ist mehrdeutig. */
+  ROLE_ID_DUPLICATE: 'OSCAL_SSP_ROLE_ID_DUPLICATE',
+  /** Zwei Parteien in `metadata.parties` tragen dieselbe `uuid`; ein Verweis darauf ist mehrdeutig. */
+  PARTY_UUID_DUPLICATE: 'OSCAL_SSP_PARTY_UUID_DUPLICATE',
   /** `implemented-requirement` ohne `control-id`. */
   CONTROL_ID_MISSING: 'OSCAL_SSP_CONTROL_ID_MISSING',
   /** Die Baseline ist gebunden, kennt die `control-id` aber nicht. */
