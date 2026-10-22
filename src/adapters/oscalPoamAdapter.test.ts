@@ -204,4 +204,9 @@ describe('POA&M-Root', () => {
     expect(countPoamUuids(body)).toEqual(new Map([[AR_UUIDS.risk, 2]]));
     expect(body.self).toBe(body);
   });
+  it.each([{ kind: 'string', value: 'invalid' }, { kind: 'array', value: [] }])('meldet ein ungültiges assessment-assets-Feld genau einmal: $kind', ({ value }) => {
+    const source = makeFullPoam();
+    Object.assign(source['plan-of-action-and-milestones']['local-definitions'], { 'assessment-assets': value });
+    expect(parse(source).diagnostics.filter((d) => d.path === '/plan-of-action-and-milestones/local-definitions/assessment-assets')).toHaveLength(1);
+  });
 });

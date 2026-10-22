@@ -114,8 +114,8 @@ export function derivePoam(body: unknown, context: OscalDocumentContext, options
   const backMatter = objectField(root, 'back-matter', POAM_BASE_PATH, state);
   if (backMatter !== null) indexNodes(state, backMatter, 'resources', 'resource', `${POAM_BASE_PATH}/back-matter`);
   const assessmentAssets = deriveAssets(local, state, lp);
-  const assetSource = objectField(local, 'assessment-assets', lp, state);
-  if (assetSource !== null)
+  const assetSource = local['assessment-assets'];
+  if (isJsonObject(assetSource))
     indexNodes(state, assetSource, 'assessment-platforms', 'assessment-platform', `${lp}/assessment-assets`, 'PLATFORM_UUID_DUPLICATE', state.assets);
   const contextUuids = new Set(
     [state.local, state.ssp].flatMap((index) =>
