@@ -12,22 +12,23 @@ export interface ProfileExportRequest {
   readonly source: unknown;
 }
 
-type Request =
+export type WorkbenchRequest =
   | { readonly type: 'view'; readonly snapshot: VerbundViewSnapshot }
   | { readonly type: 'analyze'; readonly snapshot: ProfileAnalysisSnapshot }
-  | { readonly type: 'export'; readonly document: ProfileExportRequest };
+  | { readonly type: 'export'; readonly document: ProfileExportRequest }
+  | { readonly type: 'ssp-export'; readonly document: ProfileExportRequest };
 
 /**
  * Ohne `Worker`-API läuft dieselbe Ableitung im Main Thread; ein vorhandener
  * Worker, der nicht startet oder ausfällt, bleibt ein Ausfall.
  */
-async function inProcess(request: Request): Promise<Record<string, unknown>> {
+async function inProcess(request: WorkbenchRequest): Promise<Record<string, unknown>> {
   const { handleProfileWorkbenchRequest } = await import('@/workers/profileWorkbenchRequests');
   return handleProfileWorkbenchRequest(request);
 }
 
 /** Ein Worker je Anfrage; nach Antwort, Fehler oder Frist wird er beendet. */
-function run<T>(request: Request, accept: (frame: Record<string, unknown>) => T | undefined): Promise<T | null> {
+export function runWorkbenchRequest<T>(request: WorkbenchRequest, accept: (frame: Record<string, unknown>) => T | undefined): Promise<T | null> {
   if (typeof Worker === 'undefined') {
     return inProcess(request).then((frame) => accept(frame) ?? null).catch(() => null);
   }
@@ -70,17 +71,17 @@ function run<T>(request: Request, accept: (frame: Record<string, unknown>) => T 
 
 /** Leitet die Verbundansicht im Worker ab; `null` bei Worker-Ausfall. */
 export function deriveVerbundViewInWorker(snapshot: VerbundViewSnapshot): Promise<VerbundView | null> {
-  return run({ type: 'view', snapshot }, (frame) => frame.type === 'view' ? frame.view as VerbundView : undefined);
+  return runWorkbenchRequest({ type: 'view', snapshot }, (frame) => frame.type === 'view' ? frame.view as VerbundView : undefined);
 }
 
 /** Leitet die Analyse im Worker ab; `null` bei Worker-Ausfall. */
 export function analyzeProfileInWorker(snapshot: ProfileAnalysisSnapshot): Promise<ProfileAnalysis | null> {
-  return run({ type: 'analyze', snapshot }, (frame) => frame.type === 'analysis' ? frame.analysis as ProfileAnalysis : undefined);
+  return runWorkbenchRequest({ type: 'analyze', snapshot }, (frame) => frame.type === 'analysis' ? frame.analysis as ProfileAnalysis : undefined);
 }
 
 /** Prüft und serialisiert einen Export im Worker; ein Worker-Ausfall ist ein abgelehnter Export. */
 export async function exportProfileInWorker(document: ProfileExportRequest): Promise<ProfileExportResult> {
-  const result = await run({ type: 'export', document: { documentState: document.documentState, rootType: document.rootType, source: document.source } },
+  const result = await runWorkbenchRequest({ type: 'export', document: { documentState: document.documentState, rootType: document.rootType, source: document.source } },
     (frame) => frame.type === 'exported' ? frame.result as ProfileExportResult : undefined);
   return result ?? { ok: false, code: 'OSCAL_EXPORT_WORKER_FAILURE', path: '/' };
 }

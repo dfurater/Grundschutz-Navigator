@@ -1,4 +1,5 @@
 import { exportProfileDocument, type ProfileExportResult } from '@/domain/profileExport';
+import { exportSspDocument, type SspExportResult } from '@/domain/sspExport';
 import { deriveProfileAnalysis, type ProfileAnalysisSnapshot } from '@/state/workspaceProfileAnalysis';
 import { deriveVerbundView, type VerbundViewSnapshot } from '@/state/workspaceVerbundView';
 
@@ -13,6 +14,10 @@ export async function handleProfileWorkbenchRequest(request: unknown): Promise<R
   }
   if (candidate?.type === 'export' && candidate.document) {
     const result: ProfileExportResult = await exportProfileDocument(candidate.document as Parameters<typeof exportProfileDocument>[0]);
+    return { type: 'exported', result };
+  }
+  if (candidate?.type === 'ssp-export' && candidate.document) {
+    const result: SspExportResult = await exportSspDocument(candidate.document as Parameters<typeof exportSspDocument>[0]);
     return { type: 'exported', result };
   }
   return { type: 'failure' };

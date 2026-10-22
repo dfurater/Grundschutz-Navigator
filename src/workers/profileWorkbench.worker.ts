@@ -1,9 +1,9 @@
 import { handleProfileWorkbenchRequest } from '@/workers/profileWorkbenchRequests';
 
 /*
- * Modul-Worker des Bereichs Informationsverbünde (GSPP-292): leitet die
- * Verbundansicht oder die Analyse eines Profil-Arbeitsstands ab oder prüft und
- * serialisiert einen Profil-Export. Alle drei brauchen die Schemastufe (Ajv),
+ * Modul-Worker des Bereichs Informationsverbünde (GSPP-292, GSPP-609): leitet
+ * die Verbundansicht oder die Analyse eines Profil-Arbeitsstands ab oder prüft
+ * und serialisiert einen Profil- oder SSP-Export. Alle brauchen die Schemastufe (Ajv),
  * die im Main Thread unter der CSP nicht kompiliert. Sein einziger Netzbezug ist
  * der Schema-Chunk derselben Origin; er löst keine Dokumentverweise auf, führt
  * keine Speicher- oder Dateioperation aus und beantwortet genau eine Anfrage.

@@ -259,6 +259,8 @@ Verboten ist die Kopie mit **falscher** Provenienz. Eine Übernahme, die ihre He
 | Reine Serialisierung (Anzeige, Vorschau) | unverändert | unverändert |
 | Speicher-Migration (§10) | unverändert | unverändert |
 
+Für ein `system-security-plan` gelten dieselben Zeilen für `last-modified`; seine Root-UUID bleibt bei jedem Vorgang unverändert (§5). `commitSspSave()` in `src/domain/sspSave.ts` setzt `last-modified` nur, wenn sich der Inhalt gegenüber dem gespeicherten Stand ändert, und lässt die Root-UUID unberührt.
+
 `createdAt` und `savedAt` im Envelope sind Werkzeugzeitstempel. Autosave schreibt `savedAt` im separaten Entwurf und in `workspaceMeta` fort; `documents.savedAt` bleibt dabei der Vergleichswert des expliziten Speicherns. Diese Zeitstempel sind kein Dokumentinhalt.
 
 ### Prüfspur und Freigabe

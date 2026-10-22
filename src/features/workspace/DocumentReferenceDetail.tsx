@@ -12,7 +12,7 @@ import { WorkspaceNotices } from '@/features/workspace/WorkspaceNotices';
 import { WorkspaceStatePage, useRoutedVerbund } from '@/features/workspace/WorkspaceStatePage';
 import { ProfileEditorPage } from '@/features/workspace/profile/ProfileEditorPage';
 import { ReviewTab } from '@/features/workspace/review/ReviewTab';
-import { SspDocumentContent } from '@/features/workspace/ssp/SspDocumentContent';
+import { SspEditorPage } from '@/features/workspace/ssp/SspEditorPage';
 
 /** Prüfspur schreibgeschützter Roots; der Worker startet erst beim Aufklappen. */
 function ReviewSection({ localId }: Readonly<{ localId: LocalId }>) {
@@ -46,14 +46,13 @@ function DocumentDetail({ view, document }: Readonly<{ view: VerbundView; docume
         </div>
       </header>
       <WorkspaceNotices />
-      {document.rootType === 'system-security-plan' && <SspDocumentContent key={document.localId} localId={document.localId} />}
       <ReferenceEdges view={view} document={document} />
       <ReviewSection localId={document.localId} />
     </div>
   );
 }
 
-/** Referenzkanten eines lokalen Dokuments (GSPP-300); ein Profile öffnet die Bearbeitungsansicht (GSPP-292). */
+/** Referenzkanten eines lokalen Dokuments (GSPP-300); Profile und SSP öffnen ihre Bearbeitungsansicht (GSPP-292, GSPP-609). */
 export function DocumentReferenceDetailPage() {
   const { localId } = useParams();
   const routed = useRoutedVerbund();
@@ -63,9 +62,14 @@ export function DocumentReferenceDetailPage() {
   return (
     <>
       <PageTitle title={PAGE_TITLES.workspaceDocument} />
-      {document.rootType === 'profile'
-        ? <ProfileEditorPage key={document.localId} view={routed.view} document={document} />
-        : <DocumentDetail key={document.localId} view={routed.view} document={document} />}
+      {document.rootType === 'profile' && <ProfileEditorPage key={document.localId} view={routed.view} document={document} />}
+      {document.rootType === 'system-security-plan' && (
+        <SspEditorPage key={document.localId} view={routed.view} document={document}>
+          <ReferenceEdges view={routed.view} document={document} />
+          <ReviewSection localId={document.localId} />
+        </SspEditorPage>
+      )}
+      {document.rootType !== 'profile' && document.rootType !== 'system-security-plan' && <DocumentDetail key={document.localId} view={routed.view} document={document} />}
     </>
   );
 }

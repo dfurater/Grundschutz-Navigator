@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createProfileSource } from '@/domain/profileImportList';
-import { exportProfileDocument, PROFILE_EXPORT_CODES, toDerivedProfileTree, validateProfileExportTree } from '@/domain/profileExport';
+import { exportProfileDocument, PROFILE_EXPORT_CODES, toDerivedOscalTree, validateProfileExportTree } from '@/domain/profileExport';
 import { serializeWorkspaceJson } from '@/domain/workspaceJson';
 import { makeProfileSource, makeProfileWithoutImports, makeProfileWithUnpinnedVersion, profileSpecFor } from '@/test/fixtures/profiles';
 import { runNoOpRoundTrip } from '@/test/oscalRoundTrip';
@@ -59,7 +59,7 @@ describe('Validierter Profil-Export', () => {
     });
     const run = await runNoOpRoundTrip({
       fixtureText: JSON.stringify(source),
-      exportDocument: (parsed) => JSON.parse(serializeWorkspaceJson(toDerivedProfileTree(parsed))),
+      exportDocument: (parsed) => JSON.parse(serializeWorkspaceJson(toDerivedOscalTree(parsed))),
     });
     expect(run.graph.status).toBe('passed');
     expect(run.identities.status).toBe('passed');

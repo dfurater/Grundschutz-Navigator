@@ -62,7 +62,7 @@ function emit(builder: Builder, value: unknown): DerivedGraphValue {
 }
 
 /** Die gespeicherte Quelle als Graph mit belegter Herkunft. */
-export function toDerivedProfileTree(source: unknown): DerivedJsonTree {
+export function toDerivedOscalTree(source: unknown): DerivedJsonTree {
   const builder = createOscalDerivedGraph();
   const root = emit(builder, source);
   if (root === null || typeof root !== 'object') throw new TypeError('Wurzel ist kein Objekt');
@@ -128,7 +128,7 @@ export async function exportProfileDocument(document: {
   if (document.rootType !== 'profile') return fail(PROFILE_EXPORT_CODES.rootNotProfile);
   let tree: DerivedJsonTree;
   try {
-    tree = toDerivedProfileTree(document.source);
+    tree = toDerivedOscalTree(document.source);
   } catch {
     return fail(PROFILE_EXPORT_CODES.sourceInvalid);
   }

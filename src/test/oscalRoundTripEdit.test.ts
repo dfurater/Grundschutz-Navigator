@@ -5,6 +5,9 @@ import { setSelectedControl } from '@/domain/profileAuthoring';
 import { commitExplicitSave, type ExplicitSaveStamp } from '@/domain/profileSave';
 import { makeMaximalOscalDocument } from '@/test/fixtures/oscalRoundTripCorpus';
 import { makeProfileSource, profileSpecFor } from '@/test/fixtures/profiles';
+import { addSspItem, setSspValue } from '@/domain/sspAuthoring';
+import { commitSspSave } from '@/domain/sspSave';
+import { makeFullSsp } from '@/test/fixtures/systemSecurityPlans';
 import {
   formatRoundTripDifferences,
   OSCAL_ROOT_UUID_POLICY,
@@ -488,6 +491,47 @@ describe('Edit-Lauf: echter Schreibpfad commitExplicitSave()', () => {
 
     expect(result.status).toBe('failed');
     expect(result.identities.findings).toContain('document-uuid-not-reassigned');
+  });
+});
+
+describe('Edit-Lauf: echter Schreibpfad commitSspSave()', () => {
+  // Vollfixture mit fremden `prop.ns`, `links`, `remarks` und `back-matter` samt `base64`.
+  const stored = makeFullSsp();
+
+  it.each([
+    { name: 'replace', edit: { op: 'replace', path: ['system-security-plan', 'system-characteristics', 'system-name'], value: 'Neuer Systemname' } as OscalEditOperation,
+      write: (parsed: unknown) => setSspValue(parsed, ['system-characteristics', 'system-name'], 'Neuer Systemname') },
+    { name: 'add', edit: { op: 'add', path: ['system-security-plan', 'system-implementation', 'components'], value: { uuid: '66666666-0000-4000-8000-0000000000f1', type: 'service', title: 'Dienst', description: 'Neu.', status: { state: 'operational' } } } as OscalEditOperation,
+      write: (parsed: unknown) => addSspItem(parsed, ['system-implementation', 'components'], { uuid: '66666666-0000-4000-8000-0000000000f1', type: 'service', title: 'Dienst', description: 'Neu.', status: { state: 'operational' } }) },
+  ])('ist grün mit dem SSP-Speicherpfad ($name): Root-UUID bleibt, nur last-modified und die Änderung wechseln', async ({ edit, write }) => {
+    const result = await runEditRoundTrip({
+      fixtureText: JSON.stringify(stored),
+      edit,
+      stamp: STAMP,
+      exportDocument: (parsed, stamp) => commitSspSave(parsed, write(parsed), stamp.lastModified).source,
+    });
+
+    expect(result).toMatchObject({
+      status: 'passed',
+      rootType: 'system-security-plan',
+      graph: { status: 'passed', unexpected: [], missing: [] },
+      identities: { status: 'passed', findings: [] },
+    });
+  });
+
+  it('ist rot, wenn ein Schreibpfad die Root-UUID eines SSP neu vergibt', async () => {
+    const result = await runEditRoundTrip({
+      fixtureText: JSON.stringify(stored),
+      edit: titleEdit('system-security-plan'),
+      stamp: STAMP,
+      exportDocument: (parsed, stamp) => {
+        const saved = commitSspSave(parsed, setSspValue(parsed, ['metadata', 'title'], 'Geänderter Titel'), stamp.lastModified).source as Json;
+        body(saved).uuid = stamp.uuid;
+        return saved;
+      },
+    });
+
+    expect(result.status).toBe('failed');
   });
 });
 

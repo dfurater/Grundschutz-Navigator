@@ -109,7 +109,9 @@ der der Harnisch Wissen über Roots führt.
 | Edit, `keep`: `system-security-plan`, `assessment-plan`, `assessment-results`, `plan-of-action-and-milestones` | unverändert | gleich Stempel, verschieden vom Original |
 
 **Schreibpfade im Test.** Der `profile`-Lauf bindet `commitExplicitSave()` aus
-`src/domain/profileSave.ts` als echten Schreibpfad ein. Für alle Roots prüft
+`src/domain/profileSave.ts` als echten Schreibpfad ein, der
+`system-security-plan`-Lauf `commitSspSave()` aus `src/domain/sspSave.ts` mit
+den Patches aus `src/domain/sspAuthoring.ts` am SSP-Vollfixture. Für alle Roots prüft
 ein testeigener Referenz-Editor in `src/test/oscalRoundTripEdit.test.ts` den
 Harnisch am Maximaldokument @ 1.2.2; er belegt den Harnisch, nicht den Export
 eines Adapters.
