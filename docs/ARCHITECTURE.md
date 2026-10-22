@@ -193,6 +193,8 @@ src/                              # Anwendungsquellcode
 │   ├── oscalAssessmentPlan.ts        # Versionierte Raw-Typen des Assessment Plans
 │   ├── assessmentPlanModel.ts        # Projektion des Prüfplans und explizite SSP-/Katalogbindung
 │   ├── assessmentResultsModel.ts     # Projektion der Prüfergebnisse und explizite AP-/SSP-/Katalogbindung
+│   ├── poamModel.ts                  # POA&M-Projektion und expliziter SSP-/AR-Kontext
+│   ├── evidenceObservationReferences.ts # Klassifikation der `related-observations`-Referenzen für AR und POA&M
 │   ├── evidenceReadModel.ts          # Evidenz aus Assessment Results und POA&M: Gültigkeit, Ressourcen, UUID-Referenzen
 │   ├── systemSecurityPlanModel.ts    # Domänenmodell des SSP
 │   ├── systemSecurityPlanSystemModel.ts # Domänenmodell der SSP-Systembeschreibung
@@ -243,6 +245,9 @@ src/                              # Anwendungsquellcode
 │   ├── oscalAssessmentResultsDocument.ts # Verlustfreier Dokumenteinstieg Assessment Results
 │   ├── oscalAssessmentResultsFindings.ts # Findings, Risiken und Maßnahmen
 │   ├── oscalAssessmentResultsReaders.ts # Referenzauflösung, Herkünfte und Aufgabenzyklen
+│   ├── oscalPoamAdapter.ts           # POA&M-Projektion, ausschließlich Klasse 2
+│   ├── oscalPoamDocument.ts          # Verlustfreier Dokumenteinstieg POA&M
+│   ├── oscalPoamReaders.ts           # POA&M-Items und typisierte Kontextreferenzen
 │   ├── oscalSspAdapter.ts            # Projektion des SSP, nur Vertrauensklasse 2
 │   ├── oscalSspControl.ts            # SSP-Projektion von control-implementation
 │   ├── oscalSspDocument.ts           # Verlustfreier Dokumenteinstieg SSP

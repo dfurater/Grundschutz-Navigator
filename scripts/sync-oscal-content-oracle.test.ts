@@ -110,7 +110,7 @@ describe('syncOscalContentOracle', () => {
 
   it.each([
     ['no file pins', () => { manifest.files = []; }, /rev5-catalog\.json/],
-    ['a missing last pin', () => { manifest.files.pop(); }, /ifa_assessment-results\.json/],
+    ['a missing last pin', () => { manifest.files.pop(); }, /ifa_plan-of-action-and-milestones\.json/],
     ['an additional valid pin', () => { manifest.files.push({ ...manifest.files[0], fileName: 'extra.json' }); }, /extra\.json/],
     ['a duplicate pin', () => { manifest.files.push({ ...manifest.files.at(-1)! }); }, /Manifest/],
   ])('rejects a same-pin manifest with %s before fetching', async (_case, mutate, message) => {

@@ -3,7 +3,7 @@
 //
 // Lädt die vier SP 800-53 rev5 Baseline-Profile und ihre von NIST selbst
 // aufgelösten Vergleichskataloge sowie die drei SSP-, vier Assessment-Plan- und vier
-// Assessment-Results-Beispiele aus
+// Assessment-Results- sowie die zwei POA&M-Beispiele aus
 // usnistgov/oscal-content am statisch gepinnten Tag v1.5.0 (Commit
 // 78650f02ad9321bb7b817846f8fbd4f2bcd620de) und legt sie mit
 // SHA-256-Manifest unter src/test/fixtures/ ab. Die
@@ -87,6 +87,15 @@ const ARTIFACTS = [
     artifactKey: `nist-ar-${fileName.replace(/\.json$/, '').replaceAll('_', '-')}`,
     role: 'example',
     remotePath: `examples/ar/json/${fileName}`,
+    fileName,
+  })),
+  ...[
+    'ifa_plan-of-action-and-milestones-min.json',
+    'ifa_plan-of-action-and-milestones.json',
+  ].map(fileName => ({
+    artifactKey: `nist-poam-${fileName.replace(/\.json$/, '').replaceAll('_', '-')}`,
+    role: 'example',
+    remotePath: `examples/poam/json/${fileName}`,
     fileName,
   })),
 ];

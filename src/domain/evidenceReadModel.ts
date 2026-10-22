@@ -1,14 +1,19 @@
 // =============================================================================
-// Evidenz-Read-Model für Assessment Results und POA&M (GSPP-313)
-//
-// Reine Ableitung aus dem Dokument: kein Speicher, kein Netz, keine Dekodierung
-// von base64-Nutzlasten. Gültigkeit kommt ausschließlich aus `collected` und
-// `expires`; Referenzen klassifiziert der einzige href-Klassifikator aus
-// `referenceResolution.ts`.
+// Evidenz-Read-Model für Assessment Results und POA&M (GSPP-313): reine Ableitung
+// aus dem Dokument — kein Speicher, kein Netz, keine base64-Dekodierung. Hrefs
+// klassifiziert der einzige Klassifikator aus `referenceResolution.ts`, die
+// Beobachtungsreferenzen aus `evidenceObservationReferences.ts`.
 // =============================================================================
 
 import { isJsonObject, readArray, readString, type JsonObject } from '@/domain/jsonGuards';
 import { createOscalDiagnostic, type OscalDiagnostic } from '@/domain/oscalDiagnostics';
+import {
+  classifyLocalReference,
+  deriveObservationReferences,
+  lowerCaseSet,
+  objectsAt,
+  type ObjectAt,
+} from '@/domain/evidenceObservationReferences';
 import {
   createOscalReferenceClassifier,
   createReferenceDocument,
@@ -49,6 +54,10 @@ export type UuidReferenceState =
   | 'resolved'
   | 'resolved-in-context'
   | 'not-resolvable-in-context'
+  | 'ambiguous-in-document'
+  | 'ambiguous-in-context'
+  | 'missing-in-context'
+  | 'type-mismatch'
   | 'missing-in-document';
 
 export interface UuidReference {
@@ -97,6 +106,13 @@ export interface EvidenceReadModelInput {
   readonly at: Date;
   /** UUIDs, die der Aufrufer aus anderen Workspace-Dokumenten bereitstellt. */
   readonly contextUuids?: ReadonlySet<string>;
+  /** Typisierte AR-Trefferzahlen mit explizitem Bindungszustand. */
+  readonly observationContext?: {
+    readonly counts: ReadonlyMap<string, number>;
+    readonly available: boolean;
+  };
+  /** Normalisierte Häufigkeiten aller lokalen UUID-Identitäten für typisierte POA&M-Verweise. */
+  readonly documentUuidCounts?: ReadonlyMap<string, number>;
 }
 
 /** Abgelaufene oder nicht bewertbare Beobachtungen tragen keine positive Nachweisaussage. */
@@ -156,22 +172,6 @@ function validityOf(collected: unknown, expires: unknown, at: Date): EvidenceVal
   return /[1-9]/.test(subMillisecond) ? 'current' : 'expired';
 }
 
-/** OSCAL-UUIDs erlauben beide Schreibweisen der Hexziffern. */
-function lowerCaseSet(uuids: Iterable<string>): ReadonlySet<string> {
-  return new Set(Array.from(uuids, (uuid) => uuid.toLowerCase()));
-}
-
-interface ObjectAt {
-  readonly node: JsonObject;
-  readonly path: string;
-}
-
-function objectsAt(parent: JsonObject, key: string, path: string): ObjectAt[] {
-  return readArray(parent[key]).flatMap((node, index) =>
-    isJsonObject(node) ? [{ node, path: `${path}/${key}/${index}` }] : [],
-  );
-}
-
 export function deriveEvidenceReadModel(input: EvidenceReadModelInput): EvidenceReadModel {
   const { rootType, oscalVersion, at } = input;
   const contextUuids = lowerCaseSet(input.contextUuids ?? []);
@@ -198,27 +198,16 @@ export function deriveEvidenceReadModel(input: EvidenceReadModelInput): Evidence
       }),
     );
 
-  /** `missingCode` gesetzt: das Ziel muss im Dokument liegen, sein Fehlen ist ein Datenbefund. */
-  const uuidState = (
-    uuid: string,
-    path: string,
-    local: ReadonlySet<string>,
-    context: ReadonlySet<string>,
-    missingCode: string | null,
-  ): UuidReferenceState => {
-    const key = uuid.toLowerCase();
-    if (local.has(key)) return 'resolved';
-    if (context.has(key)) return 'resolved-in-context';
-    if (missingCode === null) return 'not-resolvable-in-context';
-    diagnose(missingCode, path);
-    return 'missing-in-document';
-  };
-
   // Beobachtungen und ihre Bezugsstellen liegen in AR je `result`, im POA&M am Root.
   const containers: ObjectAt[] =
     rootType === 'assessment-results' ? objectsAt(body, 'results', rootPath) : [{ node: body, path: rootPath }];
   const observationNodes = containers.flatMap((container) => objectsAt(container.node, 'observations', container.path));
   const observationUuids = lowerCaseSet(observationNodes.flatMap(({ node }) => readString(node.uuid) ?? []));
+  const observationCounts = new Map<string, number>();
+  for (const { node } of observationNodes) {
+    const uuid = readString(node.uuid)?.toLowerCase();
+    if (uuid !== undefined) observationCounts.set(uuid, (observationCounts.get(uuid) ?? 0) + 1);
+  }
 
   const classifyLink = (link: JsonObject, path: string): EvidenceReference[] => {
     const href = readString(link.href);
@@ -253,8 +242,8 @@ export function deriveEvidenceReadModel(input: EvidenceReadModelInput): Evidence
       const uuidPath = `${subjectPath}/subject-uuid`;
       // Ressourcen-Subjekte sind dokumentintern; andere Subjekte liegen im SSP oder in local-definitions.
       const state = type === 'resource'
-        ? uuidState(uuid, uuidPath, resourceUuids, new Set(), 'OSCAL_EVIDENCE_RESOURCE_NOT_FOUND')
-        : uuidState(uuid, uuidPath, new Set(), contextUuids, null);
+        ? classifyLocalReference(uuid, uuidPath, resourceUuids, new Set(), 'OSCAL_EVIDENCE_RESOURCE_NOT_FOUND', diagnose)
+        : classifyLocalReference(uuid, uuidPath, new Set(), contextUuids, null, diagnose);
       return [{ path: uuidPath, uuid, type, state }];
     });
     return {
@@ -270,24 +259,20 @@ export function deriveEvidenceReadModel(input: EvidenceReadModelInput): Evidence
     };
   });
 
-  // In AR ist `observation-uuid` dokumentintern, der Kontext darf ein fehlendes Ziel nicht verdecken.
-  // Im POA&M ist sie eine fachliche UUID-Übernahme aus Assessment Results.
-  const isAssessmentResults = rootType === 'assessment-results';
-  const observationContext = isAssessmentResults ? new Set<string>() : contextUuids;
-  const missingObservationCode = isAssessmentResults ? 'OSCAL_EVIDENCE_OBSERVATION_NOT_FOUND' : null;
-  const referrerKeys = isAssessmentResults ? ['findings', 'risks'] : ['poam-items', 'findings', 'risks'];
-  const observationReferences = containers.flatMap((container) =>
-    referrerKeys.flatMap((key) =>
-      objectsAt(container.node, key, container.path).flatMap((referrer) =>
-        objectsAt(referrer.node, 'related-observations', referrer.path).flatMap(({ node, path }): UuidReference[] => {
-          const uuid = readString(node['observation-uuid']);
-          if (uuid === undefined) return [];
-          const uuidPath = `${path}/observation-uuid`;
-          return [{ path: uuidPath, uuid, state: uuidState(uuid, uuidPath, observationUuids, observationContext, missingObservationCode) }];
-        }),
-      ),
-    ),
-  );
+  // In AR ist `observation-uuid` dokumentintern, der Kontext darf ein fehlendes Ziel nicht verdecken;
+  // im POA&M ist sie eine fachliche UUID-Übernahme aus Assessment Results.
+  const observationReferences = deriveObservationReferences({
+    rootType,
+    containers,
+    observationCounts,
+    observationUuids,
+    resourceUuids,
+    documentUuidCounts: input.documentUuidCounts,
+    observationContext: input.observationContext,
+    contextUuids,
+    missingObservationCode: 'OSCAL_EVIDENCE_OBSERVATION_NOT_FOUND',
+    diagnose,
+  });
 
   return { rootType, observations, resources, observationReferences, diagnostics };
 }

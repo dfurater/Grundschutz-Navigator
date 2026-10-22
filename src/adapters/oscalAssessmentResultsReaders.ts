@@ -28,21 +28,29 @@ export interface ArDeriveState extends ApDeriveState {
   planAvailable: boolean;
   /** Dokumentweite Identitäten von Beobachtungen, Risiken, Findings und Maßnahmen. */
   readonly document: Index;
+  /** Fachlicher AR-Kontext eines POA&M, ohne OSCAL-Importkante. */
+  readonly resultsContext?: Index;
+  readonly resultsAvailable?: boolean;
+  readonly resultsBound?: boolean;
+  readonly documentUuidCounts?: ReadonlyMap<string, number>;
   readonly evidenceByPath: Map<string, EvidenceObservation>;
   readonly observationReferences: Map<string, UuidReference>;
 }
-export type ArScope = 'local' | 'assets' | 'document' | 'assessment-plan' | 'assessment-plan-assets' | 'ssp';
+export type ArScope = 'local' | 'assets' | 'document' | 'assessment-plan' | 'assessment-plan-assets' | 'assessment-results' | 'ssp';
 
-const ORIGIN: Readonly<Record<ArScope, 'local' | 'assessment-plan' | 'ssp'>> = {
+const ORIGIN: Readonly<Record<ArScope, 'local' | 'assessment-plan' | 'assessment-results' | 'ssp'>> = {
   local: 'local',
   assets: 'local',
   document: 'local',
   'assessment-plan': 'assessment-plan',
   'assessment-plan-assets': 'assessment-plan',
+  'assessment-results': 'assessment-results',
   ssp: 'ssp',
 };
-/** Index eines Bereichs; `available` ist nur für Plan und SSP an eine gültige Bindung geknüpft. */
+/** Externe Bereiche sind nur mit einer gültigen ausdrücklichen Bindung verfügbar. */
 function scopeIndex(state: ArDeriveState, scope: ArScope): { index: Index; available: boolean; bound: boolean } {
+  if (scope === 'assessment-results')
+    return { index: state.resultsContext ?? new Map(), available: state.resultsAvailable === true, bound: state.resultsBound === true };
   if (scope === 'ssp')
     return { index: state.ssp, available: state.sspAvailable, bound: state.options.ssp !== undefined };
   if (scope === 'assessment-plan' || scope === 'assessment-plan-assets') {
@@ -50,6 +58,19 @@ function scopeIndex(state: ArDeriveState, scope: ArScope): { index: Index; avail
     return { index, available: state.planAvailable, bound: state.options.assessmentPlan !== undefined };
   }
   return { index: state[scope], available: true, bound: true };
+}
+
+function referenceScopes(state: ArDeriveState, scopes: readonly ArScope[]): readonly ArScope[] {
+  if (state.scope !== 'plan-of-action-and-milestones') return scopes;
+  // POA&M besitzt keine AP-Importkante; fachlich übernommene Ziele dürfen im gebundenen AR liegen.
+  const localScopes = scopes.filter((scope) => scope !== 'assessment-plan' && scope !== 'assessment-plan-assets');
+  return localScopes.includes('document') ? [...localScopes, 'assessment-results'] : localScopes;
+}
+function documentIdentityFailure(state: ArDeriveState, scope: ArScope, key: string, hits: number): string | null {
+  if (scope !== 'document' || state.scope !== 'plan-of-action-and-milestones') return null;
+  const count = state.documentUuidCounts?.get(key) ?? 0;
+  if (count > 1) return 'identity-ambiguous';
+  return hits === 0 && count > 0 ? 'identity-type-mismatch' : null;
 }
 
 /** Löst in der Reihenfolge `scopes` auf; ein nicht gebundener Kontext ergibt keine Fehldiagnose. */
@@ -67,18 +88,19 @@ export function arReference(
   }
   const key = type === 'role' ? id : id.toLowerCase();
   let missingContext: string | undefined;
-  for (const scope of scopes) {
+  for (const scope of referenceScopes(state, scopes)) {
     const { index, available, bound } = scopeIndex(state, scope);
     if (!available) {
       missingContext ??= `${ORIGIN[scope]}-${bound ? 'binding-invalid' : 'not-supplied'}`;
       continue;
     }
     const hits = index.get(type)?.get(key) ?? [];
-    if (hits.length === 1) return { status: 'resolved', origin: ORIGIN[scope], path: hits[0] };
-    if (hits.length > 1) {
+    const identityFailure = documentIdentityFailure(state, scope, key, hits.length);
+    if (hits.length > 1 || identityFailure !== null) {
       diagnose(state, code, path);
-      return { status: 'unresolved', reason: 'identity-ambiguous' };
+      return { status: 'unresolved', reason: identityFailure ?? 'identity-ambiguous' };
     }
+    if (hits.length === 1) return { status: 'resolved', origin: ORIGIN[scope], path: hits[0] };
   }
   if (missingContext !== undefined) return { status: 'not-resolvable-in-context', reason: missingContext };
   diagnose(state, code, path);
