@@ -107,6 +107,59 @@ describe('Kontextbindung', () => {
     expect(dependency({ assessmentPlan })).toMatchObject({ status: 'resolved', origin: 'assessment-plan' });
     expect(parse(source, { assessmentPlan }).diagnostics).toEqual([]);
   });
+  it('meldet mehrdeutige Planaufgaben und ungültige Planbindungen', () => {
+    const source = makeFullAssessmentResults();
+    Object.assign(firstResult(source)['local-definitions'].tasks[0], { dependencies: [{ 'task-uuid': AP_UUIDS.task }] });
+    const planSource = makeBoundAssessmentPlanSource();
+    planSource['assessment-plan'].tasks.push(structuredClone(planSource['assessment-plan'].tasks[0]));
+    const ambiguous = parse(source, { assessmentPlan: parseAssessmentPlanDocument(planSource, context) });
+    expect(ambiguous.results[0].localDefinitions.tasks[0].dependencies[0].reference).toEqual({
+      status: 'unresolved',
+      reason: 'identity-ambiguous',
+    });
+    expect(codes(ambiguous)).toContain('OSCAL_AR_TASK_REFERENCE_UNRESOLVED');
+    const assessmentPlan = parseAssessmentPlanDocument(makeBoundAssessmentPlanSource(), context);
+    const invalid = parse(source, { assessmentPlan: { ...assessmentPlan, source: {} } });
+    expect(invalid.importAp?.status).toBe('not-resolvable-in-context');
+    expect(invalid.results[0].localDefinitions.tasks[0].dependencies[0].reference).toEqual({
+      status: 'not-resolvable-in-context',
+      reason: 'assessment-plan-binding-invalid',
+    });
+    expect(codes(invalid)).toContain('OSCAL_AR_ASSESSMENT_PLAN_BINDING_INVALID');
+  });
+  it('löst Ressourcen-Subjekte nur gegen das eigene Back-matter auf', () => {
+    const source = makeFullAssessmentResults();
+    const ssp = parseSspDocument(makeFullSsp(), context);
+    const sspResource = (makeFullSsp()['system-security-plan'] as { 'back-matter': { resources: { uuid: string }[] } })[
+      'back-matter'
+    ].resources[0].uuid;
+    Object.assign(firstResult(source).observations[0], {
+      subjects: [
+        { 'subject-uuid': AR_UUIDS.resource, type: 'resource' },
+        { 'subject-uuid': sspResource, type: 'resource' },
+      ],
+    });
+    const [observation] = parse(source, { ssp }).results[0].observations;
+    expect(observation.subjects.map((s) => s.reference.status)).toEqual(['resolved', 'unresolved']);
+    expect(observation.evidence?.subjects.map((s) => s.state)).toEqual(['resolved', 'missing-in-document']);
+  });
+  it('meldet eine im gebundenen Plan fehlende Aufgabe und nicht erschlossene Subjekttypen', () => {
+    const source = makeFullAssessmentResults();
+    const result = firstResult(source);
+    Object.assign(result['local-definitions'].tasks[0], { dependencies: [{ 'task-uuid': AR_UUIDS.missing }] });
+    Object.assign(result.observations[0], { subjects: [{ 'subject-uuid': AR_UUIDS.component, type: 'unbekannt' }] });
+    const assessmentPlan = parseAssessmentPlanDocument(makeBoundAssessmentPlanSource(), context);
+    const view = parse(source, { assessmentPlan });
+    expect(view.results[0].localDefinitions.tasks[0].dependencies[0].reference).toEqual({
+      status: 'unresolved',
+      reason: 'identity-not-found',
+    });
+    expect(codes(view)).toContain('OSCAL_AR_TASK_REFERENCE_UNRESOLVED');
+    expect(view.results[0].observations[0].subjects[0].reference).toEqual({
+      status: 'not-resolvable-in-context',
+      reason: 'subject-type-not-supported',
+    });
+  });
   it('löst implementation-statement-uuid nur gegen ein gebundenes SSP auf', () => {
     const source = makeFullAssessmentResults();
     const finding = source['assessment-results'].results[0].findings[0];

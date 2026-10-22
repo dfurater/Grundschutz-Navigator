@@ -136,11 +136,15 @@ export function subjectReferences(
       reference:
         type === undefined || !SUBJECT_TYPES.has(type)
           ? { status: 'not-resolvable-in-context' as const, reason: 'subject-type-not-supported' }
-          : arReference(state, type, subjectUuid, `${sp}/subject-uuid`, 'SUBJECT_REFERENCE_UNRESOLVED', [
-              'local',
-              'assessment-plan',
-              'ssp',
-            ]),
+          : arReference(
+              state,
+              type,
+              subjectUuid,
+              `${sp}/subject-uuid`,
+              'SUBJECT_REFERENCE_UNRESOLVED',
+              // Ressourcen-Subjekte sind dokumentintern, wie im Evidenz-Read-Model.
+              type === 'resource' ? ['local'] : ['local', 'assessment-plan', 'ssp'],
+            ),
     };
   });
 }
@@ -181,8 +185,7 @@ export function diagnoseTaskCycles(tasks: readonly ApTask[], state: ArDeriveStat
     if (done.has(start)) continue;
     const stack = [{ id: start, next: 0 }];
     active.add(start);
-    while (stack.length > 0) {
-      const frame = stack[stack.length - 1];
+    for (let frame = stack.at(-1); frame !== undefined; frame = stack.at(-1)) {
       const edge = edges.get(frame.id)?.[frame.next++];
       if (edge === undefined) {
         active.delete(frame.id);

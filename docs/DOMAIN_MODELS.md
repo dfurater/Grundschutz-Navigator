@@ -1738,7 +1738,8 @@ Ein Finding führt sein Pflichtziel `target` mit `type`, `targetId`, `status` un
 | `origins[].actors[]` mit `type: assessment-platform` | Prüfplattformen des `result`, Assessment Plan | `OSCAL_AR_ACTOR_REFERENCE_UNRESOLVED` |
 | `origins[].actors[]` mit `type: party` | `metadata.parties`, Assessment Plan, SSP | `OSCAL_AR_ACTOR_REFERENCE_UNRESOLVED` |
 | `origins[].related-tasks[].task-uuid` | Aufgaben des `result` einschließlich Maßnahmenaufgaben, Assessment Plan | `OSCAL_AR_TASK_REFERENCE_UNRESOLVED` |
-| `subjects[]` von Beobachtungen, mindernden Faktoren und benötigten Mitteln (`component`, `inventory-item`, `user`, `party`, `location`, `resource`) | lokale Definitionen des eigenen `result` und dokumentweite Metadaten und Ressourcen, Assessment Plan, SSP | `OSCAL_AR_SUBJECT_REFERENCE_UNRESOLVED` |
+| `subjects[]` von Beobachtungen, mindernden Faktoren und benötigten Mitteln (`component`, `inventory-item`, `user`, `party`, `location`) | lokale Definitionen des eigenen `result` und dokumentweite Metadaten, Assessment Plan, SSP | `OSCAL_AR_SUBJECT_REFERENCE_UNRESOLVED` |
+| `subjects[]` mit `type: resource` | `back-matter.resources` des eigenen Dokuments | `OSCAL_AR_SUBJECT_REFERENCE_UNRESOLVED` |
 | `finding.implementation-statement-uuid` | `control-implementation.implemented-requirements[].statements[]` des SSP | `OSCAL_AR_IMPLEMENTATION_STATEMENT_UNRESOLVED` |
 | `finding.related-risks[].risk-uuid` | Risiken aller `results` | `OSCAL_AR_RISK_REFERENCE_UNRESOLVED` |
 | `risk-log.entries[].related-responses[].response-uuid` | Maßnahmen aller `results` | `OSCAL_AR_RESPONSE_REFERENCE_UNRESOLVED` |

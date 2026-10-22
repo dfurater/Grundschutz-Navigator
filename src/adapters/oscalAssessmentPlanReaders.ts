@@ -178,6 +178,24 @@ export function indexNodes(
     }
   });
 }
+function planReference(
+  state: ApDeriveState,
+  plan: ApDeriveState['local'],
+  type: string,
+  key: string,
+  path: string,
+  code: string,
+): ApReference {
+  if (!state.planAvailable)
+    return {
+      status: 'not-resolvable-in-context',
+      reason: state.planBound ? 'assessment-plan-binding-invalid' : 'assessment-plan-not-supplied',
+    };
+  const planned = plan.get(type)?.get(key) ?? [];
+  if (planned.length === 1) return { status: 'resolved', origin: 'assessment-plan', path: planned[0] };
+  diagnose(state, code, path);
+  return { status: 'unresolved', reason: planned.length > 1 ? 'identity-ambiguous' : 'identity-not-found' };
+}
 export function reference(
   state: ApDeriveState,
   type: string | undefined,
@@ -198,17 +216,8 @@ export function reference(
     diagnose(state, code, path);
     return { status: 'unresolved', reason: 'identity-ambiguous' };
   }
-  if (state.plan !== undefined && PLAN_TYPES.has(type)) {
-    if (!state.planAvailable)
-      return {
-        status: 'not-resolvable-in-context',
-        reason: state.planBound ? 'assessment-plan-binding-invalid' : 'assessment-plan-not-supplied',
-      };
-    const planned = state.plan.get(type)?.get(key) ?? [];
-    if (planned.length === 1) return { status: 'resolved', origin: 'assessment-plan', path: planned[0] };
-    diagnose(state, code, path);
-    return { status: 'unresolved', reason: planned.length > 1 ? 'identity-ambiguous' : 'identity-not-found' };
-  }
+  if (state.plan !== undefined && PLAN_TYPES.has(type))
+    return planReference(state, state.plan, type, key, path, code);
   if (external && !state.sspAvailable)
     return {
       status: 'not-resolvable-in-context',
