@@ -23,27 +23,32 @@ type Index = ApDeriveState['local'];
 export interface ArDeriveState extends ApDeriveState {
   readonly options: AssessmentResultsDeriveOptions;
   readonly plan: Index;
+  /** Prüfwerkzeuge und -plattformen des gebundenen Plans, getrennt von seinen Systemkomponenten. */
+  readonly planAssets: Index;
   planAvailable: boolean;
   /** Dokumentweite Identitäten von Beobachtungen, Risiken, Findings und Maßnahmen. */
   readonly document: Index;
   readonly evidenceByPath: Map<string, EvidenceObservation>;
   readonly observationReferences: Map<string, UuidReference>;
 }
-export type ArScope = 'local' | 'assets' | 'document' | 'assessment-plan' | 'ssp';
+export type ArScope = 'local' | 'assets' | 'document' | 'assessment-plan' | 'assessment-plan-assets' | 'ssp';
 
 const ORIGIN: Readonly<Record<ArScope, 'local' | 'assessment-plan' | 'ssp'>> = {
   local: 'local',
   assets: 'local',
   document: 'local',
   'assessment-plan': 'assessment-plan',
+  'assessment-plan-assets': 'assessment-plan',
   ssp: 'ssp',
 };
 /** Index eines Bereichs; `available` ist nur für Plan und SSP an eine gültige Bindung geknüpft. */
 function scopeIndex(state: ArDeriveState, scope: ArScope): { index: Index; available: boolean; bound: boolean } {
   if (scope === 'ssp')
     return { index: state.ssp, available: state.sspAvailable, bound: state.options.ssp !== undefined };
-  if (scope === 'assessment-plan')
-    return { index: state.plan, available: state.planAvailable, bound: state.options.assessmentPlan !== undefined };
+  if (scope === 'assessment-plan' || scope === 'assessment-plan-assets') {
+    const index = scope === 'assessment-plan' ? state.plan : state.planAssets;
+    return { index, available: state.planAvailable, bound: state.options.assessmentPlan !== undefined };
+  }
   return { index: state[scope], available: true, bound: true };
 }
 
@@ -65,7 +70,7 @@ export function arReference(
   for (const scope of scopes) {
     const { index, available, bound } = scopeIndex(state, scope);
     if (!available) {
-      missingContext ??= `${scope}-${bound ? 'binding-invalid' : 'not-supplied'}`;
+      missingContext ??= `${ORIGIN[scope]}-${bound ? 'binding-invalid' : 'not-supplied'}`;
       continue;
     }
     const hits = index.get(type)?.get(key) ?? [];
@@ -82,8 +87,8 @@ export function arReference(
 
 /** `origin-actor.type` ist ein geschlossenes Vokabular; jede Art hat ihren Identitätsbereich. */
 const ACTOR_TARGETS: Readonly<Record<string, readonly [string, readonly ArScope[]]>> = {
-  tool: ['component', ['assets', 'local', 'assessment-plan', 'ssp']],
-  'assessment-platform': ['assessment-platform', ['assets', 'assessment-plan']],
+  tool: ['component', ['assets', 'local', 'assessment-plan-assets', 'assessment-plan', 'ssp']],
+  'assessment-platform': ['assessment-platform', ['assets', 'assessment-plan-assets']],
   party: ['party', ['local', 'assessment-plan', 'ssp']],
 };
 export function origin(node: JsonObject, path: string, state: ArDeriveState): ArOrigin {

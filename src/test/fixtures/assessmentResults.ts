@@ -182,3 +182,13 @@ export function makeBoundAssessmentPlanSource() {
     },
   };
 }
+
+export type Refs = Record<string, string>[];
+/** Bearbeitbare Sicht auf das erste Ergebnis des Vollfalls; dessen erste Einträge tragen alle Felder. */
+export interface FixtureResult {
+  observations: { origins: { actors: Refs; 'related-tasks'?: Refs }[] }[];
+  findings: { 'related-observations': Refs; 'related-risks': Refs }[];
+  'local-definitions': { tasks: Record<string, unknown>[] };
+}
+export const firstResult = (source: ReturnType<typeof makeFullAssessmentResults>) =>
+  source['assessment-results'].results[0] as unknown as FixtureResult;

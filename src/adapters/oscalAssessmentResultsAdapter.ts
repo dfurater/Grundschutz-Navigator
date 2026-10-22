@@ -94,8 +94,9 @@ function bindContext(state: ArDeriveState): void {
   ] as const)
     indexNodes(state, local, key, type, `${p}/local-definitions`, undefined, state.plan);
   const assets = isJsonObject(root['assessment-assets']) ? root['assessment-assets'] : {};
-  indexNodes(state, assets, 'components', 'component', `${p}/assessment-assets`, undefined, state.plan);
-  indexNodes(state, assets, 'assessment-platforms', 'assessment-platform', `${p}/assessment-assets`, undefined, state.plan);
+  // Prüfwerkzeuge bilden wie im AP-Adapter einen eigenen Identitätsbereich.
+  indexNodes(state, assets, 'components', 'component', `${p}/assessment-assets`, undefined, state.planAssets);
+  indexNodes(state, assets, 'assessment-platforms', 'assessment-platform', `${p}/assessment-assets`, undefined, state.planAssets);
   indexTasks(root, p, { ...state, local: state.plan, diagnostics: [] });
 }
 function indexDocument(root: JsonObject, local: JsonObject, state: ArDeriveState): void {
@@ -214,6 +215,7 @@ export function deriveAssessmentResults(
     ssp: new Map(),
     sspAvailable: false,
     plan: new Map(),
+    planAssets: new Map(),
     planAvailable: false,
     planBound: options.assessmentPlan !== undefined,
     document: new Map(),
