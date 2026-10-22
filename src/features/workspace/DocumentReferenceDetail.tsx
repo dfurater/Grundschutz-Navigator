@@ -9,20 +9,26 @@ import type { VerbundView, WorkspaceDocumentView } from '@/state/workspaceVerbun
 import { ReferenceEdges } from '@/features/workspace/ReferenceEdges';
 import { FOCUS_RING, OriginLabel, ValidityBadge } from '@/features/workspace/DocumentMarks';
 import { WorkspaceNotices } from '@/features/workspace/WorkspaceNotices';
+import { CatalogPinNotice } from '@/features/workspace/CatalogPinNotice';
+import { reviewLocked } from '@/domain/workspaceCatalogPin';
 import { WorkspaceStatePage, useRoutedVerbund } from '@/features/workspace/WorkspaceStatePage';
 import { ProfileEditorPage } from '@/features/workspace/profile/ProfileEditorPage';
 import { ReviewTab } from '@/features/workspace/review/ReviewTab';
 import { SspDocumentContent } from '@/features/workspace/ssp/SspDocumentContent';
 
-/** Prüfspur schreibgeschützter Roots; der Worker startet erst beim Aufklappen. */
-function ReviewSection({ localId }: Readonly<{ localId: LocalId }>) {
+/** Prüfspur schreibgeschützter Roots; der Worker startet erst beim Aufklappen. `locked` sperrt die Prüfaktionen. */
+function ReviewSection({ localId, locked }: Readonly<{ localId: LocalId; locked: boolean }>) {
   const [open, setOpen] = useState(false);
   return (
     <details open={open} onToggle={(event) => setOpen(event.currentTarget.open)} className="rounded-md border border-[var(--color-border-default)] bg-[var(--color-surface-base)]">
       <summary className={`min-h-touch cursor-pointer px-4 py-3 text-sm font-semibold text-[var(--color-text-primary)] hover:bg-[var(--color-surface-subtle)] ${FOCUS_RING} focus-visible:ring-inset desktop:min-h-0`}>
         Prüfung und Freigabe
       </summary>
-      {open && <div className="border-t border-[var(--color-border-default)] p-4"><ReviewTab key={localId} localId={localId} /></div>}
+      {open && (
+        <fieldset disabled={locked} className="min-w-0 border-t border-[var(--color-border-default)] p-4">
+          <ReviewTab key={localId} localId={localId} />
+        </fieldset>
+      )}
     </details>
   );
 }
@@ -46,9 +52,10 @@ function DocumentDetail({ view, document }: Readonly<{ view: VerbundView; docume
         </div>
       </header>
       <WorkspaceNotices />
+      <CatalogPinNotice pin={document.catalogPin} />
       {document.rootType === 'system-security-plan' && <SspDocumentContent key={document.localId} localId={document.localId} />}
       <ReferenceEdges view={view} document={document} />
-      <ReviewSection localId={document.localId} />
+      <ReviewSection localId={document.localId} locked={reviewLocked(document.catalogPin)} />
     </div>
   );
 }

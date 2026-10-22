@@ -44,6 +44,7 @@ const MESSAGES: Readonly<Record<ReviewTrailMessage, string>> = {
   conflict: 'Der gespeicherte Stand hat sich geändert; die Prüfspur wurde neu geladen.',
   'work-failed': 'Hash oder Diff konnten nicht berechnet werden; es wurde nichts geschrieben.',
   'decision-failed': 'Die Entscheidung wurde nicht geschrieben.',
+  'catalog-locked': 'Der gebundene Katalogstand ist gesperrt; es wurde nichts geschrieben.',
 };
 
 const APPROVAL_MESSAGES: Readonly<Record<string, string>> = {
@@ -132,7 +133,8 @@ export function ReviewTab({ localId, documentSavedAt, editorDirty = false, appro
         await review.reload();
         return;
       }
-      setApprovalMessage(APPROVAL_MESSAGES[result.code] ?? 'Die Freigabe wurde nicht geschrieben.');
+      setApprovalMessage(APPROVAL_MESSAGES[result.code]
+        ?? (result.code.startsWith('OSCAL_WORKSPACE_CATALOG_PIN_') ? MESSAGES['catalog-locked'] : 'Die Freigabe wurde nicht geschrieben.'));
     }).finally(() => setApproving(false));
   };
 

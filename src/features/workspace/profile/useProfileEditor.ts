@@ -6,6 +6,7 @@ import { exportProfileInWorker } from '@/adapters/profileWorkbench';
 import { isPinnedOscalVersion } from '@/domain/oscalVersionMatrix';
 import { commitExplicitSave, sameProfileContent } from '@/domain/profileSave';
 import { approvalAction, withApprovalAction, withReviewIdentities } from '@/domain/reviewTrail';
+import { catalogPinsForSave } from '@/domain/workspaceCatalogPin';
 import type { BindingTarget, LocalId, WorkspaceBinding, WorkspaceEnvelope } from '@/domain/workspaceModel';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import type { ReviewApprovalRequest } from '@/adapters/workspaceStore';
@@ -28,7 +29,7 @@ export type ProfileSaveState =
   | { readonly kind: 'saved'; readonly at: string }
   | { readonly kind: 'failed' };
 
-export type ProfileEditorMessage = 'saved-as-draft' | 'export-failed' | 'save-failed' | 'delete-failed';
+export type ProfileEditorMessage = 'saved-as-draft' | 'export-failed' | 'save-failed' | 'delete-failed' | 'catalog-locked';
 
 export interface ProfileApprovalInput extends DecisionSubmission {
   /** Trail-Sequenz, gegen die der Aufrufer gelesen hat. */
@@ -56,6 +57,8 @@ export interface ProfileEditor {
   /** Ändert die Quelle und ordnet einem `href` ein Importziel zu. */
   readonly changeWithTarget: (patch: (source: unknown) => { source: unknown; href: string; index: number }, target: BindingTarget) => void;
   readonly save: () => Promise<void>;
+  /** Bindet ein Dokument ohne Katalogpaar bestätigt an den ausgelieferten, verifizierten Stand. */
+  readonly bindCatalogStand: () => Promise<void>;
   /** Übernimmt einen neueren gespeicherten Stand nur ohne offene Eingaben; sonst bleibt der Konflikt erhalten. */
   readonly adopt: (document: WorkspaceEnvelope) => Promise<'adopted' | 'blocked' | 'failed'>;
   /** Schreibt die Freigabe als `metadata.actions` und den Trail in einem Dokumentenschreibvorgang. */
@@ -104,7 +107,7 @@ function editorBindings(localId: LocalId, imports: readonly ProfileImportView[],
  * Speichern mit change-on-write und Export aus dem gespeicherten Stand.
  */
 export function useProfileEditor(localId: LocalId): ProfileEditor {
-  const { documents, registerAutosave } = useWorkspace();
+  const { documents, registerAutosave, catalogDelivery } = useWorkspace();
   const [envelope, setEnvelope] = useState<WorkspaceEnvelope>();
   const [status, setStatus] = useState<ProfileEditor['status']>('loading');
   const [working, setWorking] = useState<unknown>();
@@ -248,20 +251,51 @@ export function useProfileEditor(localId: LocalId): ProfileEditor {
   const bindings = useMemo(() => editorBindings(localId, imports, stored, pendingTargets), [localId, imports, stored, pendingTargets]);
   const dirty = envelope !== undefined && !sameProfileContent(envelope.source, working);
 
+  /** Übernimmt einen gespeicherten Stand nach dem expliziten Speichern. */
+  const adoptSaved = useCallback((saved: WorkspaceEnvelope, savedBindings: readonly WorkspaceBinding[], startWorking: unknown) => {
+    // Nur Zuordnungen, die genau so gespeichert wurden; eine während des Speicherns geänderte bleibt offen.
+    for (const binding of savedBindings) {
+      const assigned = pending.get(binding.pointer);
+      if (assigned?.href === binding.href && sameTarget(assigned.target, binding.target)) pending.delete(binding.pointer);
+    }
+    setPendingTargets(new Map(pending));
+    setEnvelope(saved);
+    setStored(savedBindings);
+    // Eingaben während des Speicherns bleiben Arbeitsstand und gehen in den nächsten Entwurf.
+    const changedMeanwhile = latest.current.working !== startWorking;
+    latest.current = { working: changedMeanwhile ? latest.current.working : saved.source, envelope: saved, draftSavedAt: null, unsaved: changedMeanwhile };
+    if (changedMeanwhile) {
+      setSaveState({ kind: 'pending' });
+      schedule();
+    } else {
+      setWorking(saved.source);
+      setSaveState({ kind: 'saved', at: saved.savedAt });
+    }
+  }, [pending, schedule]);
+
   type CommitResult = { readonly ok: true; readonly documentState: 'export-ready' | 'draft' } | { readonly ok: false; readonly code: string };
 
-  const commit = useCallback(async (working: unknown, approval?: { readonly request: ReviewApprovalRequest; readonly requireSchema: boolean }): Promise<CommitResult> => {
+  const commit = useCallback(async (working: unknown, approval?: { readonly request: ReviewApprovalRequest; readonly requireSchema: boolean }, rebind = false): Promise<CommitResult> => {
     const state = latest.current;
     const envelope = state.envelope;
     const oscalVersion = envelope?.oscalVersion;
     if (!envelope || oscalVersion === undefined || !isPinnedOscalVersion(oscalVersion)) return { ok: false, code: 'WORKSPACE_DOCUMENT_NOT_FOUND' };
     if (saving.current) return { ok: false, code: 'WORKSPACE_SAVE_CONFLICT' };
+    // Schreibschutz aus dem gespeicherten Stand; neue Katalogbindungen erhalten das Paar des ausgelieferten Stands.
+    // Vor change-on-write: Ein ergänztes Paar ist eine Inhaltsänderung mit neuer UUID und `last-modified`.
+    const pinned = catalogPinsForSave({ source: envelope.source, rootType: 'profile', bindings: stored }, working, bindings, catalogDelivery, rebind);
+    if (!pinned.ok) {
+      setMessage('catalog-locked');
+      // Offene Eingaben bleiben Entwurf, auch wenn das Speichern abgelehnt ist.
+      if (latest.current.unsaved) schedule();
+      return { ok: false, code: pinned.code };
+    }
     setBusy(true);
     setMessage(undefined);
     saving.current = true;
     let release = () => {};
     savingDone.current = new Promise<void>((resolve) => { release = resolve; });
-    const snapshot = working;
+    const snapshot = pinned.source;
     // Freigaben speichern eine abgeleitete Quelle; offene Eingaben sind der Vergleich zum Startstand.
     const startWorking = latest.current.working;
     let documentState: 'export-ready' | 'draft';
@@ -286,30 +320,18 @@ export function useProfileEditor(localId: LocalId): ProfileEditor {
       if (latest.current.unsaved) schedule();
       return { ok: false, code: result.diagnostic.code };
     }
-    // Nur Zuordnungen, die genau so gespeichert wurden; eine während des Speicherns geänderte bleibt offen.
-    for (const binding of bindings) {
-      const assigned = pending.get(binding.pointer);
-      if (assigned?.href === binding.href && sameTarget(assigned.target, binding.target)) pending.delete(binding.pointer);
-    }
-    setPendingTargets(new Map(pending));
-    setEnvelope(result.value);
-    setStored(bindings);
-    // Eingaben während des Speicherns bleiben Arbeitsstand und gehen in den nächsten Entwurf.
-    const changedMeanwhile = latest.current.working !== startWorking;
-    latest.current = { working: changedMeanwhile ? latest.current.working : result.value.source, envelope: result.value, draftSavedAt: null, unsaved: changedMeanwhile };
-    if (changedMeanwhile) {
-      setSaveState({ kind: 'pending' });
-      schedule();
-    } else {
-      setWorking(result.value.source);
-      setSaveState({ kind: 'saved', at: result.value.savedAt });
-    }
+    adoptSaved(result.value, bindings, startWorking);
     return { ok: true, documentState };
-  }, [bindings, documents, localId, pending, schedule]);
+  }, [adoptSaved, bindings, catalogDelivery, documents, localId, schedule, stored]);
 
   const save = useCallback(async () => {
     const result = await commit(latest.current.working);
     if (result.ok && result.documentState === 'draft') setMessage('saved-as-draft');
+  }, [commit]);
+
+  // Ein offener Entwurf wird dabei mitgespeichert: Er ist sonst unter der Sperre nicht mehr zu sichern.
+  const bindCatalogStand = useCallback(async () => {
+    await commit(latest.current.working, undefined, true);
   }, [commit]);
 
   const approve = useCallback(async (input: ProfileApprovalInput): Promise<ProfileApprovalResult> => {
@@ -370,6 +392,6 @@ export function useProfileEditor(localId: LocalId): ProfileEditor {
   return {
     status, envelope, working, imports, dirty, saveState, busy, message, bindings,
     targetFor: (entry) => targetOf(entry, stored, pendingTargets),
-    change, changeWithTarget, removeImportAt, save, adopt, approve, exportDocument, remove,
+    change, changeWithTarget, removeImportAt, save, bindCatalogStand, adopt, approve, exportDocument, remove,
   };
 }

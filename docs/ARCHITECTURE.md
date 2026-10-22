@@ -200,6 +200,7 @@ src/                              # Anwendungsquellcode
 │   ├── vocabularyRouteId.ts          # Typsicherer Einstieg in vocabularyRouteId.mjs
 │   ├── workspaceJson.ts              # Verlustfreie JSON-Zahlengrenze des Speichers
 │   ├── workspaceCatalog.ts           # Minimale lokale Baseline-Projektion mit Controls und Part-IDs
+│   ├── workspaceCatalogPin.ts        # Bindung lokaler Dokumente an ausgelieferte, verifizierte Katalogstände
 │   ├── workspaceDiagnostics.ts       # Diagnosecodes von Verbundgraph, Aufnahme und Baseline-Projektion
 │   ├── workspaceEdges.ts             # Acht dokumentübergreifende OSCAL-Referenzfelder
 │   ├── workspaceGraph.ts             # Reiner Dokumentgraph eines Informationsverbunds
@@ -264,6 +265,7 @@ src/                              # Anwendungsquellcode
 │   ├── catalogParseWorker.ts         # Typisierter Client des Katalog-Parser-Workers
 │   ├── catalogParsing.ts             # Parsepipeline für Worker und Main-Thread-Fallback
 │   ├── catalogReducer.ts             # Zustand der Katalogsammlung
+│   ├── workspaceCatalogSession.ts    # Verifizierte Kataloge und ausgelieferte Stände der Sitzung für den Arbeitsbereich
 │   ├── workspaceDocuments.ts         # Dokumentoperationen der Stationen über den Speicher
 │   ├── workspaceNotices.ts           # Benannte Speichermeldungen und Quota-Schwelle
 │   ├── workspaceProfileAnalysis.ts   # Schnappschuss und Ableitung der Profilanalyse
@@ -356,6 +358,7 @@ src/                              # Anwendungsquellcode
 │   ├── vocabulary/                   # Vokabular-Anzeige-Helpers
 │   │   └── display.ts                    # Offizielle Stufen, Beschriftungen, Tooltips
 │   └── workspace/                    # Bereich Informationsverbünde
+│       ├── CatalogPinNotice.tsx          # Schreibschutz durch den gebundenen Katalogstand, Bindungsangebot
 │       ├── DocumentMarks.tsx             # Herkunftslabel und Statuswort lokaler Dokumente
 │       ├── DocumentReferenceDetail.tsx   # Dokumentroute: Referenzkanten, für Profile die Bearbeitungsansicht
 │       ├── ReferenceEdges.tsx            # Referenzkanten eines Dokuments mit Feld, Pflicht und Zustand
@@ -469,6 +472,7 @@ src/                              # Anwendungsquellcode
 │   ├── oscalStructure.ts             # Strukturorakel (Zählregeln A und B)
 │   ├── renderAppShell.tsx            # Rendert die Shell mit echter Routentabelle für Komponententests
 │   ├── renderWorkspaceArea.tsx       # Shell mit WorkspaceProvider für Router-Tests des Bereichs Informationsverbünde
+│   ├── reviewTrailFixtures.ts        # Prüfspur-Mocks und Katalogquellen für die WorkspaceStore-Verträge
 │   ├── workflowFixtures.ts           # Job-Blöcke und temporäre Repository-Fixtures für Skripttests
 │   ├── workspaceAreaFixture.ts       # Speicherfixture mit Sentinels für den Bereich Informationsverbünde
 │   └── workspaceNodeWorkers.ts       # In-Process-Ersatz für Import-Gate und Backup-Worker in Node-Tests
@@ -694,7 +698,7 @@ Projektionen des **aktiven** Katalogs:
 
 ### WorkspaceContext (`src/state/WorkspaceContext.tsx`)
 
-`WorkspaceProvider` steht in `src/main.tsx` neben `CatalogProvider` und hält den Zustand des Bereichs Informationsverbünde. Der Speicher öffnet erst, wenn `useShellArea()` beim ersten Betreten des Bereichs `activate()` aufruft; `WorkspaceStore` und die Verbundansicht laden als eigene Chunks, der Katalogpfad lädt beide nicht. Der Provider hält die Verbundliste, die Ansicht des Verbunds aus der Route (`loadVerbundView()` in `src/state/workspaceVerbundView.ts`: Envelopemetadaten, `metadata.title`, Kanten und Diagnosen aus `buildWorkspaceGraph()`, abgeleitet von `deriveVerbundView()` im Modul-Worker `src/workers/profileWorkbench.worker.ts`; die Quellgraphen werden danach entlassen), die benannten Speichermeldungen, die Autosave-Registrierung (`registerAutosave`, `flushAutosaves`) und die Dokumentoperationen der Stationen (`documents`, `src/state/workspaceDocuments.ts`: `addDocument`, `getDocument`, `getDraft`, `listBindings`, `saveDocument`, `autosaveDraft`, `setBinding`, `deleteDocument` des Speichers sowie `analyzeProfile` und `checkProfileSchema`). Jeder Schreibvorgang außer `autosaveDraft` läuft über den Speicher und lädt Liste und Ansicht danach neu; `autosaveDraft` schreibt nur den Entwurf, den die Verbundansicht nicht liest. Importziele ungespeicherter Profil-Importe hält der Provider nur im Arbeitsspeicher des Tabs (`importTargets`); das explizite Speichern schreibt sie als Bindungen. nach dem Löschen eines Verbunds verwirft der Provider dessen Ansicht. Scheitert das Öffnen, gilt die Verbundansicht als `failed` und zeigt die Meldung mit „Neu laden“.
+`WorkspaceProvider` steht in `src/main.tsx` neben `CatalogProvider` und hält den Zustand des Bereichs Informationsverbünde. Der Speicher öffnet erst, wenn `useShellArea()` beim ersten Betreten des Bereichs `activate()` aufruft; `WorkspaceStore` und die Verbundansicht laden als eigene Chunks, der Katalogpfad lädt beide nicht. Der Provider hält die Verbundliste, die Ansicht des Verbunds aus der Route (`loadVerbundView()` in `src/state/workspaceVerbundView.ts`: Envelopemetadaten, `metadata.title`, Kanten und Diagnosen aus `buildWorkspaceGraph()`, abgeleitet von `deriveVerbundView()` im Modul-Worker `src/workers/profileWorkbench.worker.ts`; die Quellgraphen werden danach entlassen), die benannten Speichermeldungen, die Autosave-Registrierung (`registerAutosave`, `flushAutosaves`) und die Dokumentoperationen der Stationen (`documents`, `src/state/workspaceDocuments.ts`: `addDocument`, `getDocument`, `getDraft`, `listBindings`, `saveDocument`, `autosaveDraft`, `setBinding`, `deleteDocument` des Speichers sowie `analyzeProfile` und `checkProfileSchema`). Jeder Schreibvorgang außer `autosaveDraft` läuft über den Speicher und lädt Liste und Ansicht danach neu; `autosaveDraft` schreibt nur den Entwurf, den die Verbundansicht nicht liest. Importziele ungespeicherter Profil-Importe hält der Provider nur im Arbeitsspeicher des Tabs (`importTargets`); das explizite Speichern schreibt sie als Bindungen. Aus den geladenen Katalogen leitet der Provider `catalogDelivery` ab (`src/state/workspaceCatalogSession.ts`): je `artifactKey` den Manifest-Commit und das Ergebnis der Hashprüfung; Verbundansicht und Profilanalyse bestimmen daraus den Bindungszustand jedes Dokuments (`docs/PERSISTENCE.md` §2). nach dem Löschen eines Verbunds verwirft der Provider dessen Ansicht. Scheitert das Öffnen, gilt die Verbundansicht als `failed` und zeigt die Meldung mit „Neu laden“.
 
 Bindungen auf BSI-Artefakte löst der Dokumentgraph gegen die Kataloge auf, die `CatalogContext` bereits geladen hat: Der Provider übergibt Quellgraphen von Katalogen mit `lifecycle: 'supported'` und bestandener Hashprüfung (`verification.valid`) lesend als Klasse-1-Artefakte, und `loadVerbundView()` reicht nur die weiter, auf die eine Bindung des Verbunds zeigt. Nichts davon gelangt in den Speicher. Passt der Verweis zu einer Bindung auf einen nicht geladenen oder nicht verifizierten Katalog, erscheint die Kante als „BSI-Katalog in dieser Sitzung nicht geladen“; ihre Graphdiagnose `OSCAL_GRAPH_TARGET_NOT_FOUND` entfällt in Kante und Diagnoseliste, ebenso die gleichlautende Diagnose der Profilauflösung. Eine veraltete (`OSCAL_WORKSPACE_BINDING_STALE`) oder mehrdeutige Bindung bleibt ein Fehler, auch wenn ihr Ziel ein nicht geladener Katalog ist.
 

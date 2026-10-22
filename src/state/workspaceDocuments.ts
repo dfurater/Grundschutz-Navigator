@@ -1,4 +1,7 @@
 import { StorageFailure, failure } from '@/adapters/workspaceStorageFailure';
+import type { ReviewApprovalRequest, ReviewGuard } from '@/adapters/workspaceStore';
+import type { CatalogDelivery } from '@/domain/workspaceCatalogPin';
+import { WORKSPACE_DIAGNOSTIC_CODES } from '@/domain/workspaceDiagnostics';
 import type { WorkspaceClass1Artifact } from '@/domain/workspaceGraphModel';
 import type { BindingTarget, LocalId, WorkspaceResult } from '@/domain/workspaceModel';
 import type { ProfileAnalysis, ProfileAnalysisInput, ProfileSchemaCheck } from '@/state/workspaceProfileAnalysis';
@@ -12,6 +15,7 @@ import type { WorkspacePort } from '@/state/workspaceVerbundView';
  */
 
 type Port<K extends keyof WorkspacePort> = WorkspacePort[K];
+type Save = Parameters<Port<'saveDocument'>>;
 
 /** Ungespeicherte Zuordnung eines Imports; der `href` prüft, dass der Import an dem Pointer noch derselbe ist. */
 export interface PendingImportTarget {
@@ -24,7 +28,8 @@ export interface WorkspaceDocuments {
   readonly getDraft: Port<'getDraft'>;
   readonly listBindings: Port<'listBindings'>;
   readonly addDocument: Port<'addDocument'>;
-  readonly saveDocument: Port<'saveDocument'>;
+  /** Der Katalog-Guard wird hier ergänzt; Aufrufer reichen nur die Freigabe. */
+  readonly saveDocument: (localId: Save[0], savedAt: Save[1], draftSavedAt: Save[2], input: Save[3], bindings?: Save[4], state?: Save[5], approval?: ReviewApprovalRequest) => ReturnType<Port<'saveDocument'>>;
   /** Schreibt nur den Entwurf; die Verbundansicht bleibt, weil sie Entwürfe nicht liest. */
   readonly autosaveDraft: Port<'autosaveDraft'>;
   readonly setBinding: Port<'setBinding'>;
@@ -50,13 +55,27 @@ type Write = <T>(operation: (store: WorkspacePort) => Promise<WorkspaceResult<T>
 
 const storageFailed = () => failure(new StorageFailure('WORKSPACE_STORAGE_FAILED'));
 
+/**
+ * Prüf- und Freigabeaktionen nur über einem gebundenen Bezugsstand, auch einem über lokale
+ * Referenzen geerbten (SSP → Profil → Katalog). Dieselbe Ableitung wie die Verbundansicht; der
+ * Speicher wertet sie in der Schreibtransaktion aus, damit eine gesperrte Oberfläche nicht die
+ * einzige Sperre ist und ein anderer Tab sie zwischen Prüfung und Schreiben nicht umgeht.
+ */
+async function reviewGuard(delivery: CatalogDelivery): Promise<ReviewGuard> {
+  const { applyCatalogPins, reviewLocked } = await import('@/domain/workspaceCatalogPin');
+  return (localId, members, bindings) => {
+    const pin = applyCatalogPins(members, bindings, delivery).pins.get(localId);
+    return reviewLocked(pin) ? pin?.code ?? WORKSPACE_DIAGNOSTIC_CODES.catalogPinUnverified : null;
+  };
+}
+
 /** Liest den Schnappschuss im Main Thread und leitet ihn im Worker ab. */
-async function analyze(port: WorkspacePort, input: ProfileAnalysisInput, class1: readonly WorkspaceClass1Artifact[]): Promise<WorkspaceResult<ProfileAnalysis>> {
+async function analyze(port: WorkspacePort, input: ProfileAnalysisInput, class1: readonly WorkspaceClass1Artifact[], delivery: CatalogDelivery): Promise<WorkspaceResult<ProfileAnalysis>> {
   const [{ profileAnalysisSnapshot }, { analyzeProfileInWorker }] = await Promise.all([
     import('@/state/workspaceProfileAnalysis'),
     import('@/adapters/profileWorkbench'),
   ]);
-  const snapshot = await profileAnalysisSnapshot(port, input, class1);
+  const snapshot = await profileAnalysisSnapshot(port, input, class1, delivery);
   if (!snapshot.ok) return snapshot;
   const analysis = await analyzeProfileInWorker(snapshot.value);
   return analysis ? { ok: true, value: analysis } : storageFailed();
@@ -72,13 +91,14 @@ async function checkSchema(source: unknown): Promise<ProfileSchemaCheck> {
   return result.ok ? { status: 'passed' } : { status: 'failed', code: result.diagnostic.code, path: result.diagnostic.path };
 }
 
-export function createWorkspaceDocuments({ port, write, quiet, class1, targets }: Readonly<{
+export function createWorkspaceDocuments({ port, write, quiet, class1, delivery, targets }: Readonly<{
   port: WorkspacePort | null;
   /** Schreibt und lädt danach die Verbundansicht neu. */
   write: Write;
   /** Schreibt ohne Neuladen; Fehler erscheinen als Speichermeldung. */
   quiet: Write;
   class1: readonly WorkspaceClass1Artifact[];
+  delivery: CatalogDelivery;
   targets: Map<LocalId, Map<string, PendingImportTarget>>;
 }>): WorkspaceDocuments {
   const read = <T,>(operation: (store: WorkspacePort) => Promise<WorkspaceResult<T>>): Promise<WorkspaceResult<T>> =>
@@ -89,7 +109,9 @@ export function createWorkspaceDocuments({ port, write, quiet, class1, targets }
     getDraft: (localId) => read((store) => store.getDraft(localId)),
     listBindings: () => read((store) => store.listBindings()),
     addDocument: (...args) => write((store) => store.addDocument(...args)),
-    saveDocument: (...args) => write((store) => store.saveDocument(...args)),
+    // Eine Freigabe ist eine Prüfentscheidung und braucht den gebundenen Bezugsstand.
+    saveDocument: (localId, savedAt, draftSavedAt, input, bindings, state, approval) => write(async (store) =>
+      store.saveDocument(localId, savedAt, draftSavedAt, input, bindings, state, approval ? { request: approval, guard: await reviewGuard(delivery) } : undefined)),
     autosaveDraft: (...args) => quiet((store) => store.autosaveDraft(...args)),
     setBinding: (...args) => write((store) => store.setBinding(...args)),
     deleteDocument: async (localId) => {
@@ -98,9 +120,11 @@ export function createWorkspaceDocuments({ port, write, quiet, class1, targets }
       return result;
     },
     listReviewTrail: (localId) => read((store) => store.listReviewTrail(localId)),
-    appendCheckpoint: (...args) => read((store) => store.appendCheckpoint(...args)),
-    appendDecision: (...args) => read((store) => store.appendDecision(...args)),
-    analyzeProfile: (input) => read((store) => analyze(store, input, class1)),
+    appendCheckpoint: (localId, savedAt, draftSavedAt, sequence) => read(async (store) =>
+      store.appendCheckpoint(localId, savedAt, draftSavedAt, sequence, await reviewGuard(delivery))),
+    appendDecision: (localId, savedAt, draftSavedAt, request) => read(async (store) =>
+      store.appendDecision(localId, savedAt, draftSavedAt, request, await reviewGuard(delivery))),
+    analyzeProfile: (input) => read((store) => analyze(store, input, class1, delivery)),
     checkProfileSchema: (source) => checkSchema(source)
       .catch((): ProfileSchemaCheck => ({ status: 'failed', code: 'OSCAL_EXPORT_SOURCE_INVALID', path: '/' })),
     importTargets: (localId) => {
