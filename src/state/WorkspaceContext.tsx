@@ -56,6 +56,8 @@ export interface WorkspaceContextValue {
   readonly flushAutosaves: () => Promise<boolean>;
   /** Dokumentoperationen der Stationen (GSPP-292). */
   readonly documents: WorkspaceDocuments;
+  /** Invalidierung nur für sitzungsgebundene Profilanalysen; Dokumentzugriff bleibt stabil. */
+  readonly analysisRevision: number;
 }
 
 const unavailable = () => Promise.resolve(storageFailed());
@@ -78,6 +80,7 @@ export const WorkspaceContext = createContext<WorkspaceContextValue>({
   registerAutosave: () => () => undefined,
   flushAutosaves: () => Promise.resolve(true),
   documents: createWorkspaceDocuments({ port: null, write: unavailableWrite, quiet: unavailableWrite, class1: [], delivery: new Map(), targets: new Map() }),
+  analysisRevision: 0,
 });
 
 export function WorkspaceProvider({ open = openWorkspaceStore, children }: Readonly<{
@@ -92,6 +95,15 @@ export function WorkspaceProvider({ open = openWorkspaceStore, children }: Reado
   const [selectedVerbundId, setSelectedVerbundId] = useState<string | null>(null);
   const [loaded, setLoaded] = useState<VerbundViewState | null>(null);
   const [revision, setRevision] = useState(0);
+  const [analysisRevision, setAnalysisRevision] = useState(0);
+  const [analysisEpoch] = useState(() => {
+    let version = 0;
+    return { read: () => version, advance: () => ++version };
+  });
+  const analysisVersion = analysisEpoch.read;
+  const invalidateAnalysis = useCallback(() => {
+    setAnalysisRevision(analysisEpoch.advance());
+  }, [analysisEpoch]);
   const openRef = useRef(open);
   const startedRef = useRef(false);
   const autosaves = useRef(new Set<AutosaveFlush>());
@@ -194,10 +206,12 @@ export function WorkspaceProvider({ open = openWorkspaceStore, children }: Reado
   const write = useCallback(async <T,>(operation: (store: WorkspacePort) => Promise<WorkspaceResult<T>>): Promise<WorkspaceResult<T>> => {
     if (!port) return storageFailed();
     const result = await operation(port);
-    if (result.ok) setRevision((value) => value + 1);
-    else if (result.diagnostic.code !== 'WORKSPACE_OPERATION_CANCELLED') report(result.diagnostic);
+    if (result.ok) {
+      invalidateAnalysis();
+      setRevision((value) => value + 1);
+    } else if (result.diagnostic.code !== 'WORKSPACE_OPERATION_CANCELLED') report(result.diagnostic);
     return result;
-  }, [port, report]);
+  }, [port, report, invalidateAnalysis]);
 
   const quiet = useCallback(async <T,>(operation: (store: WorkspacePort) => Promise<WorkspaceResult<T>>): Promise<WorkspaceResult<T>> => {
     if (!port) return storageFailed();
@@ -207,8 +221,8 @@ export function WorkspaceProvider({ open = openWorkspaceStore, children }: Reado
   }, [port, report]);
 
   const documents = useMemo(
-    () => createWorkspaceDocuments({ port, write, quiet, class1, delivery, targets: importTargets }),
-    [port, write, quiet, class1, delivery, importTargets],
+    () => createWorkspaceDocuments({ port, write, quiet, class1, delivery, targets: importTargets, analysisVersion }),
+    [port, write, quiet, class1, delivery, importTargets, analysisVersion],
   );
 
   const registerAutosave = useCallback((flush: AutosaveFlush) => {
@@ -233,6 +247,7 @@ export function WorkspaceProvider({ open = openWorkspaceStore, children }: Reado
     activate,
     selectVerbund: setSelectedVerbundId,
     reload: () => {
+      invalidateAnalysis();
       setNotices((current) => withoutNotice(withoutNotice(current, 'conflict'), 'storage-failed'));
       setRevision((current) => current + 1);
       // Ein gescheitertes Öffnen wird erneut versucht, eine gescheiterte Schemaprüfung
@@ -279,7 +294,8 @@ export function WorkspaceProvider({ open = openWorkspaceStore, children }: Reado
     registerAutosave,
     flushAutosaves,
     documents,
-  }), [status, verbuende, writable, delivery, notices, verbund, activate, checkSchema, write, port, report, registerAutosave, flushAutosaves, documents, importTargets]);
+    analysisRevision,
+  }), [status, verbuende, writable, delivery, notices, verbund, activate, checkSchema, write, port, report, registerAutosave, flushAutosaves, documents, importTargets, invalidateAnalysis, analysisRevision]);
 
   return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>;
 }
