@@ -39,13 +39,14 @@ export interface ArOriginActor extends ApElements {
   readonly roleId?: string;
   readonly reference: ArReference;
 }
+export interface ArRelatedTask extends ApElements {
+  readonly taskUuid?: string;
+  readonly reference: ArReference;
+}
 export interface ArOrigin {
   readonly path: string;
   readonly actors: readonly ArOriginActor[];
-  readonly relatedTasks: readonly (ApElements & {
-    readonly taskUuid?: string;
-    readonly reference: ArReference;
-  })[];
+  readonly relatedTasks: readonly ArRelatedTask[];
 }
 export interface ArSubjectReference extends ApElements {
   readonly subjectUuid?: string;
@@ -151,6 +152,15 @@ export interface AssessmentResult extends ApEntity {
   readonly assessmentLog: readonly (ApEntity & {
     readonly start?: string;
     readonly end?: string;
+    readonly loggedBy: readonly {
+      readonly partyUuid?: string;
+      readonly roleId?: string;
+      readonly remarks?: string;
+      readonly path: string;
+      readonly party: ArReference;
+      readonly role: ArReference | null;
+    }[];
+    readonly relatedTasks: readonly ArRelatedTask[];
   })[];
   readonly observations: readonly AssessmentObservation[];
   readonly risks: readonly AssessmentRisk[];

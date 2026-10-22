@@ -5,6 +5,7 @@ import type {
   ArOrigin,
   ArReference,
   ArRelatedObservation,
+  ArRelatedTask,
   ArSubjectReference,
   AssessmentResultsDeriveOptions,
 } from '@/domain/assessmentResultsModel';
@@ -103,18 +104,40 @@ export function origin(node: JsonObject, path: string, state: ArDeriveState): Ar
             : arReference(state, target[0], actorUuid, `${ap}/actor-uuid`, 'ACTOR_REFERENCE_UNRESOLVED', target[1]),
       };
     }),
-    relatedTasks: readObjectArrayField(node, 'related-tasks', path, state).map(({ node: task, path: tp }) => {
-      const taskUuid = stringField(task, 'task-uuid', tp, state, true);
-      return {
-        ...readElements(task, tp, state),
-        taskUuid,
-        reference: arReference(state, 'task', taskUuid, `${tp}/task-uuid`, 'TASK_REFERENCE_UNRESOLVED', [
-          'local',
-          'assessment-plan',
-        ]),
-      };
-    }),
+    relatedTasks: relatedTasks(node, path, state),
   };
+}
+export function relatedTasks(node: JsonObject, path: string, state: ArDeriveState): readonly ArRelatedTask[] {
+  return readObjectArrayField(node, 'related-tasks', path, state).map(({ node: task, path: tp }) => {
+    const taskUuid = stringField(task, 'task-uuid', tp, state, true);
+    return {
+      ...readElements(task, tp, state),
+      taskUuid,
+      reference: arReference(state, 'task', taskUuid, `${tp}/task-uuid`, 'TASK_REFERENCE_UNRESOLVED', [
+        'local',
+        'assessment-plan',
+      ]),
+    };
+  });
+}
+/** Urheber eines Protokolleintrags: Partei und Rolle im Dokument, im Plan oder im SSP. */
+export function loggedBy(node: JsonObject, path: string, state: ArDeriveState) {
+  const scopes: readonly ArScope[] = ['local', 'assessment-plan', 'ssp'];
+  return readObjectArrayField(node, 'logged-by', path, state).map(({ node: entry, path: lp }) => {
+    const partyUuid = stringField(entry, 'party-uuid', lp, state, true);
+    const roleId = stringField(entry, 'role-id', lp, state);
+    return {
+      partyUuid,
+      roleId,
+      remarks: stringField(entry, 'remarks', lp, state),
+      path: lp,
+      party: arReference(state, 'party', partyUuid, `${lp}/party-uuid`, 'PARTY_REFERENCE_UNRESOLVED', scopes),
+      role:
+        roleId === undefined
+          ? null
+          : arReference(state, 'role', roleId, `${lp}/role-id`, 'ROLE_REFERENCE_UNRESOLVED', scopes),
+    };
+  });
 }
 export function origins(node: JsonObject, path: string, state: ArDeriveState): readonly ArOrigin[] {
   return readObjectArrayField(node, 'origins', path, state).map((entry) => origin(entry.node, entry.path, state));

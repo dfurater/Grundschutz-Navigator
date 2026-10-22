@@ -8,7 +8,7 @@ import {
   makeFullAssessmentResults,
   makeMinimalAssessmentResults,
 } from '@/test/fixtures/assessmentResults';
-import { AP_UUIDS } from '@/test/fixtures/assessmentPlans';
+import { AP_UUIDS, makeFullAssessmentPlan } from '@/test/fixtures/assessmentPlans';
 import { makeFullSsp, SSP_FIXTURE_IDS } from '@/test/fixtures/systemSecurityPlans';
 import { expectNoNetworkCalls, stubNoNetwork } from '@/test/noNetwork';
 
@@ -164,6 +164,59 @@ describe('Kontextbindung', () => {
       status: 'not-resolvable-in-context',
       reason: 'subject-type-not-supported',
     });
+  });
+  it('löst Subjekte und Rollen lokaler Aufgaben gegen den gebundenen Plan auf', () => {
+    const source = makeFullAssessmentResults();
+    Object.assign(firstResult(source)['local-definitions'].tasks[0], {
+      subjects: [{ type: 'component', 'include-subjects': [{ type: 'component', 'subject-uuid': AP_UUIDS.component }] }],
+      'responsible-roles': [{ 'role-id': 'assessor' }],
+    });
+    const task = (options = {}) => {
+      const view = parse(source, options);
+      const referenceCodes = codes(view).filter((code) => /SUBJECT|ROLE/.test(code));
+      const [first] = view.results[0].localDefinitions.tasks;
+      return { view, referenceCodes, subject: first.subjects[0].includeSubjects[0].reference, role: first.responsibleRoles[0].reference };
+    };
+    const ssp = parseSspDocument(makeFullSsp(), context);
+    const assessmentPlan = parseAssessmentPlanDocument(makeFullAssessmentPlan(), context);
+    const bound = task({ assessmentPlan, ssp });
+    expect(bound.subject).toMatchObject({ status: 'resolved', origin: 'assessment-plan' });
+    expect(bound.role).toMatchObject({ status: 'resolved', origin: 'assessment-plan' });
+    expect(bound.referenceCodes).toEqual([]);
+    expect(task({ assessmentPlan }).subject).toMatchObject({ status: 'resolved', origin: 'assessment-plan' });
+    for (const missing of [task(), task({ ssp })]) {
+      expect(missing.subject).toEqual({ status: 'not-resolvable-in-context', reason: 'assessment-plan-not-supplied' });
+      expect(missing.role).toEqual({ status: 'not-resolvable-in-context', reason: 'assessment-plan-not-supplied' });
+      expect(missing.referenceCodes).toEqual([]);
+    }
+    const planSource = makeFullAssessmentPlan();
+    const planRoot = planSource['assessment-plan'] as unknown as { metadata: { roles: unknown[] } };
+    planRoot.metadata.roles.push(structuredClone(planRoot.metadata.roles[0]));
+    const ambiguous = task({ assessmentPlan: parseAssessmentPlanDocument(planSource, context), ssp });
+    expect(ambiguous.role).toEqual({ status: 'unresolved', reason: 'identity-ambiguous' });
+    expect(ambiguous.referenceCodes).toContain('OSCAL_AR_ROLE_REFERENCE_UNRESOLVED');
+  });
+  it('projiziert Aufgabenbezüge und Urheber des Prüfprotokolls', () => {
+    const source = makeFullAssessmentResults();
+    const result = source['assessment-results'].results[0] as unknown as { 'assessment-log': { entries: Record<string, unknown>[] } };
+    Object.assign(result['assessment-log'].entries[0], {
+      'related-tasks': [{ 'task-uuid': AR_UUIDS.task }, { 'task-uuid': AP_UUIDS.task }, { 'task-uuid': AR_UUIDS.missing }],
+      'logged-by': [{ 'party-uuid': AR_UUIDS.party, 'role-id': 'assessor' }, { 'party-uuid': AR_UUIDS.missing }],
+    });
+    const assessmentPlan = parseAssessmentPlanDocument(makeBoundAssessmentPlanSource(), context);
+    const view = parse(source, { assessmentPlan });
+    const [entry] = view.results[0].assessmentLog;
+    expect(entry.relatedTasks.map((t) => t.reference)).toEqual([
+      expect.objectContaining({ status: 'resolved', origin: 'local' }),
+      expect.objectContaining({ status: 'resolved', origin: 'assessment-plan' }),
+      { status: 'unresolved', reason: 'identity-not-found' },
+    ]);
+    expect(entry.loggedBy[0]).toMatchObject({ partyUuid: AR_UUIDS.party, party: { status: 'resolved', origin: 'local' } });
+    expect(entry.loggedBy[0].role).toEqual({ status: 'not-resolvable-in-context', reason: 'ssp-not-supplied' });
+    expect(entry.loggedBy[1]).toMatchObject({ role: null, party: { status: 'not-resolvable-in-context' } });
+    expect(view.diagnostics.map((d) => [d.code, d.path])).toEqual([
+      ['OSCAL_AR_TASK_REFERENCE_UNRESOLVED', '/assessment-results/results/0/assessment-log/entries/0/related-tasks/2/task-uuid'],
+    ]);
   });
   it('löst implementation-statement-uuid nur gegen ein gebundenes SSP auf', () => {
     const source = makeFullAssessmentResults();

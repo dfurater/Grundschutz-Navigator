@@ -38,7 +38,9 @@ import { activities, tasks } from '@/adapters/oscalAssessmentPlanTasks';
 import {
   AR_BASE_PATH,
   diagnoseTaskCycles,
+  loggedBy,
   origins,
+  relatedTasks,
   subjectReferences,
 } from '@/adapters/oscalAssessmentResultsReaders';
 import { deriveFinding, deriveRisk } from '@/adapters/oscalAssessmentResultsFindings';
@@ -168,6 +170,8 @@ function deriveResult(node: JsonObject, rp: string, state: ArDeriveState): Asses
             ...entity(entry, ep, state),
             start: stringField(entry, 'start', ep, state, true),
             end: stringField(entry, 'end', ep, state),
+            loggedBy: loggedBy(entry, ep, state),
+            relatedTasks: relatedTasks(entry, ep, state),
           })),
     observations: readObjectArrayField(node, 'observations', rp, state).map(({ node: observation, path: op }) => ({
       ...entity(observation, op, state),
