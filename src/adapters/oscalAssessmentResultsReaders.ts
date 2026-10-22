@@ -68,6 +68,8 @@ export function arReference(
   const key = type === 'role' ? id : id.toLowerCase();
   let missingContext: string | undefined;
   for (const scope of scopes) {
+    // POA&M besitzt keine Importkante zu einem Assessment Plan.
+    if (state.scope === 'plan-of-action-and-milestones' && (scope === 'assessment-plan' || scope === 'assessment-plan-assets')) continue;
     const { index, available, bound } = scopeIndex(state, scope);
     if (!available) {
       missingContext ??= `${ORIGIN[scope]}-${bound ? 'binding-invalid' : 'not-supplied'}`;

@@ -199,10 +199,7 @@ seine Versionsbindung gilt die
 
 ## Der Fixture-Korpus
 
-* Alle **acht** Root-Modelle sind geführt. Der No-op-Lauf benötigt **keinen**
-  Root-Adapter — er vergleicht geparsten Graphen und Serialisierung; deshalb
-  ist auch `plan-of-action-and-milestones` ohne registrierten Adapter
-  abgedeckt. Stufe 5
+* Alle **acht** Root-Modelle sind geführt und besitzen einen registrierten Adapter. Der No-op-Lauf vergleicht geparsten Graphen und Serialisierung; `oscalPoamDocument.node.test.ts` bindet den POA&M-Adapter in allen vier gepinnten Versionen in den Exportpfad ein. Root-UUID und `metadata.last-modified` bleiben dabei unverändert. Stufe 5
   läuft im Harnisch ausschließlich für `catalog`; für alle übrigen Roots meldet
   sie nach bestandener Stufe 3 `not-available`.
 * Je Modell ein Maximaldokument mit den verlustkritischen Strukturen:

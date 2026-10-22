@@ -158,7 +158,7 @@ describe('Registrierung als genau eine Zeile', () => {
       .split('\n')
       .filter((line) => /^\s*\[\w+RootAdapter\.rootType, \w+RootAdapter\],\s*$/.test(line));
 
-    expect(entries).toHaveLength(7);
+    expect(entries).toHaveLength(8);
     expect(entries.some((line) => line.includes('mappingCollectionRootAdapter'))).toBe(true);
   });
 

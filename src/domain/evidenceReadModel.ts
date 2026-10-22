@@ -49,6 +49,8 @@ export type UuidReferenceState =
   | 'resolved'
   | 'resolved-in-context'
   | 'not-resolvable-in-context'
+  | 'ambiguous-in-document'
+  | 'type-mismatch'
   | 'missing-in-document';
 
 export interface UuidReference {
@@ -97,6 +99,8 @@ export interface EvidenceReadModelInput {
   readonly at: Date;
   /** UUIDs, die der Aufrufer aus anderen Workspace-Dokumenten bereitstellt. */
   readonly contextUuids?: ReadonlySet<string>;
+  /** Typisierter Beobachtungskontext; ohne Angabe gilt der bisherige gemeinsame Kontext. */
+  readonly observationContextUuids?: ReadonlySet<string>;
 }
 
 /** Abgelaufene oder nicht bewertbare Beobachtungen tragen keine positive Nachweisaussage. */
@@ -219,6 +223,11 @@ export function deriveEvidenceReadModel(input: EvidenceReadModelInput): Evidence
     rootType === 'assessment-results' ? objectsAt(body, 'results', rootPath) : [{ node: body, path: rootPath }];
   const observationNodes = containers.flatMap((container) => objectsAt(container.node, 'observations', container.path));
   const observationUuids = lowerCaseSet(observationNodes.flatMap(({ node }) => readString(node.uuid) ?? []));
+  const observationCounts = new Map<string, number>();
+  for (const { node } of observationNodes) {
+    const uuid = readString(node.uuid)?.toLowerCase();
+    if (uuid !== undefined) observationCounts.set(uuid, (observationCounts.get(uuid) ?? 0) + 1);
+  }
 
   const classifyLink = (link: JsonObject, path: string): EvidenceReference[] => {
     const href = readString(link.href);
@@ -273,7 +282,12 @@ export function deriveEvidenceReadModel(input: EvidenceReadModelInput): Evidence
   // In AR ist `observation-uuid` dokumentintern, der Kontext darf ein fehlendes Ziel nicht verdecken.
   // Im POA&M ist sie eine fachliche UUID-Übernahme aus Assessment Results.
   const isAssessmentResults = rootType === 'assessment-results';
-  const observationContext = isAssessmentResults ? new Set<string>() : contextUuids;
+  const observationContext = isAssessmentResults ? new Set<string>() : lowerCaseSet(input.observationContextUuids ?? contextUuids);
+  const nonObservationUuids = lowerCaseSet([
+    ...resourceUuids,
+    ...containers.flatMap(({ node, path }) => ['risks', 'findings', 'poam-items'].flatMap((key) => objectsAt(node, key, path).flatMap(({ node: item }) => readString(item.uuid) ?? []))),
+    ...(input.observationContextUuids === undefined ? [] : [...contextUuids].filter((uuid) => !observationContext.has(uuid))),
+  ]);
   const missingObservationCode = isAssessmentResults ? 'OSCAL_EVIDENCE_OBSERVATION_NOT_FOUND' : null;
   const referrerKeys = isAssessmentResults ? ['findings', 'risks'] : ['poam-items', 'findings', 'risks'];
   const observationReferences = containers.flatMap((container) =>
@@ -283,6 +297,15 @@ export function deriveEvidenceReadModel(input: EvidenceReadModelInput): Evidence
           const uuid = readString(node['observation-uuid']);
           if (uuid === undefined) return [];
           const uuidPath = `${path}/observation-uuid`;
+          const key = uuid.toLowerCase();
+          if ((observationCounts.get(key) ?? 0) > 1) {
+            diagnose('OSCAL_EVIDENCE_OBSERVATION_AMBIGUOUS', uuidPath);
+            return [{ path: uuidPath, uuid, state: 'ambiguous-in-document' }];
+          }
+          if (!isAssessmentResults && !observationUuids.has(key) && nonObservationUuids.has(key)) {
+            diagnose('OSCAL_EVIDENCE_OBSERVATION_TYPE_MISMATCH', uuidPath);
+            return [{ path: uuidPath, uuid, state: 'type-mismatch' }];
+          }
           return [{ path: uuidPath, uuid, state: uuidState(uuid, uuidPath, observationUuids, observationContext, missingObservationCode) }];
         }),
       ),

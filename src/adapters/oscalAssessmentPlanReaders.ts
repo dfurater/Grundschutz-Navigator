@@ -17,14 +17,16 @@ export const AP_ADAPTER_VALIDATOR = Object.freeze({
   version: '1',
 });
 /** Root, unter dem die gemeinsamen Assessment-Leser ihre Diagnosen melden. */
-export type AssessmentDiagnosticScope = 'assessment-plan' | 'assessment-results';
+export type AssessmentDiagnosticScope = 'assessment-plan' | 'assessment-results' | 'plan-of-action-and-milestones';
 export const AR_ADAPTER_VALIDATOR = Object.freeze({
   name: 'gspp-assessment-results-adapter',
   version: '1',
 });
+export const POAM_ADAPTER_VALIDATOR = Object.freeze({ name: 'gspp-poam-adapter', version: '1' });
 const DIAGNOSTIC_SCOPES = {
   'assessment-plan': { prefix: 'OSCAL_AP_', validator: AP_ADAPTER_VALIDATOR },
   'assessment-results': { prefix: 'OSCAL_AR_', validator: AR_ADAPTER_VALIDATOR },
+  'plan-of-action-and-milestones': { prefix: 'OSCAL_POAM_', validator: POAM_ADAPTER_VALIDATOR },
 } as const;
 export interface ApDeriveState extends RootDeriveFrame {
   readonly scope: AssessmentDiagnosticScope;
@@ -214,7 +216,7 @@ export function reference(
   const local = localIndex.get(type)?.get(key) ?? [];
   if (local.length === 1) return { status: 'resolved', origin: 'local', path: local[0] };
   if (local.length > 1) return unresolved(state, code, path, local.length);
-  const { plan } = state;
+  const plan = state.scope === 'assessment-results' ? state.plan : undefined;
   if (plan !== undefined && PLAN_TYPES.has(type)) return planReference(state, plan, type, key, path, code);
   // Assessment Results: Ressourcen sind dokumentintern; übrige externe Ziele suchen den Plan vor dem SSP.
   const outside = external && !(plan !== undefined && type === 'resource');

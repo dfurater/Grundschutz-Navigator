@@ -66,6 +66,7 @@ describe('Adapter-Registrierung', () => {
       'system-security-plan',
       'assessment-plan',
       'assessment-results',
+      'plan-of-action-and-milestones',
     ]);
     expect(getOscalRootAdapter('catalog')).toBe(catalogRootAdapter);
     expect(getOscalRootAdapter('component-definition')).toBe(componentDefinitionRootAdapter);
@@ -82,17 +83,12 @@ describe('Adapter-Registrierung', () => {
     }
   });
 
-  it('meldet für den noch nicht adaptierten Root-Typ keinen Adapter', () => {
+  it('führt für alle bekannten Root-Typen einen Adapter', () => {
     const unadapted = OSCAL_ROOT_KEYS.filter(
       (rootKey) => !listAdaptedOscalRootTypes().includes(rootKey),
     );
 
-    // Die Zahl steht bewusst ausgeschrieben: Ein neuer Modelladapter soll
-    // diesen Test rot machen und bewusst nachgezogen werden.
-    expect(unadapted).toEqual(['plan-of-action-and-milestones']);
-    for (const rootKey of unadapted) {
-      expect(getOscalRootAdapter(rootKey)).toBeNull();
-    }
+    expect(unadapted).toEqual([]);
   });
 });
 
@@ -130,38 +126,13 @@ describe('parseOscalDocument', () => {
     expect(() => parseOscalDocument(makeMinimalSsp('1.2.2'), context)).toThrow(SspTrustClassError);
   });
 
-  it('unterscheidet „bekannt, aber nicht unterstützt" von „unbekannt"', () => {
-    // Als „bekannt, aber ohne Adapter" dient das Modell ohne registrierten Adapter.
-    const known = parseOscalDocument(
-      {
-        'plan-of-action-and-milestones': {
-          uuid: 'uuid-poam',
-          metadata: {
-            title: 'Maßnahmenplan',
-            'last-modified': '2026-08-06T00:00:00Z',
-            version: '1',
-            'oscal-version': '1.1.3',
-          },
-        },
-      },
-      { trustClass: 'class-1-verified-public' },
-    );
-    const unknown = parseOscalDocument(
+  it('weist einen unbekannten Root weiterhin im Dispatch ab', () => {
+    const result = parseOscalDocument(
       { 'geheimes-modell': { metadata: { 'oscal-version': '1.1.3' } } },
-      { trustClass: 'class-1-verified-public' },
+      { trustClass: 'class-2-local-user' },
     );
-
-    expect(known.ok).toBe(false);
-    expect(unknown.ok).toBe(false);
-    if (known.ok || unknown.ok) return;
-
-    expect(known.diagnostic.code).toBe(ROOT_DISPATCH_DIAGNOSTIC_CODES.ROOT_TYPE_UNSUPPORTED);
-    expect(known.diagnostic.artifact.rootType).toBe('plan-of-action-and-milestones');
-    expect(known.diagnostic.artifact.oscalVersion).toBe('1.1.3');
-    expect(known.diagnostic.path).toBe('/plan-of-action-and-milestones');
-
-    expect(unknown.diagnostic.code).toBe(VERSION_MATRIX_DIAGNOSTIC_CODES.ROOT_TYPE_UNKNOWN);
-    expect(unknown.diagnostic.code).not.toBe(known.diagnostic.code);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.diagnostic.code).toBe(VERSION_MATRIX_DIAGNOSTIC_CODES.ROOT_TYPE_UNKNOWN);
   });
 
   it('löst die Katalogidentität aus dem Quellregister auf, wenn der Kontext sie nicht trägt', () => {

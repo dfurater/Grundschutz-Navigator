@@ -166,6 +166,22 @@
       "remotePath": "examples/ar/json/ifa_assessment-results.json",
       "sizeBytes": 14128,
       "sha256": "b7e429db3f25f9a70b2da549dbdf70ab28ab70250c0377dc8a93612da711a455"
+    },
+    {
+      "artifactKey": "nist-poam-ifa-plan-of-action-and-milestones-min",
+      "role": "example",
+      "fileName": "ifa_plan-of-action-and-milestones-min.json",
+      "remotePath": "examples/poam/json/ifa_plan-of-action-and-milestones-min.json",
+      "sizeBytes": 10740,
+      "sha256": "c0b22737f9cedfb60464ce1272df86379809a5718b1271b396f8193757daf450"
+    },
+    {
+      "artifactKey": "nist-poam-ifa-plan-of-action-and-milestones",
+      "role": "example",
+      "fileName": "ifa_plan-of-action-and-milestones.json",
+      "remotePath": "examples/poam/json/ifa_plan-of-action-and-milestones.json",
+      "sizeBytes": 14070,
+      "sha256": "1d5cb45cce37adaa53cb994564f747a0d9559bae0747a780d6035bd9e16dbe14"
     }
   ]
 }

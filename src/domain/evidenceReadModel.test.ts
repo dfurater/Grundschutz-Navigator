@@ -245,6 +245,12 @@ describe('deriveEvidenceReadModel', () => {
     expect(withContext.diagnostics).toEqual([]);
   });
 
+  it('trennt expliziten Beobachtungskontext vom Subjektkontext', () => {
+    const source = poam({ 'poam-items': [{ 'related-observations': [{ 'observation-uuid': OBS_FOREIGN }] }] });
+    const model = deriveEvidenceReadModel({ source, rootType: 'plan-of-action-and-milestones', oscalVersion: '1.2.2', at: AT, contextUuids: new Set([OBS_FOREIGN]), observationContextUuids: new Set() });
+    expect(model.observationReferences[0].state).toBe('type-mismatch');
+  });
+
   it('meldet fehlende dokumentinterne Ziele in Assessment Results redigiert, auch bei passendem Kontext', () => {
     const model = derive(
       assessmentResults([

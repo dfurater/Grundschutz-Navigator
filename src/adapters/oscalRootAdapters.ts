@@ -1,11 +1,8 @@
 // =============================================================================
 // Adapter-Registrierung je OSCAL-Root-Typ (GSPP-285)
 //
-// Der Root-Dispatch erkennt alle acht Root-Typen. Einen Modelladapter haben
-// `catalog`, `profile`, `mapping-collection`, `component-definition`,
-// `system-security-plan`, `assessment-plan` und `assessment-results`. Ein bekanntes
-// Modell ohne Adapter ist etwas anderes als ein unbekannter Root und bekommt
-// eine eigene Diagnose.
+// Der Root-Dispatch erkennt alle acht Root-Typen; alle besitzen einen Modelladapter.
+// Ein bekannter Root ohne Adapter bekommt eine eigene Diagnose.
 //
 // Erweiterung: ein neues Modell ist eine neue Datei mit dem Modelladapter plus
 // genau ein Eintrag in `OSCAL_ROOT_ADAPTERS`. Bestehende Adapter bleiben dabei
@@ -24,6 +21,8 @@ import {
   deriveAssessmentResults,
 } from '@/adapters/oscalAssessmentResultsAdapter';
 import type { AssessmentResults } from '@/domain/assessmentResultsModel';
+import { derivePoam, POAM_ROOT_TYPE } from '@/adapters/oscalPoamAdapter';
+import type { Poam } from '@/domain/poamModel';
 import { parseCatalog } from '@/adapters/oscalAdapter';
 import {
   COMPONENT_DEFINITION_ROOT_TYPE,
@@ -189,6 +188,12 @@ export const assessmentResultsRootAdapter: OscalRootAdapter<AssessmentResults> =
   derive: (body: unknown, context: OscalDocumentContext) => deriveAssessmentResults(body, context),
 });
 
+export const poamRootAdapter: OscalRootAdapter<Poam> = Object.freeze({
+  rootType: POAM_ROOT_TYPE,
+  moduleEntryPoint: 'src/adapters/oscalPoamAdapter.ts',
+  derive: (body: unknown, context: OscalDocumentContext) => derivePoam(body, context),
+});
+
 /** Registrierte Modelladapter. Ein neues Modell ergänzt hier genau eine Zeile. */
 const OSCAL_ROOT_ADAPTERS: ReadonlyMap<OscalRootKey, OscalRootAdapter> = new Map<
   OscalRootKey,
@@ -201,6 +206,7 @@ const OSCAL_ROOT_ADAPTERS: ReadonlyMap<OscalRootKey, OscalRootAdapter> = new Map
   [sspRootAdapter.rootType, sspRootAdapter],
   [assessmentPlanRootAdapter.rootType, assessmentPlanRootAdapter],
   [assessmentResultsRootAdapter.rootType, assessmentResultsRootAdapter],
+  [poamRootAdapter.rootType, poamRootAdapter],
 ]);
 
 export function getOscalRootAdapter(rootType: OscalRootKey): OscalRootAdapter | null {
