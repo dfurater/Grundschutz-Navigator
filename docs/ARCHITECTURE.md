@@ -192,6 +192,7 @@ src/                              # Anwendungsquellcode
 │   ├── __snapshots__/                # Pfadbasierter Versionsdrift des Assessment-Plan-Schemas
 │   ├── oscalAssessmentPlan.ts        # Versionierte Raw-Typen des Assessment Plans
 │   ├── assessmentPlanModel.ts        # Projektion des Prüfplans und explizite SSP-/Katalogbindung
+│   ├── assessmentResultsModel.ts     # Projektion der Prüfergebnisse und explizite AP-/SSP-/Katalogbindung
 │   ├── evidenceReadModel.ts          # Evidenz aus Assessment Results und POA&M: Gültigkeit, Ressourcen, UUID-Referenzen
 │   ├── systemSecurityPlanModel.ts    # Domänenmodell des SSP
 │   ├── systemSecurityPlanSystemModel.ts # Domänenmodell der SSP-Systembeschreibung
@@ -238,6 +239,10 @@ src/                              # Anwendungsquellcode
 │   ├── oscalAssessmentPlanReaders.ts # Strukturleser, Identitätsindizes und Diagnosen
 │   ├── oscalAssessmentPlanSelections.ts # Control-Auswahl, Prüfsubjekte und Teile
 │   ├── oscalAssessmentPlanTasks.ts   # Aktivitäten und rekursive Aufgaben
+│   ├── oscalAssessmentResultsAdapter.ts # Assessment-Results-Projektion, ausschließlich Klasse 2
+│   ├── oscalAssessmentResultsDocument.ts # Verlustfreier Dokumenteinstieg Assessment Results
+│   ├── oscalAssessmentResultsFindings.ts # Findings, Risiken und Maßnahmen
+│   ├── oscalAssessmentResultsReaders.ts # Referenzauflösung, Herkünfte und Aufgabenzyklen
 │   ├── oscalSspAdapter.ts            # Projektion des SSP, nur Vertrauensklasse 2
 │   ├── oscalSspControl.ts            # SSP-Projektion von control-implementation
 │   ├── oscalSspDocument.ts           # Verlustfreier Dokumenteinstieg SSP

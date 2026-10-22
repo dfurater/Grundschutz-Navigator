@@ -134,6 +134,38 @@
       "remotePath": "examples/ap/json/ifa_assessment-plan.json",
       "sizeBytes": 8515,
       "sha256": "66380f4279eb60905f7ec2684b5f885ee1743d648cf6315acaddaaf232d4501d"
+    },
+    {
+      "artifactKey": "nist-ar-ifa-assessment-results-example-min",
+      "role": "example",
+      "fileName": "ifa_assessment-results-example-min.json",
+      "remotePath": "examples/ar/json/ifa_assessment-results-example-min.json",
+      "sizeBytes": 9193,
+      "sha256": "8a86008c9fcd697705df99d90ed007ba5fe7f2271314345ab33227a049727d77"
+    },
+    {
+      "artifactKey": "nist-ar-ifa-assessment-results-example",
+      "role": "example",
+      "fileName": "ifa_assessment-results-example.json",
+      "remotePath": "examples/ar/json/ifa_assessment-results-example.json",
+      "sizeBytes": 12024,
+      "sha256": "13bde5421ac9f8986e293b74e7caa025fd1f61a4c55d94bb68dce44417ff0eb6"
+    },
+    {
+      "artifactKey": "nist-ar-ifa-assessment-results-min",
+      "role": "example",
+      "fileName": "ifa_assessment-results-min.json",
+      "remotePath": "examples/ar/json/ifa_assessment-results-min.json",
+      "sizeBytes": 10705,
+      "sha256": "c0f04e4c54c389d929756a19f1a941dfe0058ce131e5dcb30b79166a0b0f8d17"
+    },
+    {
+      "artifactKey": "nist-ar-ifa-assessment-results",
+      "role": "example",
+      "fileName": "ifa_assessment-results.json",
+      "remotePath": "examples/ar/json/ifa_assessment-results.json",
+      "sizeBytes": 14128,
+      "sha256": "b7e429db3f25f9a70b2da549dbdf70ab28ab70250c0377dc8a93612da711a455"
     }
   ]
 }

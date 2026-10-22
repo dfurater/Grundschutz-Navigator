@@ -43,7 +43,11 @@ export class AssessmentPlanTrustClassError extends Error {
   }
 }
 
-function indexMetadata(body: JsonObject, index: ApDeriveState['local'], rootPath: string): void {
+export function indexMetadata(
+  body: JsonObject,
+  index: ApDeriveState['local'],
+  rootPath: string,
+): void {
   if (!isJsonObject(body.metadata)) return;
   for (const [key, type, field] of [
     ['roles', 'role', 'id'],
@@ -58,7 +62,7 @@ function indexMetadata(body: JsonObject, index: ApDeriveState['local'], rootPath
     });
   }
 }
-function indexTasks(body: JsonObject, path: string, state: ApDeriveState): void {
+export function indexTasks(body: JsonObject, path: string, state: ApDeriveState): void {
   indexNodes(state, body, 'tasks', 'task', path, 'TASK_UUID_DUPLICATE');
   if (Array.isArray(body.tasks))
     body.tasks.forEach((task: unknown, i) => {
@@ -77,24 +81,16 @@ function indexLocal(body: JsonObject, local: JsonObject, state: ApDeriveState): 
   indexMetadata(body, state.local, AP_BASE_PATH);
   indexTasks(body, AP_BASE_PATH, state);
 }
-function indexBoundSsp(state: ApDeriveState): void {
-  const binding = state.options.ssp;
-  if (binding === undefined) return;
-  if (binding.context.trustClass !== 'class-2-local-user')
-    throw new AssessmentPlanTrustClassError();
-  const source = binding.source;
-  if (!isJsonObject(source) || !isJsonObject(source['system-security-plan'])) {
-    diagnose(state, 'SSP_BINDING_INVALID', `${AP_BASE_PATH}/import-ssp`);
-    return;
-  }
-  state.sspAvailable = true;
+/** Indexiert die Identitäten eines SSP-Quellgraphs; `false`, wenn er keinen SSP-Root trägt. */
+export function indexSspSource(source: unknown, index: ApDeriveState['ssp']): boolean {
+  if (!isJsonObject(source) || !isJsonObject(source['system-security-plan'])) return false;
   const root = source['system-security-plan'];
-  indexMetadata(root, state.ssp, '/system-security-plan');
+  indexMetadata(root, index, '/system-security-plan');
   const collect = (parent: unknown, key: string, type: string, path: string) => {
     if (!isJsonObject(parent) || !Array.isArray(parent[key])) return;
     parent[key].forEach((node: unknown, i: number) => {
       const uuid = isJsonObject(node) ? readString(node.uuid) : undefined;
-      if (uuid !== undefined) addIndex(state.ssp, type, uuid, `${path}/${key}/${i}`);
+      if (uuid !== undefined) addIndex(index, type, uuid, `${path}/${key}/${i}`);
     });
   };
   for (const [key, type] of [
@@ -110,6 +106,30 @@ function indexBoundSsp(state: ApDeriveState): void {
     );
   }
   collect(root['back-matter'], 'resources', 'resource', '/system-security-plan/back-matter');
+  const requirements = isJsonObject(root['control-implementation'])
+    ? root['control-implementation']['implemented-requirements']
+    : undefined;
+  if (Array.isArray(requirements))
+    requirements.forEach((requirement: unknown, i) =>
+      collect(
+        requirement,
+        'statements',
+        'statement',
+        `/system-security-plan/control-implementation/implemented-requirements/${i}`,
+      ),
+    );
+  return true;
+}
+function indexBoundSsp(state: ApDeriveState): void {
+  const binding = state.options.ssp;
+  if (binding === undefined) return;
+  if (binding.context.trustClass !== 'class-2-local-user')
+    throw new AssessmentPlanTrustClassError();
+  if (!indexSspSource(binding.source, state.ssp)) {
+    diagnose(state, 'SSP_BINDING_INVALID', `${AP_BASE_PATH}/import-ssp`);
+    return;
+  }
+  state.sspAvailable = true;
 }
 function deriveImportSsp(body: JsonObject, state: ApDeriveState): AssessmentPlan['importSsp'] {
   const node = objectField(body, 'import-ssp', AP_BASE_PATH, state, true);
@@ -130,10 +150,14 @@ function deriveImportSsp(body: JsonObject, state: ApDeriveState): AssessmentPlan
     },
   };
 }
-function deriveAssets(body: JsonObject, state: ApDeriveState): AssessmentPlan['assessmentAssets'] {
-  const node = objectField(body, 'assessment-assets', AP_BASE_PATH, state);
+export function deriveAssets(
+  body: JsonObject,
+  state: ApDeriveState,
+  basePath = AP_BASE_PATH,
+): AssessmentPlan['assessmentAssets'] {
+  const node = objectField(body, 'assessment-assets', basePath, state);
   if (node === null) return null;
-  const p = `${AP_BASE_PATH}/assessment-assets`;
+  const p = `${basePath}/assessment-assets`;
   indexNodes(state, node, 'components', 'component', p, 'COMPONENT_UUID_DUPLICATE', state.assets);
   return {
     components: readObjectArrayField(node, 'components', p, state).map((entry) =>
@@ -168,6 +192,22 @@ function deriveAssets(body: JsonObject, state: ApDeriveState): AssessmentPlan['a
     ),
   };
 }
+export function objectivesAndMethods(
+  local: JsonObject,
+  lp: string,
+  state: ApDeriveState,
+): AssessmentPlan['localDefinitions']['objectivesAndMethods'] {
+  return readObjectArrayField(local, 'objectives-and-methods', lp, state).map(({ node, path }) => {
+    const controlId = stringField(node, 'control-id', path, state, true);
+    return {
+      ...readElements(node, path, state),
+      controlId,
+      control: controlReference(controlId, `${path}/control-id`, state),
+      description: stringField(node, 'description', path, state),
+      parts: parts(node, path, state),
+    };
+  });
+}
 export function deriveAssessmentPlan(
   body: unknown,
   context: OscalDocumentContext,
@@ -177,6 +217,7 @@ export function deriveAssessmentPlan(
   const frame = openRootDerive(body, context, ASSESSMENT_PLAN_ROOT_TYPE);
   const state: ApDeriveState = {
     ...frame,
+    scope: ASSESSMENT_PLAN_ROOT_TYPE,
     diagnostics: [],
     options,
     local: new Map(),
@@ -208,18 +249,7 @@ export function deriveAssessmentPlan(
         inventoryEntity(entry.node, entry.path, state),
       ),
       activities: activities(local, lp, state),
-      objectivesAndMethods: readObjectArrayField(local, 'objectives-and-methods', lp, state).map(
-        ({ node, path }) => {
-          const controlId = stringField(node, 'control-id', path, state, true);
-          return {
-            ...readElements(node, path, state),
-            controlId,
-            control: controlReference(controlId, `${path}/control-id`, state),
-            description: stringField(node, 'description', path, state),
-            parts: parts(node, path, state),
-          };
-        },
-      ),
+      objectivesAndMethods: objectivesAndMethods(local, lp, state),
       remarks: stringField(local, 'remarks', lp, state),
     },
     termsAndConditions:

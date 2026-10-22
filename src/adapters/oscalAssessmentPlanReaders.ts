@@ -16,24 +16,41 @@ export const AP_ADAPTER_VALIDATOR = Object.freeze({
   name: 'gspp-assessment-plan-adapter',
   version: '1',
 });
+/** Root, unter dem die gemeinsamen Assessment-Leser ihre Diagnosen melden. */
+export type AssessmentDiagnosticScope = 'assessment-plan' | 'assessment-results';
+export const AR_ADAPTER_VALIDATOR = Object.freeze({
+  name: 'gspp-assessment-results-adapter',
+  version: '1',
+});
+const DIAGNOSTIC_SCOPES = {
+  'assessment-plan': { prefix: 'OSCAL_AP_', validator: AP_ADAPTER_VALIDATOR },
+  'assessment-results': { prefix: 'OSCAL_AR_', validator: AR_ADAPTER_VALIDATOR },
+} as const;
 export interface ApDeriveState extends RootDeriveFrame {
+  readonly scope: AssessmentDiagnosticScope;
   readonly diagnostics: OscalDiagnostic[];
   readonly options: AssessmentPlanDeriveOptions;
   readonly local: Map<string, Map<string, string[]>>;
   readonly ssp: Map<string, Map<string, string[]>>;
   readonly assets: Map<string, Map<string, string[]>>;
   sspAvailable: boolean;
+  /** Nur Assessment Results: Identitäten des ausdrücklich gebundenen Assessment Plans. */
+  readonly plan?: Map<string, Map<string, string[]>>;
+  planAvailable?: boolean;
+  readonly planBound?: boolean;
 }
+/** Aufgaben und Aktivitäten eines Assessment-Results-Dokuments dürfen im gebundenen Plan liegen. */
+const PLAN_TYPES = new Set(['task', 'activity']);
 export function diagnose(state: ApDeriveState, code: string, path: string): void {
   state.diagnostics.push(
     createOscalDiagnostic({
-      code: `OSCAL_AP_${code}`,
+      code: `${DIAGNOSTIC_SCOPES[state.scope].prefix}${code}`,
       stage: 'domain',
-      validator: AP_ADAPTER_VALIDATOR,
+      validator: DIAGNOSTIC_SCOPES[state.scope].validator,
       path,
       artifact: {
         key: state.artifactKey,
-        rootType: 'assessment-plan',
+        rootType: state.scope,
         oscalVersion: state.oscalVersion,
       },
     }),
@@ -161,6 +178,25 @@ export function indexNodes(
     }
   });
 }
+function unresolved(state: ApDeriveState, code: string, path: string, hits: number): ApReference {
+  diagnose(state, code, path);
+  return { status: 'unresolved', reason: hits > 1 ? 'identity-ambiguous' : 'identity-not-found' };
+}
+function planReference(state: ApDeriveState, plan: ApDeriveState['local'], type: string, key: string, path: string, code: string): ApReference {
+  if (!state.planAvailable)
+    return { status: 'not-resolvable-in-context', reason: state.planBound ? 'assessment-plan-binding-invalid' : 'assessment-plan-not-supplied' };
+  const planned = plan.get(type)?.get(key) ?? [];
+  if (planned.length === 1) return { status: 'resolved', origin: 'assessment-plan', path: planned[0] };
+  return unresolved(state, code, path, planned.length);
+}
+/** `missingPlan` ersetzt den Treffermangel, solange der Plan das Ziel noch enthalten könnte. */
+function sspReference(state: ApDeriveState, type: string, key: string, path: string, code: string, missingPlan?: ApReference): ApReference {
+  const reason = state.options.ssp === undefined ? 'ssp-not-supplied' : 'ssp-binding-invalid';
+  if (!state.sspAvailable) return missingPlan ?? { status: 'not-resolvable-in-context', reason };
+  const remote = state.ssp.get(type)?.get(key) ?? [];
+  if (remote.length === 1) return { status: 'resolved', origin: 'ssp', path: remote[0] };
+  return remote.length === 0 && missingPlan !== undefined ? missingPlan : unresolved(state, code, path, remote.length);
+}
 export function reference(
   state: ApDeriveState,
   type: string | undefined,
@@ -177,22 +213,16 @@ export function reference(
   const key = type === 'role' ? id : id.toLowerCase();
   const local = localIndex.get(type)?.get(key) ?? [];
   if (local.length === 1) return { status: 'resolved', origin: 'local', path: local[0] };
-  if (local.length > 1) {
-    diagnose(state, code, path);
-    return { status: 'unresolved', reason: 'identity-ambiguous' };
+  if (local.length > 1) return unresolved(state, code, path, local.length);
+  const { plan } = state;
+  if (plan !== undefined && PLAN_TYPES.has(type)) return planReference(state, plan, type, key, path, code);
+  // Assessment Results: Ressourcen sind dokumentintern; übrige externe Ziele suchen den Plan vor dem SSP.
+  const outside = external && !(plan !== undefined && type === 'resource');
+  if (plan !== undefined && outside && (!state.planAvailable || plan.get(type)?.has(key))) {
+    const planned = planReference(state, plan, type, key, path, code);
+    return planned.status === 'not-resolvable-in-context' ? sspReference(state, type, key, path, code, planned) : planned;
   }
-  if (external && !state.sspAvailable)
-    return {
-      status: 'not-resolvable-in-context',
-      reason: state.options.ssp === undefined ? 'ssp-not-supplied' : 'ssp-binding-invalid',
-    };
-  const remote = external ? (state.ssp.get(type)?.get(key) ?? []) : [];
-  if (remote.length === 1) return { status: 'resolved', origin: 'ssp', path: remote[0] };
-  diagnose(state, code, path);
-  return {
-    status: 'unresolved',
-    reason: remote.length > 1 ? 'identity-ambiguous' : 'identity-not-found',
-  };
+  return outside ? sspReference(state, type, key, path, code) : unresolved(state, code, path, 0);
 }
 export function controlReference(
   id: string | undefined,

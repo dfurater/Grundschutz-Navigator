@@ -201,8 +201,8 @@ seine Versionsbindung gilt die
 
 * Alle **acht** Root-Modelle sind geführt. Der No-op-Lauf benötigt **keinen**
   Root-Adapter — er vergleicht geparsten Graphen und Serialisierung; deshalb
-  sind auch die zwei ohne registrierten Adapter (`assessment-results`,
-  `plan-of-action-and-milestones`) abgedeckt. Stufe 5
+  ist auch `plan-of-action-and-milestones` ohne registrierten Adapter
+  abgedeckt. Stufe 5
   läuft im Harnisch ausschließlich für `catalog`; für alle übrigen Roots meldet
   sie nach bestandener Stufe 3 `not-available`.
 * Je Modell ein Maximaldokument mit den verlustkritischen Strukturen:
@@ -265,7 +265,8 @@ Alle normativen OSCAL-Aussagen dieses Dokuments sind an gepinnte
 
 | Aussage | Gepinnte Quelle |
 | --- | --- |
-| Root-Typen, Pflicht-/Optionalitätsverhältnisse, `required` + `additionalProperties: false` an der Wurzel, Identitätsregeln (`control/@id` lokal, `group/@id` instanzweit, Dokument-`uuid` global/change-on-write), `minItems: 1` bei `revisions`, `anyOf`-Muster ungebundener Vokabulare, geschlossene Ausnahme `origin-actor.type` | Die eingecheckten NIST-Release-Assets unter `schemas/oscal/v1.1.2`, `v1.1.3`, `v1.2.1`, `v1.2.2` — SHA-256-gepinnt über die [Versionsmatrix](OSCAL_VERSION_MATRIX.md), Reproduktion via `npm run verify-oscal-schemas`; Release-Tags [v1.1.2](https://github.com/usnistgov/OSCAL/releases/tag/v1.1.2), [v1.1.3](https://github.com/usnistgov/OSCAL/releases/tag/v1.1.3), [v1.2.1](https://github.com/usnistgov/OSCAL/releases/tag/v1.2.1), [v1.2.2](https://github.com/usnistgov/OSCAL/releases/tag/v1.2.2) |
+| Root-Typen, Pflicht-/Optionalitätsverhältnisse, `required` + `additionalProperties: false` an der Wurzel, Identitätsregeln (`control/@id` lokal, `group/@id` instanzweit), `minItems: 1` bei `revisions`, `anyOf`-Muster ungebundener Vokabulare, geschlossene Ausnahme `origin-actor.type` | Die eingecheckten NIST-Release-Assets unter `schemas/oscal/v1.1.2`, `v1.1.3`, `v1.2.1`, `v1.2.2` — SHA-256-gepinnt über die [Versionsmatrix](OSCAL_VERSION_MATRIX.md), Reproduktion via `npm run verify-oscal-schemas`; Release-Tags [v1.1.2](https://github.com/usnistgov/OSCAL/releases/tag/v1.1.2), [v1.1.3](https://github.com/usnistgov/OSCAL/releases/tag/v1.1.3), [v1.2.1](https://github.com/usnistgov/OSCAL/releases/tag/v1.2.1), [v1.2.2](https://github.com/usnistgov/OSCAL/releases/tag/v1.2.2) |
+| Dokument-`uuid`: `identifier-persistence="change-on-write"` bei `catalog`, `profile` und `component-definition`, Wechsel bei Revision laut Beschreibung bei `mapping-collection`, per-subject und über Revisionen konstant bei `system-security-plan`, `assessment-plan`, `assessment-results` und `plan-of-action-and-milestones`; `src/domain/rootUuidPolicy.ts` setzt das als `reassign` beziehungsweise `keep` um | Metaschemas am Release-Tag, etwa [oscal_assessment-results_metaschema.xml @ v1.2.2](https://github.com/usnistgov/OSCAL/blob/v1.2.2/src/metaschema/oscal_assessment-results_metaschema.xml) |
 | Existenz der acht Root-Modelle je Version; `mapping-collection` erst ab 1.2.0 | Versionsmatrix aus denselben Release-Assets (7 Schemadateien unter 1.1.x, 8 unter 1.2.x); [Release v1.2.0](https://github.com/usnistgov/OSCAL/releases/tag/v1.2.0) |
 | Zwei Validierungsstufen (Wohlgeformtheit, Validität) | [NIST — OSCAL Validation Concepts](https://pages.nist.gov/OSCAL/learn/concepts/validation/) |
 | Modellsemantik je Feld | [Model Reference v1.2.2](https://pages.nist.gov/OSCAL-Reference/models/v1.2.2/), [v1.1.3](https://pages.nist.gov/OSCAL-Reference/models/v1.1.3/) |

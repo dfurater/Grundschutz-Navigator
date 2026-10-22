@@ -396,7 +396,7 @@ monolithischen Modellschicht.
 | `component-definition` | Implementation | `src/adapters/oscalComponentAdapter.ts` | registriert |
 | `system-security-plan` | Implementation | `src/adapters/oscalSspAdapter.ts` | registriert |
 | `assessment-plan` | Assessment | `src/adapters/oscalAssessmentPlanAdapter.ts` | registriert |
-| `assessment-results` | Assessment | — | nicht erschlossen |
+| `assessment-results` | Assessment | `src/adapters/oscalAssessmentResultsAdapter.ts` | registriert |
 | `plan-of-action-and-milestones` | Assessment | — | nicht erschlossen |
 
 ## Profile (Control Layer)
@@ -1711,6 +1711,52 @@ Die Ableitung liest ausschließlich die übergebenen Graphen. Sie führt weder N
 `props` erscheinen im Read-Model nur ohne `ns` oder mit exakt `OSCAL_NAMESPACE`. Unbekannte Felder und fremde Props bleiben in `source`. Markup wird als Rohstring geführt. Back-matter-Nutzlasten werden weder dekodiert noch in die Projektion übernommen; die Referenzklassifikation führt nur Ressourcenmetadaten. Root- und Aufgaben-UUIDs bleiben unverändert. Bearbeitung und Serialisierung liegen außerhalb des Adapters.
 
 `src/test/fixtures/assessmentPlans.ts` enthält synthetische Minimal- und Vollpläne. Vier originale NIST-AP-Beispiele aus `usnistgov/oscal-content` am Commit `78650f02ad9321bb7b817846f8fbd4f2bcd620de` stehen mit SHA-256 und Größe im `ORACLE_MANIFEST.json` unter `src/test/fixtures/oscal-content-v1.5.0/`. `scripts/sync-oscal-content-oracle.mjs` ist ihr Wartungs-Netzpfad. Alle vier bestehen Stufe 3 gegen die deklarierte Version. Jede Datei enthält eine nicht definierte Activity-UUID in `tasks[0].associated-activities[0]`; der Offline-Test erwartet genau `OSCAL_AP_ACTIVITY_REFERENCE_UNRESOLVED` an diesem strukturellen Pfad. Der No-op-Round-trip-Korpus prüft zusätzlich Assessment Plans in allen vier Matrixzellen.
+
+## Assessment Results (Assessment Layer)
+
+`src/domain/assessmentResultsModel.ts` definiert das Read-Model `AssessmentResults`: Metadaten, `importAp`, dokumentweite lokale Definitionen (`objectivesAndMethods`, `activities`), die Ergebnisse `results[]`, das Evidenz-Read-Model `evidence` und die Diagnosen. Ein `AssessmentResult` führt Beginn und Ende, lokale Definitionen (Komponenten, Inventar, Benutzer, `assessmentAssets`, Aufgaben), `reviewedControls`, Bestätigungen, Prüfprotokoll mit `loggedBy` und `relatedTasks` je Eintrag, Beobachtungen, Risiken und Findings in Quellreihenfolge.
+
+`parseAssessmentResultsDocument(source, context, options)` in `src/adapters/oscalAssessmentResultsDocument.ts` bindet Root und Version über `parseRootDocument()`; `validateAssessmentResultsSchema()` prüft die Schemazelle aus `metadata.oscal-version` (1.1.2, 1.1.3, 1.2.1, 1.2.2). `parseOscalDocument()` erreicht denselben Adapter über `OSCAL_ROOT_ADAPTERS`. Der Adapter akzeptiert ausschließlich `class-2-local-user`, auch für die Bindungen in `options`; andere Trust-Klassen werfen `AssessmentResultsTrustClassError` mit `OSCAL_AR_TRUST_CLASS_REJECTED`.
+
+`src/adapters/oscalAssessmentResultsAdapter.ts` verwendet die Strukturleser, Auswahl-, Teil- und Aufgabenleser des Assessment-Plan-Slices. `ApDeriveState.scope` bestimmt, ob deren Diagnosen als `OSCAL_AP_*` oder `OSCAL_AR_*` mit dem passenden Validator erscheinen. `oscalAssessmentResultsFindings.ts` liest Findings, Risiken und Maßnahmen; `oscalAssessmentResultsReaders.ts` enthält Referenzauflösung, Herkünfte und die Zyklusprüfung der Aufgabenabhängigkeiten.
+
+### Optionale Bereiche und Befundkette
+
+Fehlen in einem `result` die Schlüssel `observations`, `risks` oder `findings`, liefert das Read-Model leere Listen ohne Diagnose. Ein leeres Array in diesen Schlüsseln, ein leeres `results` sowie fehlendes `import-ap` oder `results` lehnt Stufe 3 ab; der Adapter selbst meldet fehlendes `import-ap` und `results` als `OSCAL_AR_STRUCTURE_UNEXPECTED`.
+
+Ein Finding führt sein Pflichtziel `target` mit `type`, `targetId`, `status` und optionalem `implementationStatus`. `hasLinkedEvidence` ist `false`, wenn weder `related-observations` noch `related-risks` vorhanden sind. `risk.status`, `response.lifecycle` und `risk-log.entries[].status-change` stehen unverändert als Strings im Read-Model. `threat-ids[].href` bleibt ein ungeladener String.
+
+### Referenzen und Kontext
+
+`importAp.reference` klassifiziert `href` über `resolveOscalReference()`; `importAp.status` lautet `bound`, wenn `options.assessmentPlan` ein Dokument mit Root `assessment-plan` trägt, sonst `not-resolvable-in-context`. Der Aufrufer ordnet `options.assessmentPlan` (Ergebnis von `parseAssessmentPlanDocument()`) und `options.ssp` (Ergebnis von `parseSspDocument()`) ausdrücklich zu; der Adapter lädt kein Dokument.
+
+`ArReference` hat die Zustände `resolved` (mit `origin` `local`, `assessment-plan` oder `ssp`), `not-resolvable-in-context` und `unresolved`. Jede Referenzart sucht in einer festen Reihenfolge von Identitätsbereichen. Ist ein Bereich nicht gebunden und das Ziel in keinem gebundenen Bereich vorhanden, lautet der Zustand `not-resolvable-in-context` mit `assessment-plan-not-supplied` oder `ssp-not-supplied` (`…-binding-invalid` bei einer Bindung ohne passenden Root); es entsteht keine Diagnose. Sind alle Bereiche gebunden und fehlt das Ziel, oder ist es mehrdeutig, entsteht eine `OSCAL_AR_*`-Diagnose.
+
+| Referenz | Identitätsbereiche in Suchreihenfolge | Diagnose |
+| --- | --- | --- |
+| `origins[].actors[]` mit `type: tool` | Prüfwerkzeuge des `result`, lokale Komponenten, Prüfwerkzeuge des Assessment Plans, Systemkomponenten des Assessment Plans, SSP | `OSCAL_AR_ACTOR_REFERENCE_UNRESOLVED` |
+| `origins[].actors[]` mit `type: assessment-platform` | Prüfplattformen des `result`, Prüfplattformen des Assessment Plans | `OSCAL_AR_ACTOR_REFERENCE_UNRESOLVED` |
+| `origins[].actors[]` mit `type: party` | `metadata.parties`, Assessment Plan, SSP | `OSCAL_AR_ACTOR_REFERENCE_UNRESOLVED` |
+| `origins[].related-tasks[].task-uuid` und `assessment-log.entries[].related-tasks[].task-uuid` | Aufgaben des `result` einschließlich Maßnahmenaufgaben, Assessment Plan | `OSCAL_AR_TASK_REFERENCE_UNRESOLVED` |
+| `assessment-log.entries[].logged-by[].party-uuid` | `metadata.parties`, Assessment Plan, SSP | `OSCAL_AR_PARTY_REFERENCE_UNRESOLVED` |
+| `assessment-log.entries[].logged-by[].role-id` | `metadata.roles`, Assessment Plan, SSP | `OSCAL_AR_ROLE_REFERENCE_UNRESOLVED` |
+| `subjects[]` von Beobachtungen, mindernden Faktoren und benötigten Mitteln (`component`, `inventory-item`, `user`, `party`, `location`) | lokale Definitionen des eigenen `result` und dokumentweite Metadaten, Assessment Plan, SSP | `OSCAL_AR_SUBJECT_REFERENCE_UNRESOLVED` |
+| `subjects[]` mit `type: resource` | `back-matter.resources` des eigenen Dokuments | `OSCAL_AR_SUBJECT_REFERENCE_UNRESOLVED` |
+| `finding.implementation-statement-uuid` | `control-implementation.implemented-requirements[].statements[]` des SSP | `OSCAL_AR_IMPLEMENTATION_STATEMENT_UNRESOLVED` |
+| `finding.related-risks[].risk-uuid` | Risiken aller `results` | `OSCAL_AR_RISK_REFERENCE_UNRESOLVED` |
+| `risk-log.entries[].related-responses[].response-uuid` | Maßnahmen aller `results` | `OSCAL_AR_RESPONSE_REFERENCE_UNRESOLVED` |
+
+Ein Ziel einer anderen Art liegt in keinem dieser Bereiche und bleibt unaufgelöst, etwa eine Observation-UUID in `related-risks`. Subjekte anderer Typen bleiben mit `subject-type-not-supported` unaufgelöst. Ein fehlendes Ressourcen-Subjekt einer Beobachtung meldet zusätzlich das Evidenz-Read-Model als `OSCAL_EVIDENCE_RESOURCE_NOT_FOUND`. Lokale Identitäten gelten je `result` zuzüglich der dokumentweiten Metadaten, Aktivitäten und Back-matter-Ressourcen. Doppelte Komponenten-, Benutzer-, Inventar-, Plattform-, Aufgaben- und Aktivitäts-UUIDs sowie doppelte UUIDs von Beobachtungen, Risiken, Findings und Maßnahmen im Dokument erzeugen `OSCAL_AR_*_UUID_DUPLICATE`. Eine Aufgabenabhängigkeit, die einen Zyklus schließt, erzeugt `OSCAL_AR_TASK_DEPENDENCY_CYCLE` an ihrem `task-uuid`-Pfad. Aufgaben, Aktivitäten, Subjekte und Rollen innerhalb lokaler Aufgaben lösen über die Leser des Assessment-Plan-Slices auf. Für Assessment Results suchen dort `dependencies[].task-uuid` und `associated-activities[].activity-uuid` nach dem lokalen Bereich im gebundenen Assessment Plan (`origin: assessment-plan`); ohne Plan lautet der Zustand `not-resolvable-in-context` mit `assessment-plan-not-supplied`. Subjekte, Rollen und Parteien dieser Aufgaben suchen nach dem lokalen Bereich in den Systemkomponenten, Metadaten und lokalen Definitionen des gebundenen Assessment Plans und danach im SSP; die Prüfwerkzeuge und -plattformen aus `assessment-assets` des Plans bilden einen eigenen Index, den nur `origins[].actors[]` mit `type: tool` oder `assessment-platform` durchsuchen; ohne Plan und ohne Treffer im SSP lautet der Zustand `not-resolvable-in-context` mit `assessment-plan-not-supplied`. Ressourcen-Subjekte lokaler Aufgaben lösen nur gegen `back-matter.resources` des eigenen Dokuments auf. Die Zyklusprüfung durchläuft den Abhängigkeitsgraphen mit eigenem Stapel, sodass lange Ketten innerhalb der Klasse-2-Grenzen keinen Stapelüberlauf auslösen. Ein `result` teilt die Indizes der dokumentweiten Typen mit dem Dokument und legt nur für seine eigenen Typen neue Indizes an.
+
+### Evidenz und Gültigkeit
+
+Der Adapter ruft `deriveEvidenceReadModel()` mit Root `assessment-results`, der gebundenen Version und `options.at` auf; ohne `options.at` ist der Bewertungszeitpunkt der Ableitungszeitpunkt. `contextUuids` enthält die Komponenten-, Inventar-, Benutzer-, Partei- und Ort-UUIDs der dokumentweiten Metadaten, des Assessment Plans und des SSP, aber keine lokalen Definitionen eines `result`. Ein Subjekt aus den lokalen Definitionen eines `result` hat deshalb in `evidence.subjects[].state` den Zustand `not-resolvable-in-context`; seine Auflösung im eigenen `result` trägt `subjects[].reference`. Jede `AssessmentObservation` trägt in `evidence` das Objekt aus `EvidenceReadModel.observations` mit demselben Pfad; dessen `validity` ist die einzige Gültigkeitsangabe. `relatedObservations[].reference` ist der Eintrag aus `EvidenceReadModel.observationReferences`; ein fehlendes Ziel meldet das Evidenz-Read-Model als `OSCAL_EVIDENCE_OBSERVATION_NOT_FOUND`. `diagnostics` enthält die Adapter- und die Evidenzdiagnosen.
+
+### Quelle, Datenschutz und Testkorpus
+
+Die Ableitung liest ausschließlich die übergebenen Graphen und führt weder Netzwerk-, Datei- noch Storagezugriffe aus; `oscalAssessmentResultsAdapter.boundaries.node.test.ts` prüft das am Quelltext. Der vorgesehene Einstieg ist `processClass2OscalBytes()` mit Byte-, Tiefen-, Knoten-, Root-, Versions- und Schemaprüfung. Markup bleibt Rohstring, `base64`-Nutzlasten werden weder dekodiert noch projiziert, deklarierte `media-type`-Werte erscheinen nur als Ressourcenmetadaten. Diagnosen tragen Code und strukturellen Pfad, keine Dokumentwerte. Root-, Beobachtungs-, Risiko- und Finding-UUIDs bleiben unverändert; `rootUuidPolicy('assessment-results')` ist `keep`.
+
+`src/test/fixtures/assessmentResults.ts` enthält synthetische Minimal- und Vollfälle. Vier originale NIST-AR-Beispiele aus `usnistgov/oscal-content` am Commit `78650f02ad9321bb7b817846f8fbd4f2bcd620de` stehen mit SHA-256 und Größe im `ORACLE_MANIFEST.json` unter `src/test/fixtures/oscal-content-v1.5.0/`; `scripts/sync-oscal-content-oracle.mjs` ist ihr Wartungs-Netzpfad. Alle vier bestehen Stufe 3 gegen die deklarierte Version und erzeugen keine Modelldiagnose. `oscalAssessmentResultsDocument.node.test.ts` führt den No-op-Round-trip in allen vier Matrixzellen mit dem Adapter im Exportpfad aus.
 
 ## Evidenz (Assessment Layer)
 
