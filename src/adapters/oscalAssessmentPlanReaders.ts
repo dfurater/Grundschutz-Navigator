@@ -16,7 +16,18 @@ export const AP_ADAPTER_VALIDATOR = Object.freeze({
   name: 'gspp-assessment-plan-adapter',
   version: '1',
 });
+/** Root, unter dem die gemeinsamen Assessment-Leser ihre Diagnosen melden. */
+export type AssessmentDiagnosticScope = 'assessment-plan' | 'assessment-results';
+export const AR_ADAPTER_VALIDATOR = Object.freeze({
+  name: 'gspp-assessment-results-adapter',
+  version: '1',
+});
+const DIAGNOSTIC_SCOPES = {
+  'assessment-plan': { prefix: 'OSCAL_AP_', validator: AP_ADAPTER_VALIDATOR },
+  'assessment-results': { prefix: 'OSCAL_AR_', validator: AR_ADAPTER_VALIDATOR },
+} as const;
 export interface ApDeriveState extends RootDeriveFrame {
+  readonly scope: AssessmentDiagnosticScope;
   readonly diagnostics: OscalDiagnostic[];
   readonly options: AssessmentPlanDeriveOptions;
   readonly local: Map<string, Map<string, string[]>>;
@@ -27,13 +38,13 @@ export interface ApDeriveState extends RootDeriveFrame {
 export function diagnose(state: ApDeriveState, code: string, path: string): void {
   state.diagnostics.push(
     createOscalDiagnostic({
-      code: `OSCAL_AP_${code}`,
+      code: `${DIAGNOSTIC_SCOPES[state.scope].prefix}${code}`,
       stage: 'domain',
-      validator: AP_ADAPTER_VALIDATOR,
+      validator: DIAGNOSTIC_SCOPES[state.scope].validator,
       path,
       artifact: {
         key: state.artifactKey,
-        rootType: 'assessment-plan',
+        rootType: state.scope,
         oscalVersion: state.oscalVersion,
       },
     }),

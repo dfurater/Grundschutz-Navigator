@@ -3,7 +3,7 @@
 //
 // Der Root-Dispatch erkennt alle acht Root-Typen. Einen Modelladapter haben
 // `catalog`, `profile`, `mapping-collection`, `component-definition`,
-// `system-security-plan` und `assessment-plan`. Ein bekanntes
+// `system-security-plan`, `assessment-plan` und `assessment-results`. Ein bekanntes
 // Modell ohne Adapter ist etwas anderes als ein unbekannter Root und bekommt
 // eine eigene Diagnose.
 //
@@ -19,6 +19,11 @@ import {
   deriveAssessmentPlan,
 } from '@/adapters/oscalAssessmentPlanAdapter';
 import type { AssessmentPlan } from '@/domain/assessmentPlanModel';
+import {
+  ASSESSMENT_RESULTS_ROOT_TYPE,
+  deriveAssessmentResults,
+} from '@/adapters/oscalAssessmentResultsAdapter';
+import type { AssessmentResults } from '@/domain/assessmentResultsModel';
 import { parseCatalog } from '@/adapters/oscalAdapter';
 import {
   COMPONENT_DEFINITION_ROOT_TYPE,
@@ -177,6 +182,13 @@ export const assessmentPlanRootAdapter: OscalRootAdapter<AssessmentPlan> = Objec
   derive: (body: unknown, context: OscalDocumentContext) => deriveAssessmentPlan(body, context),
 });
 
+/** Assessment-Results-Adapter; die Ableitung akzeptiert ausschließlich `class-2-local-user`. */
+export const assessmentResultsRootAdapter: OscalRootAdapter<AssessmentResults> = Object.freeze({
+  rootType: ASSESSMENT_RESULTS_ROOT_TYPE,
+  moduleEntryPoint: 'src/adapters/oscalAssessmentResultsAdapter.ts',
+  derive: (body: unknown, context: OscalDocumentContext) => deriveAssessmentResults(body, context),
+});
+
 /** Registrierte Modelladapter. Ein neues Modell ergänzt hier genau eine Zeile. */
 const OSCAL_ROOT_ADAPTERS: ReadonlyMap<OscalRootKey, OscalRootAdapter> = new Map<
   OscalRootKey,
@@ -188,6 +200,7 @@ const OSCAL_ROOT_ADAPTERS: ReadonlyMap<OscalRootKey, OscalRootAdapter> = new Map
   [mappingCollectionRootAdapter.rootType, mappingCollectionRootAdapter],
   [sspRootAdapter.rootType, sspRootAdapter],
   [assessmentPlanRootAdapter.rootType, assessmentPlanRootAdapter],
+  [assessmentResultsRootAdapter.rootType, assessmentResultsRootAdapter],
 ]);
 
 export function getOscalRootAdapter(rootType: OscalRootKey): OscalRootAdapter | null {
