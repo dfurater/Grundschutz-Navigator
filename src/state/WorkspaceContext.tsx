@@ -56,6 +56,8 @@ export interface WorkspaceContextValue {
   readonly flushAutosaves: () => Promise<boolean>;
   /** Dokumentoperationen der Stationen (GSPP-292). */
   readonly documents: WorkspaceDocuments;
+  /** Invalidierung nur für sitzungsgebundene Profilanalysen; Dokumentzugriff bleibt stabil. */
+  readonly analysisRevision: number;
 }
 
 const unavailable = () => Promise.resolve(storageFailed());
@@ -78,6 +80,7 @@ export const WorkspaceContext = createContext<WorkspaceContextValue>({
   registerAutosave: () => () => undefined,
   flushAutosaves: () => Promise.resolve(true),
   documents: createWorkspaceDocuments({ port: null, write: unavailableWrite, quiet: unavailableWrite, class1: [], delivery: new Map(), targets: new Map() }),
+  analysisRevision: 0,
 });
 
 export function WorkspaceProvider({ open = openWorkspaceStore, children }: Readonly<{
@@ -219,8 +222,8 @@ export function WorkspaceProvider({ open = openWorkspaceStore, children }: Reado
   }, [port, report, invalidateAnalysis]);
 
   const documents = useMemo(
-    () => createWorkspaceDocuments({ port, write, quiet, class1, delivery, targets: importTargets, analysisVersion, analysisRevision }),
-    [port, write, quiet, class1, delivery, importTargets, analysisVersion, analysisRevision],
+    () => createWorkspaceDocuments({ port, write, quiet, class1, delivery, targets: importTargets, analysisVersion }),
+    [port, write, quiet, class1, delivery, importTargets, analysisVersion],
   );
 
   const registerAutosave = useCallback((flush: AutosaveFlush) => {
@@ -292,7 +295,8 @@ export function WorkspaceProvider({ open = openWorkspaceStore, children }: Reado
     registerAutosave,
     flushAutosaves,
     documents,
-  }), [status, verbuende, writable, delivery, notices, verbund, activate, checkSchema, write, port, report, registerAutosave, flushAutosaves, documents, importTargets, invalidateAnalysis]);
+    analysisRevision,
+  }), [status, verbuende, writable, delivery, notices, verbund, activate, checkSchema, write, port, report, registerAutosave, flushAutosaves, documents, importTargets, invalidateAnalysis, analysisRevision]);
 
   return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>;
 }

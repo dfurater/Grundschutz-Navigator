@@ -23,10 +23,10 @@ export function useProfileAnalysis(verbundId: VerbundId, localId: LocalId, sourc
   /** Die Bindungen, mit denen `analysis` abgeleitet wurde. */
   readonly analyzedBindings: readonly WorkspaceBinding[];
 } {
-  const { documents } = useWorkspace();
+  const { documents, analysisRevision } = useWorkspace();
   const { requestCatalog } = useContext(CatalogContext);
   const session = useMemo(() => createProfileAnalysisSession(), [verbundId, localId]);
-  const [state, setState] = useState<{ analysis: ProfileAnalysis | null; failed: boolean; source: unknown; bindings: readonly WorkspaceBinding[]; documents?: WorkspaceDocuments; session?: typeof session }>({ analysis: null, failed: false, source: undefined, bindings: [] });
+  const [state, setState] = useState<{ analysis: ProfileAnalysis | null; failed: boolean; source: unknown; bindings: readonly WorkspaceBinding[]; documents?: WorkspaceDocuments; session?: typeof session; revision?: number }>({ analysis: null, failed: false, source: undefined, bindings: [] });
 
   useEffect(() => () => session.dispose(), [session]);
 
@@ -45,7 +45,7 @@ export function useProfileAnalysis(verbundId: VerbundId, localId: LocalId, sourc
     const timer = setTimeout(() => {
       void session.analyze(documents, { verbundId, localId, source, bindings }, controller.signal).then((result) => {
         if (!controller.signal.aborted && (result.ok || result.diagnostic.code !== 'WORKSPACE_OPERATION_CANCELLED')) {
-          setState({ analysis: result.ok ? result.value : null, failed: !result.ok, source, bindings, documents, session });
+          setState({ analysis: result.ok ? result.value : null, failed: !result.ok, source, bindings, documents, session, revision: analysisRevision });
         }
       });
     }, PROFILE_ANALYSIS_DELAY_MS);
@@ -53,8 +53,8 @@ export function useProfileAnalysis(verbundId: VerbundId, localId: LocalId, sourc
       controller.abort();
       clearTimeout(timer);
     };
-  }, [documents, verbundId, localId, source, bindings, session]);
+  }, [documents, verbundId, localId, source, bindings, session, analysisRevision]);
 
-  const current = state.source === source && state.bindings === bindings && state.documents === documents && state.session === session;
+  const current = state.source === source && state.bindings === bindings && state.documents === documents && state.session === session && state.revision === analysisRevision;
   return { analysis: state.analysis, failed: current && state.failed, analyzedBindings: state.bindings, current };
 }

@@ -2,6 +2,7 @@ import { act, renderHook } from '@testing-library/react';
 import { StrictMode, useEffect, type ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useProfileAnalysis, PROFILE_ANALYSIS_DELAY_MS } from '@/features/workspace/profile/useProfileAnalysis';
+import { useBaselineControls } from '@/features/workspace/ssp/useBaselineControls';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { WorkspaceProvider } from '@/state/WorkspaceContext';
 import { CatalogContext } from '@/state/CatalogContext';
@@ -14,7 +15,7 @@ import type { LocalId, VerbundId, WorkspaceBinding } from '@/domain/workspaceMod
 const PROFILE = member('profile', 'p');
 const ANALYSIS = { schema: { status: 'passed' }, hints: [], imports: [], targets: new Map(), resolution: { status: 'not-evaluable' } };
 
-function setup(strict = false) {
+function setup(strict = false, withBaseline = false) {
   const workers: FakeWorker[] = [];
   let reply = true;
   vi.stubGlobal('Worker', vi.fn(function create() {
@@ -32,9 +33,11 @@ function setup(strict = false) {
     return strict ? <StrictMode>{content}</StrictMode> : content;
   };
   const bindings: readonly WorkspaceBinding[] = [];
+  const target = withBaseline ? { kind: 'local' as const, localId: PROFILE.localId } : undefined;
   const hook = renderHook(({ source, localId, verbundId }: { source: unknown; localId: LocalId; verbundId: VerbundId }) => {
     const workspace = useWorkspace();
     useEffect(() => workspace.activate(), [workspace.activate]);
+    useBaselineControls(verbundId, target, undefined);
     return { ...useProfileAnalysis(verbundId, localId, source, bindings), workspace };
   }, { wrapper, initialProps: { source: PROFILE.source, localId: PROFILE.localId, verbundId: PROFILE.verbundId } });
   const tick = async () => {
@@ -51,6 +54,24 @@ beforeEach(() => vi.useFakeTimers());
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
 
 describe('Lebenszyklus der Profilanalyse', () => {
+  it('lässt bei Autosave und Reload den Dokumentzugang und die unabhängige SSP-Baselineanalyse stabil', async () => {
+    const hook = setup(false, true);
+    await hook.tick();
+    const documents = hook.result.current.workspace.documents;
+    const baselineRequests = () => hook.workers.flatMap((worker) => worker.postMessage.mock.calls)
+      .filter(([message]) => (message as { type: string }).type === 'analyze');
+    expect(baselineRequests()).toHaveLength(1);
+    await act(async () => { await documents.autosaveDraft(PROFILE.localId, PROFILE.savedAt, null, {}); });
+    await hook.tick();
+    expect(hook.result.current.workspace.documents).toBe(documents);
+    expect(baselineRequests()).toHaveLength(1);
+    act(() => hook.result.current.workspace.reload());
+    await hook.tick();
+    expect(hook.result.current.workspace.documents).toBe(documents);
+    expect(baselineRequests()).toHaveLength(1);
+    hook.unmount();
+  });
+
   it('verwendet in StrictMode den untätigen Worker und die gelesene Basis erneut', async () => {
     const hook = setup(true);
     await hook.tick();

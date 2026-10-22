@@ -26,7 +26,6 @@ export interface PendingImportTarget {
 }
 
 export interface WorkspaceDocuments {
-  readonly analysisRevision: number;
   /** Ändert sich synchron nach erfolgreichem Schreiben oder explizitem Neuladen. */
   readonly analysisVersion: () => number;
   readonly loadProfileAnalysisBasis: (verbundId: VerbundId) => Promise<WorkspaceResult<ProfileAnalysisBasis>>;
@@ -97,7 +96,7 @@ async function checkSchema(source: unknown): Promise<ProfileSchemaCheck> {
   return result.ok ? { status: 'passed' } : { status: 'failed', code: result.diagnostic.code, path: result.diagnostic.path };
 }
 
-export function createWorkspaceDocuments({ port, write, quiet, class1, delivery, targets, analysisVersion = () => 0, analysisRevision = 0 }: Readonly<{
+export function createWorkspaceDocuments({ port, write, quiet, class1, delivery, targets, analysisVersion = () => 0 }: Readonly<{
   port: WorkspacePort | null;
   /** Schreibt und lädt danach die Verbundansicht neu. */
   write: Write;
@@ -107,14 +106,11 @@ export function createWorkspaceDocuments({ port, write, quiet, class1, delivery,
   delivery: CatalogDelivery;
   targets: Map<LocalId, Map<string, PendingImportTarget>>;
   analysisVersion?: () => number;
-  /** Recreates the document context when the synchronous version advances. */
-  analysisRevision?: number;
 }>): WorkspaceDocuments {
   const read = <T,>(operation: (store: WorkspacePort) => Promise<WorkspaceResult<T>>): Promise<WorkspaceResult<T>> =>
     port ? operation(port).catch(storageFailed) : Promise.resolve(storageFailed());
   // Prüfentscheidungen ändern die Verbundansicht nicht; die Station zeigt ihre Codes selbst.
   return {
-    analysisRevision,
     analysisVersion,
     loadProfileAnalysisBasis: (verbundId) => read(async (store) => {
       const { loadProfileAnalysisBasis } = await import('@/state/workspaceProfileAnalysis');
