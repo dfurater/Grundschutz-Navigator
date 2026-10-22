@@ -72,6 +72,11 @@ function sameTarget(a: BindingTarget, b: BindingTarget): boolean {
   return a.kind === 'local' ? b.kind === 'local' && a.localId === b.localId : b.kind === 'class-1' && a.artifactKey === b.artifactKey;
 }
 
+/** Eine gespeicherte Bindung am selben Import geht einer offenen Zuordnung vor (`targetOf()`). */
+function superseded(pointer: string, assigned: PendingImportTarget, stored: readonly WorkspaceBinding[]): boolean {
+  return stored.some((binding) => binding.pointer === pointer && binding.href === assigned.href);
+}
+
 /** Ungespeicherte Zuordnungen nach dem Entfernen eines Imports, an denselben Pointern wie `shiftImportBindings`. */
 function shiftPending(pending: Map<string, PendingImportTarget>, removed: number): void {
   const shifted = shiftImportBindings([...pending].map(([pointer, value]) => ({ pointer, ...value })), removed);
@@ -121,7 +126,8 @@ export function useProfileEditor(localId: LocalId): ProfileEditor {
   }, [change, pending, saving, setStored]);
 
   // Eine ungespeicherte Importzuordnung ist eine offene Änderung, auch wenn die Quelle gleich bleibt.
-  const dirty = core.dirty || pendingTargets.size > 0;
+  // Wie in `targetOf()` gewinnt eine gespeicherte Bindung am selben Import; eine so überholte Zuordnung zählt nicht.
+  const dirty = core.dirty || [...pendingTargets].some(([pointer, assigned]) => !superseded(pointer, assigned, stored));
   const imports = useMemo(() => readProfileImports(working), [working]);
   const bindings = useMemo(() => editorBindings(localId, imports, stored, pendingTargets), [localId, imports, stored, pendingTargets]);
 

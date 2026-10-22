@@ -370,6 +370,20 @@ describe('Listenzeilen und Löschung', () => {
     expect(within(list).getAllByRole('listitem')).toHaveLength(60);
   });
 
+  it('zeigt eine neue oder ans Ende verschobene Zeile auch jenseits des Ausschnitts', async () => {
+    const many = withSspBody(makeFullSsp(), (body) => {
+      body['system-characteristics']['system-ids'] = Array.from({ length: 51 }, (_, index) => ({ id: `SYS-${index}` }));
+    });
+    const imported = await addSsp(seeded.verbundId, many);
+    renderArea(buildWorkspaceDocumentUrl(seeded.verbundId, imported.localId), withGspp());
+    const list = await within(main()).findByRole('region', { name: /^Systemkennungen/ }, WAIT);
+    expect(within(list).getAllByRole('listitem')).toHaveLength(50);
+    fireEvent.click(within(list).getByRole('button', { name: 'Systemkennung 50 · SYS-49 nach unten' }));
+    expect(within(list).getByRole('listitem', { name: 'Systemkennung 51 · SYS-49' })).toBeInTheDocument();
+    fireEvent.click(within(main()).getByRole('button', { name: 'Systemkennung hinzufügen' }));
+    expect(within(list).getAllByRole('listitem')).toHaveLength(52);
+  });
+
   it('löscht ein SSP erst nach Bestätigung samt Bindungen', async () => {
     const { router } = renderArea(buildWorkspaceDocumentUrl(seeded.verbundId, seeded.ssp.localId), withGspp());
     await click('SSP löschen…');

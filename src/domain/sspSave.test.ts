@@ -43,4 +43,13 @@ describe('Referenzprüfung', () => {
     expect(sspReadinessBlocker(partyless)).toMatchObject({ code: 'OSCAL_SSP_PARTY_REFERENCE_UNRESOLVED' });
     expect(sspReadinessBlocker(makeFullSsp())).toBeUndefined();
   });
+
+  it('sperrt export-ready bei einer mehrfach vergebenen Rollen-id oder Party-uuid', () => {
+    const roles = withSspBody(makeFullSsp(), (ssp) => { ssp.metadata.roles = [...(ssp.metadata.roles ?? []), { id: 'system-owner', title: 'Zweite' }]; });
+    const parties = withSspBody(makeFullSsp(), (ssp) => {
+      ssp.metadata.parties = [...(ssp.metadata.parties ?? []), { uuid: SSP_FIXTURE_IDS.party.toUpperCase(), type: 'person', name: 'Zweite' }];
+    });
+    expect(sspReadinessBlocker(roles)).toMatchObject({ code: 'OSCAL_SSP_ROLE_ID_DUPLICATE' });
+    expect(sspReadinessBlocker(parties)).toMatchObject({ code: 'OSCAL_SSP_PARTY_UUID_DUPLICATE' });
+  });
 });

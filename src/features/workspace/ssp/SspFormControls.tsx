@@ -124,7 +124,10 @@ export function SspRowList({ editor, path, title, required = false, uuidKeyed, n
     if (editor.apply((source) => (remove ?? ((current, at) => removeSspItem(current, path, at)))(source, index))) rows.removed(index);
   };
   const move = (from: number, to: number) => {
-    if (editor.apply((source) => moveSspItem(source, path, from, to))) rows.moved(from, to);
+    if (!editor.apply((source) => moveSspItem(source, path, from, to))) return;
+    rows.moved(from, to);
+    // Die verschobene Zeile bleibt im Ausschnitt, damit ihre Bedienung und der Fokus erhalten bleiben.
+    setVisible((count) => Math.max(count, to + 1));
   };
   return (
     <section aria-labelledby={headingId} className="space-y-2">
@@ -157,7 +160,12 @@ export function SspRowList({ editor, path, title, required = false, uuidKeyed, n
         </Button>
       )}
       {newItem && (
-        <Button variant="secondary" size="sm" className="min-h-touch desktop:min-h-0" onClick={() => { if (editor.apply((source) => addSspItem(source, path, newItem()))) rows.added(); }}>
+        <Button variant="secondary" size="sm" className="min-h-touch desktop:min-h-0" onClick={() => {
+          if (!editor.apply((source) => addSspItem(source, path, newItem()))) return;
+          rows.added();
+          // Eine neue Zeile erscheint sofort, auch jenseits des bisherigen Ausschnitts.
+          setVisible((count) => Math.max(count, items.length + 1));
+        }}>
           {addLabel}
         </Button>
       )}
