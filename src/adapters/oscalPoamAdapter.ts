@@ -143,8 +143,9 @@ export function derivePoam(body: unknown, context: OscalDocumentContext, options
   diagnoseTaskCycles(risks.flatMap((risk) => risk.remediations.flatMap((response) => response.tasks)), state);
   const systemId = objectField(root, 'system-id', POAM_BASE_PATH, state);
   if (root['import-ssp'] === undefined && systemId === null) diagnose(state, 'SYSTEM_CONTEXT_MISSING', POAM_BASE_PATH);
-  // Nur „fehlt“ und „leeres Array“ hier; eine falsche Form meldet `readObjectArrayField` am selben Pfad genau einmal.
-  if (root['poam-items'] === undefined || (Array.isArray(root['poam-items']) && root['poam-items'].length === 0)) unexpected(state, `${POAM_BASE_PATH}/poam-items`);
+  // Nur „fehlt/null“ und „leeres Array“ hier; eine falsche Form meldet `readObjectArrayField` am selben Pfad genau einmal.
+  const poamItemsSource = root['poam-items'];
+  if (poamItemsSource === undefined || poamItemsSource === null || (Array.isArray(poamItemsSource) && poamItemsSource.length === 0)) unexpected(state, `${POAM_BASE_PATH}/poam-items`);
   const poamItems = readObjectArrayField(root, 'poam-items', POAM_BASE_PATH, state).map(({ node, path }) => poamItem(node, path, state));
   const observations = readObjectArrayField(root, 'observations', POAM_BASE_PATH, state).map(({ node, path }) => ({
     ...entity(node, path, state),

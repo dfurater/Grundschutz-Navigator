@@ -204,7 +204,7 @@ describe('POA&M-Root', () => {
     expect(countPoamUuids(body)).toEqual(new Map([[AR_UUIDS.risk, 2]]));
     expect(body.self).toBe(body);
   });
-  it.each([{ value: 'invalid' }, { value: [] }])('meldet ein ungültiges poam-items-Feld genau einmal: $value', ({ value }) => {
+  it.each([{ value: 'invalid' }, { value: [] }, { value: null }])('meldet ein ungültiges poam-items-Feld genau einmal: $value', ({ value }) => {
     const source = makeFullPoam();
     Object.assign(source['plan-of-action-and-milestones'], { 'poam-items': value });
     expect(parse(source).diagnostics.filter((d) => d.path === '/plan-of-action-and-milestones/poam-items')).toHaveLength(1);
