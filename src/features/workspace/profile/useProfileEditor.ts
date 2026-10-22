@@ -92,9 +92,10 @@ function editorBindings(localId: LocalId, imports: readonly ProfileImportView[],
  */
 export function useProfileEditor(localId: LocalId): ProfileEditor {
   const { documents } = useWorkspace();
-  const core = useDocumentEditor<'saved-as-draft'>({ localId, rootType: 'profile', sameContent: sameProfileContent, alignBindings: alignImportBindings });
-  const { working, stored, setStored, change, commit, saving, latest, dirty, setMessage, exportWith } = core;
   const pending = documents.importTargets(localId);
+  const hasPendingBindings = useCallback(() => pending.size > 0, [pending]);
+  const core = useDocumentEditor<'saved-as-draft'>({ localId, rootType: 'profile', sameContent: sameProfileContent, alignBindings: alignImportBindings, hasPendingBindings });
+  const { working, stored, setStored, change, commit, saving, latest, dirty, setMessage, exportWith } = core;
   // Spiegel der Map aus dem Arbeitsbereich, damit neue Zuordnungen neu rendern.
   const [pendingTargets, setPendingTargets] = useState<ReadonlyMap<string, PendingImportTarget>>(() => new Map(pending));
 

@@ -285,6 +285,24 @@ describe('Abweisungen und Zuordnungen', () => {
     await waitFor(() => expect(add).toBeDisabled(), WAIT);
   });
 
+  it('übernimmt keinen neueren Stand, solange eine Baseline-Wahl ungespeichert ist', async () => {
+    const { ssp } = seeded;
+    renderArea(buildWorkspaceDocumentUrl(seeded.verbundId, ssp.localId), withGspp());
+    // Der relative href hat keine eigene Ressource: Die Wahl ändert die Quelle nicht, nur die Bindung.
+    fireEvent.click(await within(main()).findByRole('radio', { name: /catalog-gspp/ }, WAIT));
+    await waitFor(async () => expect(await readStore((store) => store.getDraft(ssp.localId))).toBeDefined(), WAIT);
+    const draft = (await readStore((store) => store.getDraft(ssp.localId)))!;
+    await readStore((store) => store.saveDocument(ssp.localId, ssp.savedAt, draft.savedAt, {
+      source: ssp.source, context: { trustClass: 'class-2-local-user' }, rootType: 'system-security-plan', oscalVersion: '1.2.2',
+    }));
+    fireEvent.click(within(main()).getByText('Prüfung und Freigabe'));
+    await within(main()).findByText('Prüfzustand', undefined, WAIT);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    // Ohne Übernahme bleibt der ältere Vergleichsstand: Speichern meldet den Konflikt, statt die neuere Bindung zu überschreiben.
+    await click('Speichern');
+    expect(await within(main()).findByText('In einem anderen Tab geändert', undefined, WAIT)).toBeInTheDocument();
+  });
+
   it('navigiert nach einem abgebrochenen Anlegen nicht mehr', async () => {
     let release = () => {};
     const original = WorkspaceStore.prototype.addDocument;

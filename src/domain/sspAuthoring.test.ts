@@ -114,6 +114,10 @@ describe('Patches', () => {
 });
 
 describe('Versionsabhängige Pflichtführung', () => {
+  it('meldet eine fehlende SSP-Wurzel als offene Pflichtstruktur', () => {
+    expect(missingSspStructure({ profile: {} })).toEqual(['/system-security-plan']);
+  });
+
   it.each(PINNED_OSCAL_VERSIONS)('%s: das minimale SSP hat keine offene Pflichtstruktur', (version) => {
     expect(missingSspStructure(makeMinimalSsp(version))).toEqual([]);
   });

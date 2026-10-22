@@ -45,10 +45,11 @@ function baselineHref(source: unknown): string | undefined {
  */
 export function useSspEditor(localId: LocalId): SspEditor {
   const { documents } = useWorkspace();
-  const core = useDocumentEditor<'saved-as-draft' | 'component-unresolved' | 'component-referenced' | 'patch-failed'>({ localId, rootType: 'system-security-plan', sameContent: sameSspContent });
-  const { working, stored, change, commit, latest, setMessage, exportWith } = core;
   // Ungespeicherte Baseline-Wahl im Arbeitsspeicher des Tabs, wie die Importziele der Profile.
   const pending = documents.importTargets(localId);
+  const hasPendingBindings = useCallback(() => pending.has(SSP_IMPORT_PROFILE_POINTER), [pending]);
+  const core = useDocumentEditor<'saved-as-draft' | 'component-unresolved' | 'component-referenced' | 'patch-failed'>({ localId, rootType: 'system-security-plan', sameContent: sameSspContent, hasPendingBindings });
+  const { working, stored, change, commit, latest, setMessage, exportWith } = core;
   const [pendingBaseline, setPendingBaseline] = useState<PendingImportTarget | undefined>(() => pending.get(SSP_IMPORT_PROFILE_POINTER));
 
   const href = baselineHref(working);

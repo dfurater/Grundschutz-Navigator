@@ -29,7 +29,6 @@ export type PreparedSave =
     readonly approval?: ReviewApprovalRequest;
   }
   | { readonly ok: false; readonly code: string };
-
 export type CommitResult = { readonly ok: true; readonly documentState: 'export-ready' | 'draft' } | { readonly ok: false; readonly code: string };
 
 export type ExportResult = { readonly ok: true; readonly json: string } | { readonly ok: false };
@@ -80,6 +79,8 @@ export interface DocumentEditorOptions {
   readonly sameContent: (a: unknown, b: unknown) => boolean;
   /** Richtet gespeicherte Bindungen an einem Entwurf aus, dessen Pointer sich verschoben haben können. */
   readonly alignBindings?: (own: readonly WorkspaceBinding[], storedSource: unknown, draftSource: unknown) => WorkspaceBinding[];
+  /** Ungespeicherte Bindungsänderungen sperren als offene Eingaben die Übernahme eines neueren Stands. */
+  readonly hasPendingBindings?: () => boolean;
 }
 /**
  * Lebenszyklus eines bearbeitbaren Workspace-Dokuments: Laden von Dokument,
@@ -88,7 +89,7 @@ export interface DocumentEditorOptions {
  * Speichern, Übernahme eines neueren Stands, Export aus dem gespeicherten Stand
  * und Löschung. Was ein Speichern schreibt, bestimmt die Station.
  */
-export function useDocumentEditor<M extends string>({ localId, rootType, sameContent, alignBindings }: DocumentEditorOptions): DocumentEditorCore<M> {
+export function useDocumentEditor<M extends string>({ localId, rootType, sameContent, alignBindings, hasPendingBindings }: DocumentEditorOptions): DocumentEditorCore<M> {
   const { documents, registerAutosave } = useWorkspace();
   const [envelope, setEnvelope] = useState<WorkspaceEnvelope>();
   const [status, setStatus] = useState<DocumentEditorCore<M>['status']>('loading');
@@ -108,8 +109,8 @@ export function useDocumentEditor<M extends string>({ localId, rootType, sameCon
   // das Öffnen liest ihn über die Referenz, damit es den Arbeitsstand nicht zurücksetzt.
   const documentsRef = useRef(documents);
   useEffect(() => { documentsRef.current = documents; }, [documents]);
-  const options = useRef({ rootType, sameContent, alignBindings });
-  useEffect(() => { options.current = { rootType, sameContent, alignBindings }; }, [rootType, sameContent, alignBindings]);
+  const options = useRef({ rootType, sameContent, alignBindings, hasPendingBindings });
+  useEffect(() => { options.current = { rootType, sameContent, alignBindings, hasPendingBindings }; }, [rootType, sameContent, alignBindings, hasPendingBindings]);
 
   const ownBindings = useCallback((all: readonly WorkspaceBinding[], document: WorkspaceEnvelope, draftSource: unknown) => {
     const own = all.filter((binding) => binding.fromLocalId === localId);
@@ -183,7 +184,7 @@ export function useDocumentEditor<M extends string>({ localId, rootType, sameCon
   }, [flush]);
 
   const adopt = useCallback(async (document: WorkspaceEnvelope): Promise<'adopted' | 'blocked' | 'failed'> => {
-    if (saving.current) return 'blocked';
+    if (saving.current || options.current.hasPendingBindings?.()) return 'blocked';
     const before = latest.current;
     if (!before.envelope) return 'failed';
     if (document.savedAt <= before.envelope.savedAt) return 'adopted';
