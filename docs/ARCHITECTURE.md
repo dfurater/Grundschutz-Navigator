@@ -194,6 +194,7 @@ src/                              # Anwendungsquellcode
 │   ├── assessmentPlanModel.ts        # Projektion des Prüfplans und explizite SSP-/Katalogbindung
 │   ├── assessmentResultsModel.ts     # Projektion der Prüfergebnisse und explizite AP-/SSP-/Katalogbindung
 │   ├── poamModel.ts                  # POA&M-Projektion und expliziter SSP-/AR-Kontext
+│   ├── evidenceObservationReferences.ts # Klassifikation der `related-observations`-Referenzen für AR und POA&M
 │   ├── evidenceReadModel.ts          # Evidenz aus Assessment Results und POA&M: Gültigkeit, Ressourcen, UUID-Referenzen
 │   ├── systemSecurityPlanModel.ts    # Domänenmodell des SSP
 │   ├── systemSecurityPlanSystemModel.ts # Domänenmodell der SSP-Systembeschreibung
