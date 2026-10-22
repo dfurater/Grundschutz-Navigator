@@ -1,4 +1,4 @@
-import { useId, useState, type FormEvent } from 'react';
+import { useId, useState } from 'react';
 import { Button } from '@/components/Button';
 import { CheckboxLabel } from '@/components/CheckboxLabel';
 import type { ReviewReferenceCode } from '@/domain/reviewTrail';
@@ -44,7 +44,7 @@ export function DecisionForm({ roles, parties, disabledReason, busy = false, fin
     setSelectedPartyUuids((current) => checked ? [...current, uuid] : current.filter((entry) => entry !== uuid));
   };
 
-  const submit = (event: FormEvent<HTMLFormElement>) => {
+  const submit = (event: React.SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!ready) return;
     onSubmit({

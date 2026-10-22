@@ -2,6 +2,7 @@ import { ESLint } from 'eslint';
 
 /** Regeln aus eslint.config.js, die Typinformation brauchen (GSPP-199). */
 export const TYPE_AWARE_RULES = [
+  '@typescript-eslint/no-deprecated',
   '@typescript-eslint/await-thenable',
   '@typescript-eslint/no-floating-promises',
 ] as const;

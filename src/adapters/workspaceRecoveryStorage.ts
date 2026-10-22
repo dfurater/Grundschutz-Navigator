@@ -14,7 +14,7 @@ export async function exportNewerWorkspaceBackup(db: Dexie): Promise<WorkspaceRe
     const outOfLineKeys: Record<string, unknown[]> = Object.create(null);
     const text = await new Promise<string>((resolve, reject) => {
       const transaction = native.transaction(names, 'readonly');
-      transaction.onabort = () => reject(transaction.error);
+      transaction.onabort = () => reject(transaction.error ?? new Error('IndexedDB-Transaktion wurde abgebrochen.'));
       transaction.oncomplete = () => {
         try {
           resolve(serializeWorkspaceRecoveryJson({ format: 'gspp-workspace', storageSchemaVersion: db.verno, ...stores, ...(Object.keys(outOfLineKeys).length > 0 && { outOfLineKeys }) }));

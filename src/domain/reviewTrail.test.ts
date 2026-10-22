@@ -156,8 +156,8 @@ describe('approval action', () => {
   });
 
   it('rejects incomplete or duplicate references', () => {
-    expect(() => approvalAction({ uuid: 'a-1', date: 'd', roleId: '', partyUuids: ['p-1'] })).toThrowError(new Error('REVIEW_APPROVAL_INVALID'));
-    expect(() => approvalAction({ uuid: 'a-1', date: 'd', roleId: 'r-1', partyUuids: ['p-1', 'p-1'] })).toThrowError(new Error('REVIEW_APPROVAL_INVALID'));
+    expect(() => approvalAction({ uuid: 'a-1', date: 'd', roleId: '', partyUuids: ['p-1'] })).toThrow(new Error('REVIEW_APPROVAL_INVALID'));
+    expect(() => approvalAction({ uuid: 'a-1', date: 'd', roleId: 'r-1', partyUuids: ['p-1', 'p-1'] })).toThrow(new Error('REVIEW_APPROVAL_INVALID'));
   });
 
   it('declares which events are exported', () => {

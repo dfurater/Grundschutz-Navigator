@@ -1,4 +1,4 @@
-import { useId, useMemo, useState, type FormEvent } from 'react';
+import { useId, useMemo, useState } from 'react';
 import { CheckboxLabel } from '@/components/CheckboxLabel';
 import { IconInfo, IconX } from '@/components/icons';
 import type { ProfilePatternView, ProfileSelectorView } from '@/domain/profileAuthoring';
@@ -64,7 +64,7 @@ function AddId({ onAdd }: Readonly<{ onAdd: (id: string) => void }>) {
   if (!open) {
     return <button type="button" className={ADD_BUTTON} onClick={() => setOpen(true)}>+ Anforderung</button>;
   }
-  const submit = (event: FormEvent<HTMLFormElement>) => {
+  const submit = (event: React.SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (value.trim() === '') return;
     onAdd(value.trim());
