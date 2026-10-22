@@ -72,9 +72,18 @@ function sameTarget(a: BindingTarget, b: BindingTarget): boolean {
   return a.kind === 'local' ? b.kind === 'local' && a.localId === b.localId : b.kind === 'class-1' && a.artifactKey === b.artifactKey;
 }
 
-/** Eine gespeicherte Bindung am selben Import geht einer offenen Zuordnung vor (`targetOf()`). */
-function superseded(pointer: string, assigned: PendingImportTarget, stored: readonly WorkspaceBinding[]): boolean {
-  return stored.some((binding) => binding.pointer === pointer && binding.href === assigned.href);
+/**
+ * Wirkt eine ungespeicherte Zuordnung auf den Arbeitsstand? Genau dann, wenn
+ * `targetOf()` für einen Import des Arbeitsstands sie statt einer gespeicherten
+ * Bindung verwendet; eine überholte oder zu einem anderen `href` gehörende
+ * Zuordnung ist keine offene Änderung.
+ */
+export function hasOpenAssignment(imports: readonly ProfileImportView[], stored: readonly WorkspaceBinding[], pending: ReadonlyMap<string, PendingImportTarget>): boolean {
+  return imports.some((entry) => {
+    if (entry.href === undefined) return false;
+    const pointer = importHrefPointer(entry.index);
+    return pending.get(pointer)?.href === entry.href && !stored.some((binding) => binding.pointer === pointer && binding.href === entry.href);
+  });
 }
 
 /** Ungespeicherte Zuordnungen nach dem Entfernen eines Imports, an denselben Pointern wie `shiftImportBindings`. */
@@ -125,10 +134,9 @@ export function useProfileEditor(localId: LocalId): ProfileEditor {
     setPendingTargets(new Map(pending));
   }, [change, pending, saving, setStored]);
 
-  // Eine ungespeicherte Importzuordnung ist eine offene Änderung, auch wenn die Quelle gleich bleibt.
-  // Wie in `targetOf()` gewinnt eine gespeicherte Bindung am selben Import; eine so überholte Zuordnung zählt nicht.
-  const dirty = core.dirty || [...pendingTargets].some(([pointer, assigned]) => !superseded(pointer, assigned, stored));
   const imports = useMemo(() => readProfileImports(working), [working]);
+  // Eine wirksame ungespeicherte Importzuordnung ist eine offene Änderung, auch wenn die Quelle gleich bleibt.
+  const dirty = core.dirty || hasOpenAssignment(imports, stored, pendingTargets);
   const bindings = useMemo(() => editorBindings(localId, imports, stored, pendingTargets), [localId, imports, stored, pendingTargets]);
 
   const commitProfile = useCallback((source: unknown, approval?: { readonly request: ReviewApprovalRequest; readonly requireSchema: boolean }, rebind = false): Promise<CommitResult> =>
