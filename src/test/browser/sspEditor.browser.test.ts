@@ -221,6 +221,39 @@ test('ein Speicherstand aus einem zweiten Tab blockiert das Speichern als Konfli
   expect(title(await sspSource(ssp.localId))).toBe('Erster Stand');
 });
 
+test('beim Wiederöffnen gilt die neuere Baseline-Bindung eines zweiten Tabs statt der älteren ungespeicherten Wahl', async () => {
+  const seeded = await seedWorkspace();
+  await readStore((store) => store.addDocument(seeded.verbundId, {
+    source: makeSchemaValidOscalDocument('catalog', '1.2.2'), context: { trustClass: 'class-2-local-user' }, rootType: 'catalog', oscalVersion: '1.2.2',
+  }));
+  const { ssp, profile } = seeded;
+  const { shell, router: current } = await renderAt(buildWorkspaceDocumentUrl(seeded.verbundId, ssp.localId));
+  await editorReady(shell);
+  // Der relative href ist an das Profil gebunden; die ungespeicherte Wahl fällt auf den lokalen Catalog.
+  const radios = () => [...shell.querySelectorAll<HTMLInputElement>('[role="radiogroup"][aria-label="Eigene Daten"] input[type="radio"]')];
+  await expect.poll(() => radios().some((radio) => !radio.checked)).toBe(true);
+  await userEvent.click(radios().find((radio) => !radio.checked)!);
+  await expect.poll(async () => (await readStore((store) => store.getDraft(ssp.localId)))?.savedAt, { timeout: 15_000 }).toBeTruthy();
+  await current.navigate(buildStationUrl(seeded.verbundId, 'ssp'));
+  const newer = { fromLocalId: ssp.localId, pointer: '/system-security-plan/import-profile/href', href: 'profile.json', target: { kind: 'local' as const, localId: profile.localId } };
+  const store = value(await WorkspaceStore.open());
+  try {
+    // Zweiter Tab: speichert über eine andere Verbindung die Bindung an das Profil neu.
+    const draft = value(await store.getDraft(ssp.localId))!;
+    value(await store.saveDocument(ssp.localId, ssp.savedAt, draft.savedAt, {
+      source: ssp.source, context: { trustClass: 'class-2-local-user' }, rootType: 'system-security-plan', oscalVersion: '1.2.2',
+    }, [newer]));
+  } finally {
+    store.close();
+  }
+  await current.navigate(buildWorkspaceDocumentUrl(seeded.verbundId, ssp.localId));
+  await editorReady(shell);
+  const reopened = await sspSource(ssp.localId);
+  button(shell, 'Speichern')!.click();
+  await expect.poll(async () => (await sspSource(ssp.localId)).savedAt, { timeout: 15_000 }).not.toBe(reopened.savedAt);
+  expect((await readStore((store) => store.listBindings())).filter((binding) => binding.fromLocalId === ssp.localId)).toEqual([newer]);
+});
+
 test('volles Quota beim Speichern meldet „Speicher voll“ und schreibt nichts', async () => {
   const seeded = await seedWorkspace();
   const ssp = await addSsp(seeded.verbundId, makeMinimalSsp('1.2.2'));

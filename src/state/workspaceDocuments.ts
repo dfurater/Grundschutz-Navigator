@@ -21,6 +21,8 @@ type Save = Parameters<Port<'saveDocument'>>;
 export interface PendingImportTarget {
   readonly href: string;
   readonly target: BindingTarget;
+  /** `savedAt` des Speicherstands, gegen den die Wahl getroffen wurde; ein neueres Speichern überholt sie. */
+  readonly basis?: string;
 }
 
 export interface WorkspaceDocuments {

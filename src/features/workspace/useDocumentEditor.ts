@@ -57,12 +57,12 @@ export interface DocumentEditorCore<M extends string> {
   readonly change: (patch: (source: unknown) => unknown) => void;
   /**
    * Explizites Speichern von `working`: `prepare` bestimmt Quelle, Zustand und
-   * Bindungen; `onSaved` erhält die geschriebenen Bindungen.
+   * Bindungen; `onSaved` erhält Bindungen und neuen `savedAt`, bevor `latest` ihn trägt.
    */
   readonly commit: (
     working: unknown,
     prepare: (storedSource: unknown, snapshot: unknown) => Promise<PreparedSave>,
-    onSaved?: (bindings: readonly WorkspaceBinding[]) => void,
+    onSaved?: (bindings: readonly WorkspaceBinding[], savedAt: string) => void,
   ) => Promise<CommitResult>;
   /** Übernimmt einen neueren gespeicherten Stand nur ohne offene Eingaben; sonst bleibt der Konflikt erhalten. */
   readonly adopt: (document: WorkspaceEnvelope) => Promise<'adopted' | 'blocked' | 'failed'>;
@@ -79,8 +79,8 @@ export interface DocumentEditorOptions {
   readonly sameContent: (a: unknown, b: unknown) => boolean;
   /** Richtet gespeicherte Bindungen an einem Entwurf aus, dessen Pointer sich verschoben haben können. */
   readonly alignBindings?: (own: readonly WorkspaceBinding[], storedSource: unknown, draftSource: unknown) => WorkspaceBinding[];
-  /** Ungespeicherte Bindungsänderungen sperren als offene Eingaben die Übernahme eines neueren Stands. */
-  readonly hasPendingBindings?: () => boolean;
+  /** Wirksame ungespeicherte Bindungsänderungen am Arbeitsstand sperren als offene Eingaben die Übernahme eines neueren Stands. */
+  readonly hasPendingBindings?: (working: unknown, envelope: WorkspaceEnvelope | undefined) => boolean;
 }
 /**
  * Lebenszyklus eines bearbeitbaren Workspace-Dokuments: Laden von Dokument,
@@ -184,7 +184,7 @@ export function useDocumentEditor<M extends string>({ localId, rootType, sameCon
   }, [flush]);
 
   const adopt = useCallback(async (document: WorkspaceEnvelope): Promise<'adopted' | 'blocked' | 'failed'> => {
-    if (saving.current || options.current.hasPendingBindings?.()) return 'blocked';
+    if (saving.current || options.current.hasPendingBindings?.(latest.current.working, latest.current.envelope)) return 'blocked';
     const before = latest.current;
     if (!before.envelope) return 'failed';
     if (document.savedAt <= before.envelope.savedAt) return 'adopted';
@@ -248,7 +248,7 @@ export function useDocumentEditor<M extends string>({ localId, rootType, sameCon
       setMessage('save-failed');
       return { ok: false, code: result?.ok === false ? result.diagnostic.code : 'WORKSPACE_STORAGE_FAILED' };
     }
-    onSaved?.(prepared.bindings);
+    onSaved?.(prepared.bindings, result.value.savedAt);
     setEnvelope(result.value);
     setStored(prepared.bindings);
     // Eingaben während des Speicherns bleiben Arbeitsstand und gehen in den nächsten Entwurf.

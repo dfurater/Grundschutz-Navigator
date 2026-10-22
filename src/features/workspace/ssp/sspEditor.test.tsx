@@ -303,6 +303,27 @@ describe('Abweisungen und Zuordnungen', () => {
     expect(await within(main()).findByText('In einem anderen Tab geändert', undefined, WAIT)).toBeInTheDocument();
   });
 
+  it('lässt beim Wiederöffnen die neuere Bindung eines anderen Tabs gelten statt der älteren Baseline-Wahl', async () => {
+    const { ssp, profile } = seeded;
+    const pointer = '/system-security-plan/import-profile/href';
+    const { router } = renderArea(buildWorkspaceDocumentUrl(seeded.verbundId, ssp.localId), withGspp());
+    fireEvent.click(await within(main()).findByRole('radio', { name: /catalog-gspp/ }, WAIT));
+    await waitFor(async () => expect(await readStore((store) => store.getDraft(ssp.localId))).toBeDefined(), WAIT);
+    await router.navigate(buildStationUrl(seeded.verbundId, 'ssp'));
+    const draft = (await readStore((store) => store.getDraft(ssp.localId)))!;
+    const newer = { fromLocalId: ssp.localId, pointer, href: 'profile.json', target: { kind: 'local' as const, localId: profile.localId } };
+    await readStore((store) => store.saveDocument(ssp.localId, ssp.savedAt, draft.savedAt, {
+      source: ssp.source, context: { trustClass: 'class-2-local-user' }, rootType: 'system-security-plan', oscalVersion: '1.2.2',
+    }, [newer]));
+
+    await router.navigate(buildWorkspaceDocumentUrl(seeded.verbundId, ssp.localId));
+    await waitFor(() => expect(within(main()).getByRole('radio', { name: /catalog-gspp/ })).not.toBeChecked(), WAIT);
+    const reopened = (await readStore((store) => store.getDocument(ssp.localId)))!;
+    await click('Speichern');
+    await waitFor(async () => expect((await readStore((store) => store.getDocument(ssp.localId)))!.savedAt).not.toBe(reopened.savedAt), WAIT);
+    expect((await readStore((store) => store.listBindings())).filter((binding) => binding.fromLocalId === ssp.localId)).toEqual([newer]);
+  });
+
   it('führt eine ungespeicherte Baseline-Wahl als Entwurf und sperrt den Export', async () => {
     const relative = await addSsp(seeded.verbundId, withSspBody(makeFullSsp(), (body) => { body['import-profile'].href = 'profile.json'; }));
     renderArea(buildWorkspaceDocumentUrl(seeded.verbundId, relative.localId), withGspp());

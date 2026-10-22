@@ -43,6 +43,15 @@ function baselineHref(source: unknown): string | undefined {
 }
 
 /**
+ * Wirkt eine ungespeicherte Baseline-Wahl auf den Arbeitsstand? Nur für den
+ * aktuellen `href` und gegen genau den geladenen Speicherstand: Ein neueres
+ * Speichern, etwa aus einem anderen Tab, überholt die Wahl, und seine Bindung gilt.
+ */
+function effectiveChoice(choice: PendingImportTarget | undefined, href: string | undefined, envelope: WorkspaceEnvelope | undefined): PendingImportTarget | undefined {
+  return choice?.href === href && choice?.basis === envelope?.savedAt ? choice : undefined;
+}
+
+/**
  * Arbeitsstand eines SSP: gezielte Patches, Autosave in den Entwurf und
  * explizites Speichern mit unveränderter Root-UUID. `export-ready` entsteht
  * nur mit bestandenem Schema und bestandener Referenzprüfung; die Baseline ist
@@ -52,7 +61,8 @@ export function useSspEditor(localId: LocalId): SspEditor {
   const { documents, catalogDelivery } = useWorkspace();
   // Ungespeicherte Baseline-Wahl im Arbeitsspeicher des Tabs, wie die Importziele der Profile.
   const pending = documents.importTargets(localId);
-  const hasPendingBindings = useCallback(() => pending.has(SSP_IMPORT_PROFILE_POINTER), [pending]);
+  const hasPendingBindings = useCallback((current: unknown, envelope: WorkspaceEnvelope | undefined) =>
+    effectiveChoice(pending.get(SSP_IMPORT_PROFILE_POINTER), baselineHref(current), envelope) !== undefined, [pending]);
   const core = useDocumentEditor<SspMessage>({ localId, rootType: 'system-security-plan', sameContent: sameSspContent, hasPendingBindings });
   const { working, stored, change, commit, latest, setMessage, exportWith } = core;
   const [pendingBaseline, setPendingBaseline] = useState<PendingImportTarget | undefined>(() => pending.get(SSP_IMPORT_PROFILE_POINTER));
@@ -61,7 +71,8 @@ export function useSspEditor(localId: LocalId): SspEditor {
   // Dieselbe Klassifikation wie im Verbundgraphen: Ein externer Verweis nutzt nie eine Bindung.
   const baselineBindable = useMemo(() => sspBaselineBindable(working), [working]);
   const storedBaseline = stored.find((binding) => binding.pointer === SSP_IMPORT_PROFILE_POINTER && binding.href === href);
-  const chosen = (pendingBaseline?.href === href ? pendingBaseline?.target : undefined) ?? storedBaseline?.target;
+  const choice = effectiveChoice(pendingBaseline, href, core.envelope);
+  const chosen = choice?.target ?? storedBaseline?.target;
   const baseline = baselineBindable ? chosen : undefined;
   const bindings = useMemo((): readonly WorkspaceBinding[] => baselineBindable ? [
     ...stored.filter((binding) => binding.pointer !== SSP_IMPORT_PROFILE_POINTER),
@@ -84,7 +95,7 @@ export function useSspEditor(localId: LocalId): SspEditor {
     change((source) => setBaselineTitle(source, title));
     const current = baselineHref(latest.current.working);
     if (current === undefined) return;
-    const choice = { href: current, target };
+    const choice = { href: current, target, basis: latest.current.envelope?.savedAt };
     pending.set(SSP_IMPORT_PROFILE_POINTER, choice);
     setPendingBaseline(choice);
   }, [change, latest, pending]);
@@ -103,13 +114,18 @@ export function useSspEditor(localId: LocalId): SspEditor {
       const schema = await documents.checkProfileSchema(source);
       const ready = schema.status === 'passed' && sspReadinessBlocker(source) === undefined;
       return { ok: true, source, documentState: ready ? 'export-ready' : 'draft', bindings };
-    }, (saved) => {
+    }, (saved, savedAt) => {
       const written = saved.find((binding) => binding.pointer === SSP_IMPORT_PROFILE_POINTER);
-      const choice = pending.get(SSP_IMPORT_PROFILE_POINTER);
-      // Nur eine genau so gespeicherte Wahl entfällt; eine während des Speicherns geänderte bleibt offen.
-      if (choice && written?.href === choice.href && written.target === choice.target) {
+      const open = pending.get(SSP_IMPORT_PROFILE_POINTER);
+      if (!open) return;
+      // Nur eine genau so gespeicherte Wahl entfällt; eine während des Speicherns geänderte bleibt offen und gilt dem neuen Stand.
+      if (written?.href === open.href && written.target === open.target) {
         pending.delete(SSP_IMPORT_PROFILE_POINTER);
         setPendingBaseline(undefined);
+      } else if (open.basis === latest.current.envelope?.savedAt) {
+        const rebased = { ...open, basis: savedAt };
+        pending.set(SSP_IMPORT_PROFILE_POINTER, rebased);
+        setPendingBaseline(rebased);
       }
     });
     if (!result.ok && result.code === SSP_ADAPTER_DIAGNOSTIC_CODES.COMPONENT_REFERENCE_UNRESOLVED) setMessage('component-unresolved');
@@ -121,7 +137,7 @@ export function useSspEditor(localId: LocalId): SspEditor {
   const bindCatalogStand = useCallback(() => commitSsp(true), [commitSsp]);
 
   // Eine ungespeicherte Baseline-Wahl ist eine offene Änderung, auch wenn die Quelle gleich bleibt.
-  const dirty = core.dirty || pendingBaseline !== undefined;
+  const dirty = core.dirty || choice !== undefined;
   const exportDocument = useCallback(async () => { if (!dirty) await exportWith(exportSspInWorker, 'ssp.json'); }, [dirty, exportWith]);
 
   return {

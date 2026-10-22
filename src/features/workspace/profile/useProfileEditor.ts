@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { readProfileImports, type ProfileImportView } from '@/domain/profileAuthoring';
 import { alignImportBindings, importHrefPointer, removeImport, shiftImportBindings } from '@/domain/profileImportList';
 import { exportProfileInWorker } from '@/adapters/profileWorkbench';
@@ -110,9 +110,12 @@ function editorBindings(localId: LocalId, imports: readonly ProfileImportView[],
 export function useProfileEditor(localId: LocalId): ProfileEditor {
   const { documents, catalogDelivery } = useWorkspace();
   const pending = documents.importTargets(localId);
-  const hasPendingBindings = useCallback(() => pending.size > 0, [pending]);
+  // Dieselbe Wirksamkeitsregel wie `targetOf()`; `stored` entsteht erst im Kern und kommt über die Referenz.
+  const storedRef = useRef<readonly WorkspaceBinding[]>([]);
+  const hasPendingBindings = useCallback((current: unknown) => hasOpenAssignment(readProfileImports(current), storedRef.current, pending), [pending]);
   const core = useDocumentEditor<'saved-as-draft' | 'catalog-locked'>({ localId, rootType: 'profile', sameContent: sameProfileContent, alignBindings: alignImportBindings, hasPendingBindings });
   const { working, stored, setStored, change, commit, saving, latest, setMessage, exportWith } = core;
+  useEffect(() => { storedRef.current = stored; }, [stored]);
   // Spiegel der Map aus dem Arbeitsbereich, damit neue Zuordnungen neu rendern.
   const [pendingTargets, setPendingTargets] = useState<ReadonlyMap<string, PendingImportTarget>>(() => new Map(pending));
 
