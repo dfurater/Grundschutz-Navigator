@@ -119,7 +119,12 @@ describe('Kontextbindung', () => {
     });
     expect(codes(ambiguous)).toContain('OSCAL_AR_TASK_REFERENCE_UNRESOLVED');
     const assessmentPlan = parseAssessmentPlanDocument(makeBoundAssessmentPlanSource(), context);
+    firstResult(source).observations[0].origins[0]['related-tasks'] = [{ 'task-uuid': AP_UUIDS.task }];
     const invalid = parse(source, { assessmentPlan: { ...assessmentPlan, source: {} } });
+    expect(invalid.results[0].observations[0].origins[0].relatedTasks[0].reference).toEqual({
+      status: 'not-resolvable-in-context',
+      reason: 'assessment-plan-binding-invalid',
+    });
     expect(invalid.importAp?.status).toBe('not-resolvable-in-context');
     expect(invalid.results[0].localDefinitions.tasks[0].dependencies[0].reference).toEqual({
       status: 'not-resolvable-in-context',

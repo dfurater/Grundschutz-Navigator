@@ -120,6 +120,18 @@ export function origins(node: JsonObject, path: string, state: ArDeriveState): r
   return readObjectArrayField(node, 'origins', path, state).map((entry) => origin(entry.node, entry.path, state));
 }
 const SUBJECT_TYPES = new Set(['component', 'inventory-item', 'user', 'party', 'location', 'resource']);
+function subjectReference(
+  state: ArDeriveState,
+  type: string | undefined,
+  subjectUuid: string | undefined,
+  path: string,
+): ArReference {
+  if (type === undefined || !SUBJECT_TYPES.has(type))
+    return { status: 'not-resolvable-in-context', reason: 'subject-type-not-supported' };
+  // Ressourcen-Subjekte sind dokumentintern, wie im Evidenz-Read-Model.
+  const scopes: readonly ArScope[] = type === 'resource' ? ['local'] : ['local', 'assessment-plan', 'ssp'];
+  return arReference(state, type, subjectUuid, path, 'SUBJECT_REFERENCE_UNRESOLVED', scopes);
+}
 export function subjectReferences(
   node: JsonObject,
   path: string,
@@ -133,18 +145,7 @@ export function subjectReferences(
       subjectUuid,
       type,
       title: stringField(subject, 'title', sp, state),
-      reference:
-        type === undefined || !SUBJECT_TYPES.has(type)
-          ? { status: 'not-resolvable-in-context' as const, reason: 'subject-type-not-supported' }
-          : arReference(
-              state,
-              type,
-              subjectUuid,
-              `${sp}/subject-uuid`,
-              'SUBJECT_REFERENCE_UNRESOLVED',
-              // Ressourcen-Subjekte sind dokumentintern, wie im Evidenz-Read-Model.
-              type === 'resource' ? ['local'] : ['local', 'assessment-plan', 'ssp'],
-            ),
+      reference: subjectReference(state, type, subjectUuid, `${sp}/subject-uuid`),
     };
   });
 }
