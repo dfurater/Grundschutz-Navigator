@@ -79,6 +79,29 @@ describe('derivePoamProgress', () => {
     expect(rowsOf(closedRisk)[0]).toMatchObject({ completed: false, riskStatuses: ['closed'] });
   });
 
+  it('lässt ein aufgelöstes Risiko ohne Responses offen', () => {
+    const withoutResponses = withBody((body) => { delete (risk(body) as Record<string, unknown>).remediations; });
+    expect(rowsOf(withoutResponses)[0]).toMatchObject({ unresolvedRisks: 0, lifecycles: [], completed: false, riskStatuses: ['open'] });
+  });
+
+  it('wertet ein unmögliches Kalenderdatum nicht als Frist', () => {
+    expect(rowsOf(withBody((body) => { risk(body).deadline = '2026-02-30T10:00:00Z'; }))[0]).toMatchObject({ deadlineState: 'ohne Frist', deadline: undefined });
+  });
+
+  it('belegt bei nicht auflösbarem Risikoverweis weder Abschluss noch eingehaltene Frist', () => {
+    const withDangling = (deadline: string) => withBody((body) => {
+      risk(body).deadline = deadline;
+      risk(body).remediations[0].lifecycle = 'completed';
+      body['poam-items'][0]['related-risks'].push({ 'risk-uuid': '00000000-0000-4000-8000-0000000003fe' });
+    });
+    expect(rowsOf(withDangling('2026-12-01T00:00:00Z'))[0]).toMatchObject({
+      unresolvedRisks: 1, completed: false, deadlineState: 'ohne Frist', deadline: undefined,
+    });
+    expect(rowsOf(withDangling('2026-10-01T00:00:00Z'))[0]).toMatchObject({
+      unresolvedRisks: 1, completed: false, deadlineState: 'überschritten', deadline: '2026-10-01T00:00:00Z',
+    });
+  });
+
   it('weist ein schemagültiges erfundenes Lifecycle-Token als unbekannt aus und zählt es nicht als abgeschlossen', async () => {
     const source = withBody((body) => { risk(body).remediations[0].lifecycle = 'erledigt'; });
     expect((await validatePoamSchema(parsePoamDocument(source, context))).ok).toBe(true);
@@ -88,7 +111,7 @@ describe('derivePoamProgress', () => {
 
 describe('sortPoamProgress', () => {
   const row = (key: string, extra: Partial<PoamProgressRow>): PoamProgressRow => ({
-    key, requirementIds: [], deadlineState: 'ohne Frist', responsible: [], riskStatuses: [], lifecycles: [], completed: false, ...extra,
+    key, requirementIds: [], deadlineState: 'ohne Frist', responsible: [], riskStatuses: [], lifecycles: [], unresolvedRisks: 0, completed: false, ...extra,
   });
   const rows = [
     row('a', { title: 'A' }),

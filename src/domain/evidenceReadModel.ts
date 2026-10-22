@@ -144,7 +144,7 @@ const ALLOWED_OFFSETS = new Set([
 ]);
 
 /** `Date.parse` normalisiert unmögliche Angaben wie `2026-02-30`; deshalb vorher jede Komponente prüfen. */
-function parseTimestamp(value: unknown): number {
+export function parseTimestamp(value: unknown): number {
   const match = typeof value === 'string' ? DATE_TIME_WITH_TIMEZONE.exec(value) : null;
   if (match === null) return Number.NaN;
   const [year, month, day, hour, minute, second] = match.slice(1, 7).map(Number);

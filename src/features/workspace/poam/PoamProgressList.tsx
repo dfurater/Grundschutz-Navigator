@@ -14,7 +14,8 @@ interface ProgressRow extends PoamProgressRow {
   readonly documentTitle?: string;
 }
 
-const MARK = 'inline-flex items-center whitespace-nowrap rounded border px-2 py-0.5 text-xs font-medium leading-4';
+const MARK_BASE = 'inline-flex items-center rounded border px-2 py-0.5 text-xs font-medium leading-4';
+const MARK = `${MARK_BASE} whitespace-nowrap`;
 const STATE_TONE: Readonly<Record<DeadlineState, string>> = {
   eingehalten: 'border-[var(--color-border-default)] bg-[var(--color-surface-subtle)] text-[var(--color-text-secondary)]',
   überschritten: 'border-[var(--color-border-strong)] bg-[var(--color-surface-subtle)] font-semibold text-[var(--color-danger-text)]',
@@ -34,8 +35,8 @@ function Stand({ row }: Readonly<{ row: ProgressRow }>) {
   return (
     <span className="flex flex-wrap gap-1">
       {row.lifecycles.map((entry, index) => (
-        <span key={`${entry.value}${index}`} className={`${MARK} border-[var(--color-border-default)] text-[var(--color-text-secondary)]`}>
-          {entry.documented ? LIFECYCLE_LABELS[entry.value] : <>unbekannt: <span className="ml-1 font-mono">{entry.value || '—'}</span></>}
+        <span key={`${entry.value}${index}`} className={`${MARK_BASE} max-w-full border-[var(--color-border-default)] text-[var(--color-text-secondary)]`}>
+          {entry.documented ? LIFECYCLE_LABELS[entry.value] : <span className="min-w-0 break-all">unbekannt: <span className="font-mono">{entry.value || '—'}</span></span>}
         </span>
       ))}
     </span>
@@ -62,6 +63,7 @@ function Row({ verbundId, row }: Readonly<{ verbundId: string; row: ProgressRow 
       <span className="w-48 shrink-0 space-y-1">
         <Stand row={row} />
         {row.riskStatuses.length > 0 && <span className="block font-mono text-xs text-[var(--color-text-muted)]">risk.status {row.riskStatuses.join(', ')}</span>}
+        {row.unresolvedRisks > 0 && <span className="block text-xs text-[var(--color-text-secondary)]">{row.unresolvedRisks === 1 ? '1 Risikoverweis' : `${row.unresolvedRisks} Risikoverweise`} nicht auflösbar</span>}
       </span>
     </li>
   );

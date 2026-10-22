@@ -2,6 +2,7 @@ import 'fake-indexeddb/auto';
 import { fireEvent, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WorkspaceStore } from '@/adapters/workspaceStore';
+import { StorageFailure, failure } from '@/adapters/workspaceStorageFailure';
 import { buildStationUrl } from '@/app/routes';
 import { makeFullPoam, makeMinimalPoam } from '@/test/fixtures/poams';
 import { mainLandmark as main, renderWorkspaceArea } from '@/test/renderWorkspaceArea';
@@ -57,6 +58,25 @@ describe('Umsetzungsfortschritt in der Station POA&M', () => {
     expect(JSON.stringify(router.state.location)).not.toContain(SENTINEL);
     expect(JSON.stringify(router.state.location)).not.toContain('stand');
     for (const spy of writes) expect(spy).not.toHaveBeenCalled();
+    for (const spy of logs) expect(JSON.stringify(spy.mock.calls)).not.toContain(SENTINEL);
+  });
+
+  it('meldet einen Ladefehler als Alert ohne Klasse-2-Werte in der Konsole', async () => {
+    const source = makeFullPoam();
+    source['plan-of-action-and-milestones']['poam-items'][0].title = `Fehler ${SENTINEL}`;
+    const added = await addPoam(source);
+    const original = WorkspaceStore.prototype.getDocument;
+    let calls = 0;
+    // Der erste Abruf baut die Verbundansicht; erst der Abruf der Fortschrittsliste scheitert.
+    vi.spyOn(WorkspaceStore.prototype, 'getDocument').mockImplementation(function (this: WorkspaceStore, localId) {
+      if (localId === added.localId && ++calls > 1) return Promise.resolve(failure(new StorageFailure('WORKSPACE_STORAGE_FAILED')));
+      return original.call(this, localId);
+    });
+    const logs = ['log', 'info', 'warn', 'error', 'debug'].map(level => vi.spyOn(console, level as 'log'));
+    renderWorkspaceArea(buildStationUrl(seeded.verbundId, 'poam'));
+    expect(await within(main()).findByRole('alert')).toHaveTextContent('Umsetzungsfortschritt konnte nicht geladen werden.');
+    expect(main()).not.toHaveTextContent('Umsetzungsfortschritt wird geladen');
+    expect(main()).not.toHaveTextContent(`Fehler ${SENTINEL}`);
     for (const spy of logs) expect(JSON.stringify(spy.mock.calls)).not.toContain(SENTINEL);
   });
 

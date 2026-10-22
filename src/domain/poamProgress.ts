@@ -1,5 +1,6 @@
 import type { ApTask } from '@/domain/assessmentPlanModel';
 import type { PoamItem, PoamReference, Poam, PoamRisk } from '@/domain/poamModel';
+import { parseTimestamp } from '@/domain/evidenceReadModel';
 import { isJsonObject, readArray, readString } from '@/domain/jsonGuards';
 
 /** Fristzustände nach GSPP-314 Befund 8; kein vierter Zustand. */
@@ -22,25 +23,38 @@ export interface PoamProgressRow {
   /** `risk.status` unverändert; nie aus `lifecycle` abgeleitet. */
   readonly riskStatuses: readonly string[];
   readonly lifecycles: readonly { readonly value: string; readonly documented: boolean }[];
-  /** Jedes aufgelöste Risiko hat Responses, und jede trägt `lifecycle = completed`. */
+  /** `related-risks`-Einträge, die nicht auf ein Risiko dieses Dokuments auflösen; ihr Stand und ihre Frist sind unbekannt. */
+  readonly unresolvedRisks: number;
+  /** Alle Risikoverweise lösen auf, jedes Risiko hat Responses, und jede trägt `lifecycle = completed`. */
   readonly completed: boolean;
 }
 
-// DateTimeWithTimezoneDatatype verlangt einen Offset; ohne ihn wäre der Zeitpunkt von der Gerätezeitzone abhängig.
-const WITH_OFFSET = /T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
-
+/** Zeitpunkt nur bei schemagültigem `DateTimeWithTimezoneDatatype`; ein Entwurf kann `2026-02-30` oder einen fehlenden Offset tragen. */
 function instant(value: string | undefined): number | undefined {
-  if (value === undefined || !WITH_OFFSET.test(value)) return undefined;
-  const ms = Date.parse(value);
+  const ms = parseTimestamp(value);
   return Number.isNaN(ms) ? undefined : ms;
 }
 
-function resolvedLocal<T extends { readonly uuid?: string }>(
-  targets: readonly T[], uuid: string | undefined, reference: PoamReference,
-): T | undefined {
+/** Einmal je Ableitung aufgebaut, damit große POA&Ms nicht je Verweis alle Ziele durchsuchen. */
+function indexByUuid<T extends { readonly uuid?: string }>(targets: readonly T[]): ReadonlyMap<string, T> {
+  const index = new Map<string, T>();
+  for (const target of targets) {
+    const uuid = target.uuid?.toLowerCase();
+    if (uuid !== undefined && !index.has(uuid)) index.set(uuid, target);
+  }
+  return index;
+}
+
+function resolvedLocal<T>(index: ReadonlyMap<string, T>, uuid: string | undefined, reference: PoamReference): T | undefined {
   if (uuid === undefined || reference.status !== 'resolved' || reference.origin !== 'local') return undefined;
-  const wanted = uuid.toLowerCase();
-  return targets.find((target) => target.uuid?.toLowerCase() === wanted);
+  return index.get(uuid.toLowerCase());
+}
+
+interface ProgressContext {
+  readonly risks: ReadonlyMap<string, PoamRisk>;
+  readonly findings: ReadonlyMap<string, Poam['findings'][number]>;
+  readonly now: number;
+  readonly roleTitles: ReadonlyMap<string, string>;
 }
 
 function flattenTasks(tasks: readonly ApTask[]): ApTask[] {
@@ -66,10 +80,11 @@ function deadlineState(deadline: number | undefined, now: number): DeadlineState
   return deadline < now ? 'überschritten' : 'eingehalten';
 }
 
-function progressRow(item: PoamItem, poam: Poam, now: number, roleTitles: ReadonlyMap<string, string>): PoamProgressRow {
+function progressRow(item: PoamItem, { risks: riskIndex, findings, now, roleTitles }: ProgressContext): PoamProgressRow {
   const risks = item.relatedRisks
-    .map((related) => resolvedLocal<PoamRisk>(poam.risks, related.riskUuid, related.reference))
+    .map((related) => resolvedLocal(riskIndex, related.riskUuid, related.reference))
     .filter((risk): risk is PoamRisk => risk !== undefined);
+  const unresolvedRisks = item.relatedRisks.length - risks.length;
   const responses = risks.flatMap((risk) => risk.remediations);
   const tasks = flattenTasks(responses.flatMap((response) => response.tasks));
   const candidates = [
@@ -79,10 +94,12 @@ function progressRow(item: PoamItem, poam: Poam, now: number, roleTitles: Readon
     const ms = instant(value);
     return ms === undefined || value === undefined ? [] : [{ value, ms }];
   });
-  const earliest = candidates.reduce<{ value: string; ms: number } | undefined>(
+  const known = candidates.reduce<{ value: string; ms: number } | undefined>(
     (best, entry) => (best === undefined || entry.ms < best.ms ? entry : best), undefined);
+  // Ein nicht auflösbares Risiko kann eine frühere Frist tragen: Nur eine bereits überschrittene bekannte Frist bleibt belegt.
+  const earliest = unresolvedRisks > 0 && (known === undefined || known.ms >= now) ? undefined : known;
   const requirementIds = item.relatedFindings
-    .map((related) => resolvedLocal(poam.findings, related.findingUuid, related.reference)?.target?.targetId)
+    .map((related) => resolvedLocal(findings, related.findingUuid, related.reference)?.target?.targetId)
     .filter((id): id is string => id !== undefined);
   const lifecycles = responses.map((response) => {
     const value = response.lifecycle ?? '';
@@ -97,7 +114,8 @@ function progressRow(item: PoamItem, poam: Poam, now: number, roleTitles: Readon
     responsible: [...new Set(tasks.flatMap((task) => task.responsibleRoles.map((role) => roleTitles.get(role.roleId) ?? role.roleId)))],
     riskStatuses: risks.flatMap((risk) => (risk.status === undefined ? [] : [risk.status])),
     lifecycles,
-    completed: risks.length > 0
+    unresolvedRisks,
+    completed: risks.length > 0 && unresolvedRisks === 0
       && risks.every((risk) => risk.remediations.length > 0 && risk.remediations.every((response) => response.lifecycle === 'completed')),
   };
 }
@@ -106,7 +124,8 @@ function progressRow(item: PoamItem, poam: Poam, now: number, roleTitles: Readon
 export function derivePoamProgress(
   poam: Poam, now: Date, roleTitles: ReadonlyMap<string, string> = new Map(),
 ): PoamProgressRow[] {
-  return poam.poamItems.map((item) => progressRow(item, poam, now.getTime(), roleTitles));
+  const context = { risks: indexByUuid(poam.risks), findings: indexByUuid(poam.findings), now: now.getTime(), roleTitles };
+  return poam.poamItems.map((item) => progressRow(item, context));
 }
 
 export type PoamProgressSort = 'frist' | 'verantwortlich' | 'stand';
