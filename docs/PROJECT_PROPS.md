@@ -34,6 +34,9 @@ Registry): zusätzliche, fehlende oder abweichende Einträge brechen den Build.
 | `effort-estimate-hours` | Optionale Aufwandsschätzung in Stunden | Positive, endliche kanonische Dezimalzahl mit höchstens zwei Nachkommastellen | `poam-item`, `remediation` | `0` | `1` | `carrier` | `effort-estimate-hours` | `decimal-comma-to-point` | Dezimalpunkt, keine Einheit, kein Vorzeichen, keine Exponentialschreibweise; UI-Komma wird vor dem Schreiben normalisiert | [GSPP-356](https://linear.app/grundschutz-plus-plus/issue/GSPP-356) |
 | `custom-tag` | Lokales Schlagwort einer implementierten Anforderung | Getrimmter, nichtleerer Klasse-2-Text | `implemented-requirement` | `0` | `n` | `carrier` | `custom-tag` | `identity` | NFC-normalisiert und case-insensitiv je Träger eindeutig; Wert wird nicht umgedeutet oder extern ergänzt | [GSPP-312](https://linear.app/grundschutz-plus-plus/issue/GSPP-312) |
 | `protection-need-level` | Projektbezogener Schutzbedarf eines Zielobjekts | `normal`, `hoch` | `system-component`, `inventory-item`, `information-type` | `0` | `1` | `carrier` | `protection-need-level` | `identity` | Nichtleere `remarks` sind Pflicht; keine Ableitung aus OSCAL-CIA-Werten | [GSPP-355](https://linear.app/grundschutz-plus-plus/issue/GSPP-355) |
+| `target-object-category` | Direkte Kategorie eines Zielobjekts | Kleingeschriebene Kategorie-UUID | `system-component`, `inventory-item`, `information-type` | `0` | `n` | `carrier` | `target-category` | `identity` | `group: gspp`; je Träger/Gruppe/UUID eindeutig; gebundener GSPP-Stand erforderlich | [GSPP-355](https://linear.app/grundschutz-plus-plus/issue/GSPP-355) |
+| `effective-target-object-category` | Berechnete wirksame Kategorien eines Zielobjekts | Kleingeschriebene Kategorie-UUID | `system-component`, `inventory-item`, `information-type` | `0` | `n` | `carrier` | `target-category` | `identity` | `group: gspp`; je Träger/Gruppe/UUID eindeutig; gebundener GSPP-Stand erforderlich | [GSPP-355](https://linear.app/grundschutz-plus-plus/issue/GSPP-355) |
+| `protection-need-coverage` | Bewertungsabdeckung der erfassten SSP-Zielobjekte | `complete`, `incomplete` | `metadata` | `0` | `1` | `carrier` | `protection-coverage` | `identity` | Nur SSP-Metadaten; berechnet aus allen vorhandenen Zielobjekten | [GSPP-355](https://linear.app/grundschutz-plus-plus/issue/GSPP-355) |
 | `assessed-against-catalog-key` | Stabiler Katalogschlüssel einer Bewertung | Registrierter `catalogKey` | `metadata` | `0` | `1` | `group` | `catalog-key` | `identity` | `group` ist NCName-konform und exakt gleich dem Property-Wert | [GSPP-361](https://linear.app/grundschutz-plus-plus/issue/GSPP-361) |
 | `assessed-against-catalog-commit` | Exakter Katalogstand einer Bewertung | Vollständiger Git-Commit-SHA | `metadata` | `0` | `1` | `group` | `catalog-commit` | `identity` | Genau 40 kleingeschriebene Hex-Zeichen; Partner-Key mit identischer `group` ist Pflicht | [GSPP-361](https://linear.app/grundschutz-plus-plus/issue/GSPP-361) |
 <!-- project-props-contract:end -->
@@ -75,6 +78,14 @@ und nicht kanonische Commits sperren den Schreibpfad.
 Der Writer erzeugt das Paar ausschließlich atomar über
 `createCatalogReferenceProjectProps`. `createProjectProp` verweigert beide
 Paarhälften einzeln mit `OSCAL_PROJECT_PROP_CATALOG_PAIR_INCOMPLETE`.
+
+## Zielobjekte im SSP
+
+`protection-need-level` liegt auf Components, Inventory Items oder Information Types. Abwesenheit bedeutet „noch nicht bewertet“. `normal` und `hoch` verlangen eine nichtleere Begründung in `remarks`; native CIA-Felder bleiben eigenständig. Components mit `type` `business-process`, `virtual-system`, `room` oder `site` verwenden dokumentierte Projektwerte des offenen NIST-Typfelds.
+
+`target-object-category` transportiert direkte UUID-Zuordnungen; `effective-target-object-category` transportiert die vollständige, berechnete Menge einschließlich direkter Kategorien und aller Eltern. Beide verwenden `group: gspp` und benötigen das GSPP-Katalogreferenzpaar auf `metadata.props`. Die Hierarchie stammt aus dem verifizierten Kategorienvokabular desselben ausgelieferten Commits; sie wird nicht im Workspace kopiert.
+
+`protection-need-coverage` liegt ausschließlich auf SSP-Metadaten. `complete` erfordert mindestens ein Zielobjekt und gültigen Schutzbedarf an jedem erfassten Component-, Inventory-Item- und Information-Type-Träger. `incomplete` beschreibt einen Arbeitsstand mit offenen Bewertungen. Der Marker bestätigt weder einen vollständigen Assetbestand noch Compliance oder fachliche Freigabe. Fehlende Marker bleiben beim Lesen und No-op unverändert; widersprüchliche Marker sperren semantisches Schreiben und validierten Export.
 
 ## Kanonischer Aufwand
 

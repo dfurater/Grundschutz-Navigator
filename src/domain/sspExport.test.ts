@@ -3,10 +3,17 @@ import { exportSspDocument, SSP_EXPORT_CODES, validateSspExportTree } from '@/do
 import { createSspSource } from '@/domain/sspAuthoring';
 import { PINNED_OSCAL_VERSIONS } from '@/domain/oscalVersionMatrix';
 import { makeFullSsp, makeMinimalSsp, withSspBody } from '@/test/fixtures/systemSecurityPlans';
+import { PROJECT_PROPS_NAMESPACE as ns } from '@/domain/projectProps';
 
 const ready = (source: unknown) => ({ documentState: 'export-ready' as const, rootType: 'system-security-plan', source });
 
 describe('Validierter SSP-Export', () => {
+  it('weist falsche Coverage und ungültigen Schutzbedarf im Worker-Export ab', async () => {
+    const source = withSspBody(makeFullSsp(), body => { body.metadata.props = [{ ns, name: 'protection-need-coverage', value: 'complete' }]; });
+    expect(await exportSspDocument(ready(source))).toMatchObject({ ok: false, code: 'SSP_COVERAGE_MISMATCH' });
+    const invalid = withSspBody(makeFullSsp(), body => { body['system-implementation'].components[0].props = [{ ns, name: 'protection-need-level', value: '1' }]; });
+    expect(await exportSspDocument(ready(invalid))).toMatchObject({ ok: false, code: 'OSCAL_PROJECT_PROP_VALUE_INVALID' });
+  });
   it('exportiert reines OSCAL-JSON ohne Envelope und weist die Constraint-Stufe als not-checked aus', async () => {
     const source = makeFullSsp();
     const result = await exportSspDocument({ ...ready(source), localId: 'l', verbundId: 'v', savedAt: 'x' } as never);

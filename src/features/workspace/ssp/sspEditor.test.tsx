@@ -12,6 +12,7 @@ import { WorkspaceStore } from '@/adapters/workspaceStore';
 import { makeFullSsp, makeMinimalSsp, SSP_FIXTURE_IDS, withSspBody } from '@/test/fixtures/systemSecurityPlans';
 import { mainLandmark as main, renderWorkspaceArea as renderArea, withLoadedCatalog } from '@/test/renderWorkspaceArea';
 import { readStore, resetWorkspace, seedWorkspace, type SeededWorkspace } from '@/test/workspaceAreaFixture';
+import { withSspCategories, SSP_CATEGORY_IDS } from '@/test/fixtures/sspCategories';
 
 vi.mock('@/adapters/oscalImportGate', async () => (await import('@/test/workspaceNodeWorkers')).inProcessImportGate());
 vi.mock('@/adapters/reviewTrailWork', async () => (await import('@/test/workspaceNodeWorkers')).inProcessReviewTrailWork());
@@ -90,6 +91,104 @@ async function fillRequired() {
   fireEvent.change(await within(main()).findByLabelText(/^Neue Anforderung/), { target: { value: 'GC.1.1' } });
   await click('Anforderung hinzufügen');
 }
+
+describe('Zielobjektbestand', () => {
+  it('übernimmt bei offenen Bewertungseingaben keine UUID-lose Umordnung aus einem anderen Tab', async () => {
+    const source = withSspBody(makeFullSsp(), body => {
+      const first = body['system-characteristics']['system-information']!['information-types']![0];
+      delete first.uuid;
+      body['system-characteristics']['system-information']!['information-types']!.push({ ...structuredClone(first), title: 'Zweite Informationsart' });
+    });
+    const ssp = await addSsp(seeded.verbundId, source);
+    renderArea(buildWorkspaceDocumentUrl(seeded.verbundId, ssp.localId), withGspp());
+    const first = await within(main()).findByRole('listitem', { name: /^Informationsart 1/ });
+    fireEvent.change(within(first).getByLabelText('Begründung des Schutzbedarfs'), { target: { value: 'Eingabe für Betriebsdaten' } });
+    const newer = withSspBody(source, body => { body['system-characteristics']['system-information']!['information-types']!.reverse(); });
+    await readStore(store => store.saveDocument(ssp.localId, ssp.savedAt, null, { source: JSON.parse(JSON.stringify(newer)), context: { trustClass: 'class-2-local-user' }, rootType: 'system-security-plan', oscalVersion: '1.2.2' }));
+    fireEvent.click(within(main()).getByText('Prüfung und Freigabe'));
+    await within(main()).findByText('Prüfzustand', undefined, WAIT);
+    await new Promise(resolve => setTimeout(resolve, 100));
+    const currentFirst = within(main()).getByRole('listitem', { name: /^Informationsart 1/ });
+    expect(within(currentFirst).getByLabelText(/information-types.title/)).toHaveValue('Betriebsdaten');
+    expect(within(currentFirst).getByLabelText('Begründung des Schutzbedarfs')).toHaveValue('Eingabe für Betriebsdaten');
+  });
+  it('hält den Bereichswechsel bei nicht übernommenen Bewertungseingaben an und meldet keinen Speicherfehler', async () => {
+    const ssp = await addSsp(seeded.verbundId, makeFullSsp());
+    const { router } = renderArea(buildWorkspaceDocumentUrl(seeded.verbundId, ssp.localId), withGspp());
+    const first = await within(main()).findByRole('listitem', { name: /^Inventareintrag 1/ });
+    fireEvent.change(within(first).getByLabelText('Begründung des Schutzbedarfs'), { target: { value: 'Offene Eingabe' } });
+    const areas = within(screen.getByTestId('header-bar')).getByRole('navigation', { name: 'Bereiche' });
+    fireEvent.click(within(areas).getByRole('link', { name: 'Katalog' }), { button: 0 });
+    expect(await within(main()).findByText(/offenen Schutzbedarfseingaben/, undefined, WAIT)).toBeInTheDocument();
+    expect(router.state.location.pathname).toContain(String(ssp.localId));
+    expect(screen.queryByText(/Speicher/i, { selector: '[role="alert"]' })).toBeNull();
+  });
+  it('zeigt Groß-/Kleinschreibung lokaler UUID-Bezüge ohne falschen Auflösungsfehler und erhält die Quelle', async () => {
+    const source = withSspBody(makeFullSsp(), body => {
+      body['system-implementation'].components[1].uuid = 'abcdefab-0000-4000-8000-000000000002';
+      body['system-implementation']['inventory-items']![0]['implemented-components']![0]['component-uuid'] = 'ABCDEFAB-0000-4000-8000-000000000002';
+      body.metadata.parties![0].uuid = 'abcdefab-0000-4000-8000-000000000003';
+      body['system-implementation']['inventory-items']![0]['responsible-parties']![0]['party-uuids'] = ['ABCDEFAB-0000-4000-8000-000000000003'];
+    });
+    const ssp = await addSsp(seeded.verbundId, source);
+    renderArea(buildWorkspaceDocumentUrl(seeded.verbundId, ssp.localId), withGspp());
+    const item = await within(main()).findByRole('listitem', { name: /^Inventareintrag 1/ });
+    expect(within(item).queryAllByText(/nicht auflösbar/)).toEqual([]);
+    expect(within(item).getByLabelText('Lokale Komponente')).toHaveValue('ABCDEFAB-0000-4000-8000-000000000002');
+    expect(within(item).getByLabelText('Lokale Partei')).toHaveValue('ABCDEFAB-0000-4000-8000-000000000003');
+  });
+  it('hält Eingaben an UUID-losen Informationsarten beim Hinzufügen und Umordnen', async () => {
+    const source = withSspBody(makeFullSsp(), body => {
+      const first = body['system-characteristics']['system-information']!['information-types']![0];
+      delete first.uuid;
+      body['system-characteristics']['system-information']!['information-types']!.push({ ...structuredClone(first), title: 'Zweite Informationsart' });
+    });
+    const ssp = await addSsp(seeded.verbundId, source);
+    renderArea(buildWorkspaceDocumentUrl(seeded.verbundId, ssp.localId), withGspp());
+    const first = await within(main()).findByRole('listitem', { name: /^Informationsart 1/ });
+    fireEvent.change(within(first).getByLabelText('Begründung des Schutzbedarfs'), { target: { value: 'Noch nicht übernommene Eingabe' } });
+    await click('Informationsart hinzufügen');
+    fireEvent.click(within(first).getByRole('button', { name: /nach unten$/ }));
+    const moved = within(main()).getByRole('listitem', { name: /^Informationsart 2/ });
+    expect(within(moved).getByLabelText('Begründung des Schutzbedarfs')).toHaveValue('Noch nicht übernommene Eingabe');
+  });
+  it('bindet Kategorien bestätigt, speichert direkte und abgeleitete UUIDs und exportiert genau diesen Stand', async () => {
+    const ssp = await addSsp(seeded.verbundId, makeFullSsp());
+    renderArea(buildWorkspaceDocumentUrl(seeded.verbundId, ssp.localId), withSspCategories(withGspp()));
+    const component = await within(main()).findByRole('listitem', { name: /Komponente 1/ });
+    fireEvent.click(within(component).getByRole('button', { name: 'Kategorienstand binden…' }));
+    fireEvent.click(await screen.findByRole('button', { name: /^Kategorienstand binden$/ }));
+    fireEvent.click(await within(component).findByRole('checkbox', { name: 'Synthetische Unterkategorie' }));
+    expect(within(component).getByText(/Synthetische Elternkategorie · abgeleitet/)).toBeInTheDocument();
+    await click('Speichern');
+    await waitFor(async () => expect((await readStore(store => store.getDocument(ssp.localId)))?.documentState).toBe('export-ready'), WAIT);
+    const saved = (await readStore(store => store.getDocument(ssp.localId)))!;
+    const body = saved.source as { 'system-security-plan': { 'system-implementation': { components: { props: unknown[] }[] } } };
+    expect(body['system-security-plan']['system-implementation'].components[0].props).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: 'target-object-category', value: SSP_CATEGORY_IDS[1] }),
+      expect.objectContaining({ name: 'effective-target-object-category', value: SSP_CATEGORY_IDS[0] }),
+    ]));
+    await click('Export');
+    await waitFor(() => expect(downloadBlob).toHaveBeenCalled(), WAIT);
+    expect(JSON.parse(await vi.mocked(downloadBlob).mock.calls[0][0].text())).toEqual(saved.source);
+  });
+  it('zeigt offene Abdeckung und erfasst Schutzbedarf mit Begründung im gespeicherten SSP', async () => {
+    const ssp = await addSsp(seeded.verbundId, makeFullSsp());
+    renderArea(buildWorkspaceDocumentUrl(seeded.verbundId, ssp.localId), withGspp());
+    expect(await within(main()).findByText('Schutzbedarf: 0 von 4 Objekten bewertet')).toBeInTheDocument();
+    const component = await within(main()).findByRole('listitem', { name: /Komponente 1/ });
+    fireEvent.change(within(component).getByLabelText('Schutzbedarf'), { target: { value: 'hoch' } });
+    fireEvent.change(within(component).getByLabelText('Begründung des Schutzbedarfs'), { target: { value: 'Synthetischer Ausfall' } });
+    fireEvent.click(within(component).getByRole('button', { name: 'Bewertung übernehmen' }));
+    await click('Speichern');
+    await waitFor(async () => {
+      const saved = await readStore(store => store.getDocument(ssp.localId));
+      expect(JSON.stringify(saved?.source)).toContain('Synthetischer Ausfall');
+      expect(JSON.stringify(saved?.source)).toContain('protection-need-coverage');
+    }, WAIT);
+    expect(within(main()).getByText('Schutzbedarf: 1 von 4 Objekten bewertet')).toBeInTheDocument();
+  });
+});
 
 describe('Neuanlage mit Baseline-Wahl', () => {
   it('speichert vor der Baseline-Wahl nichts und legt danach einen gebundenen 1.2.2-Entwurf an', async () => {
@@ -202,7 +301,7 @@ describe('Referenzen und Bindungen', () => {
     const full = await addSsp(seeded.verbundId, makeFullSsp());
     const { unmount } = renderArea(buildWorkspaceDocumentUrl(seeded.verbundId, full.localId), withGspp());
     await click(/^Komponente 1 · Gesamtsystem entfernen$/);
-    expect(await within(main()).findByText(/Eine Umsetzungsaussage verweist auf sie/)).toBeInTheDocument();
+    expect(await within(main()).findByText(/vorhandene oder nicht vollständig prüfbare Verwendungen/)).toBeInTheDocument();
     expect(within(main()).getByRole('listitem', { name: /Komponente 1 · Gesamtsystem/ })).toBeInTheDocument();
     unmount();
 
@@ -412,5 +511,15 @@ describe('Listenzeilen und Löschung', () => {
     await waitFor(() => expect(router.state.location.pathname).toBe(buildStationUrl(seeded.verbundId, 'ssp')), WAIT);
     expect(await readStore((store) => store.getDocument(seeded.ssp.localId))).toBeUndefined();
     expect((await readStore((store) => store.listBindings())).filter((binding) => binding.fromLocalId === seeded.ssp.localId)).toEqual([]);
+  });
+
+  it('kehrt nach dem Löschen trotz nicht übernommener Bewertungseingabe zur Liste zurück', async () => {
+    const ssp = await addSsp(seeded.verbundId, makeFullSsp());
+    const { router } = renderArea(buildWorkspaceDocumentUrl(seeded.verbundId, ssp.localId), withGspp());
+    const first = await within(main()).findByRole('listitem', { name: /^Inventareintrag 1/ });
+    fireEvent.change(within(first).getByLabelText('Begründung des Schutzbedarfs'), { target: { value: 'Offene Eingabe' } });
+    await click('SSP löschen…');
+    fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Endgültig löschen' }));
+    await waitFor(() => expect(router.state.location.pathname).toBe(buildStationUrl(seeded.verbundId, 'ssp')), WAIT);
   });
 });

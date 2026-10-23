@@ -15,7 +15,7 @@ import {
 import type { RawOscalProp } from '@/domain/models';
 
 describe('projectProps registry', () => {
-  it('registriert exakt die sechs ADR-10-Namen und ist tief eingefroren', () => {
+  it('registriert die registrierten Projektnamen und ist tief eingefroren', () => {
     expect(PROJECT_PROPS_NAMESPACE).toBe(
       'https://github.com/dfurater/Grundschutz-Navigator/ns/oscal/props',
     );
@@ -24,6 +24,9 @@ describe('projectProps registry', () => {
       'effort-estimate-hours',
       'custom-tag',
       'protection-need-level',
+      'target-object-category',
+      'effective-target-object-category',
+      'protection-need-coverage',
       'assessed-against-catalog-key',
       'assessed-against-catalog-commit',
     ]);

@@ -10,10 +10,11 @@ import { ImportTargetPicker } from '@/features/workspace/profile/ImportTargetPic
 import { targetKey, type ImportTargetOption } from '@/features/workspace/profile/useImportTargets';
 import { SspRowList, SspSelectField, SspTextField } from '@/features/workspace/ssp/SspFormControls';
 import type { BaselineControls } from '@/features/workspace/ssp/useBaselineControls';
+import { InventoryReferences, SspTargetFields, TargetResponsibility } from '@/features/workspace/ssp/SspTargetFields';
 import type { SspEditor } from '@/features/workspace/ssp/useSspEditor';
 
 /** Übliche Komponententypen des Metaschemas; der Typ ist freier Text. */
-const COMPONENT_TYPES = ['this-system', 'system', 'interconnection', 'software', 'hardware', 'service', 'policy', 'physical', 'process-procedure', 'plan', 'guidance', 'standard', 'validation'];
+const COMPONENT_TYPES = ['this-system', 'system', 'interconnection', 'software', 'hardware', 'service', 'policy', 'physical', 'process-procedure', 'plan', 'guidance', 'standard', 'validation', 'business-process', 'virtual-system', 'network', 'room', 'site'];
 
 export const NOT_RESOLVABLE_LABEL = 'nicht auflösbar im aktuellen Kontext';
 
@@ -103,12 +104,13 @@ export function CharacteristicsSection({ editor }: Readonly<{ editor: SspEditor 
       <SspTextField editor={editor} path={[sc, 'description']} label="Beschreibung" required multiline />
       <SspSelectField editor={editor} path={[sc, 'status', 'state']} label="Betriebsstatus" options={SSP_SYSTEM_STATES} required />
       <SspTextField editor={editor} path={[sc, 'authorization-boundary', 'description']} label="Systemgrenze" required multiline />
-      <SspRowList editor={editor} path={[sc, 'system-information', 'information-types']} title="Informationsarten" required uuidKeyed
+      <SspRowList editor={editor} path={[sc, 'system-information', 'information-types']} title="Informationsarten" required uuidKeyed protectedTarget
         addLabel="Informationsart hinzufügen" newItem={() => ({ uuid: crypto.randomUUID() })} rowTitle={rowTitle('Informationsart', 'title')}
         renderRow={(path) => (
           <>
             <SspTextField editor={editor} path={[...path, 'title']} label="Titel" required />
             <SspTextField editor={editor} path={[...path, 'description']} label="Beschreibung" required multiline />
+            <SspTargetFields editor={editor} path={path} />
           </>
         )} />
     </FormSection>
@@ -122,7 +124,7 @@ export function ImplementationSection({ editor }: Readonly<{ editor: SspEditor }
   return (
     <FormSection title="Systemimplementierung">
       <datalist id={typesId}>{COMPONENT_TYPES.map((type) => <option key={type} value={type} />)}</datalist>
-      <SspRowList editor={editor} path={[si, 'components']} title="Komponenten" required uuidKeyed addLabel="Komponente hinzufügen"
+      <SspRowList editor={editor} path={[si, 'components']} title="Komponenten" required uuidKeyed protectedTarget addLabel="Komponente hinzufügen"
         newItem={() => ({ uuid: crypto.randomUUID() })} remove={removeSspComponent} rowTitle={rowTitle('Komponente', 'title')}
         renderRow={(path, item) => (
           <>
@@ -132,11 +134,21 @@ export function ImplementationSection({ editor }: Readonly<{ editor: SspEditor }
             </div>
             <SspTextField editor={editor} path={[...path, 'description']} label="Beschreibung" required multiline />
             <SspSelectField editor={editor} path={[...path, 'status', 'state']} label="Status" options={SSP_COMPONENT_STATES} required />
+            <TargetResponsibility editor={editor} path={path} />
+            <SspTargetFields editor={editor} path={path} />
             {readArray(isJsonObject(item) ? item.protocols : undefined).map((protocol, index) => (
               <SspTextField key={text(protocol, 'uuid') ?? `protocol-${index}`} editor={editor} path={[...path, 'protocols', index, 'name']} label={`Protokoll ${index + 1}`} required={sspProtocolNameRequired(version)} mono />
             ))}
           </>
         )} />
+      <SspRowList editor={editor} path={[si, 'inventory-items']} title="Inventareinträge" uuidKeyed protectedTarget addLabel="Inventareintrag hinzufügen"
+        newItem={() => ({ uuid: crypto.randomUUID() })} rowTitle={rowTitle('Inventareintrag', 'description')}
+        renderRow={(path) => <>
+          <SspTextField editor={editor} path={[...path, 'description']} label="Beschreibung" required multiline />
+          <InventoryReferences editor={editor} path={path} />
+          <TargetResponsibility editor={editor} path={path} inventory />
+          <SspTargetFields editor={editor} path={path} />
+        </>} />
       <SspRowList editor={editor} path={[si, 'users']} title="Benutzer" required={sspUsersRequired(version)} uuidKeyed addLabel="Benutzer hinzufügen"
         newItem={() => ({ uuid: crypto.randomUUID() })} rowTitle={rowTitle('Benutzer', 'title')}
         renderRow={(path) => (

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { exportSspInWorker } from '@/adapters/sspWorkbench';
 import { readString } from '@/domain/jsonGuards';
 import { SSP_ADAPTER_DIAGNOSTIC_CODES } from '@/adapters/oscalSspReaders';
@@ -6,11 +6,19 @@ import { readSspValue, setBaselineTitle, sspBaselineBindable, SspPatchError, SSP
 import { catalogPinsForSave } from '@/domain/workspaceCatalogPin';
 import { commitSspSave, sameSspContent, sspReadinessBlocker, sspSaveBlocker } from '@/domain/sspSave';
 import type { BindingTarget, LocalId, WorkspaceBinding, WorkspaceEnvelope } from '@/domain/workspaceModel';
+import { downloadBlob } from '@/adapters/browserDownload';
+import { serializeWorkspaceJson } from '@/domain/workspaceJson';
+import { sspCategoryContext } from '@/domain/sspCategoryContext';
+import { prepareSspTargets, validateSspTargets, type TargetCategoryContext, type TargetFailure } from '@/domain/sspTargetObjects';
+import { targetDeletionUses } from '@/domain/sspTargetDeletion';
+import type { SspPath } from '@/domain/sspAuthoring';
+import { useCatalog } from '@/hooks/useCatalog';
+import { StorageFailure, UNSAVED_INPUT_CODE, failure } from '@/adapters/workspaceStorageFailure';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { useDocumentEditor, type DocumentEditorCoreMessage, type DocumentSaveState } from '@/features/workspace/useDocumentEditor';
 import type { PendingImportTarget } from '@/state/workspaceDocuments';
 
-type SspMessage = 'saved-as-draft' | 'component-unresolved' | 'component-referenced' | 'patch-failed' | 'catalog-locked';
+type SspMessage = 'saved-as-draft' | 'component-unresolved' | 'component-referenced' | 'patch-failed' | 'catalog-locked' | 'target-invalid' | 'target-delete-blocked' | 'target-form-pending';
 
 export type SspEditorMessage = DocumentEditorCoreMessage | SspMessage;
 
@@ -34,6 +42,11 @@ export interface SspEditor {
   readonly bindCatalogStand: () => Promise<void>;
   readonly exportDocument: () => Promise<void>;
   readonly remove: () => Promise<boolean>;
+  readonly categories?: TargetCategoryContext;
+  readonly targetFailure?: TargetFailure;
+  readonly setTargetFormPending: (id: string, pending: boolean) => void;
+  readonly checkTargetRemoval: (path: SspPath) => Promise<readonly string[]>;
+  readonly exportPreserved: () => void;
   /** Übernimmt einen neueren gespeicherten Stand nur ohne offene Eingaben. */
   readonly adopt: (document: WorkspaceEnvelope) => Promise<'adopted' | 'blocked' | 'failed'>;
 }
@@ -58,13 +71,28 @@ function effectiveChoice(choice: PendingImportTarget | undefined, href: string |
  * eine Bindung am Pointer `import-profile.href`, nie ein aufgelöster Verweis.
  */
 export function useSspEditor(localId: LocalId): SspEditor {
-  const { documents, catalogDelivery } = useWorkspace();
+  const { documents, catalogDelivery, registerAutosave } = useWorkspace();
+  const catalog = useCatalog();
+  const categories = useMemo(() => sspCategoryContext(catalog), [catalog]);
+  const pendingForms = useRef(new Set<string>());
+  const [hasPendingForms, setHasPendingForms] = useState(false);
+  const setTargetFormPending = useCallback((id: string, pending: boolean) => {
+    if (pending) pendingForms.current.add(id);
+    else pendingForms.current.delete(id);
+    setHasPendingForms(pendingForms.current.size > 0);
+  }, []);
   // Ungespeicherte Baseline-Wahl im Arbeitsspeicher des Tabs, wie die Importziele der Profile.
   const pending = documents.importTargets(localId);
   const hasPendingBindings = useCallback((current: unknown, envelope: WorkspaceEnvelope | undefined) =>
-    effectiveChoice(pending.get(SSP_IMPORT_PROFILE_POINTER), baselineHref(current), envelope) !== undefined, [pending]);
+    pendingForms.current.size > 0 || effectiveChoice(pending.get(SSP_IMPORT_PROFILE_POINTER), baselineHref(current), envelope) !== undefined, [pending]);
   const core = useDocumentEditor<SspMessage>({ localId, rootType: 'system-security-plan', sameContent: sameSspContent, hasPendingBindings });
   const { working, stored, change, commit, latest, setMessage, exportWith } = core;
+  // Nicht übernommene Bewertungseingaben liegen nur im Formular; der Bereichswechsel bleibt gesperrt, bis sie übernommen oder zurückgesetzt sind.
+  useEffect(() => registerAutosave(async () => {
+    if (pendingForms.current.size === 0) return { ok: true as const, value: undefined };
+    setMessage('target-form-pending');
+    return failure(new StorageFailure(UNSAVED_INPUT_CODE));
+  }), [registerAutosave, setMessage]);
   const [pendingBaseline, setPendingBaseline] = useState<PendingImportTarget | undefined>(() => pending.get(SSP_IMPORT_PROFILE_POINTER));
 
   const href = baselineHref(working);
@@ -80,6 +108,10 @@ export function useSspEditor(localId: LocalId): SspEditor {
   ] : stored, [baselineBindable, stored, baseline, href, localId]);
 
   const apply = useCallback((patch: (source: unknown) => unknown) => {
+    if (latest.current.envelope && validateSspTargets(latest.current.envelope.source, categories)) {
+      setMessage('target-invalid');
+      return false;
+    }
     let next: unknown;
     try {
       next = patch(latest.current.working);
@@ -89,7 +121,7 @@ export function useSspEditor(localId: LocalId): SspEditor {
     }
     change(() => next);
     return true;
-  }, [change, latest, setMessage]);
+  }, [categories, change, latest, setMessage]);
 
   const chooseBaseline = useCallback((target: BindingTarget, title: string) => {
     change((source) => setBaselineTitle(source, title));
@@ -101,7 +133,13 @@ export function useSspEditor(localId: LocalId): SspEditor {
   }, [change, latest, pending]);
 
   const commitSsp = useCallback(async (rebind: boolean) => {
+    if (pendingForms.current.size) { setMessage('target-form-pending'); return; }
     const result = await commit(latest.current.working, async (storedSource, snapshot) => {
+      const importedFailure = validateSspTargets(storedSource, categories);
+      if (importedFailure) { setMessage('target-invalid'); return { ok: false, code: importedFailure.code }; }
+      const targets = sameSspContent(storedSource, snapshot) ? { ok: true as const, source: snapshot } : prepareSspTargets(snapshot, categories);
+      if (!targets.ok) { setMessage('target-invalid'); return targets; }
+      snapshot = targets.source;
       const blocker = sspSaveBlocker(snapshot);
       if (blocker) return { ok: false, code: blocker.code };
       // Schreibschutz aus dem gespeicherten Stand; eine Bindung an einen BSI-Katalog erhält das Paar des ausgelieferten Stands.
@@ -128,20 +166,46 @@ export function useSspEditor(localId: LocalId): SspEditor {
         setPendingBaseline(rebased);
       }
     });
-    if (!result.ok && result.code === SSP_ADAPTER_DIAGNOSTIC_CODES.COMPONENT_REFERENCE_UNRESOLVED) setMessage('component-unresolved');
+    if (!result.ok && result.code === 'SSP_TARGET_DELETE_BLOCKED') setMessage('target-delete-blocked');
+    else if (!result.ok && result.code === SSP_ADAPTER_DIAGNOSTIC_CODES.COMPONENT_REFERENCE_UNRESOLVED) setMessage('component-unresolved');
     else if (result.ok && result.documentState === 'draft') setMessage('saved-as-draft');
-  }, [bindings, catalogDelivery, commit, documents, latest, pending, setMessage, stored]);
+  }, [bindings, categories, catalogDelivery, commit, documents, latest, pending, setMessage, stored]);
 
   const save = useCallback(() => commitSsp(false), [commitSsp]);
   // Ein offener Entwurf wird dabei mitgespeichert: Er ist sonst unter der Sperre nicht mehr zu sichern.
   const bindCatalogStand = useCallback(() => commitSsp(true), [commitSsp]);
 
   // Eine ungespeicherte Baseline-Wahl ist eine offene Änderung, auch wenn die Quelle gleich bleibt.
-  const dirty = core.dirty || choice !== undefined;
-  const exportDocument = useCallback(async () => { if (!dirty) await exportWith(exportSspInWorker, 'ssp.json'); }, [dirty, exportWith]);
+  const dirty = core.dirty || choice !== undefined || hasPendingForms;
+  // Nach erfolgreicher Löschung gibt es keine Eingaben mehr zu schützen; bei einem Fehler bleibt die Sperre bestehen.
+  const { remove: removeDocument } = core;
+  const remove = useCallback(async () => {
+    const removed = await removeDocument();
+    if (removed) { pendingForms.current.clear(); setHasPendingForms(false); }
+    return removed;
+  }, [removeDocument]);
+  const exportDocument = useCallback(async () => { if (!dirty) await exportWith(document => exportSspInWorker(document, categories), 'ssp.json'); }, [categories, dirty, exportWith]);
+
+  const checkTargetRemoval = useCallback(async (path: SspPath): Promise<readonly string[]> => {
+    const bindings = await documents.listBindings();
+    if (!bindings.ok) return ['Verwendung nicht vollständig prüfbar'];
+    const ids = [...new Set(bindings.value.map(binding => binding.fromLocalId))];
+    const members: WorkspaceEnvelope[] = [];
+    for (const id of ids) {
+      const member = await documents.getDocument(id);
+      if (!member.ok || !member.value) return ['Verwendung nicht vollständig prüfbar'];
+      members.push(member.value);
+    }
+    return targetDeletionUses(latest.current.working, path, localId, members, bindings.value);
+  }, [documents, latest, localId]);
+  const targetFailure = core.envelope ? validateSspTargets(core.envelope.source, categories) : undefined;
+  const exportPreserved = useCallback(() => {
+    if (latest.current.envelope) downloadBlob(new Blob([serializeWorkspaceJson(latest.current.envelope.source)], { type: 'application/json' }), 'ssp-ungeprueft.json');
+  }, [latest]);
 
   return {
+    categories, targetFailure, checkTargetRemoval, exportPreserved, setTargetFormPending,
     status: core.status, envelope: core.envelope, working, dirty, saveState: core.saveState, busy: core.busy, message: core.message,
-    baseline, baselineBindable, apply, chooseBaseline, save, bindCatalogStand, exportDocument, remove: core.remove, adopt: core.adopt,
+    baseline, baselineBindable, apply, chooseBaseline, save, bindCatalogStand, exportDocument, remove, adopt: core.adopt,
   };
 }

@@ -1,3 +1,4 @@
+import type { TargetCategoryContext } from '@/domain/sspTargetObjects';
 import type { ProfileExportResult } from '@/domain/profileExport';
 import type { DocumentState } from '@/domain/workspaceModel';
 import type { ProfileAnalysis, ProfileAnalysisSnapshot } from '@/state/workspaceProfileAnalysis';
@@ -16,7 +17,7 @@ export type WorkbenchRequest =
   | { readonly type: 'view'; readonly snapshot: VerbundViewSnapshot }
   | { readonly type: 'analyze'; readonly snapshot: ProfileAnalysisSnapshot }
   | { readonly type: 'export'; readonly document: ProfileExportRequest }
-  | { readonly type: 'ssp-export'; readonly document: ProfileExportRequest };
+  | { readonly type: 'ssp-export'; readonly document: ProfileExportRequest & { readonly categories?: TargetCategoryContext } };
 
 /**
  * Ohne `Worker`-API läuft dieselbe Ableitung im Main Thread; ein vorhandener

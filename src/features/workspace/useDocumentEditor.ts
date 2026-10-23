@@ -79,7 +79,7 @@ export interface DocumentEditorOptions {
   readonly sameContent: (a: unknown, b: unknown) => boolean;
   /** Richtet gespeicherte Bindungen an einem Entwurf aus, dessen Pointer sich verschoben haben können. */
   readonly alignBindings?: (own: readonly WorkspaceBinding[], storedSource: unknown, draftSource: unknown) => WorkspaceBinding[];
-  /** Wirksame ungespeicherte Bindungsänderungen am Arbeitsstand sperren als offene Eingaben die Übernahme eines neueren Stands. */
+  /** Offene Bindungs- oder Formulareingaben sperren die Übernahme eines neueren Stands. */
   readonly hasPendingBindings?: (working: unknown, envelope: WorkspaceEnvelope | undefined) => boolean;
 }
 /**
@@ -193,7 +193,7 @@ export function useDocumentEditor<M extends string>({ localId, rootType, sameCon
     if (!draft.ok || !bindings.ok) return 'failed';
     const current = latest.current;
     // Eingaben oder ein anderer Übernahmeversuch während des Lesens: nicht still überschreiben.
-    if (current.envelope !== before.envelope || current.working !== before.working || current.unsaved) return 'blocked';
+    if (current.envelope !== before.envelope || current.working !== before.working || current.unsaved || options.current.hasPendingBindings?.(current.working, current.envelope)) return 'blocked';
     if (!current.envelope || !options.current.sameContent(current.envelope.source, current.working)) return 'blocked';
     const source = draft.value?.source ?? document.source;
     latest.current = { working: source, envelope: document, draftSavedAt: draft.value?.savedAt ?? null, unsaved: false };
