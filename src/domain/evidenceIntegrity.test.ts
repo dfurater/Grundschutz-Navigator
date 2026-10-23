@@ -121,6 +121,23 @@ describe('verifyResourceIntegrity', () => {
     expect(atob).not.toHaveBeenCalled();
   });
 
+  it('dekodiert ungepolstertes base64 über maxDecodedBase64Bytes nicht', async () => {
+    const atob = vi.spyOn(globalThis, 'atob');
+    const limit = CLASS_2_IMPORT_LIMITS.maxDecodedBase64Bytes;
+    const value = Buffer.alloc(limit + 1).toString('base64').replace(/=+$/, '');
+    const [first] = await verifyResourceIntegrity(resource({ base64: { value } }));
+    expect(first).toEqual({ status: 'not-verifiable', reason: 'no-local-content' });
+    expect(atob).not.toHaveBeenCalled();
+  });
+
+  it('dekodiert ungepolstertes base64 genau auf maxDecodedBase64Bytes', async () => {
+    const atob = vi.spyOn(globalThis, 'atob');
+    const value = Buffer.alloc(CLASS_2_IMPORT_LIMITS.maxDecodedBase64Bytes).toString('base64').replace(/=+$/, '');
+    const [first] = await verifyResourceIntegrity(resource({ base64: { value } }));
+    expect(first).toEqual({ status: 'verified-mismatch' });
+    expect(atob).toHaveBeenCalledTimes(1);
+  });
+
   it('lässt den nicht zugelassenen Algorithmus in der aufgelösten Ressource unverändert', () => {
     const source = { 'assessment-results': { 'back-matter': { resources: [resource({})] } } };
     const document = createReferenceDocument({

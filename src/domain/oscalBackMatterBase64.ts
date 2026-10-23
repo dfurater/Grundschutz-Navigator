@@ -38,13 +38,15 @@ function countBase64Padding(encoded: string): number {
 
 /**
  * Dekodierte Größe eines base64-Werts, rein arithmetisch aus der kodierten
- * Länge. Exportiert, damit das laufende Ausgabebudget der Profile Resolution
- * (GSPP-345) exakt diese Arithmetik benutzt statt einer zweiten Fassung: Zwei
- * Rechnungen für dieselbe Grenze könnten auseinanderlaufen, und dann würde
- * das laufende Budget die Postcondition unterschätzen.
+ * Länge: sechs Bit je Zeichen ohne Polsterung, abgerundet auf volle Bytes. Die
+ * Restgruppe eines ungepolsterten Werts (2 Zeichen → 1 Byte, 3 → 2) zählt mit,
+ * weil `atob` sie dekodiert. Exportiert, damit das laufende Ausgabebudget der
+ * Profile Resolution (GSPP-345) exakt diese Arithmetik benutzt statt einer
+ * zweiten Fassung: Zwei Rechnungen für dieselbe Grenze könnten auseinanderlaufen,
+ * und dann würde das laufende Budget die Postcondition unterschätzen.
  */
 export function decodedBase64ByteLength(encoded: string): number {
-  return Math.max(0, Math.floor(encoded.length / 4) * 3 - countBase64Padding(encoded));
+  return Math.max(0, Math.floor(((encoded.length - countBase64Padding(encoded)) * 3) / 4));
 }
 
 type EmbeddedBase64Accounting =

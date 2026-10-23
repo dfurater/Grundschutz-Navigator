@@ -274,8 +274,9 @@ entscheidet die Schemastufe vor der Übertragung.
 #### Erreichbarkeit der Base64-Grenze
 
 Ein `base64`-Wert steht als Text im Dokument und zählt vollständig gegen
-`maxBytes`. Seine dekodierte Größe ist `floor(len / 4) * 3` abzüglich
-Polsterung, also höchstens drei Viertel der kodierten Länge. Selbst ein
+`maxBytes`. Seine dekodierte Größe ist `floor((len - Polsterung) * 3 / 4)`, also
+höchstens drei Viertel der kodierten Länge; die Restgruppe eines
+ungepolsterten Werts zählt mit. Selbst ein
 Dokument, das seine gesamten zugelassenen 10 MiB als base64-Text ausgibt,
 erreicht damit nur **7 864 278 Byte** dekodierte Summe. Eine Grenze auf oder
 über diesem Wert löst bei **keiner** Eingabe aus.
