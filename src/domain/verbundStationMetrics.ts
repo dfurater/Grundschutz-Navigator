@@ -22,8 +22,8 @@ export type DocumentMetric =
   | { readonly kind: 'profile'; readonly included: number; readonly available: number }
   /** `implemented-requirements`, deren `control-id` in der Baseline auflöst, von Controls der Baseline. */
   | { readonly kind: 'ssp'; readonly documented: number; readonly baseline: number }
-  /** Findings mit `target.status.state` `satisfied` oder `not-satisfied`. */
-  | { readonly kind: 'assessment-results'; readonly assessed: number; readonly notSatisfied: number }
+  /** Findings mit `target.status.state` `satisfied` oder `not-satisfied`; `unknown` zählt Findings ohne einen dieser Werte. */
+  | { readonly kind: 'assessment-results'; readonly assessed: number; readonly notSatisfied: number; readonly unknown: number }
   /** Nicht abgeschlossene `poam-items` und davon die mit überschrittener Frist. */
   | { readonly kind: 'poam'; readonly open: number; readonly overdue: number };
 
@@ -49,16 +49,24 @@ function findingState(finding: unknown): string | undefined {
   return readString(isJsonObject(target?.status) ? target.status.state : undefined);
 }
 
-/** Ohne mindestens ein lesbares `result` ist „0 geprüft“ keine belegte Aussage. */
+/**
+ * Ohne mindestens ein lesbares `result` ist „0 geprüft“ keine belegte Aussage;
+ * ebenso, wenn ein `findings` vorhanden, aber kein Array aus Objekten ist.
+ * Ein fehlendes `findings` ist zulässig und zählt als keine Findings.
+ */
 function assessmentMetric(source: unknown): DocumentMetric | undefined {
   const body = isJsonObject(source) && isJsonObject(source['assessment-results']) ? source['assessment-results'] : {};
   const results = readArray(body.results);
   if (results.length === 0 || !results.every(isJsonObject)) return undefined;
+  const readable = (findings: unknown) => findings === undefined || (Array.isArray(findings) && findings.every(isJsonObject));
+  if (!results.every((result) => readable(result.findings))) return undefined;
   const states = results.flatMap((result) => readArray(result.findings).map(findingState));
+  const assessed = states.filter((state) => state === 'satisfied' || state === 'not-satisfied').length;
   return {
     kind: 'assessment-results',
-    assessed: states.filter((state) => state === 'satisfied' || state === 'not-satisfied').length,
+    assessed,
     notSatisfied: states.filter((state) => state === 'not-satisfied').length,
+    unknown: states.length - assessed,
   };
 }
 

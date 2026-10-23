@@ -2,8 +2,13 @@
 import 'fake-indexeddb/auto';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { AppShell } from '@/app/AppShell';
+import { useWorkspace } from '@/hooks/useWorkspace';
+import { CatalogContext } from '@/state/CatalogContext';
+import { WorkspaceProvider } from '@/state/WorkspaceContext';
+import { renderAppShell } from '@/test/renderAppShell';
 import { buildStationUrl, buildVerbundUrl, buildWorkspaceIndexUrl } from '@/app/routes';
-import { mainLandmark as main, renderWorkspaceArea as renderArea } from '@/test/renderWorkspaceArea';
+import { EMPTY_CATALOG_STATE, mainLandmark as main, renderWorkspaceArea as renderArea } from '@/test/renderWorkspaceArea';
 import {
   SENTINEL_VERBUND, readStore, resetWorkspace, seedWorkspace, type SeededWorkspace,
 } from '@/test/workspaceAreaFixture';
@@ -99,6 +104,32 @@ describe('Verbund-Übersicht', () => {
     fireEvent.click(within(main()).getByRole('button', { name: 'Abbrechen' }));
     fireEvent.click(within(main()).getByRole('button', { name: 'Umbenennen' }));
     expect(within(main()).getByLabelText('Neuer Name')).toHaveValue(SENTINEL_VERBUND);
+  });
+
+  it('verwirft eine offene Umbenennung, wenn der Verbund über die Übersicht aller Verbünde gelöscht wird', async () => {
+    let drafts: Map<string, string> | undefined;
+    function Probe() {
+      drafts = useWorkspace().renameDrafts;
+      return null;
+    }
+    renderAppShell([buildVerbundUrl(seeded.verbundId)], {
+      shell: () => (
+        <CatalogContext.Provider value={EMPTY_CATALOG_STATE}>
+          <WorkspaceProvider><Probe /><AppShell /></WorkspaceProvider>
+        </CatalogContext.Provider>
+      ),
+    });
+    await within(main()).findByRole('heading', { level: 1, name: SENTINEL_VERBUND });
+    fireEvent.click(within(main()).getByRole('button', { name: 'Umbenennen' }));
+    fireEvent.change(within(main()).getByLabelText('Neuer Name'), { target: { value: 'Halb getippt' } });
+    expect(drafts?.get(seeded.verbundId)).toBe('Halb getippt');
+
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Pfad' })).getByRole('link', { name: 'Informationsverbünde' }));
+    const row = (await within(main()).findByRole('link', { name: SENTINEL_VERBUND })).closest('li')!;
+    fireEvent.click(within(row).getByRole('button', { name: 'Löschen…' }));
+    fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Endgültig löschen' }));
+    await waitFor(() => expect(within(main()).queryByRole('link', { name: SENTINEL_VERBUND })).not.toBeInTheDocument());
+    expect(drafts?.has(seeded.verbundId)).toBe(false);
   });
 
   it('löscht den Verbund erst nach Bestätigung und kehrt zur Übersicht zurück', async () => {

@@ -124,16 +124,10 @@ function DocumentList({ verbundId, documents, empty }: Readonly<{ verbundId: str
   );
 }
 
-/**
- * Offene Umbenennungen je Verbund, nur im Arbeitsspeicher des Tabs: Wer während
- * der Eingabe eine Station oder einen anderen Verbund öffnet, findet sie bei der
- * Rückkehr wieder. Speichern, Abbrechen und Löschen verwerfen sie.
- */
-const renameDrafts = new Map<string, string>();
-
 /** Kopf der Verbund-Übersicht (Bild 2): Name, Umbenennen, Löschen mit Bestätigung, Herkunft und Speicherstand. */
 function VerbundHeader({ view, now }: Readonly<{ view: VerbundView; now: number }>) {
-  const { writable, renameVerbund, deleteVerbund } = useWorkspace();
+  // Eine offene Umbenennung überdauert Stations- und Verbundwechsel (`renameDrafts` im Provider).
+  const { writable, renameVerbund, deleteVerbund, renameDrafts } = useWorkspace();
   const navigate = useNavigate();
   const { verbund, documents } = view;
   const [renaming, setRenaming] = useState(() => renameDrafts.has(verbund.verbundId));
@@ -180,8 +174,11 @@ function VerbundHeader({ view, now }: Readonly<{ view: VerbundView; now: number 
           onChange={(name) => renameDrafts.set(verbund.verbundId, name)}
           onSubmit={async (name) => {
             const result = await renameVerbund(verbund.verbundId as VerbundId, name);
-            if (result.ok) stopRenaming();
-            return result.ok;
+            if (!result.ok) return false;
+            // Nur der gespeicherte Stand fällt weg; was danach getippt wurde, bleibt offen.
+            if (renameDrafts.get(verbund.verbundId)?.trim() === name) renameDrafts.delete(verbund.verbundId);
+            setRenaming(false);
+            return true;
           }}
           onCancel={stopRenaming}
         />
@@ -204,9 +201,7 @@ function VerbundHeader({ view, now }: Readonly<{ view: VerbundView; now: number 
         onConfirm={() => {
           setConfirming(false);
           void deleteVerbund(verbund.verbundId as VerbundId).then((result) => {
-            if (!result.ok) return;
-            renameDrafts.delete(verbund.verbundId);
-            void navigate(buildWorkspaceIndexUrl(), { replace: true });
+            if (result.ok) void navigate(buildWorkspaceIndexUrl(), { replace: true });
           });
         }}
       >

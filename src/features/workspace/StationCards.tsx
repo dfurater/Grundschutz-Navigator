@@ -52,7 +52,11 @@ function metricText(metric: DocumentMetric | number | undefined): string | undef
   switch (metric?.kind) {
     case 'profile': return `${count.format(metric.included)} von ${count.format(metric.available)} aufgenommen`;
     case 'ssp': return `${count.format(metric.documented)} von ${count.format(metric.baseline)} dokumentiert`;
-    case 'assessment-results': return `${count.format(metric.assessed)} geprüft · ${count.format(metric.notSatisfied)} nicht erfüllt`;
+    case 'assessment-results': return [
+      `${count.format(metric.assessed)} geprüft`,
+      `${count.format(metric.notSatisfied)} nicht erfüllt`,
+      ...(metric.unknown > 0 ? [`${count.format(metric.unknown)} ohne auswertbaren Status`] : []),
+    ].join(' · ');
     case 'poam': return `${count.format(metric.open)} offene ${metric.open === 1 ? 'Maßnahme' : 'Maßnahmen'}`;
     default: return undefined;
   }

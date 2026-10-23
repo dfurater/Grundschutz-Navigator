@@ -48,7 +48,7 @@ describe('deriveStationMetrics', () => {
     expect(metrics.computedAt).toBe(NOW.toISOString());
     expect(metrics.documents.get('profile' as LocalId)).toEqual({ kind: 'profile', included: 2, available: 4 });
     expect(metrics.documents.get('ssp' as LocalId)).toEqual({ kind: 'ssp', documented: 1, baseline: 2 });
-    expect(metrics.documents.get('ar' as LocalId)).toEqual({ kind: 'assessment-results', assessed: 3, notSatisfied: 2 });
+    expect(metrics.documents.get('ar' as LocalId)).toEqual({ kind: 'assessment-results', assessed: 3, notSatisfied: 2, unknown: 1 });
   });
 
   it('lässt eine Kennzahl ohne Grundlage weg, statt sie zu schätzen', () => {
@@ -69,12 +69,14 @@ describe('deriveStationMetrics', () => {
       member('ohne-results', 'assessment-results', {}),
       member('results-kein-array', 'assessment-results', { results: 'x' }),
       member('result-kein-objekt', 'assessment-results', { results: [1] }),
+      member('findings-kein-array', 'assessment-results', { results: [{ findings: 'x' }] }),
+      member('finding-kein-objekt', 'assessment-results', { results: [{ findings: [1] }] }),
       member('ohne-items', 'plan-of-action-and-milestones', {}),
       member('item-kein-objekt', 'plan-of-action-and-milestones', { 'poam-items': ['x'] }),
     ];
     expect(deriveStationMetrics(drafts, graph, [], NOW).documents.size).toBe(0);
     expect(deriveStationMetrics([member('ar', 'assessment-results', { results: [{}] })], graph, [], NOW).documents.get('ar' as LocalId))
-      .toEqual({ kind: 'assessment-results', assessed: 0, notSatisfied: 0 });
+      .toEqual({ kind: 'assessment-results', assessed: 0, notSatisfied: 0, unknown: 0 });
   });
 
   it('zählt offene und überfällige Maßnahmen über die Fristableitung; ein unlesbarer Entwurf hat keine Zahl', () => {
