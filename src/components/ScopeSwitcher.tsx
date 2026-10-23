@@ -177,7 +177,7 @@ export function ScopeSwitcher<K extends string = string>({
               {activeItem.title}
             </span>
             <IconChevronDown
-              className={`h-3.5 w-3.5 shrink-0 transition-[rotate,color] ${open ? `rotate-180 ${style.chevronOpen}` : style.chevron}`}
+              className={`h-3.5 w-3.5 shrink-0 transition-[rotate,color] ${open ? 'rotate-180' : ''} ${open ? style.chevronOpen : style.chevron}`}
             />
           </button>
         )}

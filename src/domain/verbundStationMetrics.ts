@@ -10,6 +10,7 @@
 import { parsePoamDocument } from '@/adapters/oscalPoamDocument';
 import { isJsonObject, readArray, readString } from '@/domain/jsonGuards';
 import { derivePoamProgress } from '@/domain/poamProgress';
+import { SUPPORTED_CATALOGS, type CatalogKey } from '@/domain/sourceRegistry';
 import { buildWorkspaceCatalog } from '@/domain/workspaceCatalog';
 import {
   workspaceDocumentToken, type WorkspaceClass1Artifact, type WorkspaceGraph, type WorkspaceGraphEdge,
@@ -29,7 +30,11 @@ export type DocumentMetric =
 export interface StationMetrics {
   /** Controls des gebundenen BSI-Katalogs, nur bei genau einem gebundenen Katalog. */
   readonly catalogControls?: number;
+  /** `catalogKey` desselben Katalogs, damit Zahl und Ziel der Catalog-Karte übereinstimmen. */
+  readonly catalogKey?: CatalogKey;
   readonly documents: ReadonlyMap<LocalId, DocumentMetric>;
+  /** Bezugszeitpunkt der Fristableitung (ISO 8601); die Karte nennt ihn neben „überfällig“. */
+  readonly computedAt: string;
 }
 
 const SSP_REQUIREMENT_PATH = /^\/system-security-plan\/control-implementation\/implemented-requirements\/\d+\/control-id$/;
@@ -39,22 +44,29 @@ function controlCount(source: unknown): number | undefined {
   return projection.status === 'success' ? projection.catalog.controlsById.size : undefined;
 }
 
-function assessmentMetric(source: unknown): DocumentMetric {
-  let assessed = 0;
-  let notSatisfied = 0;
+function findingState(finding: unknown): string | undefined {
+  const target = isJsonObject(finding) && isJsonObject(finding.target) ? finding.target : undefined;
+  return readString(isJsonObject(target?.status) ? target.status.state : undefined);
+}
+
+/** Ohne mindestens ein lesbares `result` ist „0 geprüft“ keine belegte Aussage. */
+function assessmentMetric(source: unknown): DocumentMetric | undefined {
   const body = isJsonObject(source) && isJsonObject(source['assessment-results']) ? source['assessment-results'] : {};
-  for (const result of readArray(body.results)) {
-    for (const finding of readArray(isJsonObject(result) ? result.findings : undefined)) {
-      const target = isJsonObject(finding) && isJsonObject(finding.target) ? finding.target : undefined;
-      const state = readString(isJsonObject(target?.status) ? target.status.state : undefined);
-      if (state === 'satisfied' || state === 'not-satisfied') assessed += 1;
-      if (state === 'not-satisfied') notSatisfied += 1;
-    }
-  }
-  return { kind: 'assessment-results', assessed, notSatisfied };
+  const results = readArray(body.results);
+  if (results.length === 0 || !results.every(isJsonObject)) return undefined;
+  const states = results.flatMap((result) => readArray(result.findings).map(findingState));
+  return {
+    kind: 'assessment-results',
+    assessed: states.filter((state) => state === 'satisfied' || state === 'not-satisfied').length,
+    notSatisfied: states.filter((state) => state === 'not-satisfied').length,
+  };
 }
 
 function poamMetric(member: WorkspaceEnvelope, now: Date): DocumentMetric | undefined {
+  // Der Parser übergeht unlesbare `poam-items`; „0 offene Maßnahmen“ setzt eine lesbare Liste voraus.
+  const body = isJsonObject(member.source) ? member.source['plan-of-action-and-milestones'] : undefined;
+  const items = readArray(isJsonObject(body) ? body['poam-items'] : undefined);
+  if (items.length === 0 || !items.every(isJsonObject)) return undefined;
   try {
     const rows = derivePoamProgress(parsePoamDocument(member.source, { trustClass: member.trustClass }).view, now)
       .filter((row) => !row.completed);
@@ -65,13 +77,10 @@ function poamMetric(member: WorkspaceEnvelope, now: Date): DocumentMetric | unde
   }
 }
 
-/** Kennzahlen je Mitglied; `class1Artifacts` sind die geladenen, an den Verbund gebundenen BSI-Artefakte. */
-export function deriveStationMetrics(
-  members: readonly WorkspaceEnvelope[],
-  graph: Pick<WorkspaceGraph, 'edges' | 'resolutions'>,
-  class1Artifacts: readonly WorkspaceClass1Artifact[],
-  now: Date,
-): StationMetrics {
+type Graph = Pick<WorkspaceGraph, 'edges' | 'resolutions'>;
+
+/** Zählt Controls je Dokument: ein Profil über seine Auflösung, ein Katalog über seinen Quellgraphen. */
+function createControlCounter(members: readonly WorkspaceEnvelope[], graph: Graph, class1Artifacts: readonly WorkspaceClass1Artifact[]) {
   const counts = new Map<string, number | undefined>();
   const sources = new Map<string, { readonly rootType: string; readonly source: unknown }>([
     ...members.map((member) => [`local:${member.localId}`, member] as const),
@@ -79,7 +88,6 @@ export function deriveStationMetrics(
   ]);
   const resolved = new Map(graph.resolutions.flatMap((resolution) =>
     resolution.status === 'resolved' ? [[workspaceDocumentToken(resolution.document), resolution.source] as const] : []));
-  // Ein Profil zählt mit seiner Auflösung, ein Katalog mit seinem Quellgraphen.
   const countOf = (token: string): number | undefined => {
     if (!counts.has(token)) {
       const document = sources.get(token);
@@ -88,42 +96,59 @@ export function deriveStationMetrics(
     }
     return counts.get(token);
   };
-  const outgoing = (localId: LocalId, kind: WorkspaceGraphEdge['kind']) => graph.edges.filter((edge) =>
-    edge.kind === kind && edge.from.document.kind === 'local' && edge.from.document.localId === localId);
-  const targetsOf = (edges: readonly WorkspaceGraphEdge[]) => {
-    const tokens = new Set(edges.map((edge) => (edge.state === 'resolved' && edge.to ? workspaceDocumentToken(edge.to.document) : '')));
-    return tokens.has('') ? undefined : [...tokens];
+  /** Summe über alle Ziele der Kanten; ein nicht aufgelöstes oder nicht zählbares Ziel ergibt `undefined`. */
+  const sumOfTargets = (edges: readonly WorkspaceGraphEdge[]): number | undefined => {
+    if (edges.length === 0 || edges.some((edge) => edge.state !== 'resolved' || !edge.to)) return undefined;
+    const values = [...new Set(edges.flatMap((edge) => (edge.to ? [workspaceDocumentToken(edge.to.document)] : [])))].map(countOf);
+    return values.every((value) => value !== undefined) ? values.reduce((sum: number, value) => sum + (value ?? 0), 0) : undefined;
   };
-  const sumOf = (tokens: readonly string[] | undefined) => {
-    const values = tokens?.map(countOf);
-    return values && values.length > 0 && values.every((value) => value !== undefined)
-      ? values.reduce((sum: number, value) => sum + (value ?? 0), 0)
-      : undefined;
-  };
+  return { countOf, sumOfTargets };
+}
 
-  const documents = new Map<LocalId, DocumentMetric>();
-  for (const member of members) {
-    const token = `local:${member.localId}`;
-    let metric: DocumentMetric | undefined;
-    if (member.rootType === 'profile') {
-      const included = countOf(token);
-      const available = sumOf(targetsOf(outgoing(member.localId, 'profile-import')));
-      if (included !== undefined && available !== undefined) metric = { kind: 'profile', included, available };
-    } else if (member.rootType === 'system-security-plan') {
-      const baseline = sumOf(targetsOf(outgoing(member.localId, 'ssp-import-profile')));
-      const documented = new Set(outgoing(member.localId, 'ssp-control')
+function memberMetric(member: WorkspaceEnvelope, graph: Graph, counter: ReturnType<typeof createControlCounter>, now: Date): DocumentMetric | undefined {
+  const outgoing = (kind: WorkspaceGraphEdge['kind']) => graph.edges.filter((edge) =>
+    edge.kind === kind && edge.from.document.kind === 'local' && edge.from.document.localId === member.localId);
+  switch (member.rootType) {
+    case 'profile': {
+      const included = counter.countOf(`local:${member.localId}`);
+      const available = counter.sumOfTargets(outgoing('profile-import'));
+      return included === undefined || available === undefined ? undefined : { kind: 'profile', included, available };
+    }
+    case 'system-security-plan': {
+      const baseline = counter.sumOfTargets(outgoing('ssp-import-profile'));
+      const documented = new Set(outgoing('ssp-control')
         .filter((edge) => edge.state === 'resolved' && SSP_REQUIREMENT_PATH.test(edge.path))
         .map((edge) => edge.to?.localId)).size;
-      if (baseline !== undefined) metric = { kind: 'ssp', documented, baseline };
-    } else if (member.rootType === 'assessment-results') {
-      metric = assessmentMetric(member.source);
-    } else if (member.rootType === 'plan-of-action-and-milestones') {
-      metric = poamMetric(member, now);
+      return baseline === undefined ? undefined : { kind: 'ssp', documented, baseline };
     }
+    case 'assessment-results': return assessmentMetric(member.source);
+    case 'plan-of-action-and-milestones': return poamMetric(member, now);
+    default: return undefined;
+  }
+}
+
+/** Kennzahlen je Mitglied; `class1Artifacts` sind die geladenen, an den Verbund gebundenen BSI-Artefakte. */
+export function deriveStationMetrics(
+  members: readonly WorkspaceEnvelope[],
+  graph: Graph,
+  class1Artifacts: readonly WorkspaceClass1Artifact[],
+  now: Date,
+): StationMetrics {
+  const counter = createControlCounter(members, graph, class1Artifacts);
+  const documents = new Map<LocalId, DocumentMetric>();
+  for (const member of members) {
+    const metric = memberMetric(member, graph, counter, now);
     if (metric) documents.set(member.localId, metric);
   }
 
   const catalogs = class1Artifacts.filter((artifact) => artifact.rootType === 'catalog');
-  const catalogControls = catalogs.length === 1 ? countOf(`class-1:${catalogs[0].artifactKey}`) : undefined;
-  return { ...(catalogControls === undefined ? {} : { catalogControls }), documents };
+  const catalogKey = catalogs.length === 1
+    ? SUPPORTED_CATALOGS.find((entry) => entry.artifactKey === catalogs[0].artifactKey)?.catalogKey
+    : undefined;
+  const catalogControls = catalogKey === undefined ? undefined : counter.countOf(`class-1:${catalogs[0].artifactKey}`);
+  return {
+    ...(catalogControls === undefined ? {} : { catalogControls, catalogKey }),
+    documents,
+    computedAt: now.toISOString(),
+  };
 }

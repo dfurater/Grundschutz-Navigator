@@ -10,6 +10,7 @@ import type {
 import type { WorkspaceStore } from '@/adapters/workspaceStore';
 import { StorageFailure, failure } from '@/adapters/workspaceStorageFailure';
 import { deriveStationMetrics, type DocumentMetric } from '@/domain/verbundStationMetrics';
+import type { CatalogKey } from '@/domain/sourceRegistry';
 
 /** Die Speicheroperationen, die der Bereich Informationsverbünde nutzt. */
 export type WorkspacePort = Pick<WorkspaceStore,
@@ -59,6 +60,10 @@ export interface VerbundView {
   readonly diagnostics: readonly WorkspaceDiagnosticView[];
   /** Controls des gebundenen BSI-Katalogs, nur bei genau einem gebundenen Katalog. */
   readonly catalogControls?: number;
+  /** `catalogKey` des gezählten Katalogs; die Catalog-Karte verlinkt genau diesen. */
+  readonly catalogKey?: CatalogKey;
+  /** Systemzeit, gegen die die Kennzahlen abgeleitet wurden (ISO 8601). */
+  readonly metricsComputedAt: string;
 }
 
 /** Feste Anzeigereihenfolge entlang der Stationen; gleicher Typ nach Titel, dann `localId`. */
@@ -214,7 +219,8 @@ export async function deriveVerbundView({ verbund, members, bindings: stored, cl
     })).sort(compareDocuments),
     edges,
     diagnostics: [...graph.diagnostics.filter((diagnostic) => !suppressed.has(diagnostic)).map(({ code, path }) => ({ code, path })), ...pinDiagnostics],
-    ...(metrics.catalogControls === undefined ? {} : { catalogControls: metrics.catalogControls }),
+    ...(metrics.catalogKey === undefined ? {} : { catalogControls: metrics.catalogControls, catalogKey: metrics.catalogKey }),
+    metricsComputedAt: metrics.computedAt,
   };
 }
 

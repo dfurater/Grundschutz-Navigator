@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router';
-import { buildStationUrl } from '@/app/routes';
+import { buildCatalogUrl, buildStationUrl } from '@/app/routes';
 import type { DocumentMetric } from '@/domain/verbundStationMetrics';
 import type { OscalRootKey } from '@/domain/oscalVersionMatrix';
 import { CATALOG_STATION, STATION_DEFINITIONS, type DocumentValidity, type WorkspaceStation } from '@/domain/workspaceStations';
@@ -10,6 +10,7 @@ import { stationDocuments, stationValidity } from '@/features/workspace/StationS
 
 const RELATIVE = new Intl.RelativeTimeFormat('de', { numeric: 'auto' });
 const count = new Intl.NumberFormat('de-DE');
+const COMPUTED_AT = new Intl.DateTimeFormat('de-DE', { dateStyle: 'medium', timeStyle: 'short' });
 
 /** „gerade eben“, „vor 2 Minuten“ aus einem ISO-Zeitpunkt; unlesbare Werte ergeben `undefined`. */
 export function relativeTime(iso: string | undefined, now: number): string | undefined {
@@ -153,7 +154,12 @@ function AssessmentRow({ title, documents, metric }: Readonly<{ title: string; d
  * Profile, SSP, Assessment, POA&M. Keine Karte ist gesperrt; eine leere
  * Station zeigt die Lücke.
  */
-export function StationCards({ view, catalogHref, now }: Readonly<{ view: VerbundView; catalogHref: string; now: number }>) {
+export function StationCards({ view, catalogHref, now }: Readonly<{
+  view: VerbundView;
+  /** Ziel ohne gezählten Katalog: der zuletzt aktive Katalog der Shell. */
+  catalogHref: string;
+  now: number;
+}>) {
   const { verbund, documents } = view;
   const verbundId = verbund.verbundId;
   const plans = documents.filter((document) => document.rootType === 'assessment-plan');
@@ -172,7 +178,7 @@ export function StationCards({ view, catalogHref, now }: Readonly<{ view: Verbun
         title={CATALOG_STATION.title}
         explanation={CATALOG_STATION.explanation}
         action="Katalog öffnen"
-        to={catalogHref}
+        to={view.catalogKey === undefined ? catalogHref : buildCatalogUrl(view.catalogKey)}
         label={label('Katalog öffnen', CATALOG_STATION.title, [catalogFigure])}
         dashed
       >
@@ -206,11 +212,12 @@ export function StationCards({ view, catalogHref, now }: Readonly<{ view: Verbun
             {overdue > 0 && (
               <p className={META}>
                 <span className={`${MARK} border-[var(--color-danger-border)] bg-[var(--color-danger-surface)] text-[var(--color-danger-text)]`}>{count.format(overdue)} überfällig</span>
-                {' '}· berechnet aus Frist und Systemzeit
+                {' '}· berechnet aus Frist und Systemzeit am{' '}
+                <time dateTime={view.metricsComputedAt}>{COMPUTED_AT.format(new Date(view.metricsComputedAt))}</time>
               </p>
             )}
             {resultsIncomplete && (
-              <p className={`rounded border px-2 py-1.5 text-xs ${VALIDITY_TONE.Entwurf}`}>
+              <p className="rounded border border-[var(--color-border-strong)] bg-[var(--color-surface-subtle)] px-2 py-1.5 text-xs text-[var(--color-text-secondary)]">
                 Bereits aktiv, obwohl die Prüfergebnisse noch nicht vollständig sind — keine erzwungene Reihenfolge.
               </p>
             )}

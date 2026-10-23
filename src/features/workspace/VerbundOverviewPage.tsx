@@ -15,13 +15,15 @@ const INPUT = `min-h-touch w-full rounded-md border border-[var(--color-border-s
 const ROW_BUTTON = 'min-h-touch desktop:min-h-0';
 
 /** Namensfeld für Anlegen und Umbenennen; `onCancel` macht daraus ein Umbenennen-Formular. */
-export function NameForm({ label, submitLabel, initial = '', disabled, onSubmit, onCancel }: Readonly<{
+export function NameForm({ label, submitLabel, initial = '', disabled, onSubmit, onCancel, onChange }: Readonly<{
   label: string;
   submitLabel: string;
   initial?: string;
   disabled: boolean;
   onSubmit: (name: string) => Promise<boolean>;
   onCancel?: () => void;
+  /** Meldet jede Eingabe, etwa um sie über einen Routenwechsel zu erhalten. */
+  onChange?: (name: string) => void;
 }>) {
   const inputId = useId();
   const [name, setName] = useState(initial);
@@ -48,7 +50,7 @@ export function NameForm({ label, submitLabel, initial = '', disabled, onSubmit,
           value={name}
           disabled={disabled}
           autoFocus={onCancel !== undefined}
-          onChange={(event) => setName(event.target.value)}
+          onChange={(event) => { setName(event.target.value); onChange?.(event.target.value); }}
           onKeyDown={(event) => { if (event.key === 'Escape' && onCancel) { event.preventDefault(); onCancel(); } }}
           className={`mt-1 ${INPUT}`}
         />

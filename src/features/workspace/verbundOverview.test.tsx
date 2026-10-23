@@ -85,6 +85,22 @@ describe('Verbund-Übersicht', () => {
     expect((await readStore((store) => store.listVerbuende())).find((verbund) => verbund.verbundId === seeded.verbundId)?.name).toBe('Rechenzentrum Nord');
   });
 
+  it('erhält eine offene Umbenennung über einen Stationswechsel; Abbrechen verwirft sie', async () => {
+    const { router } = renderArea(buildVerbundUrl(seeded.verbundId));
+    await within(main()).findByRole('heading', { level: 1, name: SENTINEL_VERBUND });
+    fireEvent.click(within(main()).getByRole('button', { name: 'Umbenennen' }));
+    fireEvent.change(within(main()).getByLabelText('Neuer Name'), { target: { value: 'Halb getippt' } });
+
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Stationen' })).getByRole('link', { name: /^SSP/ }));
+    await waitFor(() => expect(router.state.location.pathname).toBe(buildStationUrl(seeded.verbundId, 'ssp')));
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Stationen' })).getByRole('link', { name: 'Übersicht' }));
+    expect(await within(main()).findByLabelText('Neuer Name')).toHaveValue('Halb getippt');
+
+    fireEvent.click(within(main()).getByRole('button', { name: 'Abbrechen' }));
+    fireEvent.click(within(main()).getByRole('button', { name: 'Umbenennen' }));
+    expect(within(main()).getByLabelText('Neuer Name')).toHaveValue(SENTINEL_VERBUND);
+  });
+
   it('löscht den Verbund erst nach Bestätigung und kehrt zur Übersicht zurück', async () => {
     const { router } = renderArea(buildVerbundUrl(seeded.verbundId));
     await within(main()).findByRole('heading', { level: 1, name: SENTINEL_VERBUND });

@@ -124,13 +124,24 @@ function DocumentList({ verbundId, documents, empty }: Readonly<{ verbundId: str
   );
 }
 
+/**
+ * Offene Umbenennungen je Verbund, nur im Arbeitsspeicher des Tabs: Wer während
+ * der Eingabe eine Station oder einen anderen Verbund öffnet, findet sie bei der
+ * Rückkehr wieder. Speichern, Abbrechen und Löschen verwerfen sie.
+ */
+const renameDrafts = new Map<string, string>();
+
 /** Kopf der Verbund-Übersicht (Bild 2): Name, Umbenennen, Löschen mit Bestätigung, Herkunft und Speicherstand. */
 function VerbundHeader({ view, now }: Readonly<{ view: VerbundView; now: number }>) {
   const { writable, renameVerbund, deleteVerbund } = useWorkspace();
   const navigate = useNavigate();
-  const [renaming, setRenaming] = useState(false);
-  const [confirming, setConfirming] = useState(false);
   const { verbund, documents } = view;
+  const [renaming, setRenaming] = useState(() => renameDrafts.has(verbund.verbundId));
+  const [confirming, setConfirming] = useState(false);
+  const stopRenaming = () => {
+    renameDrafts.delete(verbund.verbundId);
+    setRenaming(false);
+  };
   const saved = relativeTime(latestSavedAt([verbund.savedAt, ...documents.map((document) => document.savedAt)]), now);
   return (
     <header className="space-y-3 border-b border-[var(--color-border-default)] pb-4">
@@ -141,7 +152,14 @@ function VerbundHeader({ view, now }: Readonly<{ view: VerbundView; now: number 
         </div>
         {!renaming && (
           <div className="flex gap-2">
-            <Button variant="secondary" className="min-h-touch desktop:min-h-0" disabled={!writable} onClick={() => setRenaming(true)}>Umbenennen</Button>
+            <Button
+              variant="secondary"
+              className="min-h-touch desktop:min-h-0"
+              disabled={!writable}
+              onClick={() => { renameDrafts.set(verbund.verbundId, verbund.name); setRenaming(true); }}
+            >
+              Umbenennen
+            </Button>
             <button
               type="button"
               disabled={!writable}
@@ -157,14 +175,15 @@ function VerbundHeader({ view, now }: Readonly<{ view: VerbundView; now: number 
         <NameForm
           label="Neuer Name"
           submitLabel="Speichern"
-          initial={verbund.name}
+          initial={renameDrafts.get(verbund.verbundId) ?? verbund.name}
           disabled={!writable}
+          onChange={(name) => renameDrafts.set(verbund.verbundId, name)}
           onSubmit={async (name) => {
             const result = await renameVerbund(verbund.verbundId as VerbundId, name);
-            if (result.ok) setRenaming(false);
+            if (result.ok) stopRenaming();
             return result.ok;
           }}
-          onCancel={() => setRenaming(false)}
+          onCancel={stopRenaming}
         />
       )}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -172,7 +191,6 @@ function VerbundHeader({ view, now }: Readonly<{ view: VerbundView; now: number 
         <span aria-live="polite" className="flex items-center gap-1.5 text-xs tabular-nums text-[var(--color-text-secondary)]">
           {saved && (
             <>
-              <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-document-valid-border" />
               Automatisch gespeichert · {saved}
             </>
           )}
@@ -186,7 +204,9 @@ function VerbundHeader({ view, now }: Readonly<{ view: VerbundView; now: number 
         onConfirm={() => {
           setConfirming(false);
           void deleteVerbund(verbund.verbundId as VerbundId).then((result) => {
-            if (result.ok) void navigate(buildWorkspaceIndexUrl(), { replace: true });
+            if (!result.ok) return;
+            renameDrafts.delete(verbund.verbundId);
+            void navigate(buildWorkspaceIndexUrl(), { replace: true });
           });
         }}
       >
