@@ -28,7 +28,34 @@ export interface ScopeSwitcherProps<K extends string = string> {
   readonly trailing?: ReactNode;
   /** Nach einer Auswahl, etwa um einen Drawer zu schließen. */
   readonly onItemActivate?: (key: K) => void;
+  /** `panel`: Kopf der Seitenleiste; `header`: dunkle Kopfzeile, Menü rechtsbündig. */
+  readonly tone?: 'panel' | 'header';
 }
+
+const TONE = {
+  panel: {
+    root: 'relative flex shrink-0 items-center gap-1 border-b border-slate-200 h-panel-head px-1 py-0.75',
+    container: 'min-w-0 flex-1',
+    trigger: 'w-full px-2 kbd-focus:ring-inset kbd-focus:ring-[var(--color-focus-ring)]',
+    open: 'bg-slate-100',
+    idle: 'hover:bg-slate-50',
+    title: 'text-[var(--color-text-primary)]',
+    chevron: 'text-slate-400 group-hover:text-slate-600',
+    chevronOpen: 'text-slate-600',
+    menu: 'inset-x-1 mt-1.25',
+  },
+  header: {
+    root: 'relative flex min-w-0 items-center',
+    container: 'min-w-0',
+    trigger: 'px-2 kbd-focus:ring-[var(--header-focus-ring)] kbd-focus:ring-offset-1 kbd-focus:ring-offset-[var(--header-bg)]',
+    open: 'bg-[var(--header-surface)]',
+    idle: 'hover:bg-[var(--header-surface)]',
+    title: 'max-w-64 text-[var(--header-text)]',
+    chevron: 'text-[var(--header-text-muted)] group-hover:text-[var(--header-text)]',
+    chevronOpen: 'text-[var(--header-text)]',
+    menu: 'right-0 mt-1 w-72',
+  },
+} as const;
 
 // Die Sprache erbt der Titel vom Dokument; die OSCAL-Metadaten tragen keine eigene.
 const TITLE_CLASS = 'line-clamp-2 min-w-0 flex-1 hyphens-auto text-sm leading-4.5';
@@ -39,7 +66,9 @@ export function ScopeSwitcher<K extends string = string>({
   activeKey,
   trailing,
   onItemActivate,
+  tone = 'panel',
 }: ScopeSwitcherProps<K>) {
+  const style = TONE[tone];
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -121,10 +150,10 @@ export function ScopeSwitcher<K extends string = string>({
     // 51 px auf der Linie der Toolbar: Nach der 1-px-Unterlinie bleiben 50 px,
     // davon 3 px Rand oben und unten um den 44 px hohen Auslöser. Zwei Titelzeilen
     // (2 × 18 px) passen mit 4 px Innenabstand oben und unten genau hinein.
-    <div className="relative flex shrink-0 items-center gap-1 border-b border-slate-200 h-panel-head px-1 py-0.75">
+    <div className={style.root}>
       <div
         ref={containerRef}
-        className="min-w-0 flex-1"
+        className={style.container}
         onBlur={(event) => {
           if (open && !containerRef.current?.contains(event.relatedTarget as Node | null)) {
             setOpen(false);
@@ -140,15 +169,15 @@ export function ScopeSwitcher<K extends string = string>({
             aria-haspopup="menu"
             aria-expanded={open}
             aria-controls={open ? menuId : undefined}
-            className={`group flex min-h-11 w-full items-center gap-2 rounded-md px-2 py-1 text-left transition-colors focus-visible:outline-none kbd-focus:ring-2 kbd-focus:ring-inset kbd-focus:ring-[var(--color-focus-ring)] ${open ? 'bg-slate-100' : 'hover:bg-slate-50'}`}
+            className={`group flex min-h-11 items-center gap-2 rounded-md py-1 text-left transition-colors focus-visible:outline-none kbd-focus:ring-2 ${style.trigger} ${open ? style.open : style.idle}`}
           >
             {/* Das Leerzeichen steht zwischen den Spans: Am Spanende fiele es aus dem Namen. */}
             <span className="sr-only">{`${label}:`}</span>{' '}
-            <span className={`${TITLE_CLASS} font-semibold text-[var(--color-text-primary)]`}>
+            <span className={`${TITLE_CLASS} font-semibold ${style.title}`}>
               {activeItem.title}
             </span>
             <IconChevronDown
-              className={`h-3.5 w-3.5 shrink-0 transition-[rotate,color] ${open ? 'rotate-180 text-slate-600' : 'text-slate-400 group-hover:text-slate-600'}`}
+              className={`h-3.5 w-3.5 shrink-0 transition-[rotate,color] ${open ? `rotate-180 ${style.chevronOpen}` : style.chevron}`}
             />
           </button>
         )}
@@ -165,7 +194,7 @@ export function ScopeSwitcher<K extends string = string>({
             tabIndex={-1}
             aria-labelledby={headingId}
             onKeyDown={handleMenuKeyDown}
-            className="absolute inset-x-1 top-full mt-1.25 z-40 max-h-[calc(100dvh-8rem)] overflow-y-auto rounded-lg border border-[var(--color-border-default)] bg-[var(--color-surface-raised)] p-1.5 shadow-[var(--shadow-overlay)]"
+            className={`absolute ${style.menu} top-full z-40 max-h-[calc(100dvh-8rem)] overflow-y-auto rounded-lg border border-[var(--color-border-default)] bg-[var(--color-surface-raised)] p-1.5 shadow-[var(--shadow-overlay)]`}
           >
             <div
               id={headingId}

@@ -78,54 +78,60 @@ describe('Übersicht der Informationsverbünde', () => {
   });
 });
 
-describe('Verbundseite und Stationen', () => {
-  it('zeigt alle Stationen mit Titel und Erklärzeile, ohne Sperre und ohne Fortschrittsbalken', async () => {
+const stationNav = () => screen.getByRole('navigation', { name: 'Stationen' });
+
+describe('Stationsreiter', () => {
+  it('stehen außerhalb einer Seitenleiste unter der Kopfzeile, ohne Catalog und ohne Sperre', async () => {
     renderArea(buildVerbundUrl(seeded.verbundId));
-    const stations = await screen.findByRole('navigation', { name: 'Stationen' });
-    for (const [title, explanation] of [
-      ['Übersicht', 'Alle Dokumente'],
-      ['Catalog', 'Der Anforderungsbestand zum Nachschlagen'],
-      ['Profile', 'Das Anforderungspaket für einen Informationsverbund'],
-      ['SSP', 'Der Umsetzungsstatus je Anforderung'],
-      ['Assessment Plan / Results', 'Die Wirksamkeitsprüfung'],
-      ['POA&M', 'Die Umsetzungsplanung für nicht erfüllte Anforderungen'],
-    ]) {
-      const link = within(stations).getByRole('link', { name: new RegExp(`^${title.replace(/[/&]/g, '.')}`) });
-      expect(link).toHaveTextContent(explanation);
-      expect(link).not.toHaveAttribute('aria-disabled');
-    }
+    await within(main()).findByRole('heading', { level: 1, name: SENTINEL_VERBUND });
+    const links = within(stationNav()).getAllByRole('link');
+    expect(links.map((link) => link.textContent)).toEqual([
+      'Übersicht', 'Profile, Gültig', 'SSP, Entwurf', 'Assessment, Entwurf', 'POA&M, noch kein Dokument',
+    ]);
+    for (const link of links) expect(link).not.toHaveAttribute('aria-disabled');
+    expect(links[0]).toHaveAttribute('aria-current', 'page');
+    expect(stationNav().closest('aside, main')).toBeNull();
+    expect(screen.queryByRole('complementary', { name: /Arbeitsnavigation|Stationen/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
-    expect(await within(main()).findByRole('heading', { level: 1, name: SENTINEL_VERBUND })).toBeInTheDocument();
   });
 
-  it('filtert per Stationsklick über die Route und sagt die Zählung an', async () => {
-    const { router } = renderArea(buildVerbundUrl(seeded.verbundId));
-    const counts = await within(main()).findByText('5 Dokumente · 2 Entwürfe · 0 Diagnosen');
-    expect(counts).toHaveAttribute('aria-live', 'polite');
-    expect(counts).toHaveClass('tabular-nums');
+  it('zeigt den Statuspunkt nur bei einem Statuswort: Grün nur ohne Entwurf, Amber mit Entwurf, keiner in einer Lücke', async () => {
+    renderArea(buildVerbundUrl(seeded.verbundId));
+    await waitFor(() => expect(within(stationNav()).getByRole('link', { name: 'Profile, Gültig' })).toBeInTheDocument());
+    const dot = (name: string) => within(stationNav()).getByRole('link', { name }).querySelector('[aria-hidden="true"]');
+    expect(dot('Profile, Gültig')).toHaveClass('bg-document-valid-border');
+    expect(dot('SSP, Entwurf')).toHaveClass('bg-document-draft-border');
+    expect(dot('Assessment, Entwurf')).toHaveClass('bg-document-draft-border');
+    expect(dot('POA&M, noch kein Dokument')).toBeNull();
+    expect(dot('Übersicht')).toBeNull();
+  });
 
-    const stations = screen.getByRole('navigation', { name: 'Stationen' });
-    fireEvent.click(within(stations).getByRole('link', { name: /^Assessment Plan \/ Results/ }));
+  it('filtert per Reiter über die Route und sagt die Zählung an', async () => {
+    const { router } = renderArea(buildVerbundUrl(seeded.verbundId));
+    await within(main()).findByRole('heading', { level: 1, name: SENTINEL_VERBUND });
+    fireEvent.click(await within(stationNav()).findByRole('link', { name: /^Assessment/ }));
 
     await waitFor(() => expect(router.state.location.pathname).toBe(buildStationUrl(seeded.verbundId, 'assessment')));
     const filtered = await within(main()).findByText('2 von 5 Dokumenten');
     expect(filtered).toHaveAttribute('aria-live', 'polite');
-    const list = within(main()).getByRole('region', { name: 'Station Assessment Plan / Results' });
+    expect(filtered).toHaveClass('tabular-nums');
+    const list = within(main()).getByRole('region', { name: 'Station Assessment' });
     const rows = within(list).getAllByRole('listitem');
     expect(rows.map((row) => row.querySelector('span')?.textContent)).toEqual(['Assessment Plan', 'Assessment Results']);
-    expect(within(stations).getByRole('link', { name: /^Assessment Plan \/ Results/ })).toHaveAttribute('aria-current', 'page');
+    expect(within(stationNav()).getByRole('link', { name: /^Assessment/ })).toHaveAttribute('aria-current', 'page');
+    expect(within(main()).getByRole('region', { name: 'Diagnosen' })).toBeInTheDocument();
   });
 
   it('zeigt an einer leeren Station eine Lücke statt einer Sperre', async () => {
     renderArea(buildStationUrl(seeded.verbundId, 'poam'));
     expect(await within(main()).findByText('An dieser Station liegt noch kein Dokument.')).toBeInTheDocument();
-    const orientation = within(main()).getByRole('region', { name: 'Orientierung' });
-    expect(within(orientation).getByRole('link', { name: 'POA&M' })).toHaveAttribute('href', buildStationUrl(seeded.verbundId, 'poam'));
   });
 
   it('führt Dokumente ohne eigene Station nur in der ungefilterten Liste', async () => {
     renderArea(buildVerbundUrl(seeded.verbundId));
-    expect(await within(main()).findByText('Component Definition')).toBeInTheDocument();
+    const all = await within(main()).findByRole('region', { name: 'Alle Dokumente' });
+    expect(all.querySelector('details')).not.toHaveAttribute('open');
+    expect(await within(all).findByText('Component Definition')).toBeInTheDocument();
     for (const station of WORKSPACE_STATIONS) {
       const { unmount } = renderArea(buildStationUrl(seeded.verbundId, station));
       await waitFor(() => expect(screen.getAllByRole('main').at(-1)).toHaveTextContent(/von 5 Dokumenten/));
@@ -182,7 +188,7 @@ describe('Arbeitsroutenraum: Nicht-gefunden, Reload und Zurück', () => {
   it('verwirft die Ansicht eines gelöschten Verbunds; Browser-Zurück zeigt nichts davon', async () => {
     const { router } = renderArea(buildVerbundUrl(seeded.verbundId));
     await within(main()).findByRole('heading', { level: 1, name: SENTINEL_VERBUND });
-    fireEvent.click(within(main()).getByRole('link', { name: '‹ Informationsverbünde' }));
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Pfad' })).getByRole('link', { name: 'Informationsverbünde' }));
     const row = (await within(main()).findByRole('link', { name: SENTINEL_VERBUND })).closest('li')!;
     fireEvent.click(within(row).getByRole('button', { name: 'Löschen…' }));
     fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Endgültig löschen' }));

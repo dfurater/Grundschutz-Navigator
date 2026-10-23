@@ -11,7 +11,7 @@ import {
 } from '@/app/routes';
 import type { CatalogKey } from '@/domain/sourceRegistry';
 import { isWorkspaceStation } from '@/domain/workspaceStations';
-import type { StationSelection } from '@/features/workspace/StationSidebar';
+import type { StationSelection } from '@/features/workspace/StationStrip';
 import { useWorkspace } from '@/hooks/useWorkspace';
 
 /** Verbund und Station aus einer Arbeitsroute; ungültige Identitäten ergeben `null`. */
@@ -113,10 +113,10 @@ export function useShellArea(pathname: string, activeCatalogKey: CatalogKey, bef
     catalogHref: buildCatalogUrl(activeCatalogKey),
     workspaceHref: buildWorkspaceIndexUrl(),
     selectArea,
-    // Die Übersicht der Informationsverbünde hat keine Arbeitsnavigation; die
-    // Schublade trägt dort nur den Bereichswechsel.
-    hasAreaNav: area === 'katalog' || stationVerbundId !== null,
-    navLabel: area === 'katalog' ? 'Katalog-Explorer' : 'Stationen',
+    // Im Bereich Informationsverbünde trägt die Schublade nur den Bereichswechsel;
+    // die Stationen stehen als Reiter unter der Kopfzeile.
+    hasAreaNav: area === 'katalog',
+    navLabel: area === 'katalog' ? 'Katalog-Explorer' : 'Navigation',
     stations: {
       verbundId: stationVerbundId,
       active: routed.active,

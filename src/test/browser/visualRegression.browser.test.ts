@@ -22,8 +22,8 @@ declare module 'vitest' {
 }
 
 /*
- * Visuelle Regression (GSPP-533, GSPP-577): Katalogliste, Detail, Filter, Suche,
- * Übersicht der Informationsverbünde und Verbundseite je
+ * Visuelle Regression (GSPP-533, GSPP-577, GSPP-616): Katalogliste, Detail, Filter, Suche,
+ * Übersicht der Informationsverbünde und Verbund-Übersicht mit Stationskarten je
  * Desktop und Mobil gegen eingecheckte Referenzbilder
  * (`…-chromium-linux.png`). Erzeugt und geprüft werden sie nur im gepinnten
  * Playwright-Container (`npm run test:browser:visual`,
@@ -108,7 +108,8 @@ describe.skipIf(!inject('visualRegression')).each(VIEWPORTS)('Ansicht $name', ({
   test('Informationsverbund', async () => {
     const { verbundId } = await seedWorkspace();
     const shell = await renderAt(buildVerbundUrl(verbundId), width, height);
-    await expect.poll(() => shell.querySelector('main')?.textContent).toContain('5 Dokumente');
+    await expect.poll(() => shell.querySelector('main')?.textContent).toContain('Prüfergebnisse');
+    await expect.poll(() => shell.querySelector('nav[aria-label="Stationen"] a')?.textContent).toBe('Übersicht');
     await expectScreen(`informationsverbund-${name}`);
   });
 

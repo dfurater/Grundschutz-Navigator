@@ -14,7 +14,8 @@ import { WorkspaceNotices, useBackupExport } from '@/features/workspace/Workspac
 const INPUT = `min-h-touch w-full rounded-md border border-[var(--color-border-strong)] bg-[var(--color-surface-base)] px-3 py-2 text-base text-[var(--color-text-primary)] shadow-sm placeholder:text-[var(--color-text-muted)] focus-visible:border-[var(--color-focus-ring)] sm:text-sm desktop:min-h-0 ${FOCUS_RING}`;
 const ROW_BUTTON = 'min-h-touch desktop:min-h-0';
 
-function NameForm({ label, submitLabel, initial = '', disabled, onSubmit, onCancel }: Readonly<{
+/** Namensfeld für Anlegen und Umbenennen; `onCancel` macht daraus ein Umbenennen-Formular. */
+export function NameForm({ label, submitLabel, initial = '', disabled, onSubmit, onCancel }: Readonly<{
   label: string;
   submitLabel: string;
   initial?: string;

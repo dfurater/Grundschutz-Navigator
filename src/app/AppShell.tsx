@@ -36,6 +36,8 @@ import {
   resolveControlRoute,
 } from '@/app/routes';
 import { ShellSidebar } from '@/app/ShellSidebar';
+import { VerbundPath } from '@/app/VerbundPath';
+import { StationStrip } from '@/features/workspace/StationStrip';
 import { useShellArea } from '@/app/useShellArea';
 import { useRoutePrefetch } from '@/app/routePrefetch';
 import { NavigationPendingIndicator, NavigationPendingProvider } from '@/app/navigationPending';
@@ -306,6 +308,7 @@ function AppShellLayout() {
             tone="header"
           />
         )}
+        context={area === 'informationsverbuende' ? <VerbundPath verbundId={stations.verbundId} /> : undefined}
         menuExpanded={mobileNavOpen}
         menuControls={sideNavId}
         menuButtonRef={menuButtonRef}
@@ -344,7 +347,7 @@ function AppShellLayout() {
         {/* Sidebar / Mobile Drawer */}
         <aside
           id={sideNavId}
-          aria-label={area === 'katalog' ? 'Katalog-Explorer' : 'Arbeitsnavigation'}
+          aria-label={area === 'katalog' ? 'Katalog-Explorer' : 'Navigation'}
           inert={!isPersistentNav && !sideNavOpen}
           className={`mobile-nav-drawer ${hasAreaNav ? '' : 'desktop:hidden '}
             bg-white flex shrink-0 z-40 overflow-hidden touch-pan-y touch-pinch-zoom desktop:touch-auto desktop:z-30 desktop:border-r desktop:border-slate-200
@@ -405,7 +408,6 @@ function AppShellLayout() {
                   onTreeSelect: handleTreeSelect,
                 }}
                 treeScrollRef={treeScrollRef}
-                workspace={stations}
               />
             </div>
           )}
@@ -427,13 +429,18 @@ function AppShellLayout() {
 
         {/* Rechte Layoutspalte: Main und globaler Footer sind getrennte Landmarks. */}
         <div className="flex-1 min-w-0 flex flex-col bg-white md:overflow-hidden">
+          {area === 'informationsverbuende' && stations.verbundId !== null && (
+            <div inert={mobileNavOpen} className="mobile-nav-push shrink-0">
+              <StationStrip verbundId={stations.verbundId} active={stations.active} documents={stations.documents} />
+            </div>
+          )}
           <main
             id="main-content"
             inert={mobileNavOpen}
             className="mobile-nav-push flex-1 min-h-0 min-w-0 flex flex-col md:overflow-hidden"
           >
             <MobileNavigationContext.Provider value={mobileNavBlocksFixed}>
-              <Outlet />
+              <Outlet context={{ catalogHref }} />
             </MobileNavigationContext.Provider>
           </main>
           <div inert={mobileNavOpen} className="mobile-nav-push shrink-0">

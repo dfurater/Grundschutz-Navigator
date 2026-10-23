@@ -9,6 +9,7 @@ import type {
 } from '@/domain/workspaceModel';
 import type { WorkspaceStore } from '@/adapters/workspaceStore';
 import { StorageFailure, failure } from '@/adapters/workspaceStorageFailure';
+import { deriveStationMetrics, type DocumentMetric } from '@/domain/verbundStationMetrics';
 
 /** Die Speicheroperationen, die der Bereich Informationsverbünde nutzt. */
 export type WorkspacePort = Pick<WorkspaceStore,
@@ -26,6 +27,9 @@ export interface WorkspaceDocumentView {
   readonly title?: string;
   /** Bindung an BSI-Katalogstände; fehlt, wenn das Dokument auf keinen BSI-Katalog verweist. */
   readonly catalogPin?: CatalogPin;
+  readonly savedAt: string;
+  /** Kennzahl der Stationskarte; fehlt ohne Datengrundlage. */
+  readonly metric?: DocumentMetric;
 }
 
 export interface WorkspaceEdgeView {
@@ -53,6 +57,8 @@ export interface VerbundView {
   readonly documents: readonly WorkspaceDocumentView[];
   readonly edges: ReadonlyMap<LocalId, readonly WorkspaceEdgeView[]>;
   readonly diagnostics: readonly WorkspaceDiagnosticView[];
+  /** Controls des gebundenen BSI-Katalogs, nur bei genau einem gebundenen Katalog. */
+  readonly catalogControls?: number;
 }
 
 /** Feste Anzeigereihenfolge entlang der Stationen; gleicher Typ nach Titel, dann `localId`. */
@@ -193,6 +199,7 @@ export async function deriveVerbundView({ verbund, members, bindings: stored, cl
   const { edges, suppressed } = projectEdges(graph, new Map(members.map((member) => [member.localId, member.source])), unavailable, withheld);
   // Eine geerbte Sperre ist kein Befund des Dokuments; die Diagnose steht beim referenzierten Dokument.
   const pinDiagnostics = [...pins.values()].flatMap((pin) => pin.code && !pin.inherited ? [{ code: pin.code, path: CATALOG_PIN_PATH }] : []);
+  const metrics = deriveStationMetrics(members, graph, class1Artifacts, new Date());
   return {
     verbund,
     documents: members.map((member) => ({
@@ -201,10 +208,13 @@ export async function deriveVerbundView({ verbund, members, bindings: stored, cl
       oscalVersion: member.oscalVersion,
       documentState: member.documentState,
       title: documentTitle(member),
+      savedAt: member.savedAt,
       ...(pins.has(member.localId) ? { catalogPin: pins.get(member.localId) } : {}),
+      ...(metrics.documents.has(member.localId) ? { metric: metrics.documents.get(member.localId) } : {}),
     })).sort(compareDocuments),
     edges,
     diagnostics: [...graph.diagnostics.filter((diagnostic) => !suppressed.has(diagnostic)).map(({ code, path }) => ({ code, path })), ...pinDiagnostics],
+    ...(metrics.catalogControls === undefined ? {} : { catalogControls: metrics.catalogControls }),
   };
 }
 

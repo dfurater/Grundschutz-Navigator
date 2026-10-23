@@ -127,10 +127,10 @@ test.each([320, 375, 402, 430, 639, 640, 743, 744, 767, 768, 1024, 1440])(
       expect(header.querySelector('kbd')!.checkVisibility()).toBe(width >= 1024);
     }
 
-    // Ab xl steht die Suche mittig, rechts bleibt die Spalte leer.
-    if (width >= 1280) {
+    // Auf dem Desktop folgt die Suche direkt auf Marke und Bereichswechsel (GSPP-307, Bild 1 und 2).
+    if (width >= 1024) {
       const column = search.closest('div.hidden')!.getBoundingClientRect();
-      expect(Math.abs(column.left + column.width / 2 - width / 2)).toBeLessThanOrEqual(1);
+      expect(Math.abs(column.left - brand.parentElement!.getBoundingClientRect().right)).toBeLessThanOrEqual(1);
     }
   },
 );
