@@ -39,7 +39,7 @@ it('zeigt nur Metadaten und dekodiert oder prüft ohne Klick nichts, auch unter 
   expect(screen.getByText('Prüfbeleg')).toBeVisible();
   expect(screen.getByText('privater-beleg.html')).toBeVisible();
   expect(screen.getByText(/5 Byte/)).toBeVisible();
-  expect(screen.getByText(/declared/)).toBeVisible();
+  expect(screen.getByText(/Integrität: Hash deklariert/)).toBeVisible();
   expect(screen.getByText(/Deklarierte Hashes: 1/)).toBeVisible();
   expect(screen.queryByRole('img')).toBeNull();
   expect(decode).not.toHaveBeenCalled(); expect(verify).not.toHaveBeenCalled();
@@ -127,7 +127,7 @@ it('zeigt alle drei echten Hash-Ergebnisse nur nach Klick ohne Werte auszugeben'
   ];
   const verify = vi.spyOn(integrity, 'verifyResourceIntegrity');
   render(<EvidenceResourcePreview {...fromResource(supplied.resource)} />);
-  expect(screen.getByText(/missing/)).toBeVisible();
+  expect(screen.getByText(/Integrität: Kein Hash deklariert/)).toBeVisible();
   expect(verify).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: 'Integrität prüfen' }));
   expect(await screen.findByText('Hash stimmt überein')).toBeVisible();

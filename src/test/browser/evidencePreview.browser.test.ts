@@ -4,7 +4,7 @@ import { flushSync } from 'react-dom';
 import { afterEach, expect, test } from 'vitest';
 import { page } from 'vitest/browser';
 import axe from 'axe-core';
-import html from '../../../index.html?raw';
+import html from '@/../index.html?raw';
 import { EvidenceResourcePreview } from '@/features/workspace/assessment/EvidenceResourcePreview';
 import { createReferenceDocument, resolveCatalogResources } from '@/domain/referenceResolution';
 import '@/index.css';

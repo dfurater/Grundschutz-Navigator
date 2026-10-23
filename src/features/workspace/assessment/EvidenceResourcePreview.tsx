@@ -80,11 +80,11 @@ export function EvidenceResourcePreview({ resource, resolved }: Readonly<{ resou
       {resolved.rlinks.length > 0 && <ul className="space-y-2">
         {resolved.rlinks.map((link, index) => (
           <li key={`${index}-${link.href}`} className="space-y-1 break-words">
-            <p className="type-meta">Medienart: {link.mediaType || 'nicht deklariert'} · Integrität: {link.integrity} · <span className="tabular-nums">Deklarierte Hashes: {link.hashes.length}</span></p>
+            <p className="type-meta">Medienart: {link.mediaType || 'nicht deklariert'} · Integrität: {link.integrity === 'declared' ? 'Hash deklariert' : 'Kein Hash deklariert'} · <span className="tabular-nums">Deklarierte Hashes: {link.hashes.length}</span></p>
             {link.target.kind === 'external' && link.target.href && isSafeExternalHref(link.target.href)
               ? <a href={link.target.href} target="_blank" rel="noopener noreferrer" className="catalog-prose-link inline-flex min-h-touch items-center rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] focus-visible:ring-offset-1">Extern öffnen ({decideEvidencePreview(link.mediaType).kind === 'preview' ? link.mediaType : 'ohne Vorschau'}; neuer Tab)</a>
               : <p className="type-secondary">Kein freigegebener externer Link.</p>}
-            {state.checks?.[index] && <p role="status">{HASH_LABELS[state.checks[index].status]}</p>}
+            {state.checks?.[index] && <output className="block">{HASH_LABELS[state.checks[index].status]}</output>}
           </li>
         ))}
       </ul>}
@@ -93,7 +93,7 @@ export function EvidenceResourcePreview({ resource, resolved }: Readonly<{ resou
         {embedded && <Button variant="secondary" className="min-h-touch" onClick={() => openContent(true)}>Herunterladen</Button>}
         <Button variant="secondary" className="min-h-touch" disabled={state.checking} onClick={() => void checkIntegrity()}>{state.checking ? 'Integrität wird geprüft…' : 'Integrität prüfen'}</Button>
       </div>
-      {state.checks?.length === 0 && <p role="status">Keine Ressourcenlinks für eine Hashprüfung deklariert.</p>}
+      {state.checks?.length === 0 && <output className="block">Keine Ressourcenlinks für eine Hashprüfung deklariert.</output>}
       {state.error && <p role="alert">{state.error}</p>}
       {preview && ('text' in preview
         ? <pre className="whitespace-pre-wrap break-words font-mono text-xs">{preview.text}</pre>
