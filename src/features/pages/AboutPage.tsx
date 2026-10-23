@@ -362,9 +362,8 @@ const lineageStateLabels: Record<Exclude<CatalogLineageState, 'complete'>, strin
   'resource-ambiguous': 'Back-matter-Ressource ist mehrdeutig',
   'rlink-missing': 'Ressourcen-Link fehlt',
   'rlink-ambiguous': 'Ressourcen-Link ist mehrdeutig',
-  'artifact-unregistered': 'Quelle ist nicht explizit im Quellregister zugeordnet',
+  'artifact-unregistered': 'Quelle liegt nicht im gepinnten BSI-Snapshot',
   'import-duplicate': 'Profilimport ist mehrfach vorhanden',
-  'configured-import-missing': 'Konfigurierter Quellimport fehlt im Profil',
 };
 
 function LineageDocumentDetails({
@@ -1041,7 +1040,7 @@ export function AboutPage() {
                 <ul className="mt-4 space-y-4">
                   {activeCatalogLineage.imports.map((importedCatalog, importPosition) => (
                     <LineageImportEntry
-                      key={`lineage-import:${importedCatalog.index ?? 'configured'}:${importPosition}`}
+                      key={`lineage-import:${importedCatalog.index}:${importPosition}`}
                       importedCatalog={importedCatalog}
                       repositoryUrl={vocabularyProvenance.source?.repository}
                       snapshotCommitSha={vocabularyProvenance.source?.snapshotCommitSha}

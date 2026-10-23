@@ -1,16 +1,16 @@
 /**
  * Quellregister für BSI-Upstream-Artefakte (ADR-1).
  *
- * Einzige Quelle der Wahrheit dafür, welche Upstream-Pfade das Projekt kennt,
- * welcher OSCAL-Root-Typ dort erwartet wird und welche Artefakte produktiv
- * ausgeliefert werden (`lifecycle: 'supported'`). Wird sowohl von den
- * Build-Skripten (`scripts/security-guards.mjs`) als auch von der App
- * importiert; deshalb reines ESM ohne Node-Abhängigkeiten.
+ * Führt die Produktartefakte (ADR-13): die Kataloge mit `catalogKey`, je
+ * Katalog optional den Pfad seines BSI-Profils (`profileUpstreamPath`), und die
+ * Vokabularsammlung. Wird sowohl von den Build-Skripten
+ * (`scripts/security-guards.mjs`) als auch von der App importiert; deshalb
+ * reines ESM ohne Node-Abhängigkeiten.
  *
- * Nur Einträge mit `lifecycle: 'supported'` weiten die produktive Fetch- und
- * Auslieferungs-Allowlist. `preview`, `draft` und `blocked-by-upstream` dürfen
- * ausschließlich transient für Manifest-Provenienz und Root-Typ-Validierung
- * gelesen werden; ihre Bytes werden nie als App-Artefakte ausgegeben.
+ * Nur Einträge mit `lifecycle: 'supported'` werden ausgeliefert. Jede andere
+ * `.json`-Datei unter `MONITORED_UPSTREAM_ROOTS` ist ein Begleitartefakt: Der
+ * Fetch entdeckt sie im gepinnten Tree, pinnt sie im Manifest und liefert ihre
+ * Bytes nie als App-Artefakt aus.
  *
  * Jeder OSCAL-Eintrag führt zusätzlich die vom Artefakt deklarierte
  * `metadata.oscal-version` (GSPP-283). Das ist die erwartete Version des
@@ -45,12 +45,9 @@ const LIFECYCLES = Object.freeze(['supported', 'preview', 'draft', 'blocked-by-u
 const BSI_UPSTREAM_ISSUE_URL =
   /^https:\/\/github\.com\/BSI-Bund\/Stand-der-Technik-Bibliothek\/issues\/[1-9]\d*$/;
 
-const COMPONENT_DIRECTORY = 'implementation_layer';
-
 /**
- * Read-only discovery roots for upstream tree comparisons. These roots do not
- * widen the fetch allowlist: only materialized SOURCE_REGISTRY entries may be
- * read, validated or shipped.
+ * Wurzeln, unter denen der Fetch liest: Produktpfade, materialisierte
+ * Vokabulardateien und Begleitartefakte (`.json`) des gepinnten Trees.
  *
  * `documentation/namespaces` bleibt bewusst eng gefasst: der Vokabular-Ordner
  * ist der einzige fachlich relevante Teil von `documentation/`, der Rest
@@ -71,6 +68,7 @@ export const SOURCE_REGISTRY = Object.freeze(
       expectedRootType: 'catalog',
       catalogKey: 'gspp',
       upstreamPath: 'control_layer/Grundschutz++/Grundschutz++-resolved_catalog.json',
+      profileUpstreamPath: 'control_layer/Grundschutz++/sources/profiles/Grundschutz++-profile.json',
       lifecycle: 'supported',
       entryCatalog: true,
       title: 'Grundschutz++ Anwenderkatalog',
@@ -90,6 +88,7 @@ export const SOURCE_REGISTRY = Object.freeze(
       expectedRootType: 'catalog',
       catalogKey: 'lieferkette',
       upstreamPath: 'control_layer/Lieferkettensicherheit/Lieferkettensicherheit-resolved_catalog.json',
+      profileUpstreamPath: 'control_layer/Lieferkettensicherheit/sources/profiles/Lieferkettensicherheit-profile.json',
       lifecycle: 'supported',
       title: 'Anwenderkatalog Lieferkettensicherheit',
     },
@@ -100,6 +99,7 @@ export const SOURCE_REGISTRY = Object.freeze(
       expectedRootType: 'catalog',
       catalogKey: 'wlan',
       upstreamPath: 'control_layer/WLAN/WLAN-resolved_catalog.json',
+      profileUpstreamPath: 'control_layer/WLAN/sources/profiles/WLAN-profile.json',
       lifecycle: 'supported',
       title: 'Anwenderkatalog WLAN',
     },
@@ -113,198 +113,8 @@ export const SOURCE_REGISTRY = Object.freeze(
       lifecycle: 'draft',
       title: 'Mindeststandard TLS (Entwurf)',
     },
-    {
-      artifactKey: 'profile-gspp',
-      kind: 'oscal',
-      oscalVersion: '1.1.3',
-      expectedRootType: 'profile',
-      upstreamPath: 'control_layer/Grundschutz++/sources/profiles/Grundschutz++-profile.json',
-      lifecycle: 'preview',
-      title: 'Grundschutz++ Profil',
-    },
-    {
-      artifactKey: 'catalog-source-gspp-kernel-g0',
-      kind: 'oscal',
-      oscalVersion: '1.1.3',
-      expectedRootType: 'catalog',
-      upstreamPath:
-        'control_layer/Grundschutz++/sources/catalogs/Kernel/BSI-Stand-der-Technik-Kernel-G0-catalog.json',
-      lifecycle: 'preview',
-      title: 'BSI Stand der Technik Kernel G0',
-    },
-    {
-      artifactKey: 'catalog-source-gspp-methodik',
-      kind: 'oscal',
-      oscalVersion: '1.1.3',
-      expectedRootType: 'catalog',
-      upstreamPath:
-        'control_layer/Grundschutz++/sources/catalogs/Methodik-Grundschutz++/BSI-Methodik-Grundschutz++-catalog.json',
-      lifecycle: 'preview',
-      title: 'BSI Methodik Grundschutz++',
-    },
-    {
-      artifactKey: 'catalog-source-risikomanagement',
-      kind: 'oscal',
-      oscalVersion: '1.1.3',
-      expectedRootType: 'catalog',
-      upstreamPath: 'control_layer/Risikomanagement/BSI-Anforderungen-zum-Risikomanagement-catalog.json',
-      lifecycle: 'preview',
-      title: 'BSI Anforderungen zum Risikomanagement',
-    },
-    {
-      artifactKey: 'catalog-source-lieferkette-kernel',
-      kind: 'oscal',
-      oscalVersion: '1.1.3',
-      expectedRootType: 'catalog',
-      upstreamPath:
-        'control_layer/Grundschutz++/sources/catalogs/Kernel/BSI-Stand-der-Technik-Kernel-catalog.json',
-      lifecycle: 'preview',
-      title: 'BSI Stand der Technik Kernel',
-    },
-    {
-      artifactKey: 'profile-lieferkette',
-      kind: 'oscal',
-      oscalVersion: '1.1.3',
-      expectedRootType: 'profile',
-      upstreamPath: 'control_layer/Lieferkettensicherheit/sources/profiles/Lieferkettensicherheit-profile.json',
-      lifecycle: 'preview',
-      title: 'Lieferkettensicherheit Profil',
-    },
-    {
-      artifactKey: 'profile-wlan',
-      kind: 'oscal',
-      oscalVersion: '1.1.3',
-      expectedRootType: 'profile',
-      upstreamPath: 'control_layer/WLAN/sources/profiles/WLAN-profile.json',
-      lifecycle: 'preview',
-      title: 'WLAN Profil',
-    },
-    {
-      artifactKey: 'mapping-iso27001-annex-a-zu-gspp',
-      kind: 'oscal',
-      oscalVersion: '1.2.2',
-      expectedRootType: 'mapping-collection',
-      upstreamPath: 'control_layer/Mappings/ISO-27001-zu-GSpp/ISO27001-AnnexA-to-GS++-mapping_collection.json',
-      lifecycle: 'blocked-by-upstream',
-      upstreamIssue: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/issues/68',
-      title: 'Mapping ISO/IEC 27001 Annex A zu Grundschutz++',
-    },
-    {
-      artifactKey: 'mapping-itgs2023-zu-gspp',
-      kind: 'oscal',
-      oscalVersion: '1.2.1',
-      expectedRootType: 'mapping-collection',
-      upstreamPath: 'control_layer/Mappings/IT-GS2023-zu-GSpp/ITGS-to-GS++-mapping_collection.json',
-      lifecycle: 'preview',
-      title: 'Mapping IT-Grundschutz 2023 zu Grundschutz++',
-    },
-    {
-      artifactKey: 'component-aws-security-hub',
-      kind: 'oscal',
-      oscalVersion: '1.2.2',
-      expectedRootType: 'component-definition',
-      upstreamPath: `${COMPONENT_DIRECTORY}/AWS Beispiel-Components/AWS Security Hub-component_definition.json`,
-      lifecycle: 'preview',
-      title: 'Component Definition AWS Security Hub V2/Essentials',
-    },
-    {
-      artifactKey: 'component-ga-lotse-grundmodul',
-      kind: 'oscal',
-      oscalVersion: '1.1.2',
-      expectedRootType: 'component-definition',
-      upstreamPath: `${COMPONENT_DIRECTORY}/GA-Lotse_Grundmodul/GA-Lotse_Grundmodul-component_definition.json`,
-      lifecycle: 'blocked-by-upstream',
-      upstreamIssue: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/issues/70',
-      title: 'Component Definition GA-Lotse Grundmodul',
-    },
-    {
-      artifactKey: 'component-lieferkette',
-      kind: 'oscal',
-      oscalVersion: '1.1.2',
-      expectedRootType: 'component-definition',
-      upstreamPath: `${COMPONENT_DIRECTORY}/Lieferkettensicherheit/Lieferkettensicherheit-component_definition.json`,
-      lifecycle: 'blocked-by-upstream',
-      upstreamIssue: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/issues/71',
-      title: 'Component Definition Lieferkettensicherheit',
-    },
-    {
-      artifactKey: 'component-netzarchitektur',
-      kind: 'oscal',
-      oscalVersion: '1.2.2',
-      expectedRootType: 'component-definition',
-      upstreamPath: `${COMPONENT_DIRECTORY}/Netzarchitektur/Netzarchitektur-component_definition.json`,
-      lifecycle: 'preview',
-      title: 'Component Definition Netzarchitektur',
-    },
-    {
-      artifactKey: 'component-passwortrichtlinie',
-      kind: 'oscal',
-      oscalVersion: '1.1.2',
-      expectedRootType: 'component-definition',
-      upstreamPath: `${COMPONENT_DIRECTORY}/Passwortrichtlinie/Passwortrichtlinie-component_definition.json`,
-      lifecycle: 'preview',
-      title: 'Component Definition Passwortrichtlinie',
-    },
-    {
-      artifactKey: 'component-keycloak',
-      kind: 'oscal',
-      oscalVersion: '1.2.2',
-      expectedRootType: 'component-definition',
-      upstreamPath: `${COMPONENT_DIRECTORY}/Keycloak/Keycloak-component_definition.json`,
-      lifecycle: 'preview',
-      title: 'Component Definition Keycloak',
-    },
   ].map((entry) => Object.freeze(entry)),
 );
-
-/**
- * Explizite, unveränderte Zuordnung zwischen den relativen `rlinks.href` des
- * Grundschutz++-Profils und den materialisierten Registry-Artefakten.
- *
- * Die Resolver-Logik normalisiert relative Referenzen absichtlich nicht. Die
- * Zuordnung bleibt deshalb hier prüfbar und darf keine Pfadheuristik oder
- * Netzauflösung ersetzen.
- */
-export const CATALOG_LINEAGES = Object.freeze([
-  Object.freeze({
-    catalogKey: 'gspp',
-    profileArtifactKey: 'profile-gspp',
-    imports: Object.freeze([
-      Object.freeze({
-        href: '../catalogs/Kernel/BSI-Stand-der-Technik-Kernel-G0-catalog.json',
-        artifactKey: 'catalog-source-gspp-kernel-g0',
-      }),
-      Object.freeze({
-        href: '../catalogs/Methodik-Grundschutz++/BSI-Methodik-Grundschutz++-catalog.json',
-        artifactKey: 'catalog-source-gspp-methodik',
-      }),
-      Object.freeze({
-        href: '../../../Risikomanagement/BSI-Anforderungen-zum-Risikomanagement-catalog.json',
-        artifactKey: 'catalog-source-risikomanagement',
-      }),
-    ]),
-  }),
-  Object.freeze({
-    catalogKey: 'lieferkette',
-    profileArtifactKey: 'profile-lieferkette',
-    imports: Object.freeze([
-      Object.freeze({
-        href: '../../../Grundschutz++/sources/catalogs/Kernel/BSI-Stand-der-Technik-Kernel-catalog.json',
-        artifactKey: 'catalog-source-lieferkette-kernel',
-      }),
-    ]),
-  }),
-  Object.freeze({
-    catalogKey: 'wlan',
-    profileArtifactKey: 'profile-wlan',
-    imports: Object.freeze([
-      Object.freeze({
-        href: '../../../Grundschutz++/sources/catalogs/Kernel/BSI-Stand-der-Technik-Kernel-G0-catalog.json',
-        artifactKey: 'catalog-source-gspp-kernel-g0',
-      }),
-    ]),
-  }),
-]);
 
 function isNonEmptyString(value) {
   return typeof value === 'string' && value.trim().length > 0;
@@ -447,6 +257,16 @@ function assertOscalEntryIsValid(entry, upstreamPaths, catalogKeys) {
   }
   upstreamPaths.add(entry.upstreamPath);
 
+  if (entry.profileUpstreamPath !== undefined) {
+    if (entry.expectedRootType !== 'catalog' || !isPathWithinMonitoredRoot(entry.profileUpstreamPath)) {
+      throw new Error(`Invalid profileUpstreamPath in source registry entry ${entry.artifactKey}`);
+    }
+    if (upstreamPaths.has(entry.profileUpstreamPath)) {
+      throw new Error(`Duplicate upstreamPath in source registry: ${entry.profileUpstreamPath}`);
+    }
+    upstreamPaths.add(entry.profileUpstreamPath);
+  }
+
   assertCatalogKeyUsageIsValid(entry, catalogKeys);
   assertEntryCatalogUsageIsValid(entry);
 }
@@ -539,6 +359,27 @@ export function listOscalArtifacts() {
   return SOURCE_REGISTRY.filter((entry) => entry.kind === 'oscal');
 }
 
+/** Pfade, die das Register als Produktartefakt führt (ohne Profile). */
+export function listProductUpstreamPaths(entries = SOURCE_REGISTRY) {
+  return entries.filter((entry) => entry.kind === 'oscal').map((entry) => entry.upstreamPath);
+}
+
+/**
+ * Leitet den Schlüssel eines Begleitartefakts deterministisch aus seinem Pfad
+ * ab: Endung `.json` entfernen, Kleinbuchstaben, jede Folge anderer Zeichen als
+ * `[a-z0-9]` wird ein Bindestrich. Erfüllt das Ergebnis die Schlüsselgrammatik
+ * nicht, gibt es `null` zurück.
+ */
+export function deriveCompanionArtifactKey(path) {
+  if (!isSafeRepoPath(path) || !path.endsWith('.json')) return null;
+  const key = path
+    .slice(0, -'.json'.length)
+    .toLowerCase()
+    .replaceAll(/[^a-z0-9]+/g, '-')
+    .replaceAll(/^-+|-+$/g, '');
+  return hasRegistryKeyGrammar(key) ? key : null;
+}
+
 export function getExpectedOscalVersion(path) {
   const entry = getArtifactByUpstreamPath(path);
   return entry?.kind === 'oscal' ? entry.oscalVersion : null;
@@ -587,75 +428,6 @@ export function listSupportedCatalogs(entries = SOURCE_REGISTRY) {
       entry.lifecycle === 'supported' &&
       entry.catalogKey !== undefined,
   );
-}
-
-function isInternalPreviewCatalogSource(entry) {
-  return (
-    entry?.kind === 'oscal' &&
-    entry.expectedRootType === 'catalog' &&
-    entry.lifecycle === 'preview' &&
-    entry.catalogKey === undefined
-  );
-}
-
-function validateCatalogLineageImport(importedCatalog, hrefs, artifactKeys, entriesByKey) {
-  if (!isNonEmptyString(importedCatalog.href) || hrefs.has(importedCatalog.href)) {
-    throw new Error(`Catalog lineage has duplicate or invalid href: ${importedCatalog.href}`);
-  }
-  hrefs.add(importedCatalog.href);
-
-  if (!isNonEmptyString(importedCatalog.artifactKey) || artifactKeys.has(importedCatalog.artifactKey)) {
-    throw new Error(
-      `Catalog lineage has duplicate or invalid source artifact: ${importedCatalog.artifactKey}`,
-    );
-  }
-  artifactKeys.add(importedCatalog.artifactKey);
-
-  const source = entriesByKey.get(importedCatalog.artifactKey);
-  if (!isInternalPreviewCatalogSource(source)) {
-    throw new Error(
-      `Catalog lineage source must be an internal preview catalog: ${importedCatalog.artifactKey}`,
-    );
-  }
-}
-
-function validateCatalogLineageImports(lineage, entriesByKey) {
-  if (!Array.isArray(lineage.imports) || lineage.imports.length === 0) {
-    throw new Error(`Catalog lineage requires at least one import: ${lineage.catalogKey}`);
-  }
-
-  const hrefs = new Set();
-  const artifactKeys = new Set();
-  for (const importedCatalog of lineage.imports) {
-    validateCatalogLineageImport(importedCatalog, hrefs, artifactKeys, entriesByKey);
-  }
-}
-
-/** Validiert, dass jede Lineage rein explizite, Registry-gebundene Kanten enthält. */
-export function validateCatalogLineages(lineages = CATALOG_LINEAGES, entries = SOURCE_REGISTRY) {
-  const lineagesByCatalog = new Set();
-  const entriesByKey = new Map(entries.map((entry) => [entry.artifactKey, entry]));
-
-  for (const lineage of lineages) {
-    if (!isNonEmptyString(lineage.catalogKey) || lineagesByCatalog.has(lineage.catalogKey)) {
-      throw new Error(`Duplicate or invalid catalog lineage key: ${lineage.catalogKey}`);
-    }
-    lineagesByCatalog.add(lineage.catalogKey);
-
-    const hasTargetCatalog = entries.some(
-      (entry) => entry.kind === 'oscal' && entry.catalogKey === lineage.catalogKey,
-    );
-    if (!hasTargetCatalog) {
-      throw new Error(`Catalog lineage references unknown catalogKey: ${lineage.catalogKey}`);
-    }
-
-    const profile = entriesByKey.get(lineage.profileArtifactKey);
-    if (profile?.kind !== 'oscal' || profile.expectedRootType !== 'profile') {
-      throw new Error(`Catalog lineage references no profile artifact: ${lineage.profileArtifactKey}`);
-    }
-
-    validateCatalogLineageImports(lineage, entriesByKey);
-  }
 }
 
 /**
@@ -730,7 +502,6 @@ export function listCatalogArtifactFileNames(entries = SOURCE_REGISTRY) {
 }
 
 validateSourceRegistry(SOURCE_REGISTRY);
-validateCatalogLineages(CATALOG_LINEAGES, SOURCE_REGISTRY);
 
 export const SUPPORTED_CATALOGS = Object.freeze(listSupportedCatalogs(SOURCE_REGISTRY));
 export const ENTRY_CATALOG = resolveEntryCatalog(SOURCE_REGISTRY);

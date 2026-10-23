@@ -24,7 +24,8 @@ import type { ProfileResolutionEdge } from '../src/domain/profileResolutionImpor
 import { resolveProfile } from '../src/domain/profileResolutionEngine';
 import { parseProfileDocument } from '../src/adapters/oscalProfileDocument';
 import { projectCatalogLineage } from '../src/domain/catalogLineage.mjs';
-import { CATALOG_LINEAGES } from '../src/domain/sourceRegistry.mjs';
+import { SUPPORTED_CATALOGS } from '../src/domain/sourceRegistry.mjs';
+import { corpusArtifactKeys } from './upstream-corpus-cache.mjs';
 import {
   canonicalJson,
   firstDivergence,
@@ -74,7 +75,17 @@ function requireCorpus(): void {
 }
 
 let documentsByArtifactKey: Map<string, unknown>;
+let artifactsByPath: Map<string, { document: unknown; manifestFile: { artifactKey: string; path: string; gitBlobSha: string; contentSha256: string } }>;
 let corpusSnapshotSha: string;
+
+/** Die ausgelieferten Kataloge mit BSI-Profil; ihre Lineages bestimmen den Korpus. */
+const PROFILED_CATALOGS = SUPPORTED_CATALOGS.filter((entry) => entry.profileUpstreamPath !== undefined);
+
+function projectLineage(entry: (typeof PROFILED_CATALOGS)[number]) {
+  const profileArtifact = artifactsByPath.get(entry.profileUpstreamPath!);
+  if (!profileArtifact) throw new Error(`Profil fehlt im Korpus: ${entry.profileUpstreamPath}`);
+  return projectCatalogLineage({ catalogKey: entry.catalogKey, profileArtifact, artifactsByPath });
+}
 
 beforeAll(() => {
   requireCorpus();
@@ -95,47 +106,39 @@ beforeAll(() => {
   }
 
   documentsByArtifactKey = new Map();
+  artifactsByPath = new Map();
   for (const file of manifest.files) {
     const bytes = readFileSync(join(CORPUS_DIRECTORY, `${file.artifactKey}.json`));
     const sha256 = createHash('sha256').update(bytes).digest('hex');
     expect(sha256, `Hashabweichung bei ${file.artifactKey}`).toBe(file.sha256);
-    documentsByArtifactKey.set(file.artifactKey, JSON.parse(bytes.toString('utf8')));
+    const document = JSON.parse(bytes.toString('utf8'));
+    documentsByArtifactKey.set(file.artifactKey, document);
+    artifactsByPath.set(file.path, {
+      document,
+      manifestFile: { artifactKey: file.artifactKey, path: file.path, gitBlobSha: file.gitBlobSha, contentSha256: file.sha256 },
+    });
   }
   corpusSnapshotSha = manifest.snapshotCommitSha;
 });
 
 describe('Korpus-Cache', () => {
-  it('trägt genau die zehn Lineages-Dokumente am getrackten Snapshot', () => {
+  it('trägt genau die Dokumente der abgeleiteten Lineages am getrackten Snapshot', () => {
     requireCorpus();
-    expect(documentsByArtifactKey.size).toBe(10);
+    expect([...documentsByArtifactKey.keys()].sort()).toEqual(
+      corpusArtifactKeys(PROFILED_CATALOGS.map(projectLineage)),
+    );
     expect(corpusSnapshotSha).toMatch(/^[0-9a-f]{40}$/);
   });
 });
 
 describe('verpflichtende Auflösung aller drei BSI-Profile', () => {
-  for (const lineage of CATALOG_LINEAGES) {
-    it(`löst ${lineage.profileArtifactKey} deterministisch auf und vergleicht gegen den BSI-Katalog`, async () => {
+  for (const entry of PROFILED_CATALOGS) {
+    it(`löst das Profil von ${entry.artifactKey} deterministisch auf und vergleicht gegen den BSI-Katalog`, async () => {
       requireCorpus();
 
-      // Kanten über die registrierte Lineage-Projektion: Der Import-Fragment-href
-      // des echten Profils wird exakt dem registrierten Zielartefakt zugeordnet.
-      const artifactsByKey = new Map(
-        [...documentsByArtifactKey.entries()].map(([artifactKey, document]) => [
-          artifactKey,
-          {
-            document,
-            manifestFile: {
-              path: artifactKey,
-              gitBlobSha: 'corpus-cache',
-              contentSha256: 'corpus-cache',
-            },
-          },
-        ]),
-      );
-      const projection = projectCatalogLineage({
-        lineage,
-        artifactsByKey,
-      });
+      // Kanten über die aus dem Profil abgeleitete Lineage (ADR-13).
+      const projection = projectLineage(entry);
+      const lineage = { catalogKey: entry.catalogKey, profileArtifactKey: projection.profile.artifactKey };
       const resolvedImports = projection.imports.filter(
         (entry) => entry.state === 'complete' && entry.source !== null,
       );
@@ -161,7 +164,7 @@ describe('verpflichtende Auflösung aller drei BSI-Profile', () => {
 
         const profileViews = new Map(
           plan.order
-            .filter((key) => key.startsWith('profile-'))
+            .filter((key) => (documentsByArtifactKey.get(key) as { profile?: unknown })?.profile !== undefined)
             .map((key) => [
               key,
               parseProfileDocument(documentsByArtifactKey.get(key), {
@@ -227,7 +230,7 @@ describe('verpflichtende Auflösung aller drei BSI-Profile', () => {
       // BSI-Orakelseite: semantische Gleichheit nach Volatil-Strip und
       // Anwendung der laut registrierten bekannten Differenzen.
       const strippedActual = stripVolatileFields(tree);
-      const expectedCatalog = documentsByArtifactKey.get(`catalog-${lineage.catalogKey}`);
+      const expectedCatalog = documentsByArtifactKey.get(entry.artifactKey);
       expect(expectedCatalog, `BSI-Katalog für ${lineage.catalogKey} fehlt im Korpus`).toBeDefined();
 
       // Korpus-Politik (siehe Oracle-Kopf): ausschließlich die namentlich
@@ -274,7 +277,7 @@ describe('verpflichtende Auflösung aller drei BSI-Profile', () => {
 describe('Kopfraum der drei BSI-Profile', () => {
   it('gibt die vier Budgetkennzahlen als Protokolltabelle aus', () => {
     requireCorpus();
-    expect(corpusUsage.size).toBe(CATALOG_LINEAGES.length);
+    expect(corpusUsage.size).toBe(PROFILED_CATALOGS.length);
 
     const rows = [...corpusUsage.entries()].map(([key, usage]) =>
       `| \`${key}\` | ${usage.workUnits.toLocaleString('de-DE')} `

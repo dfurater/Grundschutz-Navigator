@@ -532,6 +532,7 @@ scripts/                          # Build-, CI- und Wartungsskripte
 ├── check-seo-titles.d.mts            # Typen der Titelvertragsprüfung
 ├── check-seo-titles.mjs              # Titelvertrag der gebauten HTML-Auslieferung
 ├── ci-scope.mjs                      # Scope-Entscheider für Step-Skips im Job validate
+├── companion-artifacts.mjs           # Entdeckung, Schlüssel und Lifecycle der Begleitartefakte
 ├── contentHashes.d.mts             # Typen der SHA-256- und Git-Blob-Helfer
 ├── contentHashes.mjs               # SHA-256 und Git-Blob-IDs für Node-Skripte
 ├── control-identity-delta.mjs        # Control-Identitätsdelta zwischen Snapshots
@@ -609,15 +610,19 @@ npm run fetch-catalog → scripts/fetch-catalog.mjs
 • Abruf über die GitHub-API mit Retry bei transienten Fehlern
 • Snapshot-Pinning: BSI_SNAPSHOT_SHA aus upstream-manifest.json
 • sourceRegistry: einzige Ingestion-Quelle für Pfad, Root-Typ, Lifecycle und
-  erwartete oscal-version je Artefakt
+  erwartete oscal-version je Produktartefakt
+• companion-artifacts.mjs: jede weitere .json-Datei der Monitoring-Wurzeln ist
+  ein Begleitartefakt; Root-Typ aus dem Dokument, Lifecycle aus Wurzel-,
+  Versions- und Schemaprüfung (preview / blocked-by-upstream)
 • oscalVersionMatrix: fail-closed Schemaauswahl über Root-Typ × oscal-version;
   fehlende, nicht gepinnte oder unmögliche Version bricht den Lauf ab
 • Security-Guards: nur erlaubtes Repo, erlaubte Hosts, Pfade und Refs
-• registrierte preview-/draft-Artefakte werden transient geprüft, nicht ausgeliefert
-• catalogLineage.mjs projiziert für registrierte Profile die belegte Kette
-  Import-Fragment → back-matter.resource → exakter rlinks.href → Registry-Artefakt
+• draft-Produktartefakte und Begleitartefakte werden transient geprüft, nicht ausgeliefert
+• catalogLineage.mjs projiziert für jedes registrierte Profil die Kette
+  Import-Fragment → back-matter.resource → rlinks.href relativ zum Profilpfad
+  → Dokument desselben gepinnten Trees
 • jeder supported Katalog und die direkten Namespace-CSVs → JSON + Provenance
-• Manifest v2 bindet Registry-Metadaten, Git-Blob-SHA und Content-SHA-256
+• Manifest v2 bindet Register- und Begleitmetadaten, Git-Blob-SHA und Content-SHA-256
 • Korpus-Cache (gitignoriert, `.cache/upstream-corpus/` + Begleitmanifest)
   versorgt den Bauzeitlauf der Profile Resolution mit den Lineage-Dokumenten
   (Profile sowie Quell- und Anwenderkataloge); die Korpus-Suite prüft die
@@ -1164,9 +1169,9 @@ Wo Abhängigkeiten installiert werden, geschieht es mit `npm ci --ignore-scripts
 
 Die Standardberechtigung des Deploy-Workflows beschränkt sich auf `contents: read`. Schreibrechte für GitHub Pages, OIDC, Attestations und Artefaktmetadaten besitzt ausschließlich der Job `build-and-deploy`; der vorgeschaltete `idempotency_guard` hat nur Lesezugriffe.
 
-Die generierten Katalog- und Vokabulardaten werden **nie** im Repository committet — sie werden immer frisch zum Build-Zeitpunkt von BSI abgerufen. Der Workflow `.github/workflows/update-catalog.yml` vergleicht die vollständigen Trees der in `sourceRegistry` definierten Monitoring-Wurzeln. Änderungen an registrierten Artefakten aktualisieren `upstream-manifest.json`; neue, nicht registrierte Dateien werden ausschließlich als `unclassified` gemeldet und weder gefetcht noch ausgeliefert.
+Die generierten Katalog- und Vokabulardaten werden **nie** im Repository committet — sie werden immer frisch zum Build-Zeitpunkt von BSI abgerufen. Der Workflow `.github/workflows/update-catalog.yml` vergleicht die vollständigen Trees der in `sourceRegistry` definierten Monitoring-Wurzeln (`MONITORED_UPSTREAM_ROOTS`). Das Quellregister führt nur Produktartefakte: die Kataloge mit `catalogKey`, je ausgeliefertem Katalog den Pfad seines BSI-Profils (`profileUpstreamPath`) und die Vokabularsammlung. Jede andere `.json`-Datei unter den Monitoring-Wurzeln ist ein Begleitartefakt, das `scripts/companion-artifacts.mjs` im gepinnten Tree entdeckt; sie wird gepinnt, aber nie ausgeliefert. Dateien, die weder Produkt- noch Begleit- oder Vokabulardatei sind, werden als `unclassified` gemeldet und weder gefetcht noch ausgeliefert.
 
-Manifest v2 enthält für jede materialisierte Datei `artifactKey`, erwarteten `rootType`, `lifecycle`, Pfad, Git-Blob-SHA und Content-SHA-256. Dadurch umfasst das Delta auch registrierte Kataloge, Profile, Mappings und Component Definitions; produktiv ausgeliefert werden ausschließlich `supported`-Artefakte.
+Manifest v2 enthält für jede materialisierte Datei `artifactKey`, `rootType`, `lifecycle`, Pfad, Git-Blob-SHA und Content-SHA-256. Für Produktartefakte stammen Schlüssel, Root-Typ und Lifecycle aus dem Register. Für Begleitartefakte liest der Fetch den Root-Typ aus dem Dokument; der Lifecycle ist `preview`, wenn das Dokument genau eine bekannte OSCAL-Wurzel trägt, seine `metadata.oscal-version` eine Zelle der Versionsmatrix bindet und es das gepinnte Schema erfüllt, sonst `blocked-by-upstream`. Der Schlüssel eines Begleitartefakts stammt aus dem getrackten `upstream-manifest.json`, wenn der Pfad dort steht, sonst aus `deriveCompanionArtifactKey` in `src/domain/sourceRegistry.mjs`, weil `artifactKey` in die Manifest-Signatur eingeht. Produktiv ausgeliefert werden ausschließlich `supported`-Artefakte.
 
 ### Policy-gesteuerter Catalog-Sync
 
@@ -1179,26 +1184,22 @@ Ein erkannter Upstream-Delta durchläuft folgende Lane:
 1. Der Workflow checkt explizit `main` aus und prüft Auto-Merge, automatische Branch-Löschung, Ruleset samt Ref-Scope auf `main`, required Checks und CodeQL. `updated_at` muss denselben Zeitpunkt wie das nach vollständigem Admin-Audit gesetzte `CATALOG_SYNC_RULESET_UPDATED_AT` bezeichnen; jede tatsächliche Ruleset-Änderung blockiert bis zur erneuten Prüfung.
 2. Der deterministische Branch `chore/catalog-sync-<sha12>` wird neu aus `origin/main` aufgebaut und enthält genau einen Manifest-Commit.
 3. Die GitHub App pusht den Branch und erstellt oder aktualisiert den PR.
-4. `validate` und `catalog-sync-guard` sind die vom Preflight erwarteten Required Status Checks (`REQUIRED_CHECKS` in `scripts/catalog-sync-policy.mjs`). Der Guard bindet Registry-Metadaten, Datei-Inventur, Blob-SHAs und Content-Hashes an den ausgewählten BSI-Snapshot.
+4. `validate` und `catalog-sync-guard` sind die vom Preflight erwarteten Required Status Checks (`REQUIRED_CHECKS` in `scripts/catalog-sync-policy.mjs`). Der Guard bindet Registry-Metadaten, Begleit- und Vokabularinventur, Blob-SHAs und Content-Hashes an den ausgewählten BSI-Snapshot.
 5. Der Workflow fordert ausschließlich GitHub Auto-Merge mit Squash und Branch-Löschung an.
 6. `.github/workflows/verify-catalog-merge.yml` verifiziert Merge-Commit und Manifest auf `main`. Die anschließende Deploy-Prüfung liegt in `scripts/verify-catalog-deploy.mjs`: Sie bestätigt den Push-Deploy zum Merge-Commit erst bei terminalem Zustand mit `conclusion = success`. Ein fehlgeschlagener oder unbestätigter Deploy lässt den Verify-Job fehlschlagen. Erscheint gar kein Push-Deploy, werden Merge-Commit und Manifest erneut gegen `main` geprüft, bevor der Workflow den begrenzten Fallback dispatcht.
 7. Der Fallback-Dispatch übergibt `dispatch_source=catalog-sync-fallback` an `deploy.yml`, wo der Job `idempotency_guard` (`scripts/check-deploy-idempotency.mjs`) prüft, ob für denselben Commit-SHA bereits ein Deploy-Lauf erfolgreich abgeschlossen wurde. Der Guard kann einen Deploy ausschließlich verhindern, nie erzwingen. Ein manueller `workflow_dispatch` lässt `dispatch_source` leer und deployt immer.
 
-#### Vom Guard anerkannte PR-Typen
+#### Manifestregel des Guards
 
-`catalog-sync-guard.mjs` rechnet den PR-Diff als Drei-Punkt-Diff gegen die Merge-Basis (`<base>...<head>`) — dieselbe Bezugsgröße, die GitHub für „Files changed" verwendet. Berührt dieser Diff `upstream-manifest.json` nicht und trägt die PR weder Sync-Branchnamen noch Sync-Titel, passiert sie ohne Netzzugriff. Andernfalls muss die PR genau einem der folgenden Typen entsprechen; jede Abweichung fällt fail-closed auf den regulären Sync-Pfad zurück und wird dort abgelehnt.
+`catalog-sync-guard.mjs` rechnet den PR-Diff als Drei-Punkt-Diff gegen die Merge-Basis (`<base>...<head>`) — dieselbe Bezugsgröße, die GitHub für „Files changed" verwendet. Berührt dieser Diff `upstream-manifest.json` nicht und trägt die PR weder Sync-Branchnamen noch Sync-Titel, passiert sie ohne Netzzugriff. Für jede andere PR gilt eine Regel:
 
-| Typ | Prädikat | Kennzeichen | Netzprüfung |
-| --- | --- | --- | --- |
-| Autonomer Katalog-Sync | `validateCatalogSyncPullRequest` | Branch `chore/catalog-sync-<sha12>`, exakter Titel, genau `upstream-manifest.json` geändert | `verifySnapshotProgress` und `verifySnapshotFiles` |
-| Registry-Lifecycle-Migration | `isRegistryLifecycleOnlyMigration` | Manifest und Quellregister gemeinsam, **unveränderter** Snapshot, alle Content-Pins identisch, mindestens ein Lifecycle-Wechsel; keine Entsperrung aus `blocked-by-upstream` | keine |
-| Registry-Preview-Erweiterung | `isRegistryPreviewArtifactExpansion` | Manifest und Quellregister gemeinsam, unveränderter Snapshot, ausschließlich neue interne Preview-Kataloge ohne `catalogKey` | `verifySnapshotFiles` |
-| OSCAL-Versionsmigration | `isRegistryOscalVersionMigration` | Manifest und Quellregister gemeinsam, **vorwärts bewegter** Snapshot, unveränderte Artefaktidentität, im Register bewegt sich einzig `oscalVersion` von OSCAL-Artefakten; Begleitpfade nur unter `src/` und `docs/` | `verifySnapshotProgress` und `verifySnapshotFiles`, ungekürzt |
-| Manifest-Übernahme nach `develop` | `isCatalogImportToDevelop` | Base `develop`, Branch exakt `chore/catalog-import-to-develop`, genau ein Eintrag `M upstream-manifest.json`, Manifest am Head byte-identisch mit dem an `origin/main` | `verifySnapshotProgress` und `verifySnapshotFiles`, ungekürzt |
+1. Kein Diff-Pfad liegt unter `scripts/` oder `.github/`, weil CI den Guard aus dem PR-Head ausführt.
+2. Altes und neues Manifest bestehen das v2-Schema mit offiziellem Repository.
+3. Das neue Manifest passt zum Register im Head (`validateCatalogSyncManifest`): Produkteinträge gleichen dem Register in Schlüssel, Pfad, Root-Typ und Lifecycle, jedes registrierte Profil ist enthalten, Begleiteinträge liegen unter einer Monitoring-Wurzel und tragen einen eindeutigen, grammatikkonformen Schlüssel.
+4. Der neue Snapshot ist gleich oder voraus (`verifySnapshotProgress`). Bei gleichem Snapshot entfällt nur dieser Schritt; der Lane-PR verlangt immer einen vorauslaufenden Snapshot.
+5. `verifySnapshotFiles` prüft jede Datei gegen Tree, Blob und Inhalt, vergleicht die Begleitmenge des Manifests mit der im Tree entdeckten Menge und prüft Root-Typ und Lifecycle jedes Begleitartefakts gegen sein Prüfergebnis.
 
-Die OSCAL-Versionsmigration löst einen strukturellen Deadlock: Hebt BSI die `metadata.oscal-version` eines registrierten Artefakts an, blockiert der fail-closed-Abgleich jeden Fetch, und beide Einzelwege bleiben rot. Registerbump und Snapshot-Advance müssen deshalb im selben Commit liegen. Die Sicherheit stammt aus der ungekürzten Snapshot-Verifikation gegen die BSI-API und aus der Positivliste der Begleitpfade (`src/`, `docs/`).
-
-Die Manifest-Übernahme bezieht ihre Sicherheit aus der **Herkunft**: Weil das Manifest am PR-Head byte-identisch mit dem an `origin/main` sein muss, kann dieser Zweig nichts durchlassen, was nicht bereits die vollständige Sync-Lane auf `main` passiert hat. `verifySnapshotProgress` und `verifySnapshotFiles` laufen trotzdem ungekürzt gegen die BSI-API.
+Auto-Merge erhält nur der Lane-PR: Branch `chore/catalog-sync-<sha12>` passend zum neuen Snapshot, exakter Titel und ein Diff, der ausschließlich `upstream-manifest.json` ändert (`validateCatalogSyncPullRequest`). Ein PR, der Register und Manifest gemeinsam ändert, durchläuft dieselbe Regel und wird regulär gemergt.
 
 Bei fehlender oder abweichender vom Preflight geprüfter Policy, einem API-Fehler, unerwartetem Diff oder fehlendem `autoMergeRequest` bricht der Workflow ab.
 
@@ -1212,7 +1213,7 @@ Die Übernahme überträgt die **Änderung**, nicht den Zustand. Jede Klasse hat
 | --- | --- | --- | --- | --- |
 | Reparatur | Ancestry einer abgeschlossenen M2-/M3-Übernahme fehlt | `chore/backmerge-main-to-develop` | ausschließlich Historie; der Pull Request ändert keine Datei | Merge-Commit |
 | M1 | ausschließlich `upstream-manifest.json` bewegt, `snapshotCommitSha` wechselt | `chore/catalog-import-to-develop` | Vorbedingung: develops Manifest ist byte-identisch mit dem an irgendeinem von `origin/main` erreichbaren Commit | Squash zulässig |
-| M2 | `upstream-manifest.json` und `src/domain/sourceRegistry.mjs` gemeinsam bewegt | `chore/backmerge-main-to-develop` | Drei-Wege-Merge gegen `git merge-base origin/main origin/develop`, Zielzustand muss ein Migrationsprädikat erfüllen | Merge-Commit |
+| M2 | `upstream-manifest.json` und `src/domain/sourceRegistry.mjs` gemeinsam bewegt | `chore/backmerge-main-to-develop` | Drei-Wege-Merge gegen `git merge-base origin/main origin/develop`; der Zielzustand muss die lokal prüfbaren Teile der Manifestregel erfüllen (`migrationContractHolds`: kein Pfad unter `scripts/` oder `.github/`, beide Manifeste v2-gültig, `--validate-manifest` des Guards im Ergebnisstand grün) | Merge-Commit |
 | M3 | Inhalt ohne Manifestpfad | `chore/backmerge-main-to-develop` | Drei-Wege-Merge gegen dieselbe Basis | Merge-Commit |
 | Konflikt | Manifest bewegt, aber weder M1 noch M2 greift | entfällt | — | kein PR, Lauf schlägt mit Befund fehl |
 

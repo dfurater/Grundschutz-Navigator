@@ -4,7 +4,7 @@ import { member, body } from '@/test/fixtures/workspaceGraph';
 
 vi.mock('@/domain/sourceRegistry', async importOriginal => {
   const actual = await importOriginal<typeof import('@/domain/sourceRegistry')>();
-  return { ...actual, SOURCE_REGISTRY: actual.SOURCE_REGISTRY.map(entry => entry.artifactKey === 'profile-gspp' ? { ...entry, lifecycle: 'supported' } : entry) };
+  return { ...actual, SOURCE_REGISTRY: [...actual.SOURCE_REGISTRY, { artifactKey: 'profile-gspp', kind: 'oscal', oscalVersion: '1.1.3', expectedRootType: 'profile', upstreamPath: 'control_layer/Grundschutz++/sources/profiles/Grundschutz++-profile.json', lifecycle: 'supported', title: 'Grundschutz++ Profil' }] };
 });
 
 function artifacts(): [WorkspaceClass1Artifact, WorkspaceClass1Artifact] {

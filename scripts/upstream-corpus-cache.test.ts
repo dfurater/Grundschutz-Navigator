@@ -7,7 +7,6 @@ import {
   corpusArtifactKeys,
   writeCorpusCache,
 } from './upstream-corpus-cache.mjs';
-import { CATALOG_LINEAGES } from '../src/domain/sourceRegistry.mjs';
 
 function inspected(artifactKey, repoPath, text) {
   const buffer = Buffer.from(text, 'utf8');
@@ -17,17 +16,21 @@ function inspected(artifactKey, repoPath, text) {
   };
 }
 
+function lineage(catalogKey, profileArtifactKey, sourceKeys) {
+  return {
+    catalogKey,
+    profile: { artifactKey: profileArtifactKey },
+    imports: sourceKeys.map((artifactKey, index) => ({
+      index,
+      state: artifactKey ? 'complete' : 'artifact-unregistered',
+      source: artifactKey ? { artifactKey } : null,
+    })),
+  };
+}
+
 const LINEAGES = [
-  {
-    catalogKey: 'gspp',
-    profileArtifactKey: 'profile-gspp',
-    imports: [{ href: './a.json', artifactKey: 'cat-a' }],
-  },
-  {
-    catalogKey: 'wlan',
-    profileArtifactKey: 'profile-wlan',
-    imports: [{ href: './a.json', artifactKey: 'cat-a' }],
-  },
+  lineage('gspp', 'profile-gspp', ['cat-a']),
+  lineage('wlan', 'profile-wlan', ['cat-a']),
 ];
 
 describe('corpusArtifactKeys', () => {
@@ -41,16 +44,12 @@ describe('corpusArtifactKeys', () => {
     ]);
   });
 
-  it('fordert für die echten Lineages genau zehn Dokumente an', () => {
-    // Drei Profile + vier Quellkataloge + drei ausgelieferte Anwenderkataloge.
-    const keys = corpusArtifactKeys(CATALOG_LINEAGES);
-    expect(keys).toHaveLength(10);
-    expect(keys.filter((key) => key.startsWith('profile-'))).toEqual([
-      'profile-gspp',
+  it('übernimmt nur aufgelöste Importquellen', () => {
+    expect(corpusArtifactKeys([lineage('lieferkette', 'profile-lieferkette', [null, 'cat-b'])])).toEqual([
+      'cat-b',
+      'catalog-lieferkette',
       'profile-lieferkette',
-      'profile-wlan',
     ]);
-    expect(keys).toContain('catalog-source-lieferkette-kernel');
   });
 });
 

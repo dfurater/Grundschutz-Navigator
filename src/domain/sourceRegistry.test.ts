@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-  CATALOG_LINEAGES,
   MONITORED_UPSTREAM_ROOTS,
   ENTRY_CATALOG,
   ENTRY_CATALOG_KEY,
@@ -9,6 +8,7 @@ import {
   SUPPORTED_CATALOG_KEYS,
   catalogDataFileName,
   catalogMetadataFileName,
+  deriveCompanionArtifactKey,
   getArtifactByUpstreamPath,
   getCatalogByKey,
   getExpectedOscalVersion,
@@ -21,6 +21,7 @@ import {
   listCatalogArtifactFileNames,
   listCatalogKeys,
   listOscalArtifacts,
+  listProductUpstreamPaths,
   listSupportedCatalogs,
   resolveEntryCatalog,
   validateSourceRegistry,
@@ -85,121 +86,54 @@ describe('sourceRegistry', () => {
     ]);
   });
 
-  it('registers exactly the profile-imported source catalogs and all three lineage graphs', () => {
-    expect(CATALOG_LINEAGES).toEqual([
-      {
-        catalogKey: 'gspp',
-        profileArtifactKey: 'profile-gspp',
-        imports: [
-          {
-            href: '../catalogs/Kernel/BSI-Stand-der-Technik-Kernel-G0-catalog.json',
-            artifactKey: 'catalog-source-gspp-kernel-g0',
-          },
-          {
-            href: '../catalogs/Methodik-Grundschutz++/BSI-Methodik-Grundschutz++-catalog.json',
-            artifactKey: 'catalog-source-gspp-methodik',
-          },
-          {
-            href: '../../../Risikomanagement/BSI-Anforderungen-zum-Risikomanagement-catalog.json',
-            artifactKey: 'catalog-source-risikomanagement',
-          },
-        ],
-      },
-      {
-        catalogKey: 'lieferkette',
-        profileArtifactKey: 'profile-lieferkette',
-        imports: [
-          {
-            href: '../../../Grundschutz++/sources/catalogs/Kernel/BSI-Stand-der-Technik-Kernel-catalog.json',
-            artifactKey: 'catalog-source-lieferkette-kernel',
-          },
-        ],
-      },
-      {
-        catalogKey: 'wlan',
-        profileArtifactKey: 'profile-wlan',
-        imports: [
-          {
-            href: '../../../Grundschutz++/sources/catalogs/Kernel/BSI-Stand-der-Technik-Kernel-G0-catalog.json',
-            artifactKey: 'catalog-source-gspp-kernel-g0',
-          },
-        ],
-      },
+  it('registers exactly the product artifacts and the profile path of each shipped catalog', () => {
+    expect(SOURCE_REGISTRY.map((entry) => entry.artifactKey)).toEqual([
+      'catalog-gspp',
+      'namespaces-bsi',
+      'catalog-lieferkette',
+      'catalog-wlan',
+      'catalog-mindeststandard-tls',
     ]);
-
     expect(
-      SOURCE_REGISTRY.filter((entry) => entry.artifactKey.startsWith('catalog-source-')),
+      SUPPORTED_CATALOGS.map((entry) => [entry.catalogKey, entry.profileUpstreamPath]),
     ).toEqual([
-      expect.objectContaining({
-        artifactKey: 'catalog-source-gspp-kernel-g0',
-        expectedRootType: 'catalog',
-        lifecycle: 'preview',
-        upstreamPath:
-          'control_layer/Grundschutz++/sources/catalogs/Kernel/BSI-Stand-der-Technik-Kernel-G0-catalog.json',
-      }),
-      expect.objectContaining({
-        artifactKey: 'catalog-source-gspp-methodik',
-        expectedRootType: 'catalog',
-        lifecycle: 'preview',
-        upstreamPath:
-          'control_layer/Grundschutz++/sources/catalogs/Methodik-Grundschutz++/BSI-Methodik-Grundschutz++-catalog.json',
-      }),
-      expect.objectContaining({
-        artifactKey: 'catalog-source-risikomanagement',
-        expectedRootType: 'catalog',
-        lifecycle: 'preview',
-        upstreamPath: 'control_layer/Risikomanagement/BSI-Anforderungen-zum-Risikomanagement-catalog.json',
-      }),
-      expect.objectContaining({
-        artifactKey: 'catalog-source-lieferkette-kernel',
-        expectedRootType: 'catalog',
-        lifecycle: 'preview',
-        upstreamPath:
-          'control_layer/Grundschutz++/sources/catalogs/Kernel/BSI-Stand-der-Technik-Kernel-catalog.json',
-      }),
+      ['gspp', 'control_layer/Grundschutz++/sources/profiles/Grundschutz++-profile.json'],
+      ['lieferkette', 'control_layer/Lieferkettensicherheit/sources/profiles/Lieferkettensicherheit-profile.json'],
+      ['wlan', 'control_layer/WLAN/sources/profiles/WLAN-profile.json'],
     ]);
+    expect(listProductUpstreamPaths()).toEqual(listOscalArtifacts().map((entry) => entry.upstreamPath));
   });
 
-  it('resolves every lineage import target through its registered upstream path', () => {
-    for (const lineage of CATALOG_LINEAGES) {
-      for (const imported of lineage.imports) {
-        const registeredArtifact = listOscalArtifacts().find(
-          (entry) => entry.artifactKey === imported.artifactKey,
-        );
-        const artifact = getArtifactByUpstreamPath(
-          registeredArtifact?.upstreamPath ?? '',
-        );
-        expect(artifact?.artifactKey).toBe(imported.artifactKey);
-      }
-    }
-    // profile-lieferkette importiert ausschließlich den Kernel ohne G0.
-    expect(getArtifactByUpstreamPath(
-      'control_layer/Grundschutz++/sources/catalogs/Kernel/BSI-Stand-der-Technik-Kernel-catalog.json',
-    )?.artifactKey).toBe('catalog-source-lieferkette-kernel');
+  it('rejects a profile path outside the monitored roots or on a non-catalog entry', () => {
+    expect(() =>
+      validateSourceRegistry([makeOscalEntry({ profileUpstreamPath: 'other/Test-profile.json' })]),
+    ).toThrow(/Invalid profileUpstreamPath/);
+    expect(() =>
+      validateSourceRegistry([
+        makeOscalEntry({
+          expectedRootType: 'profile',
+          catalogKey: undefined,
+          profileUpstreamPath: 'control_layer/Test/Test-profile.json',
+        }),
+      ]),
+    ).toThrow(/Invalid profileUpstreamPath/);
+    expect(() =>
+      validateSourceRegistry([
+        makeOscalEntry({ profileUpstreamPath: 'control_layer/Test/Test-catalog.json' }),
+      ]),
+    ).toThrow(/Duplicate upstreamPath/);
   });
 
-  it('blocks exactly the upstream-reported schema-defective OSCAL artifacts', () => {
+  it('derives a grammar-conformant companion key from the path', () => {
+    expect(deriveCompanionArtifactKey('control_layer/Kernel/BSI-Stand-der-Technik-Kernel-catalog.json'))
+      .toBe('control-layer-kernel-bsi-stand-der-technik-kernel-catalog');
     expect(
-      SOURCE_REGISTRY.filter(
-        (entry): entry is OscalArtifactEntry =>
-          entry.kind === 'oscal' && entry.lifecycle === 'blocked-by-upstream',
-      )
-        .map((entry) => ({ artifactKey: entry.artifactKey, upstreamIssue: entry.upstreamIssue }))
-        .sort((left, right) => left.artifactKey.localeCompare(right.artifactKey)),
-    ).toEqual([
-      {
-        artifactKey: 'component-ga-lotse-grundmodul',
-        upstreamIssue: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/issues/70',
-      },
-      {
-        artifactKey: 'component-lieferkette',
-        upstreamIssue: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/issues/71',
-      },
-      {
-        artifactKey: 'mapping-iso27001-annex-a-zu-gspp',
-        upstreamIssue: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/issues/68',
-      },
-    ]);
+      deriveCompanionArtifactKey('implementation_layer/AWS Beispiel-Components/AWS Security Hub-component_definition.json'),
+    ).toBe('implementation-layer-aws-beispiel-components-aws-security-hub-component-definition');
+    expect(deriveCompanionArtifactKey('control_layer/Grundschutz++/x.json')).toBe('control-layer-grundschutz-x');
+    expect(deriveCompanionArtifactKey('control_layer/catalog.csv')).toBeNull();
+    expect(deriveCompanionArtifactKey('../control_layer/catalog.json')).toBeNull();
+    expect(deriveCompanionArtifactKey('1/2.json')).toBeNull();
   });
 
   it('monitors exactly the registry-backed BSI discovery roots', () => {
@@ -219,25 +153,6 @@ describe('sourceRegistry', () => {
     'control_layer/Grundschutz++/sources/profiles/Grundschutz++-profile.json',
   ])('accepts safe repository path %s', (repoPath) => {
     expect(isSafeRepoPath(repoPath)).toBe(true);
-  });
-
-  it('tracks only the approved AWS Security Hub replacement as preview', () => {
-    const awsEntries = SOURCE_REGISTRY.filter((entry) =>
-      entry.artifactKey.startsWith('component-aws-'),
-    );
-
-    expect(awsEntries).toEqual([
-      {
-        artifactKey: 'component-aws-security-hub',
-        kind: 'oscal',
-        oscalVersion: '1.2.2',
-        expectedRootType: 'component-definition',
-        upstreamPath:
-          'implementation_layer/AWS Beispiel-Components/AWS Security Hub-component_definition.json',
-        lifecycle: 'preview',
-        title: 'Component Definition AWS Security Hub V2/Essentials',
-      },
-    ]);
   });
 
   it.each([
@@ -286,29 +201,14 @@ describe('sourceRegistry', () => {
     expect(getArtifactByUpstreamPath('')).toBeNull();
   });
 
-  it('reports the expected OSCAL root type per registered path', () => {
+  it('reports the expected OSCAL root type per product path only', () => {
     expect(getExpectedRootType(OFFICIAL_CATALOG_PATH)).toBe('catalog');
     expect(
       getExpectedRootType(
         'control_layer/Lieferkettensicherheit/Lieferkettensicherheit-resolved_catalog.json',
       ),
     ).toBe('catalog');
-    expect(
-      getExpectedRootType(
-        'control_layer/Mappings/IT-GS2023-zu-GSpp/ITGS-to-GS++-mapping_collection.json',
-      ),
-    ).toBe('mapping-collection');
-    expect(getExpectedRootType('control_layer/WLAN/sources/profiles/WLAN-profile.json')).toBe(
-      'profile',
-    );
-    expect(
-      getExpectedRootType(
-        'implementation_layer/Keycloak/Keycloak-component_definition.json',
-      ),
-    ).toBe('component-definition');
-    expect(
-      getExpectedRootType('implementation_layer/WLAN/WLAN-component_definition.json'),
-    ).toBeNull();
+    expect(getExpectedRootType('control_layer/WLAN/sources/profiles/WLAN-profile.json')).toBeNull();
     expect(getExpectedRootType('documentation/namespaces/tags.csv')).toBeNull();
     expect(getExpectedRootType('unknown.json')).toBeNull();
   });
@@ -340,8 +240,8 @@ describe('sourceRegistry', () => {
 
   describe('OSCAL-Versionskompatibilität (GSPP-283)', () => {
     /**
-     * Die am BSI-Snapshot 47de2824 aus `metadata.oscal-version` ausgelesenen
-     * Versionen aller registrierten OSCAL-Artefakte. Blob-SHA und SHA-256 der
+     * Die aus `metadata.oscal-version` ausgelesenen Versionen aller
+     * registrierten Produktartefakte. Blob-SHA und SHA-256 der
      * Quelldokumente wurden dabei gegen `upstream-manifest.json` geprüft.
      *
      * Dieser Erwartungswert wird bewusst ausgeschrieben statt aus der Registry
@@ -352,22 +252,7 @@ describe('sourceRegistry', () => {
       'catalog-gspp': '1.1.3',
       'catalog-lieferkette': '1.1.3',
       'catalog-mindeststandard-tls': '1.1.3',
-      'catalog-source-gspp-kernel-g0': '1.1.3',
-      'catalog-source-gspp-methodik': '1.1.3',
-      'catalog-source-lieferkette-kernel': '1.1.3',
-      'catalog-source-risikomanagement': '1.1.3',
       'catalog-wlan': '1.1.3',
-      'component-aws-security-hub': '1.2.2',
-      'component-ga-lotse-grundmodul': '1.1.2',
-      'component-keycloak': '1.2.2',
-      'component-lieferkette': '1.1.2',
-      'component-netzarchitektur': '1.2.2',
-      'component-passwortrichtlinie': '1.1.2',
-      'mapping-iso27001-annex-a-zu-gspp': '1.2.2',
-      'mapping-itgs2023-zu-gspp': '1.2.1',
-      'profile-gspp': '1.1.3',
-      'profile-lieferkette': '1.1.3',
-      'profile-wlan': '1.1.3',
     };
 
     it('covers every registered OSCAL artifact exactly once', () => {
@@ -393,22 +278,13 @@ describe('sourceRegistry', () => {
       }
     });
 
-    it('spans exactly the four pinned versions found in the BSI corpus', () => {
-      expect([...new Set(listOscalArtifacts().map((entry) => entry.oscalVersion))].sort()).toEqual([
-        '1.1.2',
-        '1.1.3',
-        '1.2.1',
-        '1.2.2',
-      ]);
-    });
-
     it('exposes the expected version per upstream path', () => {
       expect(getExpectedOscalVersion(OFFICIAL_CATALOG_PATH)).toBe('1.1.3');
       expect(
         getExpectedOscalVersion(
           'control_layer/Mappings/IT-GS2023-zu-GSpp/ITGS-to-GS++-mapping_collection.json',
         ),
-      ).toBe('1.2.1');
+      ).toBeNull();
       expect(getExpectedOscalVersion('documentation/namespaces/tags.csv')).toBeNull();
       expect(getExpectedOscalVersion('unknown.json')).toBeNull();
       expect(getSchemaPinForArtifact('namespaces-bsi')).toBeNull();

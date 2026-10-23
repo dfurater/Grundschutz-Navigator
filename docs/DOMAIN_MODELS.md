@@ -773,10 +773,10 @@ Der Zustand jeder einzelnen `id-ref` steht am Item.
 
 ### ADR-7 am realen Bestand
 
-`mapping-iso27001-annex-a-zu-gspp` steht im Quellregister auf
-`lifecycle: 'blocked-by-upstream'` und ist gegen sein gepinntes Schema
-**invalide**: `provenance` trägt mit `qa-reviewed` und `qa-note` zwei Felder,
-die `additionalProperties: false` verletzt.
+Das ISO-27001-Mapping ist gegen sein gepinntes Schema **invalide**:
+`provenance` trägt mit `qa-reviewed` und `qa-note` zwei Felder, die
+`additionalProperties: false` verletzt. Als Begleitartefakt steht es deshalb
+mit `lifecycle: 'blocked-by-upstream'` im Manifest.
 
 Der Adapter parst es trotzdem verlustfrei und diagnostiziert die Verletzung
 ([ADR-7](https://linear.app/grundschutz-plus-plus/issue/ADR-7)); die Sperrung
@@ -1622,7 +1622,7 @@ interface UpstreamManifest {
 }
 ```
 
-`ManifestRootType` umfasst die unterstützten OSCAL-Root-Typen sowie `vocabulary`; `ArtifactLifecycle` unterscheidet `supported`, `preview`, `draft` und `blocked-by-upstream`. Preview- und Draft-Dateien werden zur Provenance transient validiert, aber nicht als App-Daten ausgeliefert.
+`ManifestRootType` umfasst die unterstützten OSCAL-Root-Typen sowie `vocabulary`; `ArtifactLifecycle` unterscheidet `supported`, `preview`, `draft` und `blocked-by-upstream`. Draft-Produktartefakte und Begleitartefakte (`preview`, `blocked-by-upstream`) werden zur Provenance transient validiert, aber nicht als App-Daten ausgeliefert.
 
 ## Provenance/Integrity Types
 

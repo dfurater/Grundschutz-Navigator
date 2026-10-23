@@ -42,7 +42,7 @@ const nullableDocumentFields = [
   'title', 'documentUuid', 'oscalVersion', 'version',
   'upstreamPath', 'gitBlobSha', 'contentSha256',
 ] as const;
-const unresolvedStates: Exclude<CatalogLineageState, 'complete' | 'configured-import-missing'>[] = [
+const unresolvedStates: Exclude<CatalogLineageState, 'complete'>[] = [
   'import-href-missing', 'import-href-not-fragment', 'resource-missing',
   'resource-ambiguous', 'rlink-missing', 'rlink-ambiguous',
   'artifact-unregistered', 'import-duplicate',
@@ -180,18 +180,6 @@ describe('resolveActiveCatalogLineage', () => {
     expect(resolveActiveCatalogLineage([invalidIndex], 'gspp')).toEqual(invalid);
     const invalidSource = { ...lineage, imports: [{ ...lineage.imports[0], source: makeDocument() }] };
     expect(resolveActiveCatalogLineage([invalidSource], 'gspp')).toEqual(invalid);
-  });
-
-  it('requires a null index for a configured import absent from the profile', () => {
-    const imported = {
-      ...makeImport(), index: null, state: 'configured-import-missing',
-      importHref: null, resourceUuid: null, source: null,
-    };
-    const lineage = { ...makeLineage(), imports: [imported] };
-    expect(resolveActiveCatalogLineage([lineage], 'gspp')).toEqual({ lineage, invalid: false });
-    expect(resolveActiveCatalogLineage([
-      { ...lineage, imports: [{ ...imported, index: 0 }] },
-    ], 'gspp')).toEqual(invalid);
   });
 
   for (const field of ['importHref', 'resourceUuid', 'rlinkHref'] as const) {

@@ -41,11 +41,9 @@ import {
   makeComponentDefinitionWithSchemaDirective,
   makeComponentDefinitionWithUnpinnedVersion,
   makeComponentDefinitionWithoutComponents,
-  listRegisteredComponentArtifactKeys,
   makeRichComponentDefinitionSource,
   makeStructureProbeComponentDefinition,
 } from '@/test/fixtures/componentDefinitions';
-import { listOscalArtifacts } from '@/domain/sourceRegistry';
 import { makeLosslessCatalogSource } from '@/test/fixtures/losslessCatalog';
 import {
   arrayOrderSignature,
@@ -120,31 +118,7 @@ describe('Adapter-Registrierung', () => {
 /*  Bestandszahlen                                                     */
 /* ------------------------------------------------------------------ */
 
-describe('Fixture-Korpus — Bindung an das Quellregister', () => {
-  it('bildet genau die registrierten Component Definitions ab', () => {
-    // Ohne diese Schranke könnte der Korpus ein Artefakt nachbilden, das
-    // upstream längst ersetzt wurde — genau das ist mit der WLAN-Definition
-    // (GSPP-319) und den AWS-Definitionen (GSPP-308) schon passiert.
-    expect(COMPONENT_ARTIFACT_SPECS.map((entry) => entry.artifactKey).sort()).toEqual(
-      listRegisteredComponentArtifactKeys(),
-    );
-  });
-
-  it('übernimmt Pfad und Version unverändert aus dem Register', () => {
-    const registered = new Map(
-      listOscalArtifacts()
-        .filter((entry) => entry.expectedRootType === 'component-definition')
-        .map((entry) => [entry.artifactKey, entry]),
-    );
-
-    for (const specification of COMPONENT_ARTIFACT_SPECS) {
-      const entry = registered.get(specification.artifactKey);
-      expect(entry, specification.artifactKey).toBeDefined();
-      expect(specification.upstreamPath).toBe(entry?.upstreamPath);
-      expect(specification.oscalVersion).toBe(entry?.oscalVersion);
-    }
-  });
-
+describe('Fixture-Korpus — Pfadbindung', () => {
   it('lässt jedes Fixture am registrierten Pfad erkennen', () => {
     for (const { specification, source } of makeAllComponentDefinitionSources()) {
       const document = parseComponentDefinitionDocument(source, {
@@ -152,9 +126,9 @@ describe('Fixture-Korpus — Bindung an das Quellregister', () => {
         upstreamPath: specification.upstreamPath,
       });
 
-      // Trifft der Pfad keinen Registereintrag, bliebe der Artefaktschlüssel
-      // `null` und die Root-Erwartung des Registers griffe nicht.
-      expect(document.artifactKey, specification.artifactKey).toBe(specification.artifactKey);
+      // Begleitpfade führt das Register nicht (ADR-13): kein Artefaktschlüssel,
+      // keine Root-Erwartung aus dem Register.
+      expect(document.artifactKey, specification.artifactKey).toBeNull();
     }
   });
 });
@@ -791,12 +765,11 @@ describe('Fail-closed-Abweisungen', () => {
   });
 
   it('weist einen Root-Type-Mismatch gegen die Registry-Erwartung ab', () => {
-    const specification = specFor('component-keycloak');
     let thrown: unknown;
     try {
-      parseComponentDefinitionDocument(makeLosslessCatalogSource(), {
+      parseComponentDefinitionDocument(makeComponentDefinitionWithoutComponents(), {
         ...context,
-        upstreamPath: specification.upstreamPath,
+        upstreamPath: 'control_layer/WLAN/WLAN-resolved_catalog.json',
       });
     } catch (error) {
       thrown = error;
@@ -804,9 +777,7 @@ describe('Fail-closed-Abweisungen', () => {
 
     expect(thrown).toBeInstanceOf(OscalRootDispatchError);
     expect((thrown as OscalRootDispatchError).diagnostic.code).toBe('OSCAL_ROOT_TYPE_MISMATCH');
-    expect((thrown as OscalRootDispatchError).diagnostic.artifact.key).toBe(
-      specification.artifactKey,
-    );
+    expect((thrown as OscalRootDispatchError).diagnostic.artifact.key).toBe('catalog-wlan');
   });
 
   it('weist zwei Root-Keys ab', () => {

@@ -87,12 +87,36 @@ describe('security-guards', () => {
     ).toThrow('outside the allowed BSI contract');
   });
 
-  it('allows exact registered OSCAL paths for read-only registry inspection', () => {
+  it('allows exact registered OSCAL product paths for read-only registry inspection', () => {
     const supportedCatalog = 'control_layer/WLAN/WLAN-resolved_catalog.json';
-    const previewProfile = 'control_layer/WLAN/sources/profiles/WLAN-profile.json';
+    const draftCatalog = 'control_layer/Mindeststandard-TLS/Entwurf-Mindeststandard-TLS-catalog.json';
 
     expect(assertRegisteredUpstreamRepoPath(supportedCatalog)).toBe(supportedCatalog);
-    expect(assertRegisteredUpstreamRepoPath(previewProfile)).toBe(previewProfile);
+    expect(assertRegisteredUpstreamRepoPath(draftCatalog)).toBe(draftCatalog);
+  });
+
+  it('allows a companion path only from the pinned tree and under a monitored root', () => {
+    const companion = 'control_layer/WLAN/sources/profiles/WLAN-profile.json';
+
+    expect(assertRegisteredUpstreamRepoPath(companion, { companionPaths: [companion] })).toBe(companion);
+    expect(() => assertRegisteredUpstreamRepoPath(companion)).toThrow(
+      'not a materialized registry artifact',
+    );
+    expect(() =>
+      assertRegisteredUpstreamRepoPath('documentation/OSCAL.json', {
+        companionPaths: ['documentation/OSCAL.json'],
+      }),
+    ).toThrow('not a materialized registry artifact');
+    expect(() =>
+      assertRegisteredUpstreamRepoPath('control_layer/Kernel/notes.md', {
+        companionPaths: ['control_layer/Kernel/notes.md'],
+      }),
+    ).toThrow('not a materialized registry artifact');
+    expect(() =>
+      assertRegisteredUpstreamRepoPath('control_layer/../secret.json', {
+        companionPaths: ['control_layer/../secret.json'],
+      }),
+    ).toThrow('Unsafe upstream repository path');
   });
 
   it('requires explicit materialization before inspecting a vocabulary member', () => {

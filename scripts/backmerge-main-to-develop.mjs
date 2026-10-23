@@ -60,10 +60,8 @@ import {
   CATALOG_IMPORT_BRANCH,
   CATALOG_IMPORT_SOURCE_REF,
   TRACKED_MANIFEST_PATH,
-  isRegistryLifecycleOnlyMigration,
-  isRegistryOscalVersionMigration,
-  isRegistryPreviewArtifactExpansion,
-  loadSourceRegistryAtRef,
+  assertManifestChangeScope,
+  assertOfficialManifest,
   parseNameStatusDiff,
 } from './catalog-sync-guard.mjs';
 
@@ -123,9 +121,10 @@ export class BackmergeError extends Error {
  * genau ein Listener nötig: `EPIPE` bedeutet dort, dass das Kind die Eingabe
  * nicht mehr braucht; jeder andere Fehler wird durchgereicht.
  */
-export async function runProcess(command, args, { input, encoding = 'utf8', allowFailure = false } = {}) {
+export async function runProcess(command, args, { input, encoding = 'utf8', allowFailure = false, cwd } = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
+      cwd,
       stdio: [input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
     });
     const stdoutChunks = [];
@@ -561,13 +560,49 @@ async function readManifestAtRef(git, ref) {
 }
 
 /**
- * Prüft für M2, ob der **resultierende Zielzustand** einen der drei
- * Registry-Migrationsverträge erfüllt. Greift keiner, entsteht kein Pull
- * Request: Der `catalog-sync-guard` würde ihn ohnehin ablehnen, und ein roter
- * Pull Request wäre ein schlechterer Befund als ein roter Lauf mit genannten
- * Zuständen.
+ * Prüft im ausgecheckten Ergebnisstand, ob das Manifest zum Register dieses
+ * Stands passt: der Guard des Ergebnisstands in einem Kindprozess, damit das
+ * Register genau aus diesem Baum geladen wird.
  */
-export async function migrationContractHolds(git, { integrationRef, resultRef, cwd }) {
+async function validateResultManifest(cwd) {
+  try {
+    await runProcess(process.execPath, [
+      'scripts/catalog-sync-guard.mjs',
+      '--validate-manifest',
+      TRACKED_MANIFEST_PATH,
+    ], { cwd });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Prüft für M2 die lokal prüfbaren Teile der Manifestregel aus
+ * `catalog-sync-guard.mjs` (ADR-13) gegen den **resultierenden Zielzustand**:
+ * kein Diff-Pfad unter `scripts/` oder `.github/`, beide Manifeste v2-gültig
+ * mit offiziellem Repository, das neue Manifest passt zum Register des
+ * Ergebnisstands. Snapshot-Fortschritt und Dateiinhalte prüft
+ * `catalog-sync-guard` gegen die BSI-API am entstehenden Pull Request. Greift
+ * die Regel nicht, entsteht kein Pull Request: Ein roter Pull Request wäre ein
+ * schlechterer Befund als ein roter Lauf mit genannten Zuständen.
+ */
+function defaultValidateManifests({ previousManifest, nextManifest, cwd }) {
+  try {
+    assertOfficialManifest(previousManifest);
+    assertOfficialManifest(nextManifest);
+  } catch {
+    return false;
+  }
+  return validateResultManifest(cwd);
+}
+
+export async function migrationContractHolds(git, {
+  integrationRef,
+  resultRef,
+  cwd,
+  validateManifests = defaultValidateManifests,
+}) {
   const previousManifest = await readManifestAtRef(git, integrationRef);
   const nextManifest = await readManifestAtRef(git, resultRef);
   if (!previousManifest || !nextManifest) return { holds: false, contract: null };
@@ -580,45 +615,15 @@ export async function migrationContractHolds(git, { integrationRef, resultRef, c
     resultRef,
     '--',
   ]);
-  const diffEntries = parseNameStatusDiff(diffOutput);
-
-  if (isRegistryLifecycleOnlyMigration({ diffEntries, previousManifest, nextManifest })) {
-    return { holds: true, contract: 'isRegistryLifecycleOnlyMigration' };
-  }
-  if (isRegistryPreviewArtifactExpansion({ diffEntries, previousManifest, nextManifest })) {
-    return { holds: true, contract: 'isRegistryPreviewArtifactExpansion' };
-  }
-
-  // Ein nicht ladbarer Registerstand ist kein „vielleicht": Er lässt den
-  // Vertrag nicht greifen, genau wie im Guard, wo ein fehlender Vorstand auf
-  // den regulären Sync-Pfad zurückfällt. Der Aufrufer meldet daraufhin beide
-  // Zustände — eine verständlichere Aussage als ein Modulauflösungsfehler.
-  let previousSourceRegistry;
-  let nextSourceRegistry;
   try {
-    previousSourceRegistry = await loadSourceRegistryAtRef(
-      await gitText(git, ['rev-parse', integrationRef]),
-      { cwd },
-    );
-    nextSourceRegistry = await loadSourceRegistryAtRef(
-      await gitText(git, ['rev-parse', resultRef]),
-      { cwd },
-    );
+    assertManifestChangeScope(parseNameStatusDiff(diffOutput));
   } catch {
     return { holds: false, contract: null };
   }
-
-  if (isRegistryOscalVersionMigration({
-    diffEntries,
-    previousManifest,
-    nextManifest,
-    previousSourceRegistry,
-    nextSourceRegistry,
-  })) {
-    return { holds: true, contract: 'isRegistryOscalVersionMigration' };
+  if (!await validateManifests({ previousManifest, nextManifest, cwd })) {
+    return { holds: false, contract: null };
   }
-
-  return { holds: false, contract: null };
+  return { holds: true, contract: 'manifest-change-rule' };
 }
 
 /**
@@ -894,6 +899,7 @@ async function determineImportPlan(git, { logger, sourceSha, integrationSha }) {
  */
 async function publishImportPullRequest(git, {
   github, logger, cwd, branch, klasse, reason, changedPaths, sourceSha, integrationSha,
+  validateManifests,
 }) {
   const mergeMethod = klasse === 'M1' ? 'Squash' : 'Merge-Commit';
   const title =
@@ -907,16 +913,17 @@ async function publishImportPullRequest(git, {
       integrationRef: INTEGRATION_REF,
       resultRef: head,
       cwd,
+      validateManifests,
     });
     if (!holds) {
       throw new BackmergeError(
-        'Der resultierende Zielzustand erfüllt keinen der drei Registry-Migrationsverträge. '
+        'Der resultierende Zielzustand erfüllt die Manifestregel nicht. '
         + 'Es entsteht kein Pull Request.\n'
         + `Zustand ${SOURCE_REF}=${sourceSha}, Zustand ${INTEGRATION_REF}=${integrationSha}, `
         + `berechnetes Ergebnis ${head}.`,
       );
     }
-    logger.log(`Migrationsvertrag ${contract} greift gegen den Zielzustand.`);
+    logger.log(`Vertrag ${contract} greift gegen den Zielzustand.`);
   }
 
   await pushBranchWithLease(git, branch);
@@ -946,6 +953,7 @@ export async function runBackmerge({
   git = createGitRunner({ cwd }),
   github = createGitHubClient({ repository: process.env.GITHUB_REPOSITORY }),
   logger = console,
+  validateManifests,
 } = {}) {
   // Explizite Refspecs: Ein `git fetch origin main develop` aktualisiert nur
   // FETCH_HEAD, nicht die Remote-Tracking-Refs, gegen die hier gerechnet wird.
@@ -1008,6 +1016,7 @@ export async function runBackmerge({
 
   await publishImportPullRequest(git, {
     github, logger, cwd, branch, klasse, reason, changedPaths, sourceSha, integrationSha,
+    validateManifests,
   });
 
   return { created: true, klasse, repairRequired: false };

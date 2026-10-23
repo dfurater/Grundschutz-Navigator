@@ -45,11 +45,11 @@ das CI-Gate `npm run verify-oscal-schemas` und die Tests. Einzelheiten unter
 [`npm run verify-upstream-oscal`](../package.json) lädt ausschließlich
 `go-oscal` 0.7.1 aus der statisch gepinnten Release-Tabelle, verifiziert
 Release-Metadaten, API-Digest, `checksums.txt` und berechnete SHA-256-Werte und
-prüft den vollständigen im gepinnten `upstream-manifest.json` registrierten
-OSCAL-Korpus: 19 registrierte OSCAL-Artefakte über alle vier belegten
-Versionen; die 13 `vocabulary`-Dateien tragen kein OSCAL-Root-Modell und werden
-übersprungen. Ein als `blocked-by-upstream` registrierter, im Snapshot
-fehlender Katalog wird als übersprungen gemeldet. Das Ergebnis ist ein
+prüft den vollständigen im gepinnten `upstream-manifest.json` geführten
+OSCAL-Korpus: die Produktartefakte aus dem Quellregister und jedes
+Begleitartefakt mit eindeutiger OSCAL-Wurzel. Die `vocabulary`-Dateien tragen
+kein OSCAL-Root-Modell und werden übersprungen, ebenso Begleitartefakte mit
+Root-Typ `unknown`. Das Ergebnis ist ein
 eigenständiges Schema-Orakel: Es aktiviert weder den Browser-Validator noch
 behauptet es eine vollständige Validierung der Stufen 1, 2, 4 oder 5.
 
@@ -351,7 +351,7 @@ prüft die Grenze am öffentlichen Resolver ohne Zeitmessung:
 
 **Kopfraum über der legitimen Nutzung.** Der Korpuslauf
 [`profileResolutionCorpus.test.ts`](../scripts/profileResolutionCorpus.test.ts)
-löst die drei registrierten BSI-Profile auf, verlangt, dass jedes unter
+löst das BSI-Profil jedes ausgelieferten Katalogs auf, verlangt, dass jedes unter
 Arbeits-, Knoten-, Tiefen- und base64-Grenze bleibt, und gibt die vier
 laufenden Zähler als Tabelle aus.
 
@@ -603,7 +603,7 @@ Schema meldet die
 als `OSCAL_SCHEMA_UNAVAILABLE`.
 
 Welche Root×Version-Paare produktiv freigegeben sind, bleibt zusätzlich durch
-den Lifecycle des jeweiligen Artefakts im Quellregister begrenzt
+den Lifecycle der Produktartefakte im Quellregister begrenzt
 ([GSPP-283](https://linear.app/grundschutz-plus-plus/issue/GSPP-283)). Die
 verlinkte Matrix beschreibt nur die technisch vorhandenen NIST-Schemas und
 erweitert keine Produktfreigabe.
@@ -831,10 +831,9 @@ Befund: Er eröffnet keinen Auflösungskontext.
 Der Graphlauf hängt an der Korpuslane
 [`verify-upstream-oscal.mjs`](../scripts/verify-upstream-oscal.mjs); es gibt
 keine zweite CI-Lane. Er verarbeitet dieselben gepinnten, gegen Content- und
-Blobpin geprüften Bytes wie Stufe 3 und lädt nichts erneut. Ein registriertes,
-gesperrtes Artefakt, das vollständig aus dem BSI-Tree entfernt wurde, hat keinen
-Manifesteintrag mehr, wird über `missingBlockedArtifacts` gemeldet und ist für
-den Graphen schlicht nicht geladen — kein Knoten, kein Abbruch.
+Blobpin geprüften Bytes wie Stufe 3 und lädt nichts erneut. Ein Artefakt, das
+aus dem BSI-Tree entfernt wurde, steht nicht mehr im Manifest und ist für den
+Graphen nicht geladen — kein Knoten, kein Abbruch.
 
 Ein Referenzfehler an einem `supported`-Artefakt lässt den Lauf
 fehlschlagen. Befunde an `preview`, `draft` und `blocked-by-upstream` werden
@@ -848,31 +847,6 @@ TypeScript-Module über Nodes eigenes Typ-Stripping und bildet dabei nur den
 Projektalias `@/` auf `src/` ab — dieselbe Abbildung wie in `vite.config.ts`.
 Deshalb ist `erasableSyntaxOnly` in beiden `tsconfig`-Projekten gesetzt: Nicht
 löschbare TypeScript-Syntax würde die CI-Lane brechen.
-
-### Gemessener Bestand
-
-`npm run verify-upstream-oscal` am Snapshot
-`9008ca0baecd958d175bbb994d6121865e266600`: Von 19 registrierten
-OSCAL-Artefakten wird eines als `blocked-by-upstream` aus dem Snapshot fehlend
-übersprungen. Zwei weitere gesperrte Artefakte scheitern erwartungsgemäß an
-Stufe 3. **12** Artefakte gehen in den Graphen ein; die vier profilbasierten
-Quellkataloge bleiben ohne App-`catalogKey` außerhalb des Graphen.
-
-Ergebnis: 2742 Knoten, 344 aufgelöste Kanten, **0 Referenzfehler**, 2734 nicht
-bewertbare Kanten, keine `no-relationship`-Aussage, kein blockierender Befund.
-
-* Der ausgelieferte Grundschutz++-Katalog löst alle 278 dokumentinternen
-  Verweise auf.
-* Die 2374 `mapping-item`-Verweise des ITGS-Mappings sind nicht bewertbar, weil
-  sämtliche Ressourcen-`href` relative Dateinamen sind — ausdrücklich keine
-  Referenzfehler. Dasselbe gilt für die 96 `maps` des ISO-Mappings.
-* Die drei `control-implementation.source` der AWS-Component-Definition tragen
-  denselben externen Wert auf einem beweglichen Branch und erzeugen je einen
-  Befund `OSCAL_GRAPH_EXTERNAL_CONTEXT_UNPINNED`; die 17
-  `implemented-requirements` darunter bleiben nicht bewertbar.
-* Die Profilimporte zeigen als `#uuid` auf eigene `back-matter`-Ressourcen. Sie
-  lösen auf, eröffnen aber keinen Katalogkontext — die 195 `with-ids` darunter
-  sind nicht bewertbar.
 
 ## Prüftiefen-Landkarte
 
@@ -1090,17 +1064,12 @@ schlägt fehl.
 
 ## Bekannte BSI-Schemaabweichungen
 
-Ein Klasse-1-Artefakt mit reproduziertem, im Upstream-Artefakt liegendem und
-upstream gemeldetem Schemadefekt wird als `blocked-by-upstream` im
-Quellregister gesperrt. Die BSI-Meldung ist Pflichtreferenz des Eintrags. Die
-Sperrung ist keine Validatorausnahme: Das Artefakt wird weiter geprüft und sein
-Schema-Status bleibt sichtbar `failed`.
-
-| Artefakt | Root / Version | Upstream-Meldung |
-| --- | --- | --- |
-| `component-ga-lotse-grundmodul` | `component-definition` / 1.1.2 | [BSI #70](https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/issues/70) |
-| `component-lieferkette` | `component-definition` / 1.1.2 | [BSI #71](https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/issues/71) |
-| `mapping-iso27001-annex-a-zu-gspp` | `mapping-collection` / 1.2.2 | [BSI #68](https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/issues/68) |
+Ein Begleitartefakt, das die Wurzel-, Versions- oder Schemaprüfung von
+`scripts/companion-artifacts.mjs` nicht besteht, steht als
+`blocked-by-upstream` im Manifest. Die Sperrung ist keine Validatorausnahme:
+Das Artefakt wird weiter geprüft und sein Schema-Status bleibt sichtbar
+`failed`. Besteht es die Prüfung in einem späteren Snapshot, steht es dort
+wieder als `preview`.
 
 Der Korpuslauf erwartet für jedes nicht gesperrte Artefakt `schema=passed` und
 für jedes gesperrte Artefakt `schema=failed`. Ein Fehler eines nicht gesperrten

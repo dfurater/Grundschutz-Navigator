@@ -3,7 +3,7 @@
 //
 // Die sechs realen BSI-Definitionen liegen **nicht** im Repository: Weder
 // `preview`- noch `blocked-by-upstream`-Artefakte werden von
-// `npm run fetch-catalog` materialisiert (`src/domain/sourceRegistry.mjs`
+// `npm run fetch-catalog` materialisiert (`scripts/fetch-catalog.mjs`
 // schreibt nur `supported`-Einträge). Der verbindliche Korpus ist deshalb
 // fixture-basiert — dieselbe Konvention wie in
 // `oscalRootDispatch.corpus.test.ts` und GSPP-286.
@@ -23,9 +23,7 @@
 // =============================================================================
 
 import { makeUuid } from '@/test/fixtures/fixtureUuid';
-import { compareStringsByCodeUnit } from '@/domain/codeUnitOrder.mjs';
 import type { PinnedOscalVersion } from '@/domain/oscalVersionMatrix';
-import { listOscalArtifacts } from '@/domain/sourceRegistry';
 
 /** Die externe, nicht versionsstabile `source` der AWS-Definition (Branch `main`). */
 export const AWS_EXTERNAL_SOURCE =
@@ -135,36 +133,22 @@ function componentsFrom(
  *
  * Eingefroren sind hier ausschließlich die **gemessenen Strukturzahlen**.
  */
-const REGISTERED_COMPONENT_ARTIFACTS = new Map(
-  listOscalArtifacts()
-    .filter((entry) => entry.expectedRootType === 'component-definition')
-    .map((entry) => [entry.artifactKey, entry] as const),
-);
-
-/** Die Schlüssel der registrierten Component Definitions, alphabetisch. */
-export function listRegisteredComponentArtifactKeys(): readonly string[] {
-  return [...REGISTERED_COMPONENT_ARTIFACTS.keys()].sort(compareStringsByCodeUnit);
-}
-
-function registryFactsFor(artifactKey: string): {
+/**
+ * Am Snapshot gemessene Artefaktfakten. Sie sind Teil des eingefrorenen
+ * Korpus und lesen weder Quellregister noch Manifest.
+ */
+const MEASURED_COMPONENT_FACTS = Object.freeze({
+  'component-aws-security-hub': { artifactKey: 'component-aws-security-hub', upstreamPath: 'implementation_layer/AWS Beispiel-Components/AWS Security Hub-component_definition.json', oscalVersion: '1.2.2' },
+  'component-ga-lotse-grundmodul': { artifactKey: 'component-ga-lotse-grundmodul', upstreamPath: 'implementation_layer/GA-Lotse_Grundmodul/GA-Lotse_Grundmodul-component_definition.json', oscalVersion: '1.1.2' },
+  'component-keycloak': { artifactKey: 'component-keycloak', upstreamPath: 'implementation_layer/Keycloak/Keycloak-component_definition.json', oscalVersion: '1.2.2' },
+  'component-lieferkette': { artifactKey: 'component-lieferkette', upstreamPath: 'implementation_layer/Lieferkettensicherheit/Lieferkettensicherheit-component_definition.json', oscalVersion: '1.1.2' },
+  'component-netzarchitektur': { artifactKey: 'component-netzarchitektur', upstreamPath: 'implementation_layer/Netzarchitektur/Netzarchitektur-component_definition.json', oscalVersion: '1.2.2' },
+  'component-passwortrichtlinie': { artifactKey: 'component-passwortrichtlinie', upstreamPath: 'implementation_layer/Passwortrichtlinie/Passwortrichtlinie-component_definition.json', oscalVersion: '1.1.2' },
+} as const satisfies Record<string, {
   readonly artifactKey: string;
   readonly upstreamPath: string;
   readonly oscalVersion: PinnedOscalVersion;
-} {
-  const entry = REGISTERED_COMPONENT_ARTIFACTS.get(artifactKey);
-  if (!entry) {
-    // Fail-loud statt eines Ersatzwerts: Ein Fixture für ein nicht (mehr)
-    // registriertes Artefakt bildet nichts Reales nach.
-    throw new Error(
-      `Kein registriertes component-definition-Artefakt mit dem Schlüssel "${artifactKey}"`,
-    );
-  }
-  return {
-    artifactKey: entry.artifactKey,
-    upstreamPath: entry.upstreamPath,
-    oscalVersion: entry.oscalVersion,
-  };
-}
+}>);
 
 /**
  * Die sechs registrierten Definitionen mit ihren gemessenen Strukturzahlen.
@@ -176,7 +160,7 @@ function registryFactsFor(artifactKey: string): {
  */
 export const COMPONENT_ARTIFACT_SPECS: readonly ComponentArtifactSpec[] = Object.freeze([
   {
-    ...registryFactsFor('component-aws-security-hub'),
+    ...MEASURED_COMPONENT_FACTS['component-aws-security-hub'],
     schemaValid: true,
     // 2 Components mit je einer Implementierung, 1 Capability mit **eigener**
     // Implementierung; 17 implemented requirements über drei Implementierungen.
@@ -197,7 +181,7 @@ export const COMPONENT_ARTIFACT_SPECS: readonly ComponentArtifactSpec[] = Object
     backMatterUuids: [],
   },
   {
-    ...registryFactsFor('component-ga-lotse-grundmodul'),
+    ...MEASURED_COMPONENT_FACTS['component-ga-lotse-grundmodul'],
     schemaValid: false,
     // 3 Components, 1 Capability, **keine** Control-Implementation und damit
     // keine implemented requirements — schemaseitig gültig.
@@ -207,7 +191,7 @@ export const COMPONENT_ARTIFACT_SPECS: readonly ComponentArtifactSpec[] = Object
     backMatterUuids: [],
   },
   {
-    ...registryFactsFor('component-keycloak'),
+    ...MEASURED_COMPONENT_FACTS['component-keycloak'],
     schemaValid: true,
     // 3 Components, **keine** Capability, 43 implemented requirements.
     components: componentsFrom(
@@ -221,7 +205,7 @@ export const COMPONENT_ARTIFACT_SPECS: readonly ComponentArtifactSpec[] = Object
     backMatterUuids: [COMPONENT_SOURCE_UUIDS.keycloak.slice(1)],
   },
   {
-    ...registryFactsFor('component-lieferkette'),
+    ...MEASURED_COMPONENT_FACTS['component-lieferkette'],
     schemaValid: false,
     // 11 Components mit je einer Implementierung, 3 Capabilities ohne eigene;
     // 145 implemented requirements. Der Defekt sitzt an
@@ -238,7 +222,7 @@ export const COMPONENT_ARTIFACT_SPECS: readonly ComponentArtifactSpec[] = Object
     backMatterUuids: [COMPONENT_SOURCE_UUIDS.lieferkette.slice(1)],
   },
   {
-    ...registryFactsFor('component-netzarchitektur'),
+    ...MEASURED_COMPONENT_FACTS['component-netzarchitektur'],
     schemaValid: true,
     // 9 Components, 4 Capabilities ohne eigene Implementierung, 11
     // Control-Implementations und 85 implemented requirements — und **zwei**
@@ -265,7 +249,7 @@ export const COMPONENT_ARTIFACT_SPECS: readonly ComponentArtifactSpec[] = Object
     ],
   },
   {
-    ...registryFactsFor('component-passwortrichtlinie'),
+    ...MEASURED_COMPONENT_FACTS['component-passwortrichtlinie'],
     schemaValid: true,
     // 7 Components mit je einer Implementierung, 1 Capability ohne eigene;
     // 17 implemented requirements.
