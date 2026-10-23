@@ -285,8 +285,8 @@ Beispiel (Werte Platzhalter; alle drei Sekundärkataloge tragen ihren aktuellen 
         {
           "state": "complete",
           "importHref": "#<resource-uuid>",
-          "rlinkHref": "../catalogs/...",
-          "source": { "artifactKey": "catalog-source-gspp-kernel-g0" }
+          "rlinkHref": "../../../Kernel/BSI-Stand-der-Technik-Kernel-catalog.json",
+          "source": { "artifactKey": "catalog-source-lieferkette-kernel" }
         }
       ]
     }

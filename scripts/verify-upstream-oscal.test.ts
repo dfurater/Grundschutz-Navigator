@@ -185,10 +185,10 @@ describe('manifestgestützter OSCAL-Korpus', () => {
     readFileSync(resolve(process.cwd(), 'upstream-manifest.json'), 'utf8'),
   );
 
-  it('prüft alle 19 OSCAL-Artefakte und überspringt nur die 13 Vokabulare', () => {
+  it('prüft alle 18 OSCAL-Artefakte und überspringt nur die 13 Vokabulare', () => {
     const selection = selectManifestOscalArtifacts(manifest);
 
-    expect(selection.oscalArtifacts).toHaveLength(19);
+    expect(selection.oscalArtifacts).toHaveLength(18);
     expect(selection.vocabularyArtifacts).toHaveLength(13);
     expect(selection.oscalArtifacts.map((artifact) => artifact.artifactKey)).toContain(
       'mapping-iso27001-annex-a-zu-gspp',

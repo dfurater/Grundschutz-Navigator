@@ -11,8 +11,8 @@
 //
 // Die Eigenheiten dieses Katalogs sind der eigentliche Prüfgegenstand: Er hat
 // **kein** `back-matter`, alle Fragment-Links treffen `control/@id`-Werte
-// desselben Katalogs, und sein Prop-Set ist deutlich schmaler als das des
-// Grundschutz++-Katalogs (kein `label`, keine Schutzziele, keine `threats`).
+// desselben Katalogs, und seine Props bleiben unabhängig vom ausgelieferten
+// Grundschutz++-Katalog erhalten (kein `label`).
 //
 // Ohne `npm run fetch-catalog` fehlt die Datei; die Suite wird dann
 // übersprungen statt fehlzuschlagen.
@@ -290,29 +290,28 @@ describe.skipIf(!lieferketteAvailable)('Lieferkettenkatalog am realen Snapshot',
     }
   });
 
-  it('führt die fehlenden Schutzziel-, Bedrohungs- und label-Props als Abwesenheit, nicht als Fehler', () => {
+  it('führt Schutzziel- und Bedrohungs-Props durch und behandelt label als fehlend', () => {
     const { document, body } = current();
     const sourceProps = collectSourceControlProps(body);
 
-    // Vorbedingung des Nachweises: diese Props existieren hier wirklich nicht.
-    for (const absent of [
+    // Die Schutzziele und Bedrohungen stehen im aktuellen Kernel; `label` fehlt.
+    for (const present of [
       'confidentiality',
       'integrity',
       'availability',
       'authenticity',
       'threats',
-      'label',
     ]) {
-      expect(sourceProps.has(absent)).toBe(false);
+      expect(sourceProps.has(present)).toBe(true);
     }
+    expect(sourceProps.has('label')).toBe(false);
 
     for (const control of document.view.controls) {
-      expect(control.confidentiality).toBeUndefined();
-      expect(control.integrity).toBeUndefined();
-      expect(control.availability).toBeUndefined();
-      expect(control.authenticity).toBeUndefined();
-      expect(control.threats).toEqual([]);
-      // Ohne `label`-Prop bleibt der Titel die Anzeigequelle.
+      expect(control.confidentialityProp).toBeDefined();
+      expect(control.integrityProp).toBeDefined();
+      expect(control.availabilityProp).toBeDefined();
+      expect(control.authenticityProp).toBeDefined();
+      expect(control.threatsProp).toBeDefined();
       expect(control.title).toBeTruthy();
     }
   });
@@ -321,9 +320,19 @@ describe.skipIf(!lieferketteAvailable)('Lieferkettenkatalog am realen Snapshot',
     const { body } = current();
     const propNames = [...collectSourceControlProps(body).keys()].sort();
 
-    // Das schmale Prop-Set ist der Prüfgegenstand: Der Katalog wird vollständig
-    // verarbeitet, obwohl er die Grundschutz++-Props nicht führt.
-    expect(propNames).toEqual(['alt-identifier', 'effort_level', 'sec_level', 'tags']);
+    // Das Quell-Prop-Set wird vollständig verarbeitet, unabhängig vom
+    // ausgelieferten Grundschutz++-Katalog.
+    expect(propNames).toEqual([
+      'alt-identifier',
+      'authenticity',
+      'availability',
+      'confidentiality',
+      'effort_level',
+      'integrity',
+      'sec_level',
+      'tags',
+      'threats',
+    ]);
   });
 });
 

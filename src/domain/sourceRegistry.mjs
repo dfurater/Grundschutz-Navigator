@@ -123,16 +123,6 @@ export const SOURCE_REGISTRY = Object.freeze(
       title: 'Grundschutz++ Profil',
     },
     {
-      artifactKey: 'catalog-source-gspp-kernel-g0',
-      kind: 'oscal',
-      oscalVersion: '1.1.3',
-      expectedRootType: 'catalog',
-      upstreamPath:
-        'control_layer/Grundschutz++/sources/catalogs/Kernel/BSI-Stand-der-Technik-Kernel-G0-catalog.json',
-      lifecycle: 'preview',
-      title: 'BSI Stand der Technik Kernel G0',
-    },
-    {
       artifactKey: 'catalog-source-gspp-methodik',
       kind: 'oscal',
       oscalVersion: '1.1.3',
@@ -156,8 +146,7 @@ export const SOURCE_REGISTRY = Object.freeze(
       kind: 'oscal',
       oscalVersion: '1.1.3',
       expectedRootType: 'catalog',
-      upstreamPath:
-        'control_layer/Grundschutz++/sources/catalogs/Kernel/BSI-Stand-der-Technik-Kernel-catalog.json',
+      upstreamPath: 'control_layer/Kernel/BSI-Stand-der-Technik-Kernel-catalog.json',
       lifecycle: 'preview',
       title: 'BSI Stand der Technik Kernel',
     },
@@ -271,8 +260,8 @@ export const CATALOG_LINEAGES = Object.freeze([
     profileArtifactKey: 'profile-gspp',
     imports: Object.freeze([
       Object.freeze({
-        href: '../catalogs/Kernel/BSI-Stand-der-Technik-Kernel-G0-catalog.json',
-        artifactKey: 'catalog-source-gspp-kernel-g0',
+        href: '../../../Kernel/BSI-Stand-der-Technik-Kernel-catalog.json',
+        artifactKey: 'catalog-source-lieferkette-kernel',
       }),
       Object.freeze({
         href: '../catalogs/Methodik-Grundschutz++/BSI-Methodik-Grundschutz++-catalog.json',
@@ -289,7 +278,7 @@ export const CATALOG_LINEAGES = Object.freeze([
     profileArtifactKey: 'profile-lieferkette',
     imports: Object.freeze([
       Object.freeze({
-        href: '../../../Grundschutz++/sources/catalogs/Kernel/BSI-Stand-der-Technik-Kernel-catalog.json',
+        href: '../../../Kernel/BSI-Stand-der-Technik-Kernel-catalog.json',
         artifactKey: 'catalog-source-lieferkette-kernel',
       }),
     ]),
@@ -299,8 +288,8 @@ export const CATALOG_LINEAGES = Object.freeze([
     profileArtifactKey: 'profile-wlan',
     imports: Object.freeze([
       Object.freeze({
-        href: '../../../Grundschutz++/sources/catalogs/Kernel/BSI-Stand-der-Technik-Kernel-G0-catalog.json',
-        artifactKey: 'catalog-source-gspp-kernel-g0',
+        href: '../../../Kernel/BSI-Stand-der-Technik-Kernel-catalog.json',
+        artifactKey: 'catalog-source-lieferkette-kernel',
       }),
     ]),
   }),

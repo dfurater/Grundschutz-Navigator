@@ -105,9 +105,9 @@ beforeAll(() => {
 });
 
 describe('Korpus-Cache', () => {
-  it('trägt genau die zehn Lineages-Dokumente am getrackten Snapshot', () => {
+  it('trägt genau die neun Lineages-Dokumente am getrackten Snapshot', () => {
     requireCorpus();
-    expect(documentsByArtifactKey.size).toBe(10);
+    expect(documentsByArtifactKey.size).toBe(9);
     expect(corpusSnapshotSha).toMatch(/^[0-9a-f]{40}$/);
   });
 });

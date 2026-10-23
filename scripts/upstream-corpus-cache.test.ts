@@ -41,10 +41,10 @@ describe('corpusArtifactKeys', () => {
     ]);
   });
 
-  it('fordert für die echten Lineages genau zehn Dokumente an', () => {
-    // Drei Profile + vier Quellkataloge + drei ausgelieferte Anwenderkataloge.
+  it('fordert für die echten Lineages genau neun Dokumente an', () => {
+    // Drei Profile + drei Quellkataloge + drei ausgelieferte Anwenderkataloge.
     const keys = corpusArtifactKeys(CATALOG_LINEAGES);
-    expect(keys).toHaveLength(10);
+    expect(keys).toHaveLength(9);
     expect(keys.filter((key) => key.startsWith('profile-'))).toEqual([
       'profile-gspp',
       'profile-lieferkette',

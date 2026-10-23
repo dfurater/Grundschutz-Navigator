@@ -2,11 +2,11 @@
 // =============================================================================
 // Hergeleitete Spezifikationstests der Profile Resolution (GSPP-291, B7c)
 //
-// Abdeckung der Semantik, die der BSI-Realkorpus NICHT enthält
-// (am Snapshot 9008ca0 erhoben: profile-gspp mit 3 Importen, merge as-is,
-// 2× set-parameters, 0 alters; wlan/lieferkette je 1× include-controls):
-//   exclude-controls, with-child-controls, matching, combine,
-//   merge flat/custom, alters, Profilketten.
+// Abdeckung der Semantik, die der BSI-Realkorpus am Snapshot 160c177 nicht
+// enthält: `exclude-controls`, `matching`, `combine`, `merge.flat`, positive
+// `with-child-controls`-Auswahl und Profilketten. Der Korpus enthält drei
+// Grundschutz++-Importe, je einen Lieferketten- und WLAN-Import sowie WLAN
+// `merge.custom` und `alters`.
 //
 // Jeder Erwartungswert nennt seine gepinnte Quelle (NIST-Draft 2026-07-29
 // und/oder XSpec-Fall aus usnistgov/OSCAL Tag v1.1.3,

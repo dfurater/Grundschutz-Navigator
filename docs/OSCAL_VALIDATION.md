@@ -46,7 +46,7 @@ das CI-Gate `npm run verify-oscal-schemas` und die Tests. Einzelheiten unter
 `go-oscal` 0.7.1 aus der statisch gepinnten Release-Tabelle, verifiziert
 Release-Metadaten, API-Digest, `checksums.txt` und berechnete SHA-256-Werte und
 prüft den vollständigen im gepinnten `upstream-manifest.json` registrierten
-OSCAL-Korpus: 19 registrierte OSCAL-Artefakte über alle vier belegten
+OSCAL-Korpus: 18 registrierte OSCAL-Artefakte über alle vier belegten
 Versionen; die 13 `vocabulary`-Dateien tragen kein OSCAL-Root-Modell und werden
 übersprungen. Ein als `blocked-by-upstream` registrierter, im Snapshot
 fehlender Katalog wird als übersprungen gemeldet. Das Ergebnis ist ein
@@ -358,7 +358,7 @@ laufenden Zähler als Tabelle aus.
 | Profil | Arbeitseinheiten | erzeugte Knoten | maximale Tiefe | dekodierte base64-Bytes |
 | --- | --- | --- | --- | --- |
 | `profile-gspp` | 207 595 | 76 842 | 19 | 0 |
-| `profile-lieferkette` | 31 092 | 8 884 | 17 | 0 |
+| `profile-lieferkette` | 37 662 | 11 804 | 17 | 0 |
 | `profile-wlan` | 33 842 | 6 812 | 13 | 0 |
 
 Das teuerste Profil liegt bei rund einem Achtzigstel der Arbeitsgrenze.
@@ -852,27 +852,25 @@ löschbare TypeScript-Syntax würde die CI-Lane brechen.
 ### Gemessener Bestand
 
 `npm run verify-upstream-oscal` am Snapshot
-`9008ca0baecd958d175bbb994d6121865e266600`: Von 19 registrierten
-OSCAL-Artefakten wird eines als `blocked-by-upstream` aus dem Snapshot fehlend
-übersprungen. Zwei weitere gesperrte Artefakte scheitern erwartungsgemäß an
-Stufe 3. **12** Artefakte gehen in den Graphen ein; die vier profilbasierten
-Quellkataloge bleiben ohne App-`catalogKey` außerhalb des Graphen.
+`160c177db6c84d3c621fff614559943b1de8c600` prüft 18 registrierte
+OSCAL-Artefakte. Die drei als `blocked-by-upstream` registrierten Artefakte
+scheitern erwartungsgemäß an Stufe 3. **12** Artefakte gehen in den Graphen
+ein; die drei profilbasierten Quellkataloge `catalog-source-gspp-methodik`,
+`catalog-source-risikomanagement` und `catalog-source-lieferkette-kernel`
+bleiben ohne App-`catalogKey` außerhalb des Graphen.
 
-Ergebnis: 2742 Knoten, 344 aufgelöste Kanten, **0 Referenzfehler**, 2734 nicht
-bewertbare Kanten, keine `no-relationship`-Aussage, kein blockierender Befund.
+Ergebnis: 2731 Knoten, 490 aufgelöste Kanten, **0 Referenzfehler**, 2725 nicht
+bewertbare Kanten und keine `no-relationship`-Aussage.
 
 * Der ausgelieferte Grundschutz++-Katalog löst alle 278 dokumentinternen
   Verweise auf.
-* Die 2374 `mapping-item`-Verweise des ITGS-Mappings sind nicht bewertbar, weil
-  sämtliche Ressourcen-`href` relative Dateinamen sind — ausdrücklich keine
-  Referenzfehler. Dasselbe gilt für die 96 `maps` des ISO-Mappings.
-* Die drei `control-implementation.source` der AWS-Component-Definition tragen
-  denselben externen Wert auf einem beweglichen Branch und erzeugen je einen
-  Befund `OSCAL_GRAPH_EXTERNAL_CONTEXT_UNPINNED`; die 17
-  `implemented-requirements` darunter bleiben nicht bewertbar.
-* Die Profilimporte zeigen als `#uuid` auf eigene `back-matter`-Ressourcen. Sie
-  lösen auf, eröffnen aber keinen Katalogkontext — die 195 `with-ids` darunter
-  sind nicht bewertbar.
+* Der Lieferkettensicherheitskatalog löst 29 und der WLAN-Katalog 152
+  dokumentinterne Verweise auf.
+* Die 2374 `mapping-item`-Verweise des ITGS-Mappings bleiben nicht bewertbar;
+  die drei gesperrten Artefakte gelangen wegen ihrer erwarteten Schemafehler
+  nicht in den Referenzgraphen.
+* Die Profile lösen ihre registrierten Katalogimporte auf: Grundschutz++ 3,
+  Lieferkettensicherheit 1 und WLAN 1.
 
 ## Prüftiefen-Landkarte
 
@@ -1216,11 +1214,11 @@ verbindlicher Umsetzungsmaßstab, weil keine konkurrierende Norm existiert.
 Vollständige Konformität wird weder für hergeleitete Fixtures noch insgesamt
 behauptet.
 
-**Abdeckungsgrenzen:** Der BSI-Realkorpus (3 Profile am Snapshot 9008ca0)
-deckt `include-all`, `include-controls`, `as-is` und `set-parameters`
-ab. Nicht im Realkorpus und deshalb nur über synthetische Fixtures
-belegt: `exclude-controls`, `with-child-controls`, `matching`,
-`combine`, `flat`/`custom`, `alters`, Profilketten. Ein bestandener
+**Abdeckungsgrenzen:** Der BSI-Realkorpus (3 Profile am Snapshot 160c177)
+deckt `include-all`, `include-controls`, `as-is`, `set-parameters`,
+`merge.custom` und `alters` ab. Nicht im Realkorpus und deshalb nur über
+synthetische Fixtures belegt: `exclude-controls`, `matching`, `combine`,
+`merge.flat`, positive `with-child-controls`-Auswahl und Profilketten. Ein bestandener
 Realkorpuslauf darf nie als Nachweis vollständiger Semantik ausgegeben
 werden.
 

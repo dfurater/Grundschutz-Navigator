@@ -326,7 +326,7 @@ liest jedes Dokument gegen die Version, die es selbst deklariert.
 
 ## Kompatibilitätstest
 
-`src/domain/sourceRegistry.test.ts` prüft alle **19** registrierten
+`src/domain/sourceRegistry.test.ts` prüft alle **18** registrierten
 OSCAL-Artefakte gegen die Matrix: vollständige Abdeckung, exakte
 Versionsübereinstimmung mit einem unabhängig ausgeschriebenen Orakel, ein
 auflösbarer Schema-Pin pro Artefakt und die Beschränkung auf genau die vier
@@ -335,7 +335,7 @@ abgeleitet — eine stille Registry-Änderung fällt damit auf.
 
 ## Deklarierte Versionen im Bestand
 
-Ausgelesen am BSI-Snapshot `47de2824a341812438ef3f044b3f65ce2cad6e32`;
+Ausgelesen am BSI-Snapshot `160c177db6c84d3c621fff614559943b1de8c600`;
 Git-Blob-SHA und SHA-256 jedes Dokuments wurden dabei gegen
 `upstream-manifest.json` verifiziert.
 
@@ -345,7 +345,6 @@ Git-Blob-SHA und SHA-256 jedes Dokuments wurden dabei gegen
 | `catalog-lieferkette` | `catalog` | 1.1.3 |
 | `catalog-mindeststandard-tls` | `catalog` | 1.1.3 |
 | `catalog-wlan` | `catalog` | 1.1.3 |
-| `catalog-source-gspp-kernel-g0` | `catalog` | 1.1.3 |
 | `catalog-source-gspp-methodik` | `catalog` | 1.1.3 |
 | `catalog-source-risikomanagement` | `catalog` | 1.1.3 |
 | `catalog-source-lieferkette-kernel` | `catalog` | 1.1.3 |

@@ -85,15 +85,15 @@ describe('sourceRegistry', () => {
     ]);
   });
 
-  it('registers exactly the profile-imported source catalogs and all three lineage graphs', () => {
+  it('registers the current source catalogs and all three lineage graphs', () => {
     expect(CATALOG_LINEAGES).toEqual([
       {
         catalogKey: 'gspp',
         profileArtifactKey: 'profile-gspp',
         imports: [
           {
-            href: '../catalogs/Kernel/BSI-Stand-der-Technik-Kernel-G0-catalog.json',
-            artifactKey: 'catalog-source-gspp-kernel-g0',
+            href: '../../../Kernel/BSI-Stand-der-Technik-Kernel-catalog.json',
+            artifactKey: 'catalog-source-lieferkette-kernel',
           },
           {
             href: '../catalogs/Methodik-Grundschutz++/BSI-Methodik-Grundschutz++-catalog.json',
@@ -110,7 +110,7 @@ describe('sourceRegistry', () => {
         profileArtifactKey: 'profile-lieferkette',
         imports: [
           {
-            href: '../../../Grundschutz++/sources/catalogs/Kernel/BSI-Stand-der-Technik-Kernel-catalog.json',
+            href: '../../../Kernel/BSI-Stand-der-Technik-Kernel-catalog.json',
             artifactKey: 'catalog-source-lieferkette-kernel',
           },
         ],
@@ -120,8 +120,8 @@ describe('sourceRegistry', () => {
         profileArtifactKey: 'profile-wlan',
         imports: [
           {
-            href: '../../../Grundschutz++/sources/catalogs/Kernel/BSI-Stand-der-Technik-Kernel-G0-catalog.json',
-            artifactKey: 'catalog-source-gspp-kernel-g0',
+            href: '../../../Kernel/BSI-Stand-der-Technik-Kernel-catalog.json',
+            artifactKey: 'catalog-source-lieferkette-kernel',
           },
         ],
       },
@@ -130,13 +130,6 @@ describe('sourceRegistry', () => {
     expect(
       SOURCE_REGISTRY.filter((entry) => entry.artifactKey.startsWith('catalog-source-')),
     ).toEqual([
-      expect.objectContaining({
-        artifactKey: 'catalog-source-gspp-kernel-g0',
-        expectedRootType: 'catalog',
-        lifecycle: 'preview',
-        upstreamPath:
-          'control_layer/Grundschutz++/sources/catalogs/Kernel/BSI-Stand-der-Technik-Kernel-G0-catalog.json',
-      }),
       expect.objectContaining({
         artifactKey: 'catalog-source-gspp-methodik',
         expectedRootType: 'catalog',
@@ -154,8 +147,7 @@ describe('sourceRegistry', () => {
         artifactKey: 'catalog-source-lieferkette-kernel',
         expectedRootType: 'catalog',
         lifecycle: 'preview',
-        upstreamPath:
-          'control_layer/Grundschutz++/sources/catalogs/Kernel/BSI-Stand-der-Technik-Kernel-catalog.json',
+        upstreamPath: 'control_layer/Kernel/BSI-Stand-der-Technik-Kernel-catalog.json',
       }),
     ]);
   });
@@ -174,7 +166,7 @@ describe('sourceRegistry', () => {
     }
     // profile-lieferkette importiert ausschließlich den Kernel ohne G0.
     expect(getArtifactByUpstreamPath(
-      'control_layer/Grundschutz++/sources/catalogs/Kernel/BSI-Stand-der-Technik-Kernel-catalog.json',
+      'control_layer/Kernel/BSI-Stand-der-Technik-Kernel-catalog.json',
     )?.artifactKey).toBe('catalog-source-lieferkette-kernel');
   });
 
@@ -340,7 +332,7 @@ describe('sourceRegistry', () => {
 
   describe('OSCAL-Versionskompatibilität (GSPP-283)', () => {
     /**
-     * Die am BSI-Snapshot 47de2824 aus `metadata.oscal-version` ausgelesenen
+     * Die am BSI-Snapshot 160c177 aus `metadata.oscal-version` ausgelesenen
      * Versionen aller registrierten OSCAL-Artefakte. Blob-SHA und SHA-256 der
      * Quelldokumente wurden dabei gegen `upstream-manifest.json` geprüft.
      *
@@ -352,7 +344,6 @@ describe('sourceRegistry', () => {
       'catalog-gspp': '1.1.3',
       'catalog-lieferkette': '1.1.3',
       'catalog-mindeststandard-tls': '1.1.3',
-      'catalog-source-gspp-kernel-g0': '1.1.3',
       'catalog-source-gspp-methodik': '1.1.3',
       'catalog-source-lieferkette-kernel': '1.1.3',
       'catalog-source-risikomanagement': '1.1.3',
@@ -369,6 +360,11 @@ describe('sourceRegistry', () => {
       'profile-lieferkette': '1.1.3',
       'profile-wlan': '1.1.3',
     };
+
+    it('enthält 18 OSCAL-Artefakte ohne den entfernten G0-Quellkatalog', () => {
+      expect(listOscalArtifacts()).toHaveLength(18);
+      expect(listOscalArtifacts().some((entry) => entry.artifactKey === 'catalog-source-gspp-kernel-g0')).toBe(false);
+    });
 
     it('covers every registered OSCAL artifact exactly once', () => {
       expect(listOscalArtifacts().map((entry) => entry.artifactKey).sort()).toEqual(
