@@ -14,6 +14,7 @@
 import type { DerivedJsonTree } from '@/domain/oscalDerivedGraph';
 import { processClass2OscalValue } from '@/domain/oscalObjectPipeline';
 import { toDerivedOscalTree } from '@/domain/profileExport';
+import { validateSspTargets, type TargetCategoryContext } from '@/domain/sspTargetObjects';
 import { sspReadinessBlocker } from '@/domain/sspSave';
 import { serializeWorkspaceJson } from '@/domain/workspaceJson';
 import type { DocumentState } from '@/domain/workspaceModel';
@@ -41,11 +42,11 @@ const fail = (code: string, path = '/'): SspExportResult => ({ ok: false, code, 
  * `createOscalDerivedGraph()` entstanden ist, scheitert an der Herkunftsprüfung
  * mit `OSCAL_OBJECT_UNPROVENANCED`.
  */
-export async function validateSspExportTree(tree: unknown): Promise<SspExportResult> {
+export async function validateSspExportTree(tree: unknown, categories?: TargetCategoryContext): Promise<SspExportResult> {
   const processed = await processClass2OscalValue(tree, { trustClass: 'class-2-local-user' });
   if (!processed.ok) return fail(processed.diagnostic.code, processed.diagnostic.path);
   if (processed.document.rootType !== 'system-security-plan') return fail(SSP_EXPORT_CODES.rootNotSsp);
-  const blocker = sspReadinessBlocker(processed.document.source);
+  const blocker = validateSspTargets(processed.document.source, categories) ?? sspReadinessBlocker(processed.document.source);
   if (blocker) return fail(blocker.code, blocker.path);
   return {
     ok: true,
@@ -59,6 +60,7 @@ export async function exportSspDocument(document: {
   readonly documentState: DocumentState;
   readonly rootType: string;
   readonly source: unknown;
+  readonly categories?: TargetCategoryContext;
 }): Promise<SspExportResult> {
   if (document.documentState !== 'export-ready') return fail(SSP_EXPORT_CODES.notReady);
   if (document.rootType !== 'system-security-plan') return fail(SSP_EXPORT_CODES.rootNotSsp);
@@ -68,5 +70,5 @@ export async function exportSspDocument(document: {
   } catch {
     return fail(SSP_EXPORT_CODES.sourceInvalid);
   }
-  return validateSspExportTree(tree);
+  return validateSspExportTree(tree, document.categories);
 }

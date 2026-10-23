@@ -23,6 +23,7 @@ import { reviewTrailInWorker } from '@/adapters/reviewTrailWork';
 import { appendDecisionError, deriveReviewState, resolveActionReferences, REVIEW_ACTIONS_SYSTEM, REVIEW_ACTION_TYPE_APPROVED } from '@/domain/reviewTrail';
 import { documentBody } from '@/domain/documentContent';
 import { isJsonObject, readArray, type JsonObject } from '@/domain/jsonGuards';
+import { sspDeletionBlocked } from '@/domain/sspTargetDeletion';
 
 export const WORKSPACE_DATABASE_NAME = 'gspp-workspace';
 export const WORKSPACE_DELETE_BLOCKED_TIMEOUT_MS = 2_000;
@@ -323,6 +324,12 @@ export class WorkspaceStore {
       }
       return await this.write(async stamp => {
         const current = await this.current(localId, expectedSavedAt, expectedDraftSavedAt);
+        if (current.rootType === 'system-security-plan') {
+          const members = await this.documents.where('verbundId').equals(current.verbundId).toArray();
+          const ids = new Set(members.map(member => member.localId));
+          const bindings = (await this.bindings.toArray()).filter(binding => ids.has(binding.fromLocalId));
+          if (sspDeletionBlocked(current.source, document.source, localId, members, bindings)) reject('SSP_TARGET_DELETE_BLOCKED');
+        }
         assertAdmissible(state ?? current.documentState, schemaValid);
         if (approval && (state ?? current.documentState) === 'draft') reject('REVIEW_APPROVAL_BLOCKED');
         if ((document.source as Record<string, { uuid?: string }>)[document.rootType]?.uuid === localId) reject('WORKSPACE_DOCUMENT_INVALID');

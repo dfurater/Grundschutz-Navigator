@@ -4,6 +4,7 @@ import { buildStationUrl } from '@/app/routes';
 import { Button } from '@/components/Button';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { IconDownload } from '@/components/icons';
+import { targetCoverage } from '@/domain/sspTargetObjects';
 import { missingSspStructure } from '@/domain/sspRequirements';
 import { editLocked, reviewLocked } from '@/domain/workspaceCatalogPin';
 import type { LocalId, VerbundId } from '@/domain/workspaceModel';
@@ -26,6 +27,8 @@ import { useBaselineControls } from '@/features/workspace/ssp/useBaselineControl
 import { useSspEditor, type SspEditorMessage } from '@/features/workspace/ssp/useSspEditor';
 
 const MESSAGES: Readonly<Record<SspEditorMessage, string>> = {
+  'target-invalid': 'Die Projektregeln für Zielobjekte sind nicht erfüllt. Quelle und Backup bleiben erhalten.',
+  'target-delete-blocked': 'Das Zielobjekt bleibt gespeichert: Verwendungen oder Bindungen haben sich geändert. Bestand neu prüfen.',
   'saved-as-draft': 'Schema oder Referenzprüfung sind nicht bestanden; das SSP ist als Entwurf gespeichert.',
   'save-failed': 'Das SSP wurde nicht gespeichert.',
   'export-failed': 'Der Export wurde abgelehnt; das Schema oder die Referenzprüfung ist nicht bestanden.',
@@ -76,9 +79,10 @@ export function SspEditorPage({ view, document }: Readonly<{ view: VerbundView; 
   }
   const missing = missingSspStructure(editor.working);
   const state = editor.envelope.documentState === 'draft' || editor.dirty ? 'draft' : 'export-ready';
-  const canExport = editor.envelope.documentState === 'export-ready' && !editor.dirty && !editor.busy;
+  const coverage = targetCoverage(editor.working);
+  const canExport = !editor.targetFailure && editor.envelope.documentState === 'export-ready' && !editor.dirty && !editor.busy;
   // Schreibschutz durch den Katalogstand: Lesen, Export und Löschen bleiben, Bearbeiten und Prüfen nicht.
-  const locked = editLocked(document.catalogPin);
+  const locked = editLocked(document.catalogPin) || editor.targetFailure !== undefined;
   const save = () => { void editor.save(); };
   const exportDocument = () => { void editor.exportDocument(); };
 
@@ -90,6 +94,13 @@ export function SspEditorPage({ view, document }: Readonly<{ view: VerbundView; 
           <WorkspaceNotices />
           <CatalogPinNotice pin={document.catalogPin} busy={editor.busy} onBind={() => { void editor.bindCatalogStand(); }} />
           {editor.message && <output className="block text-sm text-[var(--color-text-primary)]">{MESSAGES[editor.message]}</output>}
+          <section aria-label="Schutzbedarfsabdeckung" className="space-y-1 text-sm text-[var(--color-text-secondary)]">
+            <p>{editor.envelope.documentState === 'export-ready' && !editor.dirty && !editor.targetFailure ? 'Technisch gültig' : 'Technische Gültigkeit noch nicht bestätigt'}</p>
+            <p className="tabular-nums">{`Schutzbedarf: ${coverage.assessed} von ${coverage.total} Objekten bewertet`}</p>
+            {coverage.value === 'incomplete' && <p>Arbeitsstand mit offenen Bewertungen. Die Abdeckung beschreibt ausschließlich die erfassten Objekte.</p>}
+            {editor.targetFailure && <p role="status">Projektregelbefund: <span className="font-mono text-xs">{editor.targetFailure.code} · {editor.targetFailure.path}</span>. Semantische Änderungen und validierter Export sind gesperrt.</p>}
+            <Button variant="ghost" size="sm" className="min-h-touch desktop:min-h-0" onClick={editor.exportPreserved}>Ungeprüften Erhaltungs-Export herunterladen</Button>
+          </section>
           {!desktop && <OpenStructure missing={missing} />}
           <fieldset disabled={locked} className="min-w-0 space-y-4">
             <MetadataSection editor={editor} />

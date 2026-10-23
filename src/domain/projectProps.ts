@@ -18,6 +18,9 @@ export const PROJECT_PROP_NAMES = Object.freeze([
   'effort-estimate-hours',
   'custom-tag',
   'protection-need-level',
+  'target-object-category',
+  'effective-target-object-category',
+  'protection-need-coverage',
   'assessed-against-catalog-key',
   'assessed-against-catalog-commit',
 ] as const);
@@ -59,6 +62,8 @@ export interface ProjectPropRegistryEntry {
     | 'effort-estimate-hours'
     | 'custom-tag'
     | 'protection-need-level'
+    | 'target-category'
+    | 'protection-coverage'
     | 'catalog-key'
     | 'catalog-commit';
   readonly canonicalization: 'identity' | 'decimal-comma-to-point';
@@ -140,6 +145,45 @@ export const PROJECT_PROP_REGISTRY = Object.freeze({
         identifier: 'GSPP-355',
         url: 'https://linear.app/grundschutz-plus-plus/issue/GSPP-355',
       },
+    },
+  }),
+  'target-object-category': registryEntry({
+    name: 'target-object-category',
+    carriers: ['system-component', 'inventory-item', 'information-type'],
+    cardinality: { minimum: 0, maximum: null, scope: 'carrier' },
+    meaning: 'Direkte Kategorie eines Zielobjekts',
+    valueContract: 'target-category',
+    canonicalization: 'identity',
+    documentation: {
+      valueSpace: 'Kleingeschriebene Kategorie-UUID',
+      validation: '`group: gspp`; je Träger/Gruppe/UUID eindeutig; gebundener GSPP-Stand erforderlich',
+      introducedBy: { identifier: 'GSPP-355', url: 'https://linear.app/grundschutz-plus-plus/issue/GSPP-355' },
+    },
+  }),
+  'effective-target-object-category': registryEntry({
+    name: 'effective-target-object-category',
+    carriers: ['system-component', 'inventory-item', 'information-type'],
+    cardinality: { minimum: 0, maximum: null, scope: 'carrier' },
+    meaning: 'Berechnete wirksame Kategorien eines Zielobjekts',
+    valueContract: 'target-category',
+    canonicalization: 'identity',
+    documentation: {
+      valueSpace: 'Kleingeschriebene Kategorie-UUID',
+      validation: '`group: gspp`; je Träger/Gruppe/UUID eindeutig; gebundener GSPP-Stand erforderlich',
+      introducedBy: { identifier: 'GSPP-355', url: 'https://linear.app/grundschutz-plus-plus/issue/GSPP-355' },
+    },
+  }),
+  'protection-need-coverage': registryEntry({
+    name: 'protection-need-coverage',
+    carriers: ['metadata'],
+    cardinality: { minimum: 0, maximum: 1, scope: 'carrier' },
+    meaning: 'Bewertungsabdeckung der erfassten SSP-Zielobjekte',
+    valueContract: 'protection-coverage',
+    canonicalization: 'identity',
+    documentation: {
+      valueSpace: '`complete`, `incomplete`',
+      validation: 'Nur SSP-Metadaten; berechnet aus allen vorhandenen Zielobjekten',
+      introducedBy: { identifier: 'GSPP-355', url: 'https://linear.app/grundschutz-plus-plus/issue/GSPP-355' },
     },
   }),
   'assessed-against-catalog-key': registryEntry({
@@ -482,6 +526,10 @@ function validateProjectPropValue(
         : [];
     case 'protection-need-level':
       return validateProtectionNeedValue(prop, carrier);
+    case 'target-category':
+      return prop.group === 'gspp' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(prop.value) ? [] : invalidProjectPropValue(carrier);
+    case 'protection-coverage':
+      return prop.value === 'complete' || prop.value === 'incomplete' ? [] : invalidProjectPropValue(carrier);
     case 'catalog-key':
       return validateCatalogKeyValue(prop, carrier);
     case 'catalog-commit':
@@ -664,12 +712,18 @@ function validateProjectPropCardinalities(
   props: readonly RawOscalProp[],
   carrier: ProjectPropCarrier,
 ): OscalDiagnostic[] {
+  const categoryValues = new Set<string>();
   const carrierCounts = new Map<ProjectPropName, number>();
   const groupCounts = new Map<ProjectPropName, Map<unknown, number>>();
   const invalidNames = new Set<ProjectPropName>();
 
   for (const prop of props) {
     if (!isProjectPropName(prop.name)) continue;
+    if (prop.name === 'target-object-category' || prop.name === 'effective-target-object-category') {
+      const key = `${prop.name}:${prop.group}:${prop.value}`;
+      if (categoryValues.has(key)) invalidNames.add(prop.name);
+      categoryValues.add(key);
+    }
     const { maximum, scope } = PROJECT_PROP_REGISTRY[prop.name].cardinality;
     if (maximum === null) continue;
 

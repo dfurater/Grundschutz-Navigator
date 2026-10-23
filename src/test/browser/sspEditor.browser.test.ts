@@ -10,6 +10,10 @@ import { createAppRoutes } from '@/app/appRoutes';
 import { buildStationUrl, buildWorkspaceDocumentUrl } from '@/app/routes';
 import { WorkspaceStore } from '@/adapters/workspaceStore';
 import type { VerbundId, WorkspaceEnvelope } from '@/domain/workspaceModel';
+import type { CatalogState } from '@/domain/models';
+import { withSspCategories, SSP_CATEGORY_IDS } from '@/test/fixtures/sspCategories';
+import { bindSspCategories, prepareSspTargets, setTargetCategories } from '@/domain/sspTargetObjects';
+import { sspCategoryContext } from '@/domain/sspCategoryContext';
 import { CatalogContext } from '@/state/CatalogContext';
 import { WorkspaceProvider } from '@/state/WorkspaceContext';
 import { createA11yCatalogState } from '@/test/browser/a11yCatalogState';
@@ -56,7 +60,7 @@ afterEach(async () => {
   await resetWorkspace();
 });
 
-async function renderAt(path: string, width = 1440, height = 900, touch = false) {
+async function renderAt(path: string, width = 1440, height = 900, touch = false, catalog: CatalogState = createA11yCatalogState()) {
   await commands.setBrowserCoarsePointer(touch);
   await page.viewport(width, height);
   const current = createMemoryRouter(createAppRoutes(createElement(AppShell)), { initialEntries: [path] });
@@ -66,7 +70,7 @@ async function renderAt(path: string, width = 1440, height = 900, touch = false)
   document.body.append(host);
   root = createRoot(host);
   flushSync(() => {
-    root!.render(createElement(CatalogContext.Provider, { value: createA11yCatalogState() },
+    root!.render(createElement(CatalogContext.Provider, { value: catalog },
       createElement(WorkspaceProvider, null, createElement(RouterProvider, { router: current }))));
   });
   await expect.poll(() => current.state.initialized).toBe(true);
@@ -103,6 +107,40 @@ function title(envelope: WorkspaceEnvelope | undefined): string {
 }
 
 describe.each(LAYOUTS)('$name ($width px)', ({ name, width, height, touch }) => {
+  test('Zielobjekte: Kategorien, Bewertung, Tastatur und Export bleiben lokal und zugänglich', async () => {
+    const seeded = await seedWorkspace();
+    const catalog = withSspCategories(createA11yCatalogState());
+    const context = sspCategoryContext(catalog)!;
+    const selected = setTargetCategories(bindSspCategories(makeFullSsp(), context), ['system-implementation', 'components', 0], [SSP_CATEGORY_IDS[1]], context);
+    const prepared = prepareSspTargets(selected, context);
+    if (!prepared.ok) throw new Error(prepared.code);
+    const stored = await addSsp(seeded.verbundId, prepared.source as Record<string, unknown>);
+    const downloads = vi.spyOn(URL, 'createObjectURL');
+    const { shell, router: current } = await renderAt(buildWorkspaceDocumentUrl(seeded.verbundId, stored.localId), width, height, touch, catalog);
+    await editorReady(shell);
+    const component = shell.querySelector<HTMLElement>('li[aria-label^="Komponente 1"]')!;
+    const field = <T extends HTMLElement>(text: string) => {
+      const label = [...component.querySelectorAll('label')].find(label => label.textContent === text)!;
+      return document.getElementById(label.htmlFor) as T;
+    };
+    await userEvent.selectOptions(field<HTMLSelectElement>('Schutzbedarf'), 'hoch');
+    await userEvent.fill(field<HTMLTextAreaElement>('Begründung des Schutzbedarfs'), SENTINEL);
+    const apply = [...component.querySelectorAll('button')].find(button => button.textContent === 'Bewertung übernehmen')!;
+    apply.focus();
+    await userEvent.keyboard('{Enter}');
+    await expect.poll(() => shell.textContent).toContain('Schutzbedarf: 1 von 4 Objekten bewertet');
+    expect(component.textContent).toContain('Synthetische Elternkategorie · abgeleitet');
+    await assertNoAxeViolations(shell, `Zielobjekte (${name})`, 'all');
+    button(shell, 'Speichern')!.click();
+    await expect.poll(async () => (await sspSource(stored.localId)).documentState, { timeout: 15_000 }).toBe('export-ready');
+    button(shell, 'Export')!.click();
+    await expect.poll(() => downloads.mock.calls.length, { timeout: 15_000 }).toBe(1);
+    const exported = JSON.parse(await (downloads.mock.calls[0][0] as Blob).text());
+    expect(exported).toEqual((await sspSource(stored.localId)).source);
+    expect(JSON.stringify(current.state.location)).not.toContain(SENTINEL);
+    expect(document.title).not.toContain(SENTINEL);
+    expect(await commands.assertNoBrowserEgress()).toBeUndefined();
+  }, 60_000);
   test('Axe meldet auf Neuanlage und Bearbeitungsansicht keinen Befund; Touchziele messen 44 px', async () => {
     const seeded = await seedWorkspace();
     const full = await addSsp(seeded.verbundId, makeFullSsp());

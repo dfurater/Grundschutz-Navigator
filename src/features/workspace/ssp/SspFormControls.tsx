@@ -1,5 +1,6 @@
 import { useId, useState, type ReactNode } from 'react';
 import { Button } from '@/components/Button';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { isJsonObject, readArray, readString } from '@/domain/jsonGuards';
 import { addSspItem, moveSspItem, readSspValue, removeSspItem, setSspValue, type SspPath } from '@/domain/sspAuthoring';
 import { INPUT, OscalKey, SECTION_LABEL } from '@/features/workspace/profile/ProfileMarks';
@@ -74,7 +75,7 @@ export function SspSelectField({ editor, path, label, options, required = false 
 function useRowKeys(items: readonly unknown[], uuidKeyed: boolean) {
   const [state, setState] = useState(() => ({ next: items.length, keys: items.map((_, index) => `row-${index}`) }));
   let keys = state.keys;
-  if (!uuidKeyed && keys.length !== items.length) {
+  if (keys.length !== items.length) {
     const fresh = { next: state.next + items.length, keys: items.map((_, index) => `row-${state.next + index}`) };
     setState(fresh);
     keys = fresh.keys;
@@ -101,7 +102,7 @@ function useRowKeys(items: readonly unknown[], uuidKeyed: boolean) {
  * stabile lokale Kennung als Schlüssel; Eingaben bleiben beim Hinzufügen,
  * Entfernen und Verschieben an ihrer Zeile.
  */
-export function SspRowList({ editor, path, title, required = false, uuidKeyed, newItem, addLabel, remove, renderRow, rowTitle }: Readonly<{
+export function SspRowList({ editor, path, title, required = false, uuidKeyed, newItem, addLabel, remove, renderRow, rowTitle, protectedTarget = false }: Readonly<{
   editor: SspEditor;
   path: SspPath;
   title: string;
@@ -115,11 +116,15 @@ export function SspRowList({ editor, path, title, required = false, uuidKeyed, n
   remove?: (source: unknown, index: number) => unknown;
   renderRow: (rowPath: SspPath, item: unknown) => ReactNode;
   rowTitle: (item: unknown, index: number) => string;
+  protectedTarget?: boolean;
 }>) {
   const headingId = useId();
   const items = readArray(readSspValue(editor.working, path));
   const rows = useRowKeys(items, uuidKeyed);
   const [visible, setVisible] = useState(ROW_PAGE);
+  const [pending, setPending] = useState<{ index: number; key: string; item: string }>();
+  const [uses, setUses] = useState<readonly string[]>([]);
+  const [checking, setChecking] = useState(false);
   const removeAt = (index: number) => {
     if (editor.apply((source) => (remove ?? ((current, at) => removeSspItem(current, path, at)))(source, index))) rows.removed(index);
   };
@@ -128,6 +133,14 @@ export function SspRowList({ editor, path, title, required = false, uuidKeyed, n
     rows.moved(from, to);
     // Die verschobene Zeile bleibt im Ausschnitt, damit ihre Bedienung und der Fokus erhalten bleiben.
     setVisible((count) => Math.max(count, to + 1));
+  };
+  const requestRemoval = async (index: number) => {
+    if (!protectedTarget) { removeAt(index); return; }
+    setChecking(true);
+    const uses = await editor.checkTargetRemoval([...path, index]);
+    setChecking(false);
+    setUses(uses);
+    if (!uses.length) setPending({ index, key: rows.keyAt(items[index], index), item: JSON.stringify(items[index]) });
   };
   return (
     <section aria-labelledby={headingId} className="space-y-2">
@@ -147,7 +160,7 @@ export function SspRowList({ editor, path, title, required = false, uuidKeyed, n
                 <div className="flex flex-wrap gap-1">
                   <Button variant="ghost" size="sm" className="min-h-touch desktop:min-h-0" disabled={index === 0} aria-label={`${label} nach oben`} onClick={() => move(index, index - 1)}>Nach oben</Button>
                   <Button variant="ghost" size="sm" className="min-h-touch desktop:min-h-0" disabled={index === items.length - 1} aria-label={`${label} nach unten`} onClick={() => move(index, index + 1)}>Nach unten</Button>
-                  <Button variant="ghost" size="sm" className="min-h-touch desktop:min-h-0" aria-label={`${label} entfernen`} onClick={() => removeAt(index)}>Entfernen</Button>
+                  <Button variant="ghost" size="sm" className="min-h-touch desktop:min-h-0" disabled={checking} aria-label={`${label} entfernen`} onClick={() => { void requestRemoval(index); }}>Entfernen</Button>
                 </div>
               </li>
             );
@@ -169,6 +182,11 @@ export function SspRowList({ editor, path, title, required = false, uuidKeyed, n
           {addLabel}
         </Button>
       )}
+      {uses.length > 0 && <div role="status" className="space-y-1 text-sm text-[var(--color-text-secondary)]"><p>Das Zielobjekt bleibt: vorhandene oder nicht vollständig prüfbare Verwendungen.</p><ul>{uses.map(use => <li key={use} className="break-all font-mono text-xs">{use}</li>)}</ul></div>}
+      <ConfirmDialog open={pending !== undefined} title="Zielobjekt entfernen?" confirmLabel="Zielobjekt entfernen" onCancel={() => setPending(undefined)} onConfirm={() => {
+        if (pending && rows.keyAt(items[pending.index], pending.index) === pending.key && JSON.stringify(items[pending.index]) === pending.item) removeAt(pending.index);
+        setPending(undefined);
+      }}>Geprüft wird nur der lokale Informationsverbund. Außerhalb gespeicherte Kopien können weiterhin auf dieses Zielobjekt verweisen. Das Entfernen wird mit dem SSP gespeichert.</ConfirmDialog>
     </section>
   );
 }

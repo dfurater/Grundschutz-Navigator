@@ -1108,6 +1108,14 @@ Eindeutigkeit der Komponenten-UUIDs und der `by-components` sowie
 Party-UUIDs. Modell und `source` behalten den gelesenen Wert. Eine `role-id`
 ist ein Token und wird exakt verglichen.
 
+### Zielobjektsemantik
+
+`src/domain/sspTargetObjects.ts` adressiert Components und Inventory Items in `system-implementation` sowie Information Types in `system-characteristics.system-information`. Gezielte Patches klonen die Quelle und erhalten unberührte Felder, native CIA-Angaben und UUIDs. Neue Objekte erhalten bei Anlage UUIDs; vorhandene Informationsarten ohne UUID erhalten keine nachträgliche UUID. `targetCoverage()` zählt ausschließlich gültige Einzelbewertungen gegen alle erfassten Zielobjekte.
+
+`src/domain/targetObjectCategories.ts` liefert entweder einen vollständigen Kategorienabschluss mit Katalogschlüssel, Commit, Objektidentität, sortierten direkten und effektiven UUIDs sowie Ableitungsherkunft oder einen Fehler ohne Teilmenge. Eine leere `ChildOfUUID` ist eine Wurzel; `Typ` beeinflusst die Hierarchie nicht. Die direkte Auswahl bestimmt den Abschluss am explizit gebundenen, verifizierten Stand; Component-Typ, Name und Schutzbedarf erzeugen keine Kategorie.
+
+Die Erweiterungen `target-object-category`, `effective-target-object-category` und `protection-need-coverage` stehen im [Projekt-Property-Vertrag](PROJECT_PROPS.md). `validateSspTargets()` prüft die SSP-Träger und gespeicherte Ableitungen. `prepareSspTargets()` erzeugt den konsistenten expliziten Speicherstand; `exportSspDocument()` serialisiert diesen nach Schema-, Referenz- und Projektregelprüfung ohne Reparatur.
+
 ### Versionsdrift
 
 Zwischen den vier gepinnten `oscal_ssp_schema.json` unterscheiden sich drei
