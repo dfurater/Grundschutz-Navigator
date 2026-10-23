@@ -16,7 +16,6 @@ const lineageStates = new Set<CatalogLineageState>([
   'rlink-ambiguous',
   'artifact-unregistered',
   'import-duplicate',
-  'configured-import-missing',
 ]);
 
 function isNullableString(value: unknown): value is string | null {
@@ -45,9 +44,7 @@ function isCatalogLineageImport(value: unknown): value is CatalogLineageImport {
   if (typeof state !== 'string' || !lineageStates.has(state as CatalogLineageState)) return false;
 
   const hasValidIndex =
-    state === 'configured-import-missing'
-      ? importedCatalog.index === null
-      : Number.isSafeInteger(importedCatalog.index) && (importedCatalog.index as number) >= 0;
+    Number.isSafeInteger(importedCatalog.index) && (importedCatalog.index as number) >= 0;
   if (
     !hasValidIndex ||
     !isNullableString(importedCatalog.importHref) ||

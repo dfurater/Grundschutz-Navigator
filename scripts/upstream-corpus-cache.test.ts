@@ -7,7 +7,7 @@ import {
   corpusArtifactKeys,
   writeCorpusCache,
 } from './upstream-corpus-cache.mjs';
-import { CATALOG_LINEAGES } from '../src/domain/sourceRegistry.mjs';
+import { projectCatalogLineage } from '../src/domain/catalogLineage.mjs';
 
 function inspected(artifactKey, repoPath, text) {
   const buffer = Buffer.from(text, 'utf8');
@@ -17,17 +17,21 @@ function inspected(artifactKey, repoPath, text) {
   };
 }
 
+function lineage(catalogKey, profileArtifactKey, sourceKeys) {
+  return {
+    catalogKey,
+    profile: { artifactKey: profileArtifactKey },
+    imports: sourceKeys.map((artifactKey, index) => ({
+      index,
+      state: artifactKey ? 'complete' : 'artifact-unregistered',
+      source: artifactKey ? { artifactKey } : null,
+    })),
+  };
+}
+
 const LINEAGES = [
-  {
-    catalogKey: 'gspp',
-    profileArtifactKey: 'profile-gspp',
-    imports: [{ href: './a.json', artifactKey: 'cat-a' }],
-  },
-  {
-    catalogKey: 'wlan',
-    profileArtifactKey: 'profile-wlan',
-    imports: [{ href: './a.json', artifactKey: 'cat-a' }],
-  },
+  lineage('gspp', 'profile-gspp', ['cat-a']),
+  lineage('wlan', 'profile-wlan', ['cat-a']),
 ];
 
 describe('corpusArtifactKeys', () => {
@@ -41,16 +45,32 @@ describe('corpusArtifactKeys', () => {
     ]);
   });
 
-  it('fordert für die echten Lineages genau zehn Dokumente an', () => {
-    // Drei Profile + vier Quellkataloge + drei ausgelieferte Anwenderkataloge.
-    const keys = corpusArtifactKeys(CATALOG_LINEAGES);
-    expect(keys).toHaveLength(10);
-    expect(keys.filter((key) => key.startsWith('profile-'))).toEqual([
-      'profile-gspp',
+  it('übernimmt nur aufgelöste Importquellen', () => {
+    expect(corpusArtifactKeys([lineage('lieferkette', 'profile-lieferkette', [null, 'cat-b'])])).toEqual([
+      'cat-b',
+      'catalog-lieferkette',
       'profile-lieferkette',
-      'profile-wlan',
     ]);
-    expect(keys).toContain('catalog-source-lieferkette-kernel');
+  });
+
+  it('nimmt die Quelle eines direkten relativen Profilimports auf', () => {
+    const doc = (root, uuid, extra = {}) => ({
+      [root]: { uuid, metadata: { title: uuid, version: '1', 'oscal-version': '1.1.3' }, ...extra },
+    });
+    const sourcePath = 'control_layer/Example/source.json';
+    const projected = projectCatalogLineage({
+      catalogKey: 'example',
+      profileArtifact: {
+        document: doc('profile', 'p', { imports: [{ href: '../source.json', 'include-all': {} }] }),
+        manifestFile: { artifactKey: 'profile-example', path: 'control_layer/Example/profiles/p.json' },
+      },
+      artifactsByPath: new Map([
+        [sourcePath, { document: doc('catalog', 's'), manifestFile: { artifactKey: 'example-source', path: sourcePath } }],
+      ]),
+    });
+
+    expect(projected.imports[0].state).toBe('complete');
+    expect(corpusArtifactKeys([projected])).toContain('example-source');
   });
 });
 

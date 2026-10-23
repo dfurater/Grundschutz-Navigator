@@ -10,6 +10,7 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import { validateManifestV2Shape } from './upstream-artifacts.mjs';
+import { UNKNOWN_COMPANION_ROOT_TYPE } from './companion-artifacts.mjs';
 import {
   hasRegistryKeyGrammar,
   listOscalArtifacts,
@@ -174,9 +175,12 @@ export function getReleaseAssetsForPlatform(
 }
 
 /**
- * Verbindet die signierte Manifest-Projektion mit dem Quellregister. Das
- * Manifest liefert die Content- und Blob-Pins; Root und Version stammen
- * weiterhin ausschließlich aus dem registrierten Artefaktvertrag.
+ * Verbindet die signierte Manifest-Projektion mit dem Quellregister (ADR-13).
+ * Das Manifest liefert die Content- und Blob-Pins. Root und Version der
+ * Produktartefakte stammen aus dem Register; Begleitartefakte bringen Root-Typ
+ * und Lifecycle aus dem Manifest mit, ihre Version steht erst im Dokument.
+ * Ein Begleitartefakt ohne eindeutige OSCAL-Wurzel hat kein Schema und bleibt
+ * ungeprüft gesperrt.
  */
 export function selectManifestOscalArtifacts(manifest, registry = listOscalArtifacts()) {
   validateManifestV2Shape(manifest);
@@ -185,30 +189,17 @@ export function selectManifestOscalArtifacts(manifest, registry = listOscalArtif
   }
 
   const manifestByPath = new Map(manifest.files.map((file) => [file.path, file]));
-  const missingBlockedArtifacts = [];
-  const oscalArtifacts = registry.flatMap((entry) => {
+  const productArtifacts = registry.map((entry) => {
     const manifestFile = manifestByPath.get(entry.upstreamPath);
-    if (!manifestFile) {
-      // ADR-7-Nachtrag: Ein gesperrtes Artefakt, das vollständig aus dem
-      // BSI-Tree entfernt wurde, hat keinen Manifesteintrag mehr und kann
-      // nicht gegen go-oscal geprüft werden — es bleibt weiterhin gesperrt.
-      if (entry.lifecycle === 'blocked-by-upstream') {
-        missingBlockedArtifacts.push(
-          Object.freeze({ artifactKey: entry.artifactKey, upstreamPath: entry.upstreamPath }),
-        );
-        return [];
-      }
-      throw new Error('Manifest und OSCAL-Quellregister stimmen nicht überein');
-    }
     if (
-      manifestFile.artifactKey !== entry.artifactKey ||
+      manifestFile?.artifactKey !== entry.artifactKey ||
       manifestFile.rootType !== entry.expectedRootType ||
       manifestFile.lifecycle !== entry.lifecycle
     ) {
       throw new Error('Manifest und OSCAL-Quellregister stimmen nicht überein');
     }
 
-    return [Object.freeze({
+    return Object.freeze({
       artifactKey: entry.artifactKey,
       rootType: entry.expectedRootType,
       oscalVersion: entry.oscalVersion,
@@ -220,17 +211,37 @@ export function selectManifestOscalArtifacts(manifest, registry = listOscalArtif
       upstreamPath: entry.upstreamPath,
       contentSha256: manifestFile.contentSha256,
       gitBlobSha: manifestFile.gitBlobSha,
-    })];
+      companion: false,
+    });
   });
+  const productPaths = new Set(registry.map((entry) => entry.upstreamPath));
+  const companionArtifacts = manifest.files
+    .filter((file) =>
+      file.rootType !== 'vocabulary' &&
+      file.rootType !== UNKNOWN_COMPANION_ROOT_TYPE &&
+      !productPaths.has(file.path),
+    )
+    .map((file) => Object.freeze({
+      artifactKey: file.artifactKey,
+      rootType: file.rootType,
+      oscalVersion: null,
+      lifecycle: file.lifecycle,
+      catalogKey: null,
+      upstreamPath: file.path,
+      contentSha256: file.contentSha256,
+      gitBlobSha: file.gitBlobSha,
+      companion: true,
+    }));
+  const oscalArtifacts = [...productArtifacts, ...companionArtifacts];
 
   const vocabularyArtifacts = manifest.files.filter((file) => file.rootType === 'vocabulary');
   const versionCoverage = Object.fromEntries(
-    [...new Set(oscalArtifacts.map((artifact) => artifact.oscalVersion))]
+    [...new Set(productArtifacts.map((artifact) => artifact.oscalVersion))]
       // Lexikalische Ausgabeordnung, keine numerische Versionsordnung.
       .sort(compareStringsByCodeUnit)
       .map((version) => [
         version,
-        oscalArtifacts.filter((artifact) => artifact.oscalVersion === version).length,
+        productArtifacts.filter((artifact) => artifact.oscalVersion === version).length,
       ]),
   );
 
@@ -238,7 +249,6 @@ export function selectManifestOscalArtifacts(manifest, registry = listOscalArtif
     oscalArtifacts: Object.freeze(oscalArtifacts),
     vocabularyArtifacts: Object.freeze(vocabularyArtifacts),
     versionCoverage: Object.freeze(versionCoverage),
-    missingBlockedArtifacts: Object.freeze(missingBlockedArtifacts),
   });
 }
 
@@ -563,14 +573,27 @@ function resolveArtifactExpectationOutcome(expectedSchemaStatus, verificationPas
     : 'expected-schema-success';
 }
 
+/**
+ * Ein Begleitartefakt wird nie ausgeliefert, und sein Lifecycle stammt aus der
+ * Ajv-Prüfung des Fetch (ADR-13). Urteilt go-oscal anders, gibt es keinen
+ * Registereintrag zum Nachführen; die Abweichung wird deshalb ausgewiesen,
+ * blockiert aber nicht. Für Produktartefakte bleibt sie blockierend.
+ */
 export function evaluateArtifactExpectation(artifact, schemaStatus) {
-  if (schemaStatus !== 'passed' && schemaStatus !== 'failed') {
+  if (schemaStatus !== 'passed' && schemaStatus !== 'failed' && schemaStatus !== 'not-checked') {
     throw new Error('Schema status is invalid');
+  }
+  if (schemaStatus === 'not-checked' && !artifact.companion) {
+    throw new Error('Only a companion artifact may remain unchecked');
   }
 
   const expectedSchemaStatus = artifact.lifecycle === 'blocked-by-upstream' ? 'failed' : 'passed';
-  const verificationPassed = schemaStatus === expectedSchemaStatus;
-  const outcome = resolveArtifactExpectationOutcome(expectedSchemaStatus, verificationPassed);
+  const matches = schemaStatus === expectedSchemaStatus;
+  let outcome = resolveArtifactExpectationOutcome(expectedSchemaStatus, matches);
+  if (artifact.companion && !matches) {
+    outcome = schemaStatus === 'not-checked' ? 'companion-not-checked' : 'companion-validator-disagreement';
+  }
+  const verificationPassed = matches || Boolean(artifact.companion);
 
   return Object.freeze({
     artifactKey: artifact.artifactKey,
@@ -649,7 +672,7 @@ export function buildReferenceGraphDocuments({ domain, selection, artifactResult
       artifactKey: artifact.artifactKey,
       lifecycle: artifact.lifecycle,
       rootType: artifact.rootType,
-      oscalVersion: artifact.oscalVersion,
+      oscalVersion: artifact.oscalVersion ?? source[artifact.rootType]?.metadata?.['oscal-version'] ?? null,
       source,
       view: parsed.view,
       ...(artifact.catalogKey ? { catalogKey: artifact.catalogKey } : {}),
@@ -727,22 +750,12 @@ export function formatVerifyUpstreamOscalSummary({ snapshotCommitSha, selection,
     )
     .join('\n');
 
-  const missingBlockedLines = selection.missingBlockedArtifacts.length === 0
-    ? []
-    : [
-        `gesperrt, im Snapshot fehlend: ${selection.missingBlockedArtifacts.length} übersprungen`,
-        ...selection.missingBlockedArtifacts.map(
-          (artifact) => `  ${artifact.artifactKey}: ${artifact.upstreamPath}`,
-        ),
-      ];
-
   return [
     'go-oscal@0.7.1 — Upstream-OSCAL-Schemaprüfung',
     `Snapshot: ${snapshotCommitSha}`,
     `OSCAL: ${artifactResults.length} geprüft`,
     `vocabulary: ${selection.vocabularyArtifacts.length} übersprungen (kein OSCAL-Root-Modell)`,
-    ...missingBlockedLines,
-    'Versionen:',
+    'Versionen der Produktartefakte:',
     versionLines,
     'Artefakte:',
     artifactLines,
@@ -855,7 +868,15 @@ export async function runVerifyUpstreamOscal({
         // Ein syntaktisch defektes Dokument ist ein Befund der Stufe 1 und wird
         // von go-oscal ausgewiesen; Stufe 5 lässt es schlicht aus.
       }
-      await writeFile(inputPath, prepareGoOscalInput(verifiedBytes, artifact.artifactKey));
+      let goOscalInput;
+      try {
+        goOscalInput = prepareGoOscalInput(verifiedBytes, artifact.artifactKey);
+      } catch (error) {
+        if (!artifact.companion) throw error;
+        artifactResults.push(evaluateArtifactExpectation(artifact, 'not-checked'));
+        continue;
+      }
+      await writeFile(inputPath, goOscalInput);
       await executeTool({ binaryPath, inputPath, resultPath, artifactKey: artifact.artifactKey });
       artifactResults.push(
         evaluateArtifactExpectation(

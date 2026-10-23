@@ -63,7 +63,6 @@ import {
   makeRichMappingSource,
   MAPPING_ARTIFACT_SPECS,
   MAPPING_RESOURCE_HREFS,
-  listRegisteredMappingArtifactKeys,
   mappingSpecFor,
 } from '@/test/fixtures/mappings';
 import { makeLosslessCatalogSource } from '@/test/fixtures/losslessCatalog';
@@ -143,10 +142,6 @@ describe('Adapter-Registrierung', () => {
     expect((result.view as MappingCollection).mappings).toHaveLength(2);
   });
 
-  it('bildet genau die registrierten Mapping-Artefakte ab', () => {
-    expect(MAPPING_ARTIFACT_SPECS.map((entry) => entry.artifactKey).sort())
-      .toEqual([...listRegisteredMappingArtifactKeys()]);
-  });
 });
 
 /* ------------------------------------------------------------------ */
@@ -724,8 +719,8 @@ describe('Fail-closed vor der Ableitung', () => {
     try {
       parseMappingDocument(makeMinimalMappingSource(), {
         ...context,
-        // Der Pfad gehört einem Profil; der Registry-Abgleich muss greifen.
-        upstreamPath: 'control_layer/WLAN/sources/profiles/WLAN-profile.json',
+        // Der Pfad gehört einem Produktkatalog; der Registry-Abgleich muss greifen.
+        upstreamPath: 'control_layer/WLAN/WLAN-resolved_catalog.json',
       });
     } catch (error) {
       thrown = error;

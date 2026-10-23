@@ -3,7 +3,7 @@
 //
 // Die drei realen BSI-Profile liegen **nicht** im Repository: `npm run
 // fetch-catalog` materialisiert ausschließlich `supported`-Artefakte, und alle
-// drei Profile sind `preview` (`src/domain/sourceRegistry.mjs`). Der
+// drei Profile sind Begleitartefakte (`scripts/companion-artifacts.mjs`). Der
 // verbindliche Korpus ist deshalb fixture-basiert — dieselbe Konvention wie in
 // `oscalRootDispatch.corpus.test.ts`, GSPP-286 und GSPP-248.
 //
@@ -20,9 +20,7 @@
 // =============================================================================
 
 import { makeUuid } from '@/test/fixtures/fixtureUuid';
-import { compareStringsByCodeUnit } from '@/domain/codeUnitOrder.mjs';
 import type { PinnedOscalVersion } from '@/domain/oscalVersionMatrix';
-import { listOscalArtifacts } from '@/domain/sourceRegistry';
 
 type JsonObject = Record<string, unknown>;
 
@@ -84,34 +82,19 @@ export interface ProfileArtifactSpec {
   readonly backMatter: readonly BackMatterResourceSpec[];
 }
 
-const REGISTERED_PROFILE_ARTIFACTS = new Map(
-  listOscalArtifacts()
-    .filter((entry) => entry.expectedRootType === 'profile')
-    .map((entry) => [entry.artifactKey, entry] as const),
-);
-
-/** Die Schlüssel der registrierten Profile, alphabetisch. */
-export function listRegisteredProfileArtifactKeys(): readonly string[] {
-  return [...REGISTERED_PROFILE_ARTIFACTS.keys()].sort(compareStringsByCodeUnit);
-}
-
-function registryFactsFor(artifactKey: string): {
+/**
+ * Am Snapshot gemessene Artefaktfakten. Sie sind Teil des eingefrorenen
+ * Korpus und lesen weder Quellregister noch Manifest.
+ */
+const MEASURED_PROFILE_FACTS = Object.freeze({
+  'profile-gspp': { artifactKey: 'profile-gspp', upstreamPath: 'control_layer/Grundschutz++/sources/profiles/Grundschutz++-profile.json', oscalVersion: '1.1.3' },
+  'profile-lieferkette': { artifactKey: 'profile-lieferkette', upstreamPath: 'control_layer/Lieferkettensicherheit/sources/profiles/Lieferkettensicherheit-profile.json', oscalVersion: '1.1.3' },
+  'profile-wlan': { artifactKey: 'profile-wlan', upstreamPath: 'control_layer/WLAN/sources/profiles/WLAN-profile.json', oscalVersion: '1.1.3' },
+} as const satisfies Record<string, {
   readonly artifactKey: string;
   readonly upstreamPath: string;
   readonly oscalVersion: PinnedOscalVersion;
-} {
-  const entry = REGISTERED_PROFILE_ARTIFACTS.get(artifactKey);
-  if (!entry) {
-    // Fail-loud statt eines Ersatzwerts: Ein Fixture für ein nicht (mehr)
-    // registriertes Artefakt bildet nichts Reales nach.
-    throw new Error(`Kein registriertes profile-Artefakt mit dem Schlüssel "${artifactKey}"`);
-  }
-  return {
-    artifactKey: entry.artifactKey,
-    upstreamPath: entry.upstreamPath,
-    oscalVersion: entry.oscalVersion,
-  };
-}
+}>);
 
 /**
  * Die drei registrierten Profile mit ihren gemessenen Strukturzahlen.
@@ -125,7 +108,7 @@ function registryFactsFor(artifactKey: string): {
  */
 export const PROFILE_ARTIFACT_SPECS: readonly ProfileArtifactSpec[] = Object.freeze([
   {
-    ...registryFactsFor('profile-gspp'),
+    ...MEASURED_PROFILE_FACTS['profile-gspp'],
     schemaValid: true,
     // 3 Imports: zweimal `include-all`, einmal `include-controls` mit 4 IDs.
     imports: [
@@ -152,7 +135,7 @@ export const PROFILE_ARTIFACT_SPECS: readonly ProfileArtifactSpec[] = Object.fre
     ],
   },
   {
-    ...registryFactsFor('profile-lieferkette'),
+    ...MEASURED_PROFILE_FACTS['profile-lieferkette'],
     schemaValid: true,
     imports: [
       {
@@ -170,7 +153,7 @@ export const PROFILE_ARTIFACT_SPECS: readonly ProfileArtifactSpec[] = Object.fre
     backMatter: [{ rlink: PROFILE_SOURCE_RLINKS.lieferketteKernel }],
   },
   {
-    ...registryFactsFor('profile-wlan'),
+    ...MEASURED_PROFILE_FACTS['profile-wlan'],
     schemaValid: true,
     // Ein Import mit **zwei** Selektoren — und `with-child-controls` in beiden
     // Werten, was sonst nirgends im Bestand vorkommt.

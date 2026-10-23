@@ -4,7 +4,7 @@
 // Die beiden realen BSI-Mappings liegen **nicht** im Repository: `npm run
 // fetch-catalog` materialisiert ausschließlich `supported`-Artefakte, und die
 // beiden sind `preview` beziehungsweise `blocked-by-upstream`
-// (`src/domain/sourceRegistry.mjs`). Der verbindliche Korpus ist deshalb
+// (`scripts/companion-artifacts.mjs`). Der verbindliche Korpus ist deshalb
 // fixture-basiert — dieselbe Konvention wie in `oscalRootDispatch.corpus.test.ts`,
 // GSPP-286, GSPP-248 und GSPP-240.
 //
@@ -22,10 +22,8 @@
 // =============================================================================
 
 import { makeUuid } from '@/test/fixtures/fixtureUuid';
-import { compareStringsByCodeUnit } from '@/domain/codeUnitOrder.mjs';
 import { getSchemaPin, PINNED_OSCAL_VERSIONS } from '@/domain/oscalVersionMatrix';
 import type { PinnedOscalVersion } from '@/domain/oscalVersionMatrix';
-import { listOscalArtifacts } from '@/domain/sourceRegistry';
 
 type JsonObject = Record<string, unknown>;
 
@@ -93,36 +91,18 @@ export interface MappingArtifactSpec {
   readonly sets: readonly MappingSetSpec[];
 }
 
-const REGISTERED_MAPPING_ARTIFACTS = new Map(
-  listOscalArtifacts()
-    .filter((entry) => entry.expectedRootType === 'mapping-collection')
-    .map((entry) => [entry.artifactKey, entry] as const),
-);
-
-/** Die Schlüssel der registrierten Mappings, alphabetisch. */
-export function listRegisteredMappingArtifactKeys(): readonly string[] {
-  return [...REGISTERED_MAPPING_ARTIFACTS.keys()].sort(compareStringsByCodeUnit);
-}
-
-function registryFactsFor(artifactKey: string): {
+/**
+ * Am Snapshot gemessene Artefaktfakten. Sie sind Teil des eingefrorenen
+ * Korpus und lesen weder Quellregister noch Manifest.
+ */
+const MEASURED_MAPPING_FACTS = Object.freeze({
+  'mapping-iso27001-annex-a-zu-gspp': { artifactKey: 'mapping-iso27001-annex-a-zu-gspp', upstreamPath: 'control_layer/Mappings/ISO-27001-zu-GSpp/ISO27001-AnnexA-to-GS++-mapping_collection.json', oscalVersion: '1.2.2' },
+  'mapping-itgs2023-zu-gspp': { artifactKey: 'mapping-itgs2023-zu-gspp', upstreamPath: 'control_layer/Mappings/IT-GS2023-zu-GSpp/ITGS-to-GS++-mapping_collection.json', oscalVersion: '1.2.1' },
+} as const satisfies Record<string, {
   readonly artifactKey: string;
   readonly upstreamPath: string;
   readonly oscalVersion: PinnedOscalVersion;
-} {
-  const entry = REGISTERED_MAPPING_ARTIFACTS.get(artifactKey);
-  if (!entry) {
-    // Fail-loud statt eines Ersatzwerts: Ein Fixture für ein nicht (mehr)
-    // registriertes Artefakt bildet nichts Reales nach.
-    throw new Error(
-      `Kein registriertes mapping-collection-Artefakt mit dem Schlüssel "${artifactKey}"`,
-    );
-  }
-  return {
-    artifactKey: entry.artifactKey,
-    upstreamPath: entry.upstreamPath,
-    oscalVersion: entry.oscalVersion,
-  };
-}
+}>);
 
 /**
  * Die beiden registrierten Mappings mit ihren gemessenen Strukturzahlen.
@@ -135,7 +115,7 @@ function registryFactsFor(artifactKey: string): {
  */
 export const MAPPING_ARTIFACT_SPECS: readonly MappingArtifactSpec[] = Object.freeze([
   {
-    ...registryFactsFor('mapping-iso27001-annex-a-zu-gspp'),
+    ...MEASURED_MAPPING_FACTS['mapping-iso27001-annex-a-zu-gspp'],
     // `provenance.qa-reviewed` und `provenance.qa-note` verletzen
     // `additionalProperties: false` — genau zwei Befunde (ADR-7).
     schemaValid: false,
@@ -168,7 +148,7 @@ export const MAPPING_ARTIFACT_SPECS: readonly MappingArtifactSpec[] = Object.fre
     ],
   },
   {
-    ...registryFactsFor('mapping-itgs2023-zu-gspp'),
+    ...MEASURED_MAPPING_FACTS['mapping-itgs2023-zu-gspp'],
     schemaValid: true,
     schemaDirective: true,
     sets: [

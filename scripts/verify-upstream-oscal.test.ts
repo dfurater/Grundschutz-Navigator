@@ -1,11 +1,12 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { buildUpstreamManifest } from './upstream-artifacts.mjs';
-import { SOURCE_REGISTRY } from '../src/domain/sourceRegistry.mjs';
+import { listOscalArtifacts } from '../src/domain/sourceRegistry.mjs';
+import { UNKNOWN_COMPANION_ROOT_TYPE } from './companion-artifacts.mjs';
 import {
   GO_OSCAL_EXECUTION_TIMEOUT_MS,
   GO_OSCAL_RELEASE,
@@ -184,126 +185,76 @@ describe('manifestgestützter OSCAL-Korpus', () => {
   const manifest = JSON.parse(
     readFileSync(resolve(process.cwd(), 'upstream-manifest.json'), 'utf8'),
   );
+  const productPaths = new Set(listOscalArtifacts().map((entry) => entry.upstreamPath));
 
-  it('prüft alle 19 OSCAL-Artefakte und überspringt nur die 13 Vokabulare', () => {
+  it('prüft jedes OSCAL-Artefakt des Manifests und überspringt nur die Vokabulare', () => {
     const selection = selectManifestOscalArtifacts(manifest);
-
-    expect(selection.oscalArtifacts).toHaveLength(19);
-    expect(selection.vocabularyArtifacts).toHaveLength(13);
-    expect(selection.oscalArtifacts.map((artifact) => artifact.artifactKey)).toContain(
-      'mapping-iso27001-annex-a-zu-gspp',
+    const vocabularyFiles = manifest.files.filter((file) => file.rootType === 'vocabulary');
+    const oscalFiles = manifest.files.filter(
+      (file) => file.rootType !== 'vocabulary' && file.rootType !== UNKNOWN_COMPANION_ROOT_TYPE,
     );
+
+    expect(selection.oscalArtifacts.map((artifact) => artifact.upstreamPath).sort())
+      .toEqual(oscalFiles.map((file) => file.path).sort());
+    expect(selection.vocabularyArtifacts).toHaveLength(vocabularyFiles.length);
   });
 
-  it('belegt genau die vier gepinnten OSCAL-Versionen und zählt jedes ausgewählte Artefakt genau einmal', () => {
+  it('nimmt Version und Lifecycle der Produktartefakte aus dem Register', () => {
     const { versionCoverage, oscalArtifacts } = selectManifestOscalArtifacts(manifest);
+    const products = oscalArtifacts.filter((artifact) => productPaths.has(artifact.upstreamPath));
 
-    // Bewusst ohne Häufigkeitstabelle: Die exakte Artefakt-zu-Version-Zuordnung
-    // ist der schärfere Vier-Augen-Nachweis und steht vollständig in
-    // `DECLARED_UPSTREAM_VERSIONS` (src/domain/sourceRegistry.test.ts). Eine
-    // Häufigkeitsverteilung wäre dasselbe schwächer — und würde bei jeder
-    // BSI-Rolling-Publication veralten, obwohl sich an der Zuständigkeit dieses
-    // Skripts nichts ändert (GSPP-375). Was hier zählt, ist die Auswahl selbst:
-    // welche Versionen sie belegt, und dass ihre Aggregation vollständig ist.
-    expect(Object.keys(versionCoverage)).toEqual(['1.1.2', '1.1.3', '1.2.1', '1.2.2']);
-    expect(Object.values(versionCoverage).reduce((sum, count) => sum + count, 0)).toBe(
-      oscalArtifacts.length,
-    );
-  });
-
-  it('führt drei gesperrte Artefakte mit inverser Erwartung im vollständigen Korpus', () => {
-    const { oscalArtifacts } = selectManifestOscalArtifacts(manifest);
-
-    expect(
-      oscalArtifacts
-        .filter((artifact) => artifact.lifecycle === 'blocked-by-upstream')
-        .map((artifact) => artifact.artifactKey)
-        .sort(),
-    ).toEqual([
-      'component-ga-lotse-grundmodul',
-      'component-lieferkette',
-      'mapping-iso27001-annex-a-zu-gspp',
-    ]);
-  });
-
-  it('meldet im realen Manifest kein gesperrtes Artefakt als aus dem Upstream-Tree entfernt (ADR-7)', () => {
-    // Ergänzt die vorstehende Prüfung: Die drei gesperrten Artefakte sind
-    // dort als in `oscalArtifacts` enthalten bestätigt — hier wird explizit
-    // gegen die echte, getrackte upstream-manifest.json geprüft, dass
-    // `selectManifestOscalArtifacts` (mit Default-Registry) daneben keinen
-    // vierten, bisher unbemerkten Fall eines aus dem Baum entfernten
-    // gesperrten Artefakts meldet. Bewusst gegen die reale Datei statt nur
-    // gegen ein synthetisches Manifest (siehe ADR-7-Nachtrag-Block unten):
-    // Ein künftig aus dem BSI-Tree entferntes, noch gesperrtes Artefakt
-    // müsste hier auffallen, statt nur im synthetischen Fixture abgedeckt zu
-    // sein.
-    const selection = selectManifestOscalArtifacts(manifest);
-
-    expect(selection.missingBlockedArtifacts).toEqual([]);
+    expect(products).toHaveLength(listOscalArtifacts().length);
+    for (const product of products) {
+      const entry = listOscalArtifacts().find((candidate) => candidate.upstreamPath === product.upstreamPath);
+      expect(product).toMatchObject({ oscalVersion: entry?.oscalVersion, lifecycle: entry?.lifecycle });
+    }
+    expect(Object.values(versionCoverage).reduce((sum, count) => sum + count, 0)).toBe(products.length);
   });
 });
 
-describe('ADR-7-Nachtrag: gesperrtes Artefakt vollständig aus dem Upstream-Tree entfernt', () => {
+describe('Begleitartefakte in der Auswahl (ADR-13)', () => {
   const document = Buffer.from('{"catalog":{"metadata":{"oscal-version":"1.1.3"}}}');
-  // R4-keine-doppelten-registerfakten: reale Registry-Einträge verwenden statt
-  // Pfad/Lifecycle/Version hier erneut zu deklarieren.
-  const oscalEntries = SOURCE_REGISTRY.filter((entry) => entry.kind === 'oscal');
-  const blockedRegistryEntry = oscalEntries.find(
-    (entry) => entry.lifecycle === 'blocked-by-upstream',
-  );
-  const presentRegistryEntry = oscalEntries.find(
-    (entry) => entry.lifecycle !== 'blocked-by-upstream' && entry.artifactKey !== blockedRegistryEntry?.artifactKey,
-  );
-  const secondMissingNonBlockedEntry = oscalEntries.find(
-    (entry) =>
-      entry.lifecycle !== 'blocked-by-upstream' &&
-      entry.artifactKey !== presentRegistryEntry?.artifactKey &&
-      entry.artifactKey !== blockedRegistryEntry?.artifactKey,
-  );
-  if (!blockedRegistryEntry || !presentRegistryEntry || !secondMissingNonBlockedEntry) {
-    throw new Error(
-      'Fixture braucht ein gesperrtes und mindestens zwei nicht gesperrte OSCAL-Registry-Einträge',
-    );
+  const product = listOscalArtifacts()[0];
+  function file(overrides: Record<string, string>) {
+    return {
+      artifactKey: product.artifactKey,
+      rootType: product.expectedRootType,
+      lifecycle: product.lifecycle,
+      path: product.upstreamPath,
+      contentSha256: sha256(document),
+      gitBlobSha: gitBlobSha(document),
+      ...overrides,
+    };
   }
-  const manifestWithoutBlockedFile = buildUpstreamManifest({
-    repository: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek',
-    snapshotCommitSha: 'a'.repeat(40),
-    files: [
-      {
-        artifactKey: presentRegistryEntry.artifactKey,
-        rootType: presentRegistryEntry.expectedRootType,
-        lifecycle: presentRegistryEntry.lifecycle,
-        path: presentRegistryEntry.upstreamPath,
-        contentSha256: sha256(document),
-        gitBlobSha: gitBlobSha(document),
-      },
-    ],
+  function manifestWith(files: ReturnType<typeof file>[]) {
+    return buildUpstreamManifest({
+      repository: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek',
+      snapshotCommitSha: 'a'.repeat(40),
+      files,
+    });
+  }
+
+  it('übernimmt Root-Typ und Lifecycle eines Begleitartefakts aus dem Manifest', () => {
+    const selection = selectManifestOscalArtifacts(manifestWith([
+      file({}),
+      file({ artifactKey: 'companion', lifecycle: 'blocked-by-upstream', rootType: 'mapping-collection', path: 'control_layer/Mappings/x.json' }),
+      file({ artifactKey: 'broken', lifecycle: 'blocked-by-upstream', rootType: UNKNOWN_COMPANION_ROOT_TYPE, path: 'control_layer/broken.json' }),
+    ]), [product]);
+
+    expect(selection.oscalArtifacts.map((artifact) => [artifact.artifactKey, artifact.rootType, artifact.lifecycle, artifact.oscalVersion]))
+      .toEqual([
+        [product.artifactKey, product.expectedRootType, product.lifecycle, product.oscalVersion],
+        ['companion', 'mapping-collection', 'blocked-by-upstream', null],
+      ]);
   });
 
-  it('überspringt ein gesperrtes Artefakt ohne Manifesteintrag, statt einen Mismatch zu werfen', () => {
-    const selection = selectManifestOscalArtifacts(manifestWithoutBlockedFile, [
-      presentRegistryEntry,
-      blockedRegistryEntry,
-    ]);
-
-    expect(selection.oscalArtifacts.map((artifact) => artifact.artifactKey)).toEqual([
-      presentRegistryEntry.artifactKey,
-    ]);
-    expect(selection.missingBlockedArtifacts).toEqual([
-      {
-        artifactKey: blockedRegistryEntry.artifactKey,
-        upstreamPath: blockedRegistryEntry.upstreamPath,
-      },
-    ]);
-  });
-
-  it('lehnt weiterhin ein nicht gesperrtes Artefakt ohne Manifesteintrag fail-closed ab', () => {
-    expect(() =>
-      selectManifestOscalArtifacts(manifestWithoutBlockedFile, [
-        presentRegistryEntry,
-        secondMissingNonBlockedEntry,
-      ]),
-    ).toThrow('Manifest und OSCAL-Quellregister stimmen nicht überein');
+  it('lehnt ein fehlendes oder abweichendes Produktartefakt fail-closed ab', () => {
+    expect(() => selectManifestOscalArtifacts(
+      manifestWith([file({ artifactKey: 'companion', path: 'control_layer/x.json' })]),
+      [product],
+    )).toThrow('Manifest und OSCAL-Quellregister stimmen nicht überein');
+    expect(() => selectManifestOscalArtifacts(manifestWith([file({ lifecycle: 'preview' })]), [product]))
+      .toThrow('Manifest und OSCAL-Quellregister stimmen nicht überein');
   });
 });
 
@@ -337,6 +288,23 @@ describe('Sperrsemantik und Werkzeugfehler', () => {
       outcome: 'expected-blocked-schema-failure',
       verificationPassed: true,
     });
+  });
+
+  it.each([
+    ['blocked-by-upstream', 'passed', 'companion-validator-disagreement'],
+    ['preview', 'failed', 'companion-validator-disagreement'],
+    ['blocked-by-upstream', 'not-checked', 'companion-not-checked'],
+  ])('weist bei einem Begleitartefakt (%s, go-oscal %s) die Abweichung aus, ohne zu blockieren', (lifecycle, schemaStatus, outcome) => {
+    expect(evaluateArtifactExpectation({ ...artifact(lifecycle), companion: true }, schemaStatus)).toMatchObject({
+      schemaStatus,
+      outcome,
+      verificationPassed: true,
+    });
+  });
+
+  it('lässt nur Begleitartefakte ungeprüft', () => {
+    expect(() => evaluateArtifactExpectation(artifact('supported'), 'not-checked'))
+      .toThrow('Only a companion artifact may remain unchecked');
   });
 
   it('meldet ein bestandenes gesperrtes Artefakt als Entsperrungskandidaten', () => {
@@ -546,6 +514,38 @@ async function createCorpusFixture() {
 }
 
 describe('Korpus-Orchestrierung', () => {
+  it('prüft ein Begleitartefakt ohne vorbereitbare $schema-Direktive nicht, ohne den Lauf abzubrechen', async () => {
+    const fixture = await createCorpusFixture();
+    const companion = Buffer.from('{"$schema":5,"catalog":{"metadata":{"oscal-version":"9.9.9"}}}');
+    const companionPath = 'control_layer/companion.json';
+    const manifest = JSON.parse(await readFile(resolve(fixture.tempRoot, 'upstream-manifest.json'), 'utf8'));
+    await writeFile(resolve(fixture.tempRoot, 'upstream-manifest.json'), JSON.stringify(buildUpstreamManifest({
+      repository: manifest.repository,
+      snapshotCommitSha: manifest.snapshotCommitSha,
+      files: [...manifest.files, {
+        artifactKey: 'companion-fixture',
+        rootType: 'catalog',
+        lifecycle: 'blocked-by-upstream',
+        path: companionPath,
+        contentSha256: sha256(companion),
+        gitBlobSha: gitBlobSha(companion),
+      }],
+    })));
+    const companionUrl = fixture.bsiUrl.replace('control_layer/fixture.json', companionPath);
+
+    try {
+      const result = await fixture.run(async (url: string) =>
+        url === companionUrl ? new Response(companion) : fixture.respond(url));
+
+      expect(result.verificationPassed).toBe(true);
+      expect(result.artifactResults.find((entry) => entry.artifactKey === 'companion-fixture'))
+        .toMatchObject({ schemaStatus: 'not-checked', outcome: 'companion-not-checked' });
+      expect(fixture.executeTool).toHaveBeenCalledTimes(1);
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
   it('liefert eine deterministische, redigierte Zusammenfassung ohne Schema- oder Referenzabrufe', async () => {
     const fixture = await createCorpusFixture();
     const { tempRoot, registry, releaseConfig, releaseBase, executeTool } = fixture;

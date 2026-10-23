@@ -1,5 +1,5 @@
 /**
- * Typdeklarationen für das Quellregister (ADR-1).
+ * Typdeklarationen für das Quellregister (ADR-1, ADR-13).
  * Muss mit sourceRegistry.mjs übereinstimmen; die Laufzeitkonsistenz der
  * CatalogKey-Union sichert sourceRegistry.test.ts ab.
  */
@@ -30,6 +30,8 @@ export interface OscalArtifactEntry {
   /** Nur gesetzt, wenn expectedRootType 'catalog' ist. */
   readonly catalogKey?: CatalogKey;
   readonly upstreamPath: string;
+  /** Upstream-Pfad des BSI-Profils, aus dem der Katalog aufgelöst ist (ADR-13). */
+  readonly profileUpstreamPath?: string;
   readonly lifecycle: ArtifactLifecycle;
   /**
    * Auszeichnung des Einstiegskatalogs (GSPP-284). Nur auf genau einem
@@ -53,19 +55,7 @@ export interface VocabularyCollectionEntry {
 
 export type SourceRegistryEntry = OscalArtifactEntry | VocabularyCollectionEntry;
 
-export interface CatalogLineageImport {
-  readonly href: string;
-  readonly artifactKey: string;
-}
-
-export interface CatalogLineage {
-  readonly catalogKey: CatalogKey;
-  readonly profileArtifactKey: string;
-  readonly imports: readonly CatalogLineageImport[];
-}
-
 export declare const SOURCE_REGISTRY: readonly SourceRegistryEntry[];
-export declare const CATALOG_LINEAGES: readonly CatalogLineage[];
 export declare const MONITORED_UPSTREAM_ROOTS: readonly string[];
 export type SupportedCatalogEntry = OscalArtifactEntry & {
   readonly expectedRootType: 'catalog';
@@ -79,10 +69,6 @@ export declare const ENTRY_CATALOG: SupportedCatalogEntry;
 export declare const ENTRY_CATALOG_KEY: CatalogKey;
 
 export declare function validateSourceRegistry(entries?: readonly SourceRegistryEntry[]): void;
-export declare function validateCatalogLineages(
-  lineages?: readonly CatalogLineage[],
-  entries?: readonly SourceRegistryEntry[],
-): void;
 export declare function hasRegistryKeyGrammar(value: unknown): value is string;
 export declare function isSafeRepoPath(path: string): boolean;
 export declare function isPathWithinMonitoredRoot(path: string): boolean;
@@ -92,6 +78,10 @@ export declare function listArtifacts(filter?: {
 export declare function getArtifactByUpstreamPath(path: string): SourceRegistryEntry | null;
 export declare function getExpectedRootType(path: string): OscalRootType | null;
 export declare function listOscalArtifacts(): readonly OscalArtifactEntry[];
+export declare function listProductUpstreamPaths(
+  entries?: readonly SourceRegistryEntry[],
+): readonly string[];
+export declare function deriveCompanionArtifactKey(path: string): string | null;
 export declare function getExpectedOscalVersion(path: string): PinnedOscalVersion | null;
 export declare function getSchemaPinForArtifact(artifactKey: string): OscalSchemaPin | null;
 export declare function getCatalogByKey(catalogKey: string): OscalArtifactEntry | null;

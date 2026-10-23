@@ -29,7 +29,6 @@ import { OscalRootDispatchError } from '@/domain/oscalRootDispatch';
 import { parseCatalogDocument } from './oscalDocument';
 import type { OscalDocumentContext } from '@/domain/models';
 import {
-  listRegisteredProfileArtifactKeys,
   makeAllProfileSources,
   makeMalformedProfile,
   makeProfileSource,
@@ -123,11 +122,6 @@ describe('Adapter-Registrierung', () => {
     expect(result.dispatch.rootType).toBe(PROFILE_ROOT_TYPE);
   });
 
-  it('bildet genau die drei registrierten Profile ab', () => {
-    expect(PROFILE_ARTIFACT_SPECS.map((entry) => entry.artifactKey).sort()).toEqual(
-      listRegisteredProfileArtifactKeys(),
-    );
-  });
 });
 
 /* ------------------------------------------------------------------ */
@@ -586,7 +580,7 @@ describe('Modify', () => {
 /* ------------------------------------------------------------------ */
 
 describe('Identität und Provenienz', () => {
-  it('führt uuid, version, last-modified und den Artefaktschlüssel', () => {
+  it('führt uuid, version und last-modified; Begleitpfade tragen keinen Artefaktschlüssel', () => {
     for (const specification of PROFILE_ARTIFACT_SPECS) {
       const document = parseArtifact(specification.artifactKey);
 
@@ -594,7 +588,7 @@ describe('Identität und Provenienz', () => {
       expect(document.view.metadata.version).toBe('2026-08-17');
       expect(document.view.metadata.lastModified).toBe('2026-08-17T00:00:00Z');
       expect(document.view.metadata.oscalVersion).toBe(specification.oscalVersion);
-      expect(document.artifactKey).toBe(specification.artifactKey);
+      expect(document.artifactKey).toBeNull();
       expect(document.oscalVersion).toBe(specification.oscalVersion);
     }
   });

@@ -2,7 +2,7 @@
 // Korpus-Cache für den verpflichtenden Bauzeitlauf (GSPP-291, Commit B)
 //
 // `fetch-catalog.mjs` hat die größen- und blob-verifizierten Rohbytes aller
-// registrierten Artefakte bereits im Speicher. Dieser Modul schreibt daraus
+// gelesenen Artefakte bereits im Speicher. Dieser Modul schreibt daraus
 // die für die Profile Resolution benötigten Dokumente in einen
 // gitignorierten Cache (`CORPUS_CACHE_DIRECTORY`) — außerhalb von
 // `public/data/`, denn die `preview`-Profile werden nicht ausgeliefert.
@@ -23,16 +23,16 @@ export const CORPUS_CACHE_DIRECTORY = '.cache/upstream-corpus';
 export const CORPUS_CACHE_SCHEMA_VERSION = 1;
 
 /**
- * Bestimmt die Artefaktschlüssel des Korpus: alle Profile und Importziele
- * der Lineages plus die drei ausgelieferten resolved_catalogs als
- * Vergleichsorakel-Seite.
+ * Bestimmt die Artefaktschlüssel des Korpus aus den projizierten Lineages:
+ * jedes Profil, jede aufgelöste Importquelle und je Lineage der ausgelieferte
+ * resolved_catalog als Vergleichsorakel-Seite.
  */
 export function corpusArtifactKeys(lineages) {
   const keys = new Set();
   for (const lineage of lineages) {
-    keys.add(lineage.profileArtifactKey);
+    keys.add(lineage.profile.artifactKey);
     for (const imported of lineage.imports) {
-      keys.add(imported.artifactKey);
+      if (imported.source) keys.add(imported.source.artifactKey);
     }
     // Die BSI-Orakelseite trägt denselben catalogKey wie die Lineage und
     // ist als unterstützter Anwenderkatalog registriert.
