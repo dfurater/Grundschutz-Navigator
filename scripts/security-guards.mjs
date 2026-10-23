@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import {
   ENTRY_CATALOG,
   getArtifactByUpstreamPath,
+  isPathWithinMonitoredRoot,
   listArtifacts,
 } from '../src/domain/sourceRegistry.mjs';
 
@@ -230,12 +231,15 @@ export function assertAllowedUpstreamRepoPath(repoPath) {
 
 /**
  * Inspection-only path guard for deterministic manifest validation. Unlike the
- * delivery allowlist this may admit preview/draft OSCAL artifacts, but dynamic
+ * delivery allowlist this admits every registered OSCAL product path. Dynamic
  * vocabulary members must first be materialized from the registered direct
- * namespace directory membership.
+ * namespace directory membership, and companion artifacts (ADR-13) must be
+ * `.json` paths under a monitored root that the caller took from the pinned
+ * tree (`companionPaths`).
  */
 export function assertRegisteredUpstreamRepoPath(repoPath, {
   materializedNamespacePaths = [],
+  companionPaths = [],
 } = {}) {
   const normalizedPath = normalizeUpstreamRepoPath(repoPath);
   const registryEntry = getArtifactByUpstreamPath(normalizedPath);
@@ -247,6 +251,15 @@ export function assertRegisteredUpstreamRepoPath(repoPath, {
   if (
     registryEntry?.kind === 'vocabulary-collection' &&
     materializedNamespacePaths.includes(normalizedPath)
+  ) {
+    return normalizedPath;
+  }
+
+  if (
+    !registryEntry &&
+    normalizedPath.endsWith('.json') &&
+    isPathWithinMonitoredRoot(normalizedPath) &&
+    companionPaths.includes(normalizedPath)
   ) {
     return normalizedPath;
   }

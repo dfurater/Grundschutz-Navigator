@@ -20,7 +20,6 @@ import {
 } from './security-guards.mjs';
 import { sha256Hex } from './vocabulary-utils.mjs';
 import {
-  CATALOG_LINEAGES,
   SOURCE_REGISTRY,
   listCatalogArtifactFileNames,
 } from '../src/domain/sourceRegistry.mjs';
@@ -72,7 +71,7 @@ const CATALOG_OSCAL_VERSION = '1.1.3';
 const buildFetchArtifacts = (
   logger: Parameters<typeof buildConfiguredFetchArtifacts>[0],
   options: Parameters<typeof buildConfiguredFetchArtifacts>[1] = {},
-) => buildConfiguredFetchArtifacts(logger, { snapshotSelection: 'latest', ...options });
+) => buildConfiguredFetchArtifacts(logger, { snapshotSelection: 'latest', trackedManifest: null, ...options });
 
 /**
  * Minimaler OSCAL-Rumpf für ein Testartefakt. `metadata.oscal-version` ist
@@ -134,31 +133,43 @@ const TWO_CATALOG_REGISTRY = [
   MINIMAL_REGISTRY[1],
 ] as const;
 
-const GSPP_LINEAGE = CATALOG_LINEAGES.find((lineage) => lineage.catalogKey === 'gspp');
-if (!GSPP_LINEAGE) {
-  throw new Error('Fixture requires the registered GSPP catalog lineage');
-}
-
-function getLineageOscalArtifact(artifactKey: string) {
-  const artifact = SOURCE_REGISTRY.find((entry) => entry.artifactKey === artifactKey);
-  if (!artifact || artifact.kind !== 'oscal') {
-    throw new Error(`Fixture requires the registered OSCAL artifact: ${artifactKey}`);
-  }
-  return artifact;
-}
-
-const LINEAGE_PROFILE = getLineageOscalArtifact(GSPP_LINEAGE.profileArtifactKey);
-const LINEAGE_SOURCE_FIXTURES = GSPP_LINEAGE.imports.map((configuredImport, index) => ({
-  configuredImport,
-  source: getLineageOscalArtifact(configuredImport.artifactKey),
-  resourceUuid: `lineage-resource-${index}`,
-  documentUuid: `lineage-source-${index}-uuid`,
+const LINEAGE_PROFILE_PATH = 'control_layer/Grundschutz++/sources/profiles/Grundschutz++-profile.json';
+const LINEAGE_SOURCE_FIXTURES = [
+  ['control_layer/Kernel/BSI-Stand-der-Technik-Kernel-catalog.json', '../../../Kernel/BSI-Stand-der-Technik-Kernel-catalog.json'],
+  ['control_layer/Grundschutz++/sources/catalogs/Methodik-Grundschutz++/BSI-Methodik-Grundschutz++-catalog.json', '../catalogs/Methodik-Grundschutz++/BSI-Methodik-Grundschutz++-catalog.json'],
+  ['control_layer/Risikomanagement/BSI-Anforderungen-zum-Risikomanagement-catalog.json', '../../../Risikomanagement/BSI-Anforderungen-zum-Risikomanagement-catalog.json'],
+].map(([path, href], index) => ({
+  path,
+  href,
+  resourceUuid: `2222222${index}-2222-4222-8222-222222222222`,
+  documentUuid: `3333333${index}-3333-4333-8333-333333333333`,
 }));
 const LINEAGE_REGISTRY = [
-  ...MINIMAL_REGISTRY,
-  LINEAGE_PROFILE,
-  ...LINEAGE_SOURCE_FIXTURES.map(({ source }) => source),
-];
+  { ...MINIMAL_REGISTRY[0], profileUpstreamPath: LINEAGE_PROFILE_PATH },
+  MINIMAL_REGISTRY[1],
+] as const;
+
+/** Schemagültige Metadaten für Begleitartefakte (OSCAL 1.1.3). */
+function companionMetadata(title: string) {
+  return { title, 'last-modified': '2026-08-13T00:00:00Z', version: '2026-08-13', 'oscal-version': '1.1.3' };
+}
+
+function makeValidProfileText(sources: ReadonlyArray<{ href: string; resourceUuid: string }>) {
+  return `${JSON.stringify({
+    profile: {
+      uuid: '11111111-1111-4111-8111-111111111111',
+      metadata: companionMetadata('Grundschutz++ Profil'),
+      imports: sources.map(({ resourceUuid }) => ({ href: `#${resourceUuid}`, 'include-all': {} })),
+      'back-matter': {
+        resources: sources.map(({ href, resourceUuid }) => ({ uuid: resourceUuid, rlinks: [{ href }] })),
+      },
+    },
+  })}\n`;
+}
+
+function makeValidCatalogText(title: string, uuid: string) {
+  return `${JSON.stringify({ catalog: { uuid, metadata: companionMetadata(title) } })}\n`;
+}
 
 type RawContents = string | Buffer;
 type RawFileMap = Map<string, RawContents>;
@@ -318,36 +329,6 @@ function makeCatalogText(
       groups,
     },
   }, null, 2)}\n`;
-}
-
-function makeLineageProfileText() {
-  return `${JSON.stringify({
-    [LINEAGE_PROFILE.expectedRootType]: {
-      uuid: 'profile-uuid',
-      metadata: {
-        title: 'Grundschutz++ Profil',
-        version: '2026-08-13',
-        'oscal-version': LINEAGE_PROFILE.oscalVersion,
-      },
-      imports: LINEAGE_SOURCE_FIXTURES.map(({ resourceUuid }) => ({ href: `#${resourceUuid}` })),
-      'back-matter': {
-        resources: LINEAGE_SOURCE_FIXTURES.map(({ configuredImport, resourceUuid }) => ({
-          uuid: resourceUuid,
-          rlinks: [{ href: configuredImport.href }],
-        })),
-      },
-    },
-  })}\n`;
-}
-
-function makeLineageSourceCatalogText(
-  source: ReturnType<typeof getLineageOscalArtifact>,
-  uuid: string,
-) {
-  return makeOscalDocumentText(source.expectedRootType, source.oscalVersion, {
-    uuid,
-    metadata: { title: source.title, version: '2026-08-13', 'oscal-version': source.oscalVersion },
-  });
 }
 
 function makeMinimalFetchInput(
@@ -954,89 +935,89 @@ describe('fetch-catalog', () => {
     expect(emittedBytes).toBeLessThan(oversized);
   });
 
-  it('rejects a preview artifact root mismatch through buildFetchArtifacts', async () => {
-    const previewPath = 'control_layer/WLAN/sources/profiles/WLAN-profile.json';
+  it('marks an invalid companion as blocked-by-upstream without aborting the fetch', async () => {
+    const companionPath = 'implementation_layer/Broken/Broken-component_definition.json';
+    const validPath = 'control_layer/Valid/Valid-catalog.json';
     const input = makeMinimalFetchInput();
-    input.rawByPath.set(previewPath, '{"catalog":{"uuid":"wrong-root"}}');
-    const previewRegistry = [
-      ...MINIMAL_REGISTRY,
-      {
-        artifactKey: 'profile-wlan',
-        kind: 'oscal',
-        oscalVersion: '1.1.3',
-        expectedRootType: 'profile',
-        upstreamPath: previewPath,
-        lifecycle: 'preview',
-        title: 'WLAN Profil',
-      },
-    ] as const;
-    installSnapshotFetch({ rawByPath: input.rawByPath });
-
-    await expect(buildFetchArtifacts(
-      { log: () => {}, warn: () => {} },
-      {
-        registryEntries: previewRegistry,
-        treeResponse: makeTreeResponse(input.rawByPath),
-      },
-    )).rejects.toThrow('Profilwurzel muss ein JSON-Objekt sein.');
-  });
-
-  it('fails closed with a manual registry recovery hint when a registered preview artifact is missing', async () => {
-    const missingPreviewPath =
-      'implementation_layer/AWS Beispiel-Components/retired-component_definition.json';
-    const input = makeMinimalFetchInput();
-    const previewRegistry = [
-      ...MINIMAL_REGISTRY,
-      {
-        artifactKey: 'component-retired',
-        kind: 'oscal',
-        oscalVersion: '1.1.2',
-        expectedRootType: 'component-definition',
-        upstreamPath: missingPreviewPath,
-        lifecycle: 'preview',
-        title: 'Retired Component',
-      },
-    ] as const;
-    installSnapshotFetch({ rawByPath: input.rawByPath });
-
-    await expect(buildFetchArtifacts(
-      { log: () => {}, warn: () => {} },
-      {
-        registryEntries: previewRegistry,
-        treeResponse: input.treeResponse,
-      },
-    )).rejects.toThrow(
-      `Registriertes Artefakt fehlt im vollständigen BSI-Tree: ${missingPreviewPath}. Quellregister manuell gegen den gepinnten BSI-Snapshot prüfen; keine automatische Pfadfreigabe.`,
-    );
-  });
-
-  it('stays open (ADR-7-Nachtrag) and warns when a blocked-by-upstream artifact is missing from the tree', async () => {
-    // R4-keine-doppelten-registerfakten: den realen gesperrten Registry-Eintrag
-    // verwenden statt Pfad/Lifecycle/Version hier erneut zu deklarieren.
-    const blockedEntry = SOURCE_REGISTRY.find(
-      (entry) => entry.kind === 'oscal' && entry.lifecycle === 'blocked-by-upstream',
-    );
-    expect(blockedEntry).toBeDefined();
-    const input = makeMinimalFetchInput();
-    const blockedRegistry = [...MINIMAL_REGISTRY, blockedEntry!] as const;
+    input.rawByPath.set(companionPath, '{"component-definition":{"uuid":"not-schema-valid"}}');
+    input.rawByPath.set(validPath, makeValidCatalogText('Valid', '44444444-4444-4444-8444-444444444444'));
     installSnapshotFetch({ rawByPath: input.rawByPath });
     const warn = vi.fn();
 
     const payload = await buildFetchArtifacts(
       { log: () => {}, warn },
-      {
-        registryEntries: blockedRegistry,
-        treeResponse: input.treeResponse,
-      },
+      { registryEntries: MINIMAL_REGISTRY, treeResponse: makeTreeResponse(input.rawByPath) },
     );
 
-    const upstreamMetadata = parseArtifactJson(payload, 'upstream-sources-metadata.json');
-    expect(
-      upstreamMetadata.manifest.files.some((file: { path: string }) => file.path === blockedEntry!.upstreamPath),
-    ).toBe(false);
-    expect(warn).toHaveBeenCalledWith(
-      expect.stringContaining(blockedEntry!.upstreamPath),
+    const files = parseArtifactJson(payload, 'upstream-sources-metadata.json').manifest.files;
+    expect(files.find((file: { path: string }) => file.path === companionPath)).toMatchObject({
+      artifactKey: 'implementation-layer-broken-broken-component-definition',
+      rootType: 'component-definition',
+      lifecycle: 'blocked-by-upstream',
+    });
+    expect(files.find((file: { path: string }) => file.path === validPath)).toMatchObject({
+      rootType: 'catalog',
+      lifecycle: 'preview',
+    });
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining(companionPath));
+    expect(payload.artifacts.map((artifact) => artifact.fileName)).toEqual(MINIMAL_OUTPUT_ARTIFACT_FILE_NAMES);
+  });
+
+  it('keeps a tracked companion key, derives a new one and aborts on a key collision', async () => {
+    const trackedPath = 'control_layer/Tracked/Tracked-catalog.json';
+    const newPath = 'control_layer/New/New-catalog.json';
+    const input = makeMinimalFetchInput();
+    input.rawByPath.set(trackedPath, makeValidCatalogText('Tracked', '44444444-4444-4444-8444-444444444444'));
+    input.rawByPath.set(newPath, makeValidCatalogText('New', '55555555-5555-4555-8555-555555555555'));
+    installSnapshotFetch({ rawByPath: input.rawByPath });
+    const trackedManifest = { files: [{ artifactKey: 'catalog-source-tracked', rootType: 'catalog', path: trackedPath }] };
+
+    const payload = await buildFetchArtifacts(
+      { log: () => {}, warn: () => {} },
+      { registryEntries: MINIMAL_REGISTRY, treeResponse: makeTreeResponse(input.rawByPath), trackedManifest },
     );
+    const files = parseArtifactJson(payload, 'upstream-sources-metadata.json').manifest.files;
+    expect(files.find((file: { path: string }) => file.path === trackedPath)?.artifactKey).toBe('catalog-source-tracked');
+    expect(files.find((file: { path: string }) => file.path === newPath)?.artifactKey).toBe('control-layer-new-new-catalog');
+
+    await expect(buildFetchArtifacts(
+      { log: () => {}, warn: () => {} },
+      {
+        registryEntries: MINIMAL_REGISTRY,
+        treeResponse: makeTreeResponse(input.rawByPath),
+        trackedManifest: { files: [{ artifactKey: 'catalog-gspp', rootType: 'catalog', path: trackedPath }] },
+      },
+    )).rejects.toThrow(`Schlüsselkollision für Begleitartefakt ${trackedPath}: catalog-gspp`);
+  });
+
+  it.each([
+    ['a missing product artifact', (raw: RawFileMap) => raw.delete(OFFICIAL_CATALOG_PATH), 'fehlt im vollständigen BSI-Tree'],
+    ['an invalid product artifact', (raw: RawFileMap) => raw.set(OFFICIAL_CATALOG_PATH, '{"profile":{}}'), 'Katalogwurzel'],
+  ])('aborts the fetch for %s', async (_label, mutate, message) => {
+    const input = makeMinimalFetchInput();
+    mutate(input.rawByPath);
+    installSnapshotFetch({ rawByPath: input.rawByPath });
+
+    await expect(buildFetchArtifacts(
+      { log: () => {}, warn: () => {} },
+      { registryEntries: MINIMAL_REGISTRY, treeResponse: makeTreeResponse(input.rawByPath) },
+    )).rejects.toThrow(message);
+  });
+
+  it('aborts the fetch when a registered profile is missing or not a valid profile', async () => {
+    const input = makeMinimalFetchInput();
+    installSnapshotFetch({ rawByPath: input.rawByPath });
+    await expect(buildFetchArtifacts(
+      { log: () => {}, warn: () => {} },
+      { registryEntries: LINEAGE_REGISTRY, treeResponse: makeTreeResponse(input.rawByPath) },
+    )).rejects.toThrow(`Registriertes Artefakt fehlt im vollständigen BSI-Tree: ${LINEAGE_PROFILE_PATH}`);
+
+    input.rawByPath.set(LINEAGE_PROFILE_PATH, '{"profile":{"uuid":"not-schema-valid"}}');
+    installSnapshotFetch({ rawByPath: input.rawByPath });
+    await expect(buildFetchArtifacts(
+      { log: () => {}, warn: () => {} },
+      { registryEntries: LINEAGE_REGISTRY, treeResponse: makeTreeResponse(input.rawByPath) },
+    )).rejects.toThrow(`Profil von catalog-gspp ist kein gültiges OSCAL-Profil: ${LINEAGE_PROFILE_PATH}`);
   });
 
   it.each(['  Katalog ++ — ü\n', ' '])('copies the upstream title unchanged: %j', async (title) => {
@@ -1287,7 +1268,7 @@ describe('fetch-catalog', () => {
   });
 
   it('validates the full registry without shipping extra artifacts or fetching unclassified paths', async () => {
-    const unclassifiedPath = 'control_layer/Kernel/unclassified-catalog.json';
+    const unclassifiedPath = 'control_layer/Kernel/unclassified.csv';
     const namespacePath = 'documentation/namespaces/result.csv';
     const rawByPath = new Map<string, RawContents>();
 
@@ -1302,10 +1283,15 @@ describe('fetch-catalog', () => {
             }),
       );
     }
+    for (const entry of SOURCE_REGISTRY) {
+      if (entry.kind === 'oscal' && entry.profileUpstreamPath) {
+        rawByPath.set(entry.profileUpstreamPath, makeValidProfileText(LINEAGE_SOURCE_FIXTURES.slice(0, 1)));
+      }
+    }
     rawByPath.set(namespacePath, 'Ergebnis,Definition\nVerfahren,Ein Verfahren\n');
     rawByPath.set(PRACTICES_NAMESPACE_PATH, PRACTICES_CSV);
     rawByPath.set(TOPICS_NAMESPACE_PATH, TOPICS_CSV);
-    const unclassifiedContents = '{"catalog":{"uuid":"unclassified"}}\n';
+    const unclassifiedContents = 'value\nunclassified\n';
     const treeResponse = makeTreeResponse(rawByPath, [
       makeTreeEntry(unclassifiedPath, unclassifiedContents),
     ]);
@@ -1329,20 +1315,23 @@ describe('fetch-catalog', () => {
     ]);
     expect(requestedUrls).not.toContain(rawUrl(unclassifiedPath));
     const manifest = parseArtifactJson(payload, 'upstream-sources-metadata.json').manifest;
+    const profileCount = SOURCE_REGISTRY.filter(
+      (entry) => entry.kind === 'oscal' && entry.profileUpstreamPath,
+    ).length;
     expect(manifest.files).toHaveLength(
-      SOURCE_REGISTRY.filter((entry) => entry.kind === 'oscal').length + 3,
+      SOURCE_REGISTRY.filter((entry) => entry.kind === 'oscal').length + profileCount + 3,
     );
     expect(manifest.files.some((file) => file.path === unclassifiedPath)).toBe(false);
   });
 
-  it('serializes the exact, validated profile-to-source lineage into the provenance sidecar', async () => {
+  it('serializes the profile-derived lineage into the provenance sidecar', async () => {
     const input = makeMinimalFetchInput();
     const rawByPath = new Map<string, RawContents>([
       ...input.rawByPath,
-      [LINEAGE_PROFILE.upstreamPath, makeLineageProfileText()],
-      ...LINEAGE_SOURCE_FIXTURES.map(({ source, documentUuid }) => [
-        source.upstreamPath,
-        makeLineageSourceCatalogText(source, documentUuid),
+      [LINEAGE_PROFILE_PATH, makeValidProfileText(LINEAGE_SOURCE_FIXTURES)],
+      ...LINEAGE_SOURCE_FIXTURES.map(({ path, documentUuid }) => [
+        path,
+        makeValidCatalogText(path, documentUuid),
       ] as const),
     ]);
     installSnapshotFetch({ rawByPath });
@@ -1359,26 +1348,25 @@ describe('fetch-catalog', () => {
 
     expect(upstreamMetadata.catalogLineages).toEqual([
       expect.objectContaining({
-        catalogKey: GSPP_LINEAGE.catalogKey,
+        catalogKey: 'gspp',
         profile: expect.objectContaining({
-          artifactKey: LINEAGE_PROFILE.artifactKey,
-          documentUuid: 'profile-uuid',
-          oscalVersion: LINEAGE_PROFILE.oscalVersion,
-          version: '2026-08-13',
+          artifactKey: 'control-layer-grundschutz-sources-profiles-grundschutz-profile',
+          documentUuid: '11111111-1111-4111-8111-111111111111',
+          upstreamPath: LINEAGE_PROFILE_PATH,
         }),
-        imports: LINEAGE_SOURCE_FIXTURES.map(({ source, documentUuid }) =>
+        imports: LINEAGE_SOURCE_FIXTURES.map(({ path, href, documentUuid }) =>
           expect.objectContaining({
             state: 'complete',
-            source: expect.objectContaining({
-              artifactKey: source.artifactKey,
-              documentUuid,
-              upstreamPath: source.upstreamPath,
-            }),
+            rlinkHref: href,
+            source: expect.objectContaining({ documentUuid, upstreamPath: path }),
           }),
         ),
       }),
     ]);
     expect(JSON.stringify(upstreamMetadata.catalogLineages)).not.toContain('"document":');
+    expect(payload.corpusCache.cacheManifest.files.map((file: { path: string }) => file.path).sort()).toEqual(
+      [LINEAGE_PROFILE_PATH, OFFICIAL_CATALOG_PATH, ...LINEAGE_SOURCE_FIXTURES.map(({ path }) => path)].sort(),
+    );
   });
 
   it('serializes generated metadata with a trailing newline', () => {

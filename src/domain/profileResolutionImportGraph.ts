@@ -6,8 +6,8 @@
 // Semantik läuft: Zyklusabbruch ohne Teilergebnis, fehlende Ziele,
 // Root-Type-Mismatch und gemischte OSCAL-Versionen im Graphen.
 //
-// Die Kanten kommen aus der Quellregister-Nachfolgetafel
-// (`CATALOG_LINEAGES`-Nachfolger); aufgelöst wird ausschließlich gegen
+// Die Kanten kommen aus der vom Aufrufer abgeleiteten Profil-Lineage
+// (`src/domain/catalogLineage.mjs`); aufgelöst wird ausschließlich gegen
 // explizit bereitgestellte, verifizierte Dokumente — kein Netzwerk, kein
 // Dateizugriff.
 // =============================================================================

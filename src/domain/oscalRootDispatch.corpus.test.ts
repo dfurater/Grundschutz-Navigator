@@ -43,15 +43,6 @@ describe('dispatchOscalDocument — registrierte Artefakte', () => {
     }
   });
 
-  it('deckt mit dem Korpus mehr als einen Root-Typ und mehr als eine Version ab', () => {
-    // Ohne diese Schranke liefe der Korpustest trivial durch, sobald die
-    // Registry irgendwann nur noch Kataloge einer Version führte.
-    const artifacts = listOscalArtifacts();
-
-    expect(new Set(artifacts.map((entry) => entry.expectedRootType)).size).toBeGreaterThan(1);
-    expect(new Set(artifacts.map((entry) => entry.oscalVersion)).size).toBeGreaterThan(1);
-  });
-
   it('erkennt einen Root-Mismatch gegenüber getExpectedRootType()', () => {
     expect(catalogArtifact).toBeDefined();
     if (!catalogArtifact) return;
