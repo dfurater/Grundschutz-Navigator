@@ -12,6 +12,7 @@ import {
   parseNameStatusDiff,
   validateCatalogSyncManifest,
   validateCatalogSyncPullRequest,
+  validateManifestTransition,
   verifySnapshotProgress,
 } from './catalog-sync-guard.mjs';
 import { OFFICIAL_BSI_REPOSITORY_URL } from './security-guards.mjs';
@@ -1102,7 +1103,11 @@ describe('Manifestregel für jeden manifestverändernden PR (ADR-13)', () => {
       snapshotCommitSha: NEW_SHA,
       companions: [
         ...defaultCompanions(),
-        { path: KERNEL_NEW_PATH, artifactKey: 'kernel', contents: validCompanionCatalog('Kernel') },
+        {
+          path: KERNEL_NEW_PATH,
+          artifactKey: deriveCompanionArtifactKey(KERNEL_NEW_PATH)!,
+          contents: validCompanionCatalog('Kernel'),
+        },
       ],
     });
     expect(next.manifest.files.find((file) => file.path === KERNEL_NEW_PATH)?.lifecycle).toBe('preview');
@@ -1146,6 +1151,42 @@ describe('Manifestregel für jeden manifestverändernden PR (ADR-13)', () => {
       nextManifest: next.manifest,
       fetchImpl: makeGitHubFetch(next),
     })).resolves.toEqual({ catalogSync: true, manifestChange: true, snapshotCommitSha: NEW_SHA });
+  });
+
+  it('preserves keys for tracked companions and derives keys for new paths', () => {
+    const previous = makeFixture({ snapshotCommitSha: OLD_SHA });
+    const trackedPath = defaultCompanions()[0].path;
+    const next = makeFixture({ snapshotCommitSha: NEW_SHA });
+    const renamedTrackedPath = rebuildManifest(
+      next.manifest,
+      next.manifest.files.map((file) => file.path === trackedPath
+        ? { ...file, artifactKey: 'renamed-companion' }
+        : file),
+    );
+    expect(() => validateManifestTransition(previous.manifest, renamedTrackedPath)).toThrow(
+      'Manifest companion key does not match its tracked path',
+    );
+
+    const newPath = 'control_layer/Kernel/new-companion.json';
+    const newCompanion = {
+      path: newPath,
+      artifactKey: deriveCompanionArtifactKey(newPath)!,
+      contents: validCompanionCatalog('New companion'),
+    };
+    const withNewCompanion = makeFixture({
+      snapshotCommitSha: NEW_SHA,
+      companions: [...defaultCompanions(), newCompanion],
+    });
+    expect(() => validateManifestTransition(previous.manifest, withNewCompanion.manifest)).not.toThrow();
+    const renamedNewPath = rebuildManifest(
+      withNewCompanion.manifest,
+      withNewCompanion.manifest.files.map((file) => file.path === newPath
+        ? { ...file, artifactKey: 'arbitrary-companion' }
+        : file),
+    );
+    expect(() => validateManifestTransition(previous.manifest, renamedNewPath)).toThrow(
+      'Manifest companion key does not match its tracked path',
+    );
   });
 });
 

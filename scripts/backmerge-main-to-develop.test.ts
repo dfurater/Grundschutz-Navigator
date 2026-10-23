@@ -21,6 +21,7 @@ import {
 import { CATALOG_IMPORT_BRANCH, TRACKED_MANIFEST_PATH } from './catalog-sync-guard.mjs';
 import { validateDocumentationContract } from './pr-documentation-contract.mjs';
 import { buildUpstreamManifest } from './upstream-artifacts.mjs';
+import { ENTRY_CATALOG } from '../src/domain/sourceRegistry.mjs';
 import {
   type BranchLineFixture,
   createBranchLineFixture,
@@ -1022,7 +1023,7 @@ describe('migrationContractHolds', () => {
         artifactKey: 'catalog-gspp',
         rootType: 'catalog',
         lifecycle: 'supported',
-        path: 'control_layer/Grundschutz++/Grundschutz++-resolved_catalog.json',
+        path: ENTRY_CATALOG.upstreamPath,
         gitBlobSha: '1'.repeat(40),
         contentSha256: '2'.repeat(64),
       }],

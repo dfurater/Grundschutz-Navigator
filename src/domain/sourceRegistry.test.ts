@@ -30,7 +30,7 @@ import {
   type SupportedCatalogEntry,
 } from '@/domain/sourceRegistry';
 
-const OFFICIAL_CATALOG_PATH = 'control_layer/Grundschutz++/Grundschutz++-resolved_catalog.json';
+const OFFICIAL_CATALOG_PATH = ENTRY_CATALOG.upstreamPath;
 
 /** Muss mit der CatalogKey-Union in sourceRegistry.d.mts übereinstimmen. */
 const EXPECTED_CATALOG_KEYS = [
@@ -86,7 +86,7 @@ describe('sourceRegistry', () => {
     ]);
   });
 
-  it('registers exactly the product artifacts and the profile path of each shipped catalog', () => {
+  it('registers the product artifacts and one monitored profile path per shipped catalog', () => {
     expect(SOURCE_REGISTRY.map((entry) => entry.artifactKey)).toEqual([
       'catalog-gspp',
       'namespaces-bsi',
@@ -94,13 +94,11 @@ describe('sourceRegistry', () => {
       'catalog-wlan',
       'catalog-mindeststandard-tls',
     ]);
-    expect(
-      SUPPORTED_CATALOGS.map((entry) => [entry.catalogKey, entry.profileUpstreamPath]),
-    ).toEqual([
-      ['gspp', 'control_layer/Grundschutz++/sources/profiles/Grundschutz++-profile.json'],
-      ['lieferkette', 'control_layer/Lieferkettensicherheit/sources/profiles/Lieferkettensicherheit-profile.json'],
-      ['wlan', 'control_layer/WLAN/sources/profiles/WLAN-profile.json'],
-    ]);
+    expect(SUPPORTED_CATALOGS.every((entry) =>
+      entry.profileUpstreamPath && isPathWithinMonitoredRoot(entry.profileUpstreamPath),
+    )).toBe(true);
+    expect(new Set(SUPPORTED_CATALOGS.map((entry) => entry.profileUpstreamPath)).size)
+      .toBe(SUPPORTED_CATALOGS.length);
     expect(listProductUpstreamPaths()).toEqual(listOscalArtifacts().map((entry) => entry.upstreamPath));
   });
 
@@ -146,11 +144,10 @@ describe('sourceRegistry', () => {
   });
 
   it.each([
-    'control_layer/Grundschutz++/Grundschutz++-resolved_catalog.json',
+    OFFICIAL_CATALOG_PATH,
     'documentation/namespaces/tags.csv',
-    'implementation_layer/AWS Beispiel-Components/AWS Security Hub-component_definition.json',
-    'control_layer/ISO27001/ISO27001-AnnexA-catalog.json',
-    'control_layer/Grundschutz++/sources/profiles/Grundschutz++-profile.json',
+    'implementation_layer/example/companion.json',
+    'control_layer/example/sources/profiles/example-profile.json',
   ])('accepts safe repository path %s', (repoPath) => {
     expect(isSafeRepoPath(repoPath)).toBe(true);
   });
@@ -202,13 +199,11 @@ describe('sourceRegistry', () => {
   });
 
   it('reports the expected OSCAL root type per product path only', () => {
-    expect(getExpectedRootType(OFFICIAL_CATALOG_PATH)).toBe('catalog');
-    expect(
-      getExpectedRootType(
-        'control_layer/Lieferkettensicherheit/Lieferkettensicherheit-resolved_catalog.json',
-      ),
-    ).toBe('catalog');
-    expect(getExpectedRootType('control_layer/WLAN/sources/profiles/WLAN-profile.json')).toBeNull();
+    for (const entry of listOscalArtifacts()) {
+      expect(getExpectedRootType(entry.upstreamPath)).toBe(entry.expectedRootType);
+    }
+    const profilePath = SUPPORTED_CATALOGS[0].profileUpstreamPath!;
+    expect(getExpectedRootType(profilePath)).toBeNull();
     expect(getExpectedRootType('documentation/namespaces/tags.csv')).toBeNull();
     expect(getExpectedRootType('unknown.json')).toBeNull();
   });

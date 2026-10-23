@@ -1030,15 +1030,11 @@ Das Artefakt wird weiter geprüft und sein Schema-Status bleibt sichtbar
 wieder als `preview`.
 
 Der Korpuslauf erwartet für jedes nicht gesperrte Artefakt `schema=passed` und
-für jedes gesperrte Artefakt `schema=failed`. Bei einem Produktartefakt lässt
-ein Fehler im nicht gesperrten oder ein Bestehen im gesperrten Zustand den Lauf
-fehlschlagen; letzteres wird als Entsperrungskandidat ausgewiesen. Bei einem
-Begleitartefakt weist der Lauf ein abweichendes go-oscal-Urteil als
-`companion-validator-disagreement` und eine nicht vorbereitbare
-`$schema`-Direktive als `companion-not-checked` aus, ohne fehlzuschlagen: Sein
-Lifecycle folgt aus der Ajv-Prüfung des Fetch, und es wird nie ausgeliefert. Es existiert
-keine Diagnosesignatur-Liste, keine Aggregat-Zerlegung und keine
-Fortsetzungssemantik für diesen Lauf.
+für jedes gesperrte Artefakt `schema=failed`. Ein abweichendes go-oscal-Urteil
+setzt `verificationPassed` auf `false` und lässt den Lauf fehlschlagen. Eine
+nicht vorbereitbare `$schema`-Direktive bricht mit
+`GO_OSCAL_SCHEMA_DIRECTIVE_INVALID` ab. Ein Werkzeugfehler wird nicht als
+Schemaergebnis behandelt.
 
 Für diesen Lauf gibt es keine aktive Ausnahme. Eine spätere Ausnahme für ein
 unverzichtbares ausgeliefertes Artefakt wäre eine neue, ADR-pflichtige
