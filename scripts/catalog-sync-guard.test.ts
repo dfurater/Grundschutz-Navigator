@@ -1241,12 +1241,14 @@ describe('Registry-Snapshot-Migration', () => {
     'scripts/profileResolutionSpecFixtures.test.ts',
     'scripts/upstream-corpus-cache.test.ts',
     'scripts/verify-upstream-oscal.test.ts',
+    'scripts/review-policy.rules.mjs',
     'src/adapters/oscalDocument.lieferkette.node.test.ts',
     'src/domain/catalogLineage.test.ts',
     'src/domain/referenceResolution.test.ts',
     'src/domain/sourceRegistry.mjs',
     'src/domain/sourceRegistry.test.ts',
     'upstream-manifest.json',
+    '.greptile/config.json',
   ].map((path) => ({ status: 'M', path }));
   const previous = makeFixture({ snapshotCommitSha: OLD_SHA });
   const next = makeFixture({ snapshotCommitSha: NEW_SHA });
@@ -1339,6 +1341,19 @@ describe('Registry-Snapshot-Migration', () => {
         ...requiredPaths,
         { status: 'M', path: 'scripts/unrelated.test.ts' },
       ],
+    }],
+    ['an unrelated review policy artifact', {
+      diffEntries: [
+        ...requiredPaths,
+        { status: 'M', path: '.greptile/files.json' },
+      ],
+    }],
+    ['a modified G0 base entry', {
+      previousSourceRegistry: previousSourceRegistry.map((entry) =>
+        entry.artifactKey === 'catalog-source-gspp-kernel-g0'
+          ? { ...entry, title: `${entry.title} changed` }
+          : entry,
+      ),
     }],
     ['an unchanged snapshot', { nextManifest: previous.manifest }],
     ['an unchanged registry', { previousSourceRegistry: SOURCE_REGISTRY }],

@@ -152,7 +152,7 @@ export const SOURCE_REGISTRY = Object.freeze(
       title: 'BSI Anforderungen zum Risikomanagement',
     },
     {
-      artifactKey: GSPP_620_KERNEL_REGISTRY_MIGRATION.kernelKey,
+      artifactKey: 'catalog-source-lieferkette-kernel',
       kind: 'oscal',
       oscalVersion: '1.1.3',
       expectedRootType: 'catalog',

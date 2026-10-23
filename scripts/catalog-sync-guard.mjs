@@ -245,13 +245,19 @@ const REGISTRY_SNAPSHOT_MIGRATION_TEST_PATHS = new Set([
   'scripts/verify-upstream-oscal.test.ts',
 ]);
 
+const REGISTRY_SNAPSHOT_MIGRATION_REVIEW_POLICY_PATHS = new Set([
+  'scripts/review-policy.rules.mjs',
+  '.greptile/config.json',
+]);
+
 function isRegistrySnapshotMigrationPath(path) {
   return (
     path === 'README.md' ||
     path.startsWith('src/') ||
     path.startsWith('docs/') ||
     path === 'scripts/catalog-sync-guard.mjs' ||
-    REGISTRY_SNAPSHOT_MIGRATION_TEST_PATHS.has(path)
+    REGISTRY_SNAPSHOT_MIGRATION_TEST_PATHS.has(path) ||
+    REGISTRY_SNAPSHOT_MIGRATION_REVIEW_POLICY_PATHS.has(path)
   );
 }
 
