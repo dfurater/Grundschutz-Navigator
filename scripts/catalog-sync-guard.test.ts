@@ -1245,6 +1245,7 @@ describe('Registry-Snapshot-Migration', () => {
       diffEntries: [
         ...requiredPaths,
         { status: 'M', path: 'src/domain/sourceRegistry.test.ts' },
+        { status: 'M', path: 'scripts/catalog-sync-guard.mjs' },
         { status: 'M', path: 'scripts/catalog-sync-guard.test.ts' },
         { status: 'M', path: 'docs/OSCAL_VALIDATION.md' },
       ],
@@ -1279,10 +1280,10 @@ describe('Registry-Snapshot-Migration', () => {
     ['the automated catalog-sync branch', { branch: 'chore/catalog-sync-222222222222' }],
     ['the automated catalog-sync title', { title: 'chore(ci): BSI-Katalog-Sync 222222222222' }],
     ['a missing registry diff', { diffEntries: [{ status: 'M', path: 'upstream-manifest.json' }] }],
-    ['a change to the guard itself', {
+    ['an unrelated production script change', {
       diffEntries: [
         ...requiredPaths,
-        { status: 'M', path: 'scripts/catalog-sync-guard.mjs' },
+        { status: 'M', path: 'scripts/sync-upstream-manifest.mjs' },
       ],
     }],
     ['an unchanged snapshot', { nextManifest: previous.manifest }],

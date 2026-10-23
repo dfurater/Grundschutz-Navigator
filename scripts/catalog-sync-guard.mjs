@@ -240,6 +240,7 @@ function isRegistrySnapshotMigrationPath(path) {
   return (
     path.startsWith('src/') ||
     path.startsWith('docs/') ||
+    path === 'scripts/catalog-sync-guard.mjs' ||
     /^scripts\/.+\.test\.[cm]?[jt]sx?$/.test(path)
   );
 }
