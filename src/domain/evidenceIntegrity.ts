@@ -5,9 +5,8 @@
 // bleibt. Kein Netz, kein Speicher, keine Ausgabe von Hash- oder Inhaltswerten.
 // =============================================================================
 
-import { isJsonObject, readArray, readString, type JsonObject } from '@/domain/jsonGuards';
-import { decodedBase64ByteLength } from '@/domain/oscalBackMatterBase64';
-import { CLASS_2_IMPORT_LIMITS } from '@/domain/oscalImportContract';
+import { isJsonObject, readArray, type JsonObject } from '@/domain/jsonGuards';
+import { decodeEvidenceContent } from '@/domain/evidencePreview';
 import { readDeclaredHashes, type ResolvedResourceLink } from '@/domain/referenceResolution';
 
 /** Projektentscheidung, keine NIST-Vorgabe: die Algorithmen, die `crypto.subtle.digest` berechnet, mit ihrer Hex-Länge. */
@@ -89,22 +88,6 @@ export function verifyEvidenceHashes(
 }
 
 /**
- * Dekodiert `base64.value` im Speicher; ein fehlender, ungültiger oder über
- * `maxDecodedBase64Bytes` liegender Wert ergibt `undefined`. Die eigene
- * Größenprüfung hält die Funktion auch für Aufrufer außerhalb der Importkette fail-closed.
- */
-function decodeEmbeddedContent(resource: JsonObject): Uint8Array<ArrayBuffer> | undefined {
-  const encoded = isJsonObject(resource.base64) ? readString(resource.base64.value) : undefined;
-  if (encoded === undefined) return undefined;
-  if (decodedBase64ByteLength(encoded) > CLASS_2_IMPORT_LIMITS.maxDecodedBase64Bytes) return undefined;
-  try {
-    return Uint8Array.from(atob(encoded), (char) => char.codePointAt(0)!);
-  } catch {
-    return undefined;
-  }
-}
-
-/**
  * Ein Ergebnis je `rlink` der rohen `back-matter`-Ressource in Quellreihenfolge,
  * geprüft gegen die eigene `base64`-Nutzlast; jeder Algorithmus wird je
  * Ressource einmal berechnet.
@@ -114,7 +97,7 @@ export async function verifyResourceIntegrity(
 ): Promise<readonly EvidenceHashCheck[]> {
   const rlinks = readArray(resource.rlinks).filter(isJsonObject);
   if (rlinks.length === 0) return [];
-  const content = decodeEmbeddedContent(resource);
+  const content = decodeEvidenceContent(resource);
   const digestOf = content && digestCache(content);
   return Promise.all(rlinks.map((rlink) => checkHashes(readDeclaredHashes(rlink), digestOf)));
 }

@@ -198,6 +198,7 @@ src/                              # Anwendungsquellcode
 │   ├── assessmentResultsModel.ts     # Projektion der Prüfergebnisse und explizite AP-/SSP-/Katalogbindung
 │   ├── poamModel.ts                  # POA&M-Projektion und expliziter SSP-/AR-Kontext
 │   ├── poamProgress.ts               # Frist, Fristzustand, Verantwortliche und Abschluss je `poam-item`
+│   ├── evidencePreview.ts            # Medienart-Allowlist und begrenzte Base64-Dekodierung
 │   ├── evidenceIntegrity.ts          # Hashprüfung der `rlink`-Hashes gegen die eingebettete `base64`-Nutzlast einer Evidenzressource
 │   ├── evidenceObservationReferences.ts # Klassifikation der `related-observations`-Referenzen für AR und POA&M
 │   ├── evidenceReadModel.ts          # Evidenz aus Assessment Results und POA&M: Gültigkeit, Ressourcen, UUID-Referenzen
@@ -417,6 +418,8 @@ src/                              # Anwendungsquellcode
 │       │   ├── ReviewTab.tsx                 # Reiter Prüfung: Prüfpunkt, Entscheidungen und Freigabe
 │       │   ├── reviewView.ts                 # Ableitung der Anzeige aus Trail und Stand
 │       │   └── useReviewTrail.ts             # Trail laden, Prüfpunkt setzen, Entscheidung schreiben
+│       ├── assessment/                   # Eigenständige Evidenzkomponente, nicht in Stationsrouten eingebunden
+│       │   └── EvidenceResourcePreview.tsx  # Metadaten; Vorschau, Download und Hashprüfung auf Nutzeraktion
 │       ├── poam/                         # POA&M-Station
 │       │   └── PoamProgressList.tsx          # Lesende Fristenliste über alle POA&Ms des Verbunds
 │       └── ssp/                          # SSP-Station
@@ -1084,10 +1087,10 @@ Siehe [INTEGRITY.md](./INTEGRITY.md) für Details.
 GitHub Pages erlaubt in diesem Setup keine projektspezifischen HTTP-Security-Header. Die Produktionsanwendung setzt deshalb eine Meta-CSP in `index.html`:
 
 ```text
-default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self';
+default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self';
 ```
 
-Die Policy begrenzt Skripte, Datenabrufe, Bilder und Schriften auf die ausgelieferte Anwendung, blockiert Plugin-Objekte und beschränkt `<base>` sowie Form-Ziele auf dieselbe Origin. `font-src 'self'` ist möglich, weil die UI-Schriften lokal unter `public/fonts/` ausgeliefert werden.
+Die Policy begrenzt Skripte, Datenabrufe und Schriften auf die ausgelieferte Anwendung. Bilder dürfen zusätzlich aus `data:`- und `blob:`-URLs stammen; `blob:` trägt die lokale Evidenzvorschau. Die Policy blockiert Plugin-Objekte und beschränkt `<base>` sowie Form-Ziele auf dieselbe Origin. `font-src 'self'` ist möglich, weil die UI-Schriften lokal unter `public/fonts/` ausgeliefert werden.
 
 `style-src 'unsafe-inline'` ist gesetzt, weil Teile der React-/Tailwind-Oberfläche dynamische Inline-Styles für Interaktionen verwenden. Skripte sind auf `'self'` beschränkt, und die Anwendung lädt keine externen Stylesheet-Origins.
 

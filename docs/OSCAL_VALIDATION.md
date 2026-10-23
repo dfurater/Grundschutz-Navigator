@@ -297,11 +297,7 @@ hält die Erreichbarkeit als dauerhafte Invariante fest und weist ein Dokument
 über der Grenze am echten Byte-Eintrittspunkt ab — nicht an einer
 vorbeigeführten Stufe.
 
-Import, Schemaprüfung und Größenprüfung dekodieren `base64` nicht. Einzige
-Dekodierstelle ist `verifyResourceIntegrity()` in
-[`evidenceIntegrity.ts`](../src/domain/evidenceIntegrity.ts); sie prüft vorher
-dieselbe Grenze je Ressource und dekodiert einen Wert darüber nicht. Das
-Kostenmodell der Grenze ist die Heap-Allokation einer Dekodierung.
+Import, Schemaprüfung und Größenprüfung dekodieren `base64` nicht. `decodeEvidenceContent()` in [`evidencePreview.ts`](../src/domain/evidencePreview.ts) prüft dieselbe Grenze je Ressource vor der Dekodierung und gibt bei Überschreitung `undefined` zurück. `verifyResourceIntegrity()` in [`evidenceIntegrity.ts`](../src/domain/evidenceIntegrity.ts) nutzt diesen Dekoder für die Hashprüfung; die eigenständige Evidenzkomponente nutzt ihn für Vorschau und Download auf ausdrückliche Nutzeraktion. Das Kostenmodell der Grenze ist die Heap-Allokation einer Dekodierung.
 
 #### `matching.pattern`: iterativer Abgleich
 
