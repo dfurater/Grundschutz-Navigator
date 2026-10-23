@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { exportSspInWorker } from '@/adapters/sspWorkbench';
 import { readString } from '@/domain/jsonGuards';
 import { SSP_ADAPTER_DIAGNOSTIC_CODES } from '@/adapters/oscalSspReaders';
@@ -13,6 +13,7 @@ import { prepareSspTargets, validateSspTargets, type TargetCategoryContext, type
 import { targetDeletionUses } from '@/domain/sspTargetDeletion';
 import type { SspPath } from '@/domain/sspAuthoring';
 import { useCatalog } from '@/hooks/useCatalog';
+import { StorageFailure, UNSAVED_INPUT_CODE, failure } from '@/adapters/workspaceStorageFailure';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { useDocumentEditor, type DocumentEditorCoreMessage, type DocumentSaveState } from '@/features/workspace/useDocumentEditor';
 import type { PendingImportTarget } from '@/state/workspaceDocuments';
@@ -70,7 +71,7 @@ function effectiveChoice(choice: PendingImportTarget | undefined, href: string |
  * eine Bindung am Pointer `import-profile.href`, nie ein aufgelöster Verweis.
  */
 export function useSspEditor(localId: LocalId): SspEditor {
-  const { documents, catalogDelivery } = useWorkspace();
+  const { documents, catalogDelivery, registerAutosave } = useWorkspace();
   const catalog = useCatalog();
   const categories = useMemo(() => sspCategoryContext(catalog), [catalog]);
   const pendingForms = useRef(new Set<string>());
@@ -86,6 +87,12 @@ export function useSspEditor(localId: LocalId): SspEditor {
     pendingForms.current.size > 0 || effectiveChoice(pending.get(SSP_IMPORT_PROFILE_POINTER), baselineHref(current), envelope) !== undefined, [pending]);
   const core = useDocumentEditor<SspMessage>({ localId, rootType: 'system-security-plan', sameContent: sameSspContent, hasPendingBindings });
   const { working, stored, change, commit, latest, setMessage, exportWith } = core;
+  // Nicht übernommene Bewertungseingaben liegen nur im Formular; der Bereichswechsel bleibt gesperrt, bis sie übernommen oder zurückgesetzt sind.
+  useEffect(() => registerAutosave(async () => {
+    if (pendingForms.current.size === 0) return { ok: true as const, value: undefined };
+    setMessage('target-form-pending');
+    return failure(new StorageFailure(UNSAVED_INPUT_CODE));
+  }), [registerAutosave, setMessage]);
   const [pendingBaseline, setPendingBaseline] = useState<PendingImportTarget | undefined>(() => pending.get(SSP_IMPORT_PROFILE_POINTER));
 
   const href = baselineHref(working);

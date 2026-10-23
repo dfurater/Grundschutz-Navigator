@@ -36,6 +36,9 @@ export const BSI_NAMESPACE_DIRECTORY = namespaceCollection.upstreamDirectory;
 const BSI_NAMESPACE_ROOT =
   `${BSI_REPOSITORY_URL}/tree/main/${encodeRepositoryPath(BSI_NAMESPACE_DIRECTORY, { omitEmptySegments: true })}`;
 
+/** Repository-Pfad der Zielobjektkategorien; Verzeichnis aus dem Quellregister. */
+export const TARGET_OBJECT_CATEGORIES_PATH = `${BSI_NAMESPACE_DIRECTORY}/target_object_categories.csv`;
+
 export const SECURITY_TARGETS_NAMESPACE_URL =
   `${BSI_NAMESPACE_ROOT}/security_targets.csv`;
 

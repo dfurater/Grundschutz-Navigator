@@ -8,6 +8,9 @@ export class StorageFailure extends Error {
 }
 
 export function reject(code: string): never { throw new StorageFailure(code); }
+
+/** Eine Station hält nicht übernommene Eingaben; das Verlassen des Bereichs bleibt gesperrt, ohne eine Speichermeldung auszulösen. */
+export const UNSAVED_INPUT_CODE = 'WORKSPACE_UNSAVED_INPUT';
 function isQuotaError(error: unknown): boolean {
   const seen = new Set<unknown>();
   let current = error;

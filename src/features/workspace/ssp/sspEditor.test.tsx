@@ -112,6 +112,17 @@ describe('Zielobjektbestand', () => {
     expect(within(currentFirst).getByLabelText(/information-types.title/)).toHaveValue('Betriebsdaten');
     expect(within(currentFirst).getByLabelText('Begründung des Schutzbedarfs')).toHaveValue('Eingabe für Betriebsdaten');
   });
+  it('hält den Bereichswechsel bei nicht übernommenen Bewertungseingaben an und meldet keinen Speicherfehler', async () => {
+    const ssp = await addSsp(seeded.verbundId, makeFullSsp());
+    const { router } = renderArea(buildWorkspaceDocumentUrl(seeded.verbundId, ssp.localId), withGspp());
+    const first = await within(main()).findByRole('listitem', { name: /^Inventareintrag 1/ });
+    fireEvent.change(within(first).getByLabelText('Begründung des Schutzbedarfs'), { target: { value: 'Offene Eingabe' } });
+    const areas = within(screen.getByTestId('header-bar')).getByRole('navigation', { name: 'Bereiche' });
+    fireEvent.click(within(areas).getByRole('link', { name: 'Katalog' }), { button: 0 });
+    expect(await within(main()).findByText(/offenen Schutzbedarfseingaben/, undefined, WAIT)).toBeInTheDocument();
+    expect(router.state.location.pathname).toContain(String(ssp.localId));
+    expect(screen.queryByText(/Speicher/i, { selector: '[role="alert"]' })).toBeNull();
+  });
   it('zeigt Groß-/Kleinschreibung lokaler UUID-Bezüge ohne falschen Auflösungsfehler und erhält die Quelle', async () => {
     const source = withSspBody(makeFullSsp(), body => {
       body['system-implementation'].components[1].uuid = 'abcdefab-0000-4000-8000-000000000002';

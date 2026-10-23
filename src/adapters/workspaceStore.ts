@@ -306,6 +306,13 @@ export class WorkspaceStore {
     return current;
   }
 
+  private async assertSspTargetDeletionAllowed(current: WorkspaceEnvelope, next: unknown): Promise<void> {
+    if (current.rootType !== 'system-security-plan' || !hasSspTargetDeletion(current.source, next)) return;
+    // Bereits jede direkte eingehende Bindung sperrt; eine transitive Kette beginnt ebenfalls damit.
+    const bindings = await this.bindings.where('target.localId').equals(current.localId).toArray();
+    if (sspDeletionBlocked(current.source, next, current.localId, [], bindings)) reject('SSP_TARGET_DELETE_BLOCKED');
+  }
+
   async saveDocument(localId: LocalId, expectedSavedAt: string, expectedDraftSavedAt: string | null, input: Class2OscalImportedDocument, changedBindings?: readonly WorkspaceBinding[], state?: DocumentState, approval?: ReviewApprovalWrite): Promise<WorkspaceResult<WorkspaceEnvelope>> {
     return this.storeDocument(localId, expectedSavedAt, expectedDraftSavedAt, input, { changedBindings, state, approval: approval?.request, guard: approval?.guard });
   }
@@ -324,11 +331,7 @@ export class WorkspaceStore {
       }
       return await this.write(async stamp => {
         const current = await this.current(localId, expectedSavedAt, expectedDraftSavedAt);
-        if (current.rootType === 'system-security-plan' && hasSspTargetDeletion(current.source, document.source)) {
-          // Bereits jede direkte eingehende Bindung sperrt; eine transitive Kette beginnt ebenfalls damit.
-          const bindings = await this.bindings.where('target.localId').equals(localId).toArray();
-          if (sspDeletionBlocked(current.source, document.source, localId, [], bindings)) reject('SSP_TARGET_DELETE_BLOCKED');
-        }
+        await this.assertSspTargetDeletionAllowed(current, document.source);
         assertAdmissible(state ?? current.documentState, schemaValid);
         if (approval && (state ?? current.documentState) === 'draft') reject('REVIEW_APPROVAL_BLOCKED');
         if ((document.source as Record<string, { uuid?: string }>)[document.rootType]?.uuid === localId) reject('WORKSPACE_DOCUMENT_INVALID');

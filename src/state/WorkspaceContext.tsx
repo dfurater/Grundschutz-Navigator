@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { StorageFailure, failure } from '@/adapters/workspaceStorageFailure';
+import { StorageFailure, UNSAVED_INPUT_CODE, failure } from '@/adapters/workspaceStorageFailure';
 import { isLocalIdentity } from '@/app/routes';
 import type { CatalogKey } from '@/domain/sourceRegistry';
 import type { CatalogDelivery } from '@/domain/workspaceCatalogPin';
@@ -233,7 +233,8 @@ export function WorkspaceProvider({ open = openWorkspaceStore, children }: Reado
   const flushAutosaves = useCallback(async () => {
     const results = await Promise.all([...autosaves.current].map((flush) => flush().catch(storageFailed)));
     const failures = results.filter((result) => !result.ok);
-    for (const failure of failures) if (!failure.ok) report(failure.diagnostic);
+    // Offene Formulareingaben sperren nur das Verlassen; der Editor zeigt den Hinweis selbst.
+    for (const failure of failures) if (!failure.ok && failure.diagnostic.code !== UNSAVED_INPUT_CODE) report(failure.diagnostic);
     return failures.length === 0;
   }, [report]);
 

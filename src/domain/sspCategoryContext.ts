@@ -1,6 +1,6 @@
 import type { CatalogState } from '@/domain/models';
 import type { TargetCategoryContext } from '@/domain/sspTargetObjects';
-import { BSI_NAMESPACE_DIRECTORY } from '@/domain/vocabularyNamespaces';
+import { TARGET_OBJECT_CATEGORIES_PATH } from '@/domain/vocabularyNamespaces';
 
 /** Ausgelieferte Hashprüfung und Provenienz beider Artefakte; der aktive Viewer-Katalog wählt keinen Kontext. */
 export function sspCategoryContext(catalog: CatalogState): TargetCategoryContext | undefined {
@@ -12,7 +12,7 @@ export function sspCategoryContext(catalog: CatalogState): TargetCategoryContext
   if (!gspp?.catalogDocument || gspp.verification?.valid !== true || !commit || !/^[0-9a-f]{40}$/.test(commit)
     || verification?.valid !== true || verification.sourceCommit !== commit || registry?.sourceCommitSha !== commit
     || provenance?.source.snapshotCommitSha !== commit) return undefined;
-  const path = `${BSI_NAMESPACE_DIRECTORY}/target_object_categories.csv`;
+  const path = TARGET_OBJECT_CATEGORIES_PATH;
   const namespaces = registry.namespaces.filter(namespace => namespace.source.path === path);
   const files = provenance.files.filter(file => file.path === path);
   if (namespaces.length !== 1 || files.length !== 1) return undefined;
