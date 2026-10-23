@@ -150,7 +150,10 @@ function VerbundHeader({ view, now }: Readonly<{ view: VerbundView; now: number 
               variant="secondary"
               className="min-h-touch desktop:min-h-0"
               disabled={!writable}
-              onClick={() => { renameDrafts.set(verbund.verbundId, verbund.name); setRenaming(true); }}
+              onClick={() => {
+                if (!renameDrafts.has(verbund.verbundId)) renameDrafts.set(verbund.verbundId, verbund.name);
+                setRenaming(true);
+              }}
             >
               Umbenennen
             </Button>
@@ -175,9 +178,9 @@ function VerbundHeader({ view, now }: Readonly<{ view: VerbundView; now: number 
           onSubmit={async (name) => {
             const result = await renameVerbund(verbund.verbundId as VerbundId, name);
             if (!result.ok) return false;
-            // Nur der gespeicherte Stand fällt weg; was danach getippt wurde, bleibt offen.
-            if (renameDrafts.get(verbund.verbundId)?.trim() === name) renameDrafts.delete(verbund.verbundId);
-            setRenaming(false);
+            // Wurde während des Speicherns weitergetippt, bleibt das Formular mit dieser Eingabe offen.
+            if (renameDrafts.get(verbund.verbundId)?.trim() !== name) return true;
+            stopRenaming();
             return true;
           }}
           onCancel={stopRenaming}

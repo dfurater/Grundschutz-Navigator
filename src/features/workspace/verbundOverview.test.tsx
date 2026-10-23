@@ -106,6 +106,19 @@ describe('Verbund-Übersicht', () => {
     expect(within(main()).getByLabelText('Neuer Name')).toHaveValue(SENTINEL_VERBUND);
   });
 
+  it('lässt das Formular offen, wenn während des Speicherns weitergetippt wird', async () => {
+    renderArea(buildVerbundUrl(seeded.verbundId));
+    await within(main()).findByRole('heading', { level: 1, name: SENTINEL_VERBUND });
+    fireEvent.click(within(main()).getByRole('button', { name: 'Umbenennen' }));
+    const input = within(main()).getByLabelText('Neuer Name');
+    fireEvent.change(input, { target: { value: 'A' } });
+    fireEvent.click(within(main()).getByRole('button', { name: 'Speichern' }));
+    fireEvent.change(input, { target: { value: 'AB' } });
+
+    expect(await within(main()).findByRole('heading', { level: 1, name: 'A' })).toBeInTheDocument();
+    expect(within(main()).getByLabelText('Neuer Name')).toHaveValue('AB');
+  });
+
   it('verwirft eine offene Umbenennung, wenn der Verbund über die Übersicht aller Verbünde gelöscht wird', async () => {
     let drafts: Map<string, string> | undefined;
     function Probe() {
