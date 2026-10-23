@@ -198,6 +198,7 @@ src/                              # Anwendungsquellcode
 │   ├── assessmentResultsModel.ts     # Projektion der Prüfergebnisse und explizite AP-/SSP-/Katalogbindung
 │   ├── poamModel.ts                  # POA&M-Projektion und expliziter SSP-/AR-Kontext
 │   ├── poamProgress.ts               # Frist, Fristzustand, Verantwortliche und Abschluss je `poam-item`
+│   ├── evidenceIntegrity.ts          # Hashprüfung der `rlink`-Hashes gegen die eingebettete `base64`-Nutzlast einer Evidenzressource
 │   ├── evidenceObservationReferences.ts # Klassifikation der `related-observations`-Referenzen für AR und POA&M
 │   ├── evidenceReadModel.ts          # Evidenz aus Assessment Results und POA&M: Gültigkeit, Ressourcen, UUID-Referenzen
 │   ├── systemSecurityPlanModel.ts    # Domänenmodell des SSP
