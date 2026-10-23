@@ -1229,6 +1229,25 @@ describe('Registry-Snapshot-Migration', () => {
     { status: 'M', path: 'upstream-manifest.json' },
     { status: 'M', path: 'src/domain/sourceRegistry.mjs' },
   ];
+  const migrationDiffEntries = [
+    'README.md',
+    'docs/ARCHITECTURE.md',
+    'docs/INTEGRITY.md',
+    'docs/OSCAL_VALIDATION.md',
+    'docs/OSCAL_VERSION_MATRIX.md',
+    'scripts/catalog-sync-guard.mjs',
+    'scripts/catalog-sync-guard.test.ts',
+    'scripts/profileResolutionCorpus.test.ts',
+    'scripts/profileResolutionSpecFixtures.test.ts',
+    'scripts/upstream-corpus-cache.test.ts',
+    'scripts/verify-upstream-oscal.test.ts',
+    'src/adapters/oscalDocument.lieferkette.node.test.ts',
+    'src/domain/catalogLineage.test.ts',
+    'src/domain/referenceResolution.test.ts',
+    'src/domain/sourceRegistry.mjs',
+    'src/domain/sourceRegistry.test.ts',
+    'upstream-manifest.json',
+  ].map((path) => ({ status: 'M', path }));
   const previous = makeFixture({ snapshotCommitSha: OLD_SHA });
   const next = makeFixture({ snapshotCommitSha: NEW_SHA });
   const previousSourceRegistry = JSON.parse(JSON.stringify(SOURCE_REGISTRY)) as Record<string, unknown>[];
@@ -1257,13 +1276,7 @@ describe('Registry-Snapshot-Migration', () => {
       baseRef: 'develop',
       branch: 'codex/gspp-620-fixcatalog-sync',
       title: 'GSPP-620: BSI-Kernel-Snapshot übernehmen',
-      diffEntries: [
-        ...requiredPaths,
-        { status: 'M', path: 'src/domain/sourceRegistry.test.ts' },
-        { status: 'M', path: 'scripts/catalog-sync-guard.mjs' },
-        { status: 'M', path: 'scripts/catalog-sync-guard.test.ts' },
-        { status: 'M', path: 'docs/OSCAL_VALIDATION.md' },
-      ],
+      diffEntries: migrationDiffEntries,
       previousManifest: previous.manifest,
       nextManifest: next.manifest,
       previousSourceRegistry,
@@ -1276,7 +1289,7 @@ describe('Registry-Snapshot-Migration', () => {
       baseRef: 'develop',
       branch: 'codex/gspp-620-fixcatalog-sync',
       title: 'GSPP-620: BSI-Kernel-Snapshot übernehmen',
-      diffEntries: requiredPaths,
+      diffEntries: migrationDiffEntries,
       previousManifest: previous.manifest,
       nextManifest: next.manifest,
       previousSourceRegistry,
@@ -1290,6 +1303,26 @@ describe('Registry-Snapshot-Migration', () => {
     expect(fetchImpl.mock.calls.some(([url]) => String(url).includes('/git/blobs/'))).toBe(true);
   });
 
+  it('rejects the migration while the removed G0 path remains in the official snapshot', async () => {
+    const g0Path =
+      'control_layer/Grundschutz++/sources/catalogs/Kernel/BSI-Stand-der-Technik-Kernel-G0-catalog.json';
+    const treeEntries = [
+      ...next.treeEntries,
+      { path: g0Path, mode: '100644', type: 'blob', sha: '3'.repeat(40), size: 1 },
+    ];
+
+    await expect(guardCatalogSyncPullRequest({
+      baseRef: 'develop',
+      branch: 'codex/gspp-620-fixcatalog-sync',
+      title: 'GSPP-620: BSI-Kernel-Snapshot übernehmen',
+      diffEntries: migrationDiffEntries,
+      previousManifest: previous.manifest,
+      nextManifest: next.manifest,
+      previousSourceRegistry,
+      fetchImpl: makeGitHubFetch(next, { treeEntries }),
+    })).rejects.toThrow(`Removed BSI artifact remains in the snapshot: ${g0Path}`);
+  });
+
   it.each([
     ['a base outside develop', { baseRef: 'main' }],
     ['the automated catalog-sync branch', { branch: 'chore/catalog-sync-222222222222' }],
@@ -1301,10 +1334,16 @@ describe('Registry-Snapshot-Migration', () => {
         { status: 'M', path: 'scripts/sync-upstream-manifest.mjs' },
       ],
     }],
+    ['an unrelated script test change', {
+      diffEntries: [
+        ...requiredPaths,
+        { status: 'M', path: 'scripts/unrelated.test.ts' },
+      ],
+    }],
     ['an unchanged snapshot', { nextManifest: previous.manifest }],
     ['an unchanged registry', { previousSourceRegistry: SOURCE_REGISTRY }],
     ['an unrelated registry change', {
-      previousSourceRegistry: SOURCE_REGISTRY.map((entry) =>
+      previousSourceRegistry: previousSourceRegistry.map((entry) =>
         entry.artifactKey === 'catalog-source-gspp-methodik'
           ? { ...entry, title: `${entry.title} changed` }
           : entry,

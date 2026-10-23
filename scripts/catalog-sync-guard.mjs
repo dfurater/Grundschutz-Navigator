@@ -29,6 +29,7 @@ import {
 } from './taxonomy-coverage.mjs';
 import {
   ENTRY_CATALOG,
+  GSPP_620_KERNEL_REGISTRY_MIGRATION,
   MONITORED_UPSTREAM_ROOTS,
   SOURCE_REGISTRY,
   SUPPORTED_CATALOGS,
@@ -236,23 +237,36 @@ const REGISTRY_SNAPSHOT_MIGRATION_PATHS = new Set([
   REGISTRY_LIFECYCLE_MIGRATION_PATH,
 ]);
 
+const REGISTRY_SNAPSHOT_MIGRATION_TEST_PATHS = new Set([
+  'scripts/catalog-sync-guard.test.ts',
+  'scripts/profileResolutionCorpus.test.ts',
+  'scripts/profileResolutionSpecFixtures.test.ts',
+  'scripts/upstream-corpus-cache.test.ts',
+  'scripts/verify-upstream-oscal.test.ts',
+]);
+
 function isRegistrySnapshotMigrationPath(path) {
   return (
+    path === 'README.md' ||
     path.startsWith('src/') ||
     path.startsWith('docs/') ||
     path === 'scripts/catalog-sync-guard.mjs' ||
-    /^scripts\/.+\.test\.[cm]?[jt]sx?$/.test(path)
+    REGISTRY_SNAPSHOT_MIGRATION_TEST_PATHS.has(path)
   );
 }
 
 function isExpectedKernelRegistryTransition(previousSourceRegistry) {
-  const removedG0Path =
-    'control_layer/Grundschutz++/sources/catalogs/Kernel/BSI-Stand-der-Technik-Kernel-G0-catalog.json';
-  const previousKernelPath =
-    'control_layer/Grundschutz++/sources/catalogs/Kernel/BSI-Stand-der-Technik-Kernel-catalog.json';
-  const currentKernelPath = 'control_layer/Kernel/BSI-Stand-der-Technik-Kernel-catalog.json';
-  const removedG0Key = 'catalog-source-gspp-kernel-g0';
-  const kernelKey = 'catalog-source-lieferkette-kernel';
+  const { removedG0Key, removedG0Path, previousKernelPath, kernelKey, targetKernelPath } =
+    GSPP_620_KERNEL_REGISTRY_MIGRATION;
+  const expectedPreviousG0 = {
+    artifactKey: removedG0Key,
+    kind: 'oscal',
+    oscalVersion: '1.1.3',
+    expectedRootType: 'catalog',
+    upstreamPath: removedG0Path,
+    lifecycle: 'preview',
+    title: 'BSI Stand der Technik Kernel G0',
+  };
 
   if (
     !Array.isArray(previousSourceRegistry) ||
@@ -265,15 +279,13 @@ function isExpectedKernelRegistryTransition(previousSourceRegistry) {
   const previousG0 = previousSourceRegistry.find((entry) => entry.artifactKey === removedG0Key);
   const previousKernel = previousSourceRegistry.find((entry) => entry.artifactKey === kernelKey);
   const currentKernel = SOURCE_REGISTRY.find((entry) => entry.artifactKey === kernelKey);
+  const currentKernelPath = currentKernel?.upstreamPath;
   if (
-    previousG0?.kind !== 'oscal' ||
-    previousG0.expectedRootType !== 'catalog' ||
-    previousG0.lifecycle !== 'preview' ||
-    previousG0.upstreamPath !== removedG0Path ||
+    !isStructurallyEqual(previousG0, expectedPreviousG0) ||
     !previousKernel ||
     previousKernel.upstreamPath !== previousKernelPath ||
     !currentKernel ||
-    currentKernel.upstreamPath !== currentKernelPath
+    currentKernel?.upstreamPath !== targetKernelPath
   ) {
     return false;
   }
@@ -768,6 +780,7 @@ export async function verifySnapshotFiles(manifest, {
   fetchImpl = fetch,
   token,
   requestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
+  requiredAbsentPaths = [],
 } = {}) {
   const apiBase = `https://api.github.com/repos/${OFFICIAL_BSI_REPO}`;
   const tree = await fetchGitHubJson(
@@ -776,6 +789,11 @@ export async function verifySnapshotFiles(manifest, {
   );
   const normalizedTree = normalizeGitTree(tree, { monitoredRoots: MONITORED_UPSTREAM_ROOTS });
   const blobShaByPath = new Map(normalizedTree.map((entry) => [entry.path, entry.gitBlobSha]));
+  for (const requiredAbsentPath of requiredAbsentPaths) {
+    if (blobShaByPath.has(requiredAbsentPath)) {
+      throw new Error(`Removed BSI artifact remains in the snapshot: ${requiredAbsentPath}`);
+    }
+  }
   for (const file of manifest.files) {
     if (blobShaByPath.get(file.path) !== file.gitBlobSha) {
       throw new Error(`Manifest blob SHA does not match the BSI snapshot: ${file.path}`);
@@ -1060,7 +1078,12 @@ export async function guardCatalogSyncPullRequest({
       nextManifest.snapshotCommitSha,
       { fetchImpl, token, requestTimeoutMs },
     );
-    await verifySnapshotFiles(nextManifest, { fetchImpl, token, requestTimeoutMs });
+    await verifySnapshotFiles(nextManifest, {
+      fetchImpl,
+      token,
+      requestTimeoutMs,
+      requiredAbsentPaths: [GSPP_620_KERNEL_REGISTRY_MIGRATION.removedG0Path],
+    });
     return {
       catalogSync: false,
       registrySnapshotMigration: true,

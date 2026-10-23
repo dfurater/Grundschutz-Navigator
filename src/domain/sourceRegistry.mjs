@@ -47,6 +47,16 @@ const BSI_UPSTREAM_ISSUE_URL =
 
 const COMPONENT_DIRECTORY = 'implementation_layer';
 
+export const GSPP_620_KERNEL_REGISTRY_MIGRATION = Object.freeze({
+  removedG0Key: 'catalog-source-gspp-kernel-g0',
+  removedG0Path:
+    'control_layer/Grundschutz++/sources/catalogs/Kernel/BSI-Stand-der-Technik-Kernel-G0-catalog.json',
+  previousKernelPath:
+    'control_layer/Grundschutz++/sources/catalogs/Kernel/BSI-Stand-der-Technik-Kernel-catalog.json',
+  kernelKey: 'catalog-source-lieferkette-kernel',
+  targetKernelPath: 'control_layer/Kernel/BSI-Stand-der-Technik-Kernel-catalog.json',
+});
+
 /**
  * Read-only discovery roots for upstream tree comparisons. These roots do not
  * widen the fetch allowlist: only materialized SOURCE_REGISTRY entries may be
@@ -142,11 +152,11 @@ export const SOURCE_REGISTRY = Object.freeze(
       title: 'BSI Anforderungen zum Risikomanagement',
     },
     {
-      artifactKey: 'catalog-source-lieferkette-kernel',
+      artifactKey: GSPP_620_KERNEL_REGISTRY_MIGRATION.kernelKey,
       kind: 'oscal',
       oscalVersion: '1.1.3',
       expectedRootType: 'catalog',
-      upstreamPath: 'control_layer/Kernel/BSI-Stand-der-Technik-Kernel-catalog.json',
+      upstreamPath: GSPP_620_KERNEL_REGISTRY_MIGRATION.targetKernelPath,
       lifecycle: 'preview',
       title: 'BSI Stand der Technik Kernel',
     },
