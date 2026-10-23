@@ -324,7 +324,7 @@ export function isRegistrySnapshotMigration({
   nextManifest,
   previousSourceRegistry,
 }) {
-  if (
+  return !(
     baseRef !== 'develop' ||
     branch.startsWith('chore/catalog-sync-') ||
     title.startsWith(SYNC_TITLE_PREFIX) ||
@@ -339,11 +339,7 @@ export function isRegistrySnapshotMigration({
     !nextManifest ||
     previousManifest.snapshotCommitSha === nextManifest.snapshotCommitSha ||
     !isExpectedKernelRegistryTransition(previousSourceRegistry)
-  ) {
-    return false;
-  }
-
-  return true;
+  );
 }
 
 /**
@@ -783,6 +779,18 @@ export async function verifySnapshotProgress(previousSha, nextSha, {
   return comparison;
 }
 
+function assertBlockedArtifactsAbsentFromManifest(manifestPaths, blobShaByPath) {
+  for (const entry of SOURCE_REGISTRY) {
+    if (entry.kind !== 'oscal' || entry.lifecycle !== 'blocked-by-upstream') continue;
+    if (manifestPaths.has(entry.upstreamPath)) continue;
+    if (blobShaByPath.has(entry.upstreamPath)) {
+      throw new Error(
+        `Manifest omits blocked artifact that is still present in the BSI snapshot: ${entry.upstreamPath}`,
+      );
+    }
+  }
+}
+
 export async function verifySnapshotFiles(manifest, {
   fetchImpl = fetch,
   token,
@@ -812,15 +820,7 @@ export async function verifySnapshotFiles(manifest, {
   // verschwunden ist — sonst könnte eine Sync-PR ein noch vorhandenes
   // Artefakt stillschweigend aus dem Manifest auslassen.
   const manifestPaths = new Set(manifest.files.map((file) => file.path));
-  for (const entry of SOURCE_REGISTRY) {
-    if (entry.kind !== 'oscal' || entry.lifecycle !== 'blocked-by-upstream') continue;
-    if (manifestPaths.has(entry.upstreamPath)) continue;
-    if (blobShaByPath.has(entry.upstreamPath)) {
-      throw new Error(
-        `Manifest omits blocked artifact that is still present in the BSI snapshot: ${entry.upstreamPath}`,
-      );
-    }
-  }
+  assertBlockedArtifactsAbsentFromManifest(manifestPaths, blobShaByPath);
 
   const fetchAndValidateArtifact = async (file) => {
     const blob = await fetchGitHubJson(
@@ -980,6 +980,14 @@ export async function verifySnapshotFiles(manifest, {
   );
 }
 
+function validateManifestPair(previousManifest, nextManifest) {
+  validateManifestV2Shape(previousManifest);
+  if (previousManifest.repository !== OFFICIAL_BSI_REPOSITORY_URL) {
+    throw new Error(`Previous manifest repository must be ${OFFICIAL_BSI_REPOSITORY_URL}`);
+  }
+  validateCatalogSyncManifest(nextManifest);
+}
+
 export async function guardCatalogSyncPullRequest({
   baseRef,
   branch,
@@ -995,20 +1003,12 @@ export async function guardCatalogSyncPullRequest({
   requestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
 }) {
   if (isRegistryLifecycleOnlyMigration({ diffEntries, previousManifest, nextManifest })) {
-    validateManifestV2Shape(previousManifest);
-    if (previousManifest.repository !== OFFICIAL_BSI_REPOSITORY_URL) {
-      throw new Error(`Previous manifest repository must be ${OFFICIAL_BSI_REPOSITORY_URL}`);
-    }
-    validateCatalogSyncManifest(nextManifest);
+    validateManifestPair(previousManifest, nextManifest);
     return { catalogSync: false, registryLifecycleMigration: true };
   }
 
   if (isRegistryPreviewArtifactExpansion({ diffEntries, previousManifest, nextManifest })) {
-    validateManifestV2Shape(previousManifest);
-    if (previousManifest.repository !== OFFICIAL_BSI_REPOSITORY_URL) {
-      throw new Error(`Previous manifest repository must be ${OFFICIAL_BSI_REPOSITORY_URL}`);
-    }
-    validateCatalogSyncManifest(nextManifest);
+    validateManifestPair(previousManifest, nextManifest);
     await verifySnapshotFiles(nextManifest, { fetchImpl, token, requestTimeoutMs });
     return { catalogSync: false, registryPreviewArtifactExpansion: true };
   }
@@ -1019,11 +1019,7 @@ export async function guardCatalogSyncPullRequest({
     nextManifest,
     previousSourceRegistry,
   })) {
-    validateManifestV2Shape(previousManifest);
-    if (previousManifest.repository !== OFFICIAL_BSI_REPOSITORY_URL) {
-      throw new Error(`Previous manifest repository must be ${OFFICIAL_BSI_REPOSITORY_URL}`);
-    }
-    validateCatalogSyncManifest(nextManifest);
+    validateManifestPair(previousManifest, nextManifest);
     // Ungekürzt gegenüber dem regulären Sync-Pfad: Die Sicherheit dieses
     // Zweigs steht und fällt mit diesen beiden Prüfungen.
     await verifySnapshotProgress(
@@ -1046,11 +1042,7 @@ export async function guardCatalogSyncPullRequest({
     headManifestBytes,
     execFile,
   })) {
-    validateManifestV2Shape(previousManifest);
-    if (previousManifest.repository !== OFFICIAL_BSI_REPOSITORY_URL) {
-      throw new Error(`Previous manifest repository must be ${OFFICIAL_BSI_REPOSITORY_URL}`);
-    }
-    validateCatalogSyncManifest(nextManifest);
+    validateManifestPair(previousManifest, nextManifest);
     // Ungekürzt: Die Herkunft aus `main` begründet, dass dieser Zweig greifen
     // darf, nicht dass weniger geprüft werden muss.
     await verifySnapshotProgress(
@@ -1075,11 +1067,7 @@ export async function guardCatalogSyncPullRequest({
     nextManifest,
     previousSourceRegistry,
   })) {
-    validateManifestV2Shape(previousManifest);
-    if (previousManifest.repository !== OFFICIAL_BSI_REPOSITORY_URL) {
-      throw new Error(`Previous manifest repository must be ${OFFICIAL_BSI_REPOSITORY_URL}`);
-    }
-    validateCatalogSyncManifest(nextManifest);
+    validateManifestPair(previousManifest, nextManifest);
     await verifySnapshotProgress(
       previousManifest.snapshotCommitSha,
       nextManifest.snapshotCommitSha,
@@ -1103,11 +1091,7 @@ export async function guardCatalogSyncPullRequest({
   }
 
   validateCatalogSyncPullRequest({ branch, title, diffEntries });
-  validateManifestV2Shape(previousManifest);
-  if (previousManifest.repository !== OFFICIAL_BSI_REPOSITORY_URL) {
-    throw new Error(`Previous manifest repository must be ${OFFICIAL_BSI_REPOSITORY_URL}`);
-  }
-  validateCatalogSyncManifest(nextManifest);
+  validateManifestPair(previousManifest, nextManifest);
   const expectedBranch = `chore/catalog-sync-${nextManifest.snapshotCommitSha.slice(0, 12)}`;
   if (branch !== expectedBranch) {
     throw new Error(`Catalog sync branch must match the new snapshot: ${expectedBranch}`);
