@@ -239,6 +239,7 @@ const REGISTRY_SNAPSHOT_MIGRATION_PATHS = new Set([
 
 const REGISTRY_SNAPSHOT_MIGRATION_TEST_PATHS = new Set([
   'scripts/catalog-sync-guard.test.ts',
+  'scripts/review-policy.test.ts',
   'scripts/profileResolutionCorpus.test.ts',
   'scripts/profileResolutionSpecFixtures.test.ts',
   'scripts/upstream-corpus-cache.test.ts',

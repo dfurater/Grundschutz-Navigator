@@ -1237,6 +1237,7 @@ describe('Registry-Snapshot-Migration', () => {
     'docs/OSCAL_VERSION_MATRIX.md',
     'scripts/catalog-sync-guard.mjs',
     'scripts/catalog-sync-guard.test.ts',
+    'scripts/review-policy.test.ts',
     'scripts/profileResolutionCorpus.test.ts',
     'scripts/profileResolutionSpecFixtures.test.ts',
     'scripts/upstream-corpus-cache.test.ts',
