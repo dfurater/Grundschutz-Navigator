@@ -79,10 +79,11 @@ function VerbundRow({ verbund, writable, onDelete }: Readonly<{
           initial={verbund.name}
           disabled={!writable}
           onSubmit={async (name) => {
+            // Der neue Name ersetzt nur den Entwurf, der beim Speichern offen war; ein danach getippter bleibt.
+            const draft = renameDrafts.get(verbund.verbundId);
             const result = await renameVerbund(verbund.verbundId, name);
             if (!result.ok) return false;
-            // Der neue Name ersetzt einen offenen Entwurf aus der Verbund-Übersicht.
-            renameDrafts.delete(verbund.verbundId);
+            if (renameDrafts.get(verbund.verbundId) === draft) renameDrafts.delete(verbund.verbundId);
             setRenaming(false);
             return true;
           }}

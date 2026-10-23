@@ -162,6 +162,30 @@ describe('Verbund-Übersicht', () => {
     expect(within(main()).queryByLabelText('Neuer Name')).not.toBeInTheDocument();
   });
 
+  it('lässt einen während des Speicherns in der Verbundliste neu begonnenen Entwurf stehen', async () => {
+    let drafts: Map<string, string> | undefined;
+    function Probe() {
+      drafts = useWorkspace().renameDrafts;
+      return null;
+    }
+    renderAppShell([buildWorkspaceIndexUrl()], {
+      shell: () => (
+        <CatalogContext.Provider value={EMPTY_CATALOG_STATE}>
+          <WorkspaceProvider><Probe /><AppShell /></WorkspaceProvider>
+        </CatalogContext.Provider>
+      ),
+    });
+    const row = (await within(main()).findByRole('link', { name: SENTINEL_VERBUND })).closest('li')!;
+    fireEvent.click(within(row).getByRole('button', { name: 'Umbenennen' }));
+    fireEvent.change(within(main()).getByLabelText('Neuer Name'), { target: { value: 'Rechenzentrum Nord' } });
+    fireEvent.click(within(main()).getByRole('button', { name: 'Speichern' }));
+    // Während das Speichern läuft, beginnt im Verbund-Kopf ein neuer Entwurf.
+    drafts!.set(seeded.verbundId, 'Neuer Entwurf');
+
+    expect(await within(main()).findByRole('link', { name: 'Rechenzentrum Nord' })).toBeInTheDocument();
+    expect(drafts!.get(seeded.verbundId)).toBe('Neuer Entwurf');
+  });
+
   it('löscht den Verbund erst nach Bestätigung und kehrt zur Übersicht zurück', async () => {
     const { router } = renderArea(buildVerbundUrl(seeded.verbundId));
     await within(main()).findByRole('heading', { level: 1, name: SENTINEL_VERBUND });
