@@ -196,6 +196,14 @@ export function DatenschutzPage() {
           Informationsverbund gelöscht.
         </p>
         <p className="catalog-prose-text text-sm text-slate-700 leading-relaxed">
+          Eingebettete Evidenzinhalte werden beim Einlesen von Dokumenten nicht
+          dekodiert, ausgeführt oder an externe Dienste übertragen. Eine
+          Evidenzvorschau ist derzeit nicht in die Oberfläche eingebunden.
+          Eine deklarierte Medienart und ein übereinstimmender Hash belegen
+          nicht die Unbedenklichkeit einer Datei. Evidenzinhalte und Dateinamen
+          werden nicht in die Adresszeile oder Diagnoseausgaben übernommen.
+        </p>
+        <p className="catalog-prose-text text-sm text-slate-700 leading-relaxed">
           Der Betreiber hat keine Kopie Ihrer gespeicherten Dokumente und kann
           sie nicht wiederherstellen. Die exportierte Sicherungsdatei ist die
           einzige Sicherung. Ohne eine solche Datei
