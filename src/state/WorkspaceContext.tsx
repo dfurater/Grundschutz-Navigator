@@ -58,6 +58,11 @@ export interface WorkspaceContextValue {
   readonly documents: WorkspaceDocuments;
   /** Invalidierung nur für sitzungsgebundene Profilanalysen; Dokumentzugriff bleibt stabil. */
   readonly analysisRevision: number;
+  /**
+   * Offene Umbenennungen je `verbundId`, nur im Arbeitsspeicher des Tabs. Löschen
+   * und ein Bestand ohne den Verbund verwerfen den Eintrag.
+   */
+  readonly renameDrafts: Map<string, string>;
 }
 
 const unavailable = () => Promise.resolve(storageFailed());
@@ -77,6 +82,7 @@ export const WorkspaceContext = createContext<WorkspaceContextValue>({
   renameVerbund: unavailable,
   deleteVerbund: unavailable,
   exportBackup: unavailable,
+  renameDrafts: new Map(),
   registerAutosave: () => () => undefined,
   flushAutosaves: () => Promise.resolve(true),
   documents: createWorkspaceDocuments({ port: null, write: unavailableWrite, quiet: unavailableWrite, class1: [], delivery: new Map(), targets: new Map() }),
@@ -109,6 +115,7 @@ export function WorkspaceProvider({ open = openWorkspaceStore, children }: Reado
   const autosaves = useRef(new Set<AutosaveFlush>());
   // Ein stabiles Objekt je Provider, nur im Arbeitsspeicher dieses Tabs.
   const [importTargets] = useState(() => new Map<LocalId, Map<string, PendingImportTarget>>());
+  const [renameDrafts] = useState(() => new Map<string, string>());
   const { catalogs, requestCatalog } = useContext(CatalogContext);
   const class1 = useMemo(() => verifiedCatalogArtifacts(catalogs), [catalogs]);
   const delivery = useMemo(() => catalogDelivery(catalogs), [catalogs]);
@@ -157,8 +164,12 @@ export function WorkspaceProvider({ open = openWorkspaceStore, children }: Reado
     let current = true;
     void port.listVerbuende().then((result) => {
       if (!current) return;
-      if (result.ok) setVerbuende([...result.value].sort((a, b) => a.name.localeCompare(b.name, 'de')));
-      else report(result.diagnostic);
+      if (!result.ok) { report(result.diagnostic); return; }
+      // Ein anderswo gelöschter Verbund hinterlässt keinen Namensentwurf im Tab.
+      for (const verbundId of renameDrafts.keys()) {
+        if (!result.value.some((entry) => entry.verbundId === verbundId)) renameDrafts.delete(verbundId);
+      }
+      setVerbuende([...result.value].sort((a, b) => a.name.localeCompare(b.name, 'de')));
     });
     void port.estimate().then((result) => {
       if (!current || !result.ok) return;
@@ -167,7 +178,7 @@ export function WorkspaceProvider({ open = openWorkspaceStore, children }: Reado
         : withoutNotice(notices, 'quota-warning'));
     });
     return () => { current = false; };
-  }, [port, revision, report]);
+  }, [port, revision, report, renameDrafts]);
 
   // Nur der asynchrone Rückruf schreibt; Auswahl, Ladezustand und ungültige
   // Identitäten leitet `verbund` unten ab.
@@ -276,6 +287,7 @@ export function WorkspaceProvider({ open = openWorkspaceStore, children }: Reado
       if (result.ok) {
         setLoaded((current) => current?.verbundId === verbundId ? null : current);
         for (const member of members) importTargets.delete(member.localId);
+        renameDrafts.delete(verbundId);
       }
       return result;
     },
@@ -296,7 +308,8 @@ export function WorkspaceProvider({ open = openWorkspaceStore, children }: Reado
     flushAutosaves,
     documents,
     analysisRevision,
-  }), [status, verbuende, writable, delivery, notices, verbund, activate, checkSchema, write, port, report, registerAutosave, flushAutosaves, documents, importTargets, invalidateAnalysis, analysisRevision]);
+    renameDrafts,
+  }), [status, verbuende, writable, delivery, notices, verbund, activate, checkSchema, write, port, report, registerAutosave, flushAutosaves, documents, importTargets, invalidateAnalysis, analysisRevision, renameDrafts]);
 
   return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>;
 }

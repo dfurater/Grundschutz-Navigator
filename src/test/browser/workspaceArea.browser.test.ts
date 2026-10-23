@@ -7,7 +7,7 @@ import { afterEach, describe, expect, test } from 'vitest';
 import { commands, page, userEvent } from 'vitest/browser';
 import { AppShell } from '@/app/AppShell';
 import { createAppRoutes } from '@/app/appRoutes';
-import { buildVerbundUrl, buildWorkspaceDocumentUrl, buildWorkspaceIndexUrl } from '@/app/routes';
+import { buildStationUrl, buildVerbundUrl, buildWorkspaceDocumentUrl, buildWorkspaceIndexUrl } from '@/app/routes';
 import { WorkspaceStore } from '@/adapters/workspaceStore';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { CatalogContext } from '@/state/CatalogContext';
@@ -19,9 +19,9 @@ import { SENTINEL_VERBUND, resetWorkspace, seedWorkspace, value } from '@/test/w
 import '@/index.css';
 
 /*
- * Bereich Informationsverbünde in Chromium (GSPP-577): Bereichswechsel auf den
- * drei Layoutstufen, Autosave vor dem Wechsel in den Katalog, Axe und
- * Touchziele. Der Speicher ist die echte IndexedDB des Browsers.
+ * Bereich Informationsverbünde in Chromium (GSPP-577, GSPP-616): Bereichswechsel
+ * und Stationsreiter auf den drei Layoutstufen, Autosave vor dem Wechsel in den
+ * Katalog, Axe und Touchziele. Der Speicher ist die echte IndexedDB des Browsers.
  */
 
 const LAYOUTS = [
@@ -104,11 +104,35 @@ describe.each(LAYOUTS)('$name ($width px)', ({ name, width, height, touch }) => 
       ?.querySelector('a[aria-current="true"]')?.textContent).toBe('Katalog');
   });
 
-  test('Axe meldet auf Übersicht, Verbundseite und Dokumentdetail keinen Befund', async () => {
+  test('Stationsreiter stehen unter der Kopfzeile, ohne Seitenleiste, und sind per Tastatur erreichbar', async () => {
+    const { verbundId } = await seedWorkspace();
+    const { shell, router: current } = await renderAt(buildVerbundUrl(verbundId), width, height, touch);
+    const header = shell.querySelector('header')!.getBoundingClientRect();
+    const nav = shell.querySelector<HTMLElement>('nav[aria-label="Stationen"]')!;
+    expect(nav.checkVisibility()).toBe(true);
+    expect(nav.closest('aside, main')).toBeNull();
+    expect(nav.getBoundingClientRect().top).toBeGreaterThanOrEqual(header.bottom - 1);
+    if (!touch) expect(shell.querySelector('aside')!.checkVisibility()).toBe(false);
+    const tabs = [...nav.querySelectorAll('a')];
+    expect(tabs.map((tab) => tab.textContent?.split(',')[0])).toEqual(['Übersicht', 'Profile', 'SSP', 'Assessment', 'POA&M']);
+    expect(tabs[0].getAttribute('aria-current')).toBe('page');
+
+    tabs[0].focus();
+    for (const tab of tabs.slice(1)) {
+      await userEvent.tab();
+      expect(document.activeElement).toBe(tab);
+    }
+    await userEvent.keyboard('{Enter}');
+    await expect.poll(() => current.state.location.pathname).toBe(buildStationUrl(verbundId, 'poam'));
+    await expect.poll(() => nav.querySelector('a[aria-current="page"]')?.textContent?.split(',')[0]).toBe('POA&M');
+  });
+
+  test('Axe meldet auf Übersicht, Verbundseite, Stationsroute und Dokumentdetail keinen Befund', async () => {
     const seeded = await seedWorkspace();
     for (const [label, path] of [
       ['Übersicht', buildWorkspaceIndexUrl()],
       ['Verbundseite', buildVerbundUrl(seeded.verbundId)],
+      ['Stationsroute', buildStationUrl(seeded.verbundId, 'assessment')],
       ['Dokumentdetail', buildWorkspaceDocumentUrl(seeded.verbundId, seeded.ssp.localId)],
     ] as const) {
       const { shell } = await renderAt(path, width, height, touch);
@@ -130,6 +154,7 @@ describe.each(LAYOUTS.filter((layout) => layout.touch))('Touchziele $name', ({ n
     for (const path of [
       buildWorkspaceIndexUrl(),
       buildVerbundUrl(seeded.verbundId),
+      buildStationUrl(seeded.verbundId, 'assessment'),
       buildWorkspaceDocumentUrl(seeded.verbundId, seeded.ssp.localId),
     ]) {
       const { shell } = await renderAt(path, width, height, true);
@@ -137,7 +162,7 @@ describe.each(LAYOUTS.filter((layout) => layout.touch))('Touchziele $name', ({ n
       const aside = await openDrawer(shell);
       await settlePush(shell);
       // Links im Fließtext sind nach WCAG 2.5.8 ausgenommen und tragen `catalog-prose-link`.
-      const targets = [...shell.querySelectorAll<HTMLElement>('main a, main button, main input, aside a, aside button')]
+      const targets = [...shell.querySelectorAll<HTMLElement>('main a, main button, main input, main summary, nav[aria-label="Stationen"] a, aside a, aside button')]
         .filter((element) => !element.classList.contains('catalog-prose-link') && element.checkVisibility()
           && !element.classList.contains('resize-handle'));
       expect(targets.length).toBeGreaterThan(0);

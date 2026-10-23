@@ -36,7 +36,7 @@ export const STATION_DEFINITIONS: Readonly<Record<WorkspaceStation, StationDefin
     rootTypes: ['system-security-plan'],
   },
   assessment: {
-    title: 'Assessment Plan / Results',
+    title: 'Assessment',
     explanation: 'Die Wirksamkeitsprüfung',
     rootTypes: ['assessment-plan', 'assessment-results'],
   },

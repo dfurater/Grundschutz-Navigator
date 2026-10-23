@@ -7,8 +7,6 @@ import type { TreeItem } from '@/components/TreeNav';
 import { IconX } from '@/components/icons';
 import type { CatalogKey } from '@/domain/sourceRegistry';
 import type { ProductArea } from '@/app/routes';
-import { StationSidebar, type StationSelection } from '@/features/workspace/StationSidebar';
-import type { WorkspaceDocumentView } from '@/state/workspaceVerbundView';
 
 export interface ShellSidebarProps {
   readonly area: ProductArea;
@@ -29,21 +27,16 @@ export interface ShellSidebarProps {
     readonly onTreeSelect: (id: string) => void;
   };
   readonly treeScrollRef: RefCallback<HTMLDivElement>;
-  readonly workspace: {
-    readonly verbundId: string | null;
-    readonly active: StationSelection | null;
-    readonly documents?: readonly WorkspaceDocumentView[];
-  };
 }
 
 /**
  * Inhalt der Seitenleiste bzw. Navigationsschublade (GSPP-577). Außerhalb des
  * Desktops trägt die Schublade oben den Bereichswechsel samt Schließen; darunter
- * folgt im Katalogbereich der Katalog-Explorer, im Bereich Informationsverbünde
- * die Stationen des geöffneten Verbunds.
+ * folgt im Katalogbereich der Katalog-Explorer. Die Stationen eines Verbunds
+ * stehen als Reiter unter der Kopfzeile (`StationStrip`).
  */
 export function ShellSidebar({
-  area, persistent, catalogHref, workspaceHref, onSelectArea, onClose, collapseButton, catalog, treeScrollRef, workspace,
+  area, persistent, catalogHref, workspaceHref, onSelectArea, onClose, collapseButton, catalog, treeScrollRef,
 }: ShellSidebarProps) {
   const trailing = persistent ? collapseButton : undefined;
   return (
@@ -103,16 +96,6 @@ export function ShellSidebar({
         </>
       )}
 
-      {area === 'informationsverbuende' && workspace.verbundId !== null && (
-        <StationSidebar
-          verbundId={workspace.verbundId}
-          active={workspace.active}
-          documents={workspace.documents}
-          catalogHref={catalogHref}
-          onSelectCatalog={onSelectArea}
-          trailing={trailing}
-        />
-      )}
     </>
   );
 }

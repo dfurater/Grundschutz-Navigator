@@ -14,13 +14,16 @@ import { WorkspaceNotices, useBackupExport } from '@/features/workspace/Workspac
 const INPUT = `min-h-touch w-full rounded-md border border-[var(--color-border-strong)] bg-[var(--color-surface-base)] px-3 py-2 text-base text-[var(--color-text-primary)] shadow-sm placeholder:text-[var(--color-text-muted)] focus-visible:border-[var(--color-focus-ring)] sm:text-sm desktop:min-h-0 ${FOCUS_RING}`;
 const ROW_BUTTON = 'min-h-touch desktop:min-h-0';
 
-function NameForm({ label, submitLabel, initial = '', disabled, onSubmit, onCancel }: Readonly<{
+/** Namensfeld für Anlegen und Umbenennen; `onCancel` macht daraus ein Umbenennen-Formular. */
+export function NameForm({ label, submitLabel, initial = '', disabled, onSubmit, onCancel, onChange }: Readonly<{
   label: string;
   submitLabel: string;
   initial?: string;
   disabled: boolean;
   onSubmit: (name: string) => Promise<boolean>;
   onCancel?: () => void;
+  /** Meldet jede Eingabe, etwa um sie über einen Routenwechsel zu erhalten. */
+  onChange?: (name: string) => void;
 }>) {
   const inputId = useId();
   const [name, setName] = useState(initial);
@@ -47,7 +50,7 @@ function NameForm({ label, submitLabel, initial = '', disabled, onSubmit, onCanc
           value={name}
           disabled={disabled}
           autoFocus={onCancel !== undefined}
-          onChange={(event) => setName(event.target.value)}
+          onChange={(event) => { setName(event.target.value); onChange?.(event.target.value); }}
           onKeyDown={(event) => { if (event.key === 'Escape' && onCancel) { event.preventDefault(); onCancel(); } }}
           className={`mt-1 ${INPUT}`}
         />
@@ -65,7 +68,7 @@ function VerbundRow({ verbund, writable, onDelete }: Readonly<{
   writable: boolean;
   onDelete: (verbund: WorkspaceVerbund) => void;
 }>) {
-  const { renameVerbund } = useWorkspace();
+  const { renameVerbund, renameDrafts } = useWorkspace();
   const [renaming, setRenaming] = useState(false);
   if (renaming) {
     return (
@@ -76,9 +79,13 @@ function VerbundRow({ verbund, writable, onDelete }: Readonly<{
           initial={verbund.name}
           disabled={!writable}
           onSubmit={async (name) => {
+            // Der neue Name ersetzt nur den Entwurf, der beim Speichern offen war; ein danach getippter bleibt.
+            const draft = renameDrafts.get(verbund.verbundId);
             const result = await renameVerbund(verbund.verbundId, name);
-            if (result.ok) setRenaming(false);
-            return result.ok;
+            if (!result.ok) return false;
+            if (renameDrafts.get(verbund.verbundId) === draft) renameDrafts.delete(verbund.verbundId);
+            setRenaming(false);
+            return true;
           }}
           onCancel={() => setRenaming(false)}
         />

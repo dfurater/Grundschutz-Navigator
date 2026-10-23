@@ -26,8 +26,10 @@ export interface HeaderBarProps {
    * `obscured` oder durch einen Dialog inert, wartet der Fokus auf die Freigabe.
    */
   readonly onUncover?: () => void;
-  /** Bereichswechsel auf der rechten Seite; nur auf dem Desktop, sonst trägt ihn die Schublade. */
+  /** Bereichswechsel links neben der Marke; nur auf dem Desktop, sonst trägt ihn die Schublade. */
   readonly areaSwitch?: ReactNode;
+  /** Kontext auf der rechten Seite, etwa der Verbundpfad; nur auf dem Desktop. */
+  readonly context?: ReactNode;
   readonly className?: string;
 }
 
@@ -69,6 +71,7 @@ export function HeaderBar({
   obscured = false,
   onUncover,
   areaSwitch,
+  context,
   className = '',
 }: HeaderBarProps) {
   const [searchValue, setSearchValue] = useState('');
@@ -137,7 +140,7 @@ export function HeaderBar({
     <header
       role="banner"
       data-sticky-header
-      className={`header-reference-theme sticky top-0 z-30 grid h-14 shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-4 sm:grid-cols-[max-content_minmax(0,36rem)] sm:gap-0 desktop:max-xl:grid-cols-[max-content_minmax(0,36rem)_max-content] xl:grid-cols-[1fr_minmax(0,36rem)_1fr] ${className}`}
+      className={`header-reference-theme sticky top-0 z-30 grid h-14 shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-4 sm:grid-cols-[max-content_minmax(0,36rem)] sm:gap-0 desktop:grid-cols-[max-content_minmax(0,36rem)_minmax(max-content,1fr)] ${className}`}
       data-testid="header-bar"
     >
       {/* Hamburger + Brand — grouped as one visual unit */}
@@ -165,6 +168,11 @@ export function HeaderBar({
             Grundschutz++ Navigator
           </span>
         </Link>
+        {areaSwitch && (
+          <div inert={obscured} className="ml-6 hidden shrink-0 desktop:flex">
+            {areaSwitch}
+          </div>
+        )}
       </div>
 
       {/* Search */}
@@ -200,9 +208,9 @@ export function HeaderBar({
         <IconSearch className="h-5 w-5" />
       </Link>
 
-      {areaSwitch && (
-        <div inert={obscured} className="hidden justify-self-end desktop:flex">
-          {areaSwitch}
+      {context && (
+        <div inert={obscured} className="hidden min-w-0 justify-self-end desktop:flex">
+          {context}
         </div>
       )}
     </header>
