@@ -110,6 +110,9 @@ describe.skipIf(!inject('visualRegression')).each(VIEWPORTS)('Ansicht $name', ({
     const shell = await renderAt(buildVerbundUrl(verbundId), width, height);
     await expect.poll(() => shell.querySelector('main')?.textContent).toContain('Prüfergebnisse');
     await expect.poll(() => shell.querySelector('nav[aria-label="Stationen"] a')?.textContent).toBe('Übersicht');
+    // Chromium malt ein Element-Bildschirmfoto nur im Viewport; mobil scrollt das Dokument,
+    // daher wächst der Viewport auf die Dokumenthöhe, damit alle fünf Karten im Bild liegen.
+    await page.viewport(width, Math.max(height, document.documentElement.scrollHeight));
     await expectScreen(`informationsverbund-${name}`);
   });
 

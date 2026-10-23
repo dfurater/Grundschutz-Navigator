@@ -68,7 +68,7 @@ function VerbundRow({ verbund, writable, onDelete }: Readonly<{
   writable: boolean;
   onDelete: (verbund: WorkspaceVerbund) => void;
 }>) {
-  const { renameVerbund } = useWorkspace();
+  const { renameVerbund, renameDrafts } = useWorkspace();
   const [renaming, setRenaming] = useState(false);
   if (renaming) {
     return (
@@ -80,8 +80,11 @@ function VerbundRow({ verbund, writable, onDelete }: Readonly<{
           disabled={!writable}
           onSubmit={async (name) => {
             const result = await renameVerbund(verbund.verbundId, name);
-            if (result.ok) setRenaming(false);
-            return result.ok;
+            if (!result.ok) return false;
+            // Der neue Name ersetzt einen offenen Entwurf aus der Verbund-Übersicht.
+            renameDrafts.delete(verbund.verbundId);
+            setRenaming(false);
+            return true;
           }}
           onCancel={() => setRenaming(false)}
         />

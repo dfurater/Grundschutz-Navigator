@@ -145,6 +145,23 @@ describe('Verbund-Übersicht', () => {
     expect(drafts?.has(seeded.verbundId)).toBe(false);
   });
 
+  it('verwirft eine offene Umbenennung, wenn der Verbund über die Übersicht aller Verbünde umbenannt wird', async () => {
+    renderArea(buildVerbundUrl(seeded.verbundId));
+    await within(main()).findByRole('heading', { level: 1, name: SENTINEL_VERBUND });
+    fireEvent.click(within(main()).getByRole('button', { name: 'Umbenennen' }));
+    fireEvent.change(within(main()).getByLabelText('Neuer Name'), { target: { value: 'Halb getippt' } });
+
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Pfad' })).getByRole('link', { name: 'Informationsverbünde' }));
+    const row = (await within(main()).findByRole('link', { name: SENTINEL_VERBUND })).closest('li')!;
+    fireEvent.click(within(row).getByRole('button', { name: 'Umbenennen' }));
+    fireEvent.change(within(main()).getByLabelText('Neuer Name'), { target: { value: 'Rechenzentrum Nord' } });
+    fireEvent.click(within(main()).getByRole('button', { name: 'Speichern' }));
+    fireEvent.click(await within(main()).findByRole('link', { name: 'Rechenzentrum Nord' }));
+
+    expect(await within(main()).findByRole('heading', { level: 1, name: 'Rechenzentrum Nord' })).toBeInTheDocument();
+    expect(within(main()).queryByLabelText('Neuer Name')).not.toBeInTheDocument();
+  });
+
   it('löscht den Verbund erst nach Bestätigung und kehrt zur Übersicht zurück', async () => {
     const { router } = renderArea(buildVerbundUrl(seeded.verbundId));
     await within(main()).findByRole('heading', { level: 1, name: SENTINEL_VERBUND });
