@@ -388,6 +388,17 @@ function resolveExplicitDocumentReference(
   return { ...input, kind: 'cross-document', document, resource: resolvedResource };
 }
 
+/** Deklarierte `rlink`-Hashes; Einträge ohne `algorithm` oder `value` zählen nicht. */
+export function readDeclaredHashes(link: JsonObject): ResolvedResourceLink['hashes'] {
+  return readArray(link.hashes)
+    .filter(isJsonObject)
+    .flatMap((hash) => {
+      const algorithm = readString(hash.algorithm);
+      const value = readString(hash.value);
+      return algorithm && value ? [{ algorithm, value }] : [];
+    });
+}
+
 function resolveResourceLink(
   link: JsonObject,
   path: string,
@@ -396,13 +407,7 @@ function resolveResourceLink(
   const input = getReferenceInput(link, path);
   if (!input) return null;
 
-  const hashes = readArray(link.hashes)
-    .filter(isJsonObject)
-    .flatMap((hash) => {
-      const algorithm = readString(hash.algorithm);
-      const value = readString(hash.value);
-      return algorithm && value ? [{ algorithm, value }] : [];
-    });
+  const hashes = readDeclaredHashes(link);
   const resolved = resolveOscalReferenceInternal(input, context, false);
   const target = (() => {
     switch (resolved.kind) {

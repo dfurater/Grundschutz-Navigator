@@ -15,11 +15,11 @@ import { enforceClass2ObjectGraphInvariants } from '@/domain/oscalObjectGraph';
 import { parseClass2OscalInput } from '@/domain/oscalImportProcessing';
 
 /**
- * Arithmetik von `accountEmbeddedBase64`: `floor(len / 4) * 3` abzüglich
- * Polsterung. Ohne Polsterung ist das die dekodierte Obergrenze.
+ * Arithmetik von `accountEmbeddedBase64`: `floor(len * 3 / 4)` für die Länge
+ * ohne Polsterung. Ohne Polsterung ist das die dekodierte Obergrenze.
  */
 function maxDecodedBytesForEncodedLength(encodedLength: number): number {
-  return Math.floor(encodedLength / 4) * 3;
+  return Math.floor((encodedLength * 3) / 4);
 }
 
 /**
@@ -38,7 +38,7 @@ function encodedBase64ForDecodedBytes(decodedBytes: number): string {
 /** Dieselbe Rechnung einschließlich Polsterung, für Kantenprüfungen. */
 function decodedBytesOf(encoded: string): number {
   const padding = encoded.endsWith('==') ? 2 : encoded.endsWith('=') ? 1 : 0;
-  return maxDecodedBytesForEncodedLength(encoded.length) - padding;
+  return maxDecodedBytesForEncodedLength(encoded.length - padding);
 }
 
 describe('Erreichbarkeit der Klasse-2-Grenzen', () => {
@@ -99,6 +99,24 @@ describe('Erreichbarkeit der Klasse-2-Grenzen', () => {
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
     expect(enforceClass2ObjectGraphInvariants(parsed.source)).toBeNull();
+  });
+
+  it('weist eine ungepolsterte Nutzlast ein Byte über der Base64-Grenze ab', () => {
+    const encoded = encodedBase64ForDecodedBytes(
+      CLASS_2_IMPORT_LIMITS.maxDecodedBase64Bytes + 1,
+    ).replace(/=+$/, '');
+    const document = {
+      catalog: {
+        'back-matter': { resources: [{ uuid: 'gspp-349-fixture', base64: { value: encoded } }] },
+      },
+    };
+    const parsed = parseClass2OscalInput(new TextEncoder().encode(JSON.stringify(document)));
+
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(enforceClass2ObjectGraphInvariants(parsed.source)).toMatchObject({
+      code: 'OSCAL_RESOURCE_BASE64_LIMIT_EXCEEDED',
+    });
   });
 
   it('weist eine Nutzlast ein Byte über der Base64-Grenze ab', () => {
