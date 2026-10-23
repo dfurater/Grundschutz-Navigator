@@ -276,14 +276,16 @@ entscheidet die Schemastufe vor der Übertragung.
 Ein `base64`-Wert steht als Text im Dokument und zählt vollständig gegen
 `maxBytes`. Seine dekodierte Größe ist `floor((len - Polsterung) * 3 / 4)`, also
 höchstens drei Viertel der kodierten Länge; die Restgruppe eines
-ungepolsterten Werts zählt mit. Selbst ein
-Dokument, das seine gesamten zugelassenen 10 MiB als base64-Text ausgibt,
-erreicht damit nur **7 864 278 Byte** dekodierte Summe. Eine Grenze auf oder
-über diesem Wert löst bei **keiner** Eingabe aus.
+ungepolsterten Werts zählt mit. Selbst ein Dokument, dessen gesamte
+zugelassene 10 MiB base64-Text wären, ergäbe höchstens **7 864 320 Byte**
+dekodierte Summe (`floor(10 485 760 * 3 / 4)`, theoretische Obergrenze ohne
+JSON-Struktur). Das tatsächliche Dokument braucht Byteraum für Schlüssel,
+Klammern und Anführungszeichen, der Nutzlastraum liegt darunter. Eine Grenze
+auf oder über 7 864 320 Byte löst bei **keiner** Eingabe aus.
 
 Der Wert 4 MiB erfüllt zwei Bedingungen:
 
-- **Wirksamkeit.** Er liegt unter dem erreichbaren Deckel von 7 864 278 Byte;
+- **Wirksamkeit.** Er liegt unter der theoretischen Obergrenze von 7 864 320 Byte;
   sonst löste die Grenze nie aus. Das ist die harte Bedingung.
 - **Byteraum.** Eine dekodierte Nutzlast von 4 MiB verlangt 5,33 MiB kodierten
   Text im Dokument und lässt damit mehr Byteraum für das eigentliche
