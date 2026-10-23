@@ -4,7 +4,8 @@
  *
  * Ein Import `#<uuid>` zeigt auf eine Back-Matter-Ressource; deren
  * `rlinks[].href` wird relativ zum Profilpfad zu einem Repository-Pfad
- * normalisiert (OSCAL 1.1.3 `import/@href`). Nur ein Pfad unter
+ * normalisiert (OSCAL 1.1.3 `import/@href`). Ein relativer Import-href wird
+ * direkt auf dieselbe Weise normalisiert. Nur ein Pfad unter
  * `MONITORED_UPSTREAM_ROOTS`, der im selben gepinnten Tree als validiertes
  * Dokument vorliegt, belegt eine Quelle. Absolute URLs und Pfade außerhalb
  * dieser Menge bleiben benannte Zustände; aufgelöst wird nie über das Netz.
@@ -64,10 +65,12 @@ function unresolvedImport({ index, state, importHref = null, resourceUuid = null
  * shortcut: Prozentkodierung wird nicht dekodiert; die BSI-Profile nutzen
  * unkodierte relative Pfade. Erst ein kodierter relativer href braucht es.
  */
+function isRelativeHref(href) {
+  return !/^[a-z][a-z0-9+.-]*:/i.test(href) && !href.startsWith('/') && !href.startsWith('#');
+}
+
 export function resolveRelativeRepoPath(baseFilePath, href) {
-  if (/^[a-z][a-z0-9+.-]*:/i.test(href) || href.startsWith('/') || href.startsWith('#')) {
-    return null;
-  }
+  if (!isRelativeHref(href)) return null;
   const segments = baseFilePath.split('/').slice(0, -1);
   for (const segment of href.split('/')) {
     if (segment === '' || segment === '.') continue;
@@ -82,6 +85,66 @@ export function resolveRelativeRepoPath(baseFilePath, href) {
   return isPathWithinMonitoredRoot(resolved) ? resolved : null;
 }
 
+/**
+ * Wählt aus den hrefs eines Imports genau eine validierte Quelle desselben
+ * Trees. `resourceUuid` ist bei einem Direktimport `null`; dann bleibt auch
+ * `rlinkHref` leer, weil der Import-href selbst das Ziel nennt.
+ */
+function selectImportSource({
+  index,
+  importHref,
+  resourceUuid,
+  hrefs,
+  profilePath,
+  resolvedImportPaths,
+  artifactsByPath,
+}) {
+  const viaResource = resourceUuid !== null;
+  const candidates = [
+    ...new Map(
+      hrefs
+        .map((href) => [href, resolveRelativeRepoPath(profilePath, href)])
+        .filter(([, path]) => path !== null && artifactsByPath.has(path))
+        .map(([href, path]) => [path, href]),
+    ),
+  ];
+  if (candidates.length === 0) {
+    return unresolvedImport({
+      index,
+      state: 'artifact-unregistered',
+      importHref,
+      resourceUuid,
+      rlinkHref: viaResource && hrefs.length === 1 ? hrefs[0] : null,
+    });
+  }
+  if (candidates.length !== 1) {
+    return unresolvedImport({ index, state: 'rlink-ambiguous', importHref, resourceUuid });
+  }
+
+  const [[sourcePath, href]] = candidates;
+  const rlinkHref = viaResource ? href : null;
+  if (resolvedImportPaths.has(sourcePath)) {
+    return unresolvedImport({
+      index,
+      state: 'import-duplicate',
+      importHref,
+      resourceUuid,
+      rlinkHref,
+    });
+  }
+
+  resolvedImportPaths.add(sourcePath);
+  const sourceArtifact = artifactsByPath.get(sourcePath);
+  return {
+    index,
+    state: 'complete',
+    importHref,
+    resourceUuid,
+    rlinkHref,
+    source: projectDocument(sourceArtifact.manifestFile.artifactKey, sourceArtifact, 'catalog'),
+  };
+}
+
 function resolveImport({
   imported,
   index,
@@ -93,6 +156,10 @@ function resolveImport({
   const importHref = nonEmptyString(imported?.href);
   if (!importHref) {
     return unresolvedImport({ index, state: 'import-href-missing' });
+  }
+  const target = { index, importHref, profilePath, resolvedImportPaths, artifactsByPath };
+  if (isRelativeHref(importHref)) {
+    return selectImportSource({ ...target, resourceUuid: null, hrefs: [importHref] });
   }
   if (!importHref.startsWith('#') || importHref.length === 1) {
     return unresolvedImport({ index, state: 'import-href-not-fragment', importHref });
@@ -116,48 +183,7 @@ function resolveImport({
     return unresolvedImport({ index, state: 'rlink-missing', importHref, resourceUuid });
   }
 
-  const candidates = [
-    ...new Map(
-      hrefs
-        .map((href) => [href, resolveRelativeRepoPath(profilePath, href)])
-        .filter(([, path]) => path !== null && artifactsByPath.has(path))
-        .map(([href, path]) => [path, href]),
-    ),
-  ];
-  if (candidates.length === 0) {
-    return unresolvedImport({
-      index,
-      state: 'artifact-unregistered',
-      importHref,
-      resourceUuid,
-      rlinkHref: hrefs.length === 1 ? hrefs[0] : null,
-    });
-  }
-  if (candidates.length !== 1) {
-    return unresolvedImport({ index, state: 'rlink-ambiguous', importHref, resourceUuid });
-  }
-
-  const [[sourcePath, rlinkHref]] = candidates;
-  if (resolvedImportPaths.has(sourcePath)) {
-    return unresolvedImport({
-      index,
-      state: 'import-duplicate',
-      importHref,
-      resourceUuid,
-      rlinkHref,
-    });
-  }
-
-  resolvedImportPaths.add(sourcePath);
-  const sourceArtifact = artifactsByPath.get(sourcePath);
-  return {
-    index,
-    state: 'complete',
-    importHref,
-    resourceUuid,
-    rlinkHref,
-    source: projectDocument(sourceArtifact.manifestFile.artifactKey, sourceArtifact, 'catalog'),
-  };
+  return selectImportSource({ ...target, resourceUuid, hrefs });
 }
 
 /**

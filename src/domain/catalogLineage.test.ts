@@ -118,7 +118,7 @@ describe('projectCatalogLineage', () => {
 
   it.each([
     ['import-href-missing', [{}]],
-    ['import-href-not-fragment', [{ href: KERNEL_HREF }]],
+    ['import-href-not-fragment', [{ href: `https://example.org/${KERNEL_PATH}` }]],
     ['resource-missing', [{ href: '#unbekannte-resource' }]],
     ['resource-ambiguous', [{ href: '#kernel-resource' }]],
     ['rlink-missing', [{ href: '#kernel-resource' }]],
@@ -141,6 +141,27 @@ describe('projectCatalogLineage', () => {
     const result = project(profile, sources);
 
     expect(result.imports[0]).toEqual(expect.objectContaining({ state: expectedState, source: null }));
+  });
+
+  it('resolves a direct relative import href through the same bounded path resolver', () => {
+    const result = project(makeProfile([{ href: KERNEL_HREF }, { href: '../../../Unbekannt/x-catalog.json' }]));
+
+    expect(result.imports).toEqual([
+      expect.objectContaining({
+        state: 'complete',
+        importHref: KERNEL_HREF,
+        resourceUuid: null,
+        rlinkHref: null,
+        source: expect.objectContaining({ artifactKey: 'kernel', upstreamPath: KERNEL_PATH }),
+      }),
+      expect.objectContaining({ state: 'artifact-unregistered', resourceUuid: null, rlinkHref: null, source: null }),
+    ]);
+  });
+
+  it('reports a direct import of an already resolved fragment source as duplicate', () => {
+    const result = project(makeProfile([{ href: '#kernel-resource' }, { href: KERNEL_HREF }]));
+
+    expect(result.imports.map((entry) => entry.state)).toEqual(['complete', 'import-duplicate']);
   });
 
   it('does not treat a repeated source import as fully resolved twice', () => {

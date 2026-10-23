@@ -1213,7 +1213,7 @@ Die Übernahme überträgt die **Änderung**, nicht den Zustand. Jede Klasse hat
 | --- | --- | --- | --- | --- |
 | Reparatur | Ancestry einer abgeschlossenen M2-/M3-Übernahme fehlt | `chore/backmerge-main-to-develop` | ausschließlich Historie; der Pull Request ändert keine Datei | Merge-Commit |
 | M1 | ausschließlich `upstream-manifest.json` bewegt, `snapshotCommitSha` wechselt | `chore/catalog-import-to-develop` | Vorbedingung: develops Manifest ist byte-identisch mit dem an irgendeinem von `origin/main` erreichbaren Commit | Squash zulässig |
-| M2 | `upstream-manifest.json` und `src/domain/sourceRegistry.mjs` gemeinsam bewegt | `chore/backmerge-main-to-develop` | Drei-Wege-Merge gegen `git merge-base origin/main origin/develop`; der Zielzustand muss die lokal prüfbaren Teile der Manifestregel erfüllen (`migrationContractHolds`: kein Pfad unter `scripts/` oder `.github/`, beide Manifeste v2-gültig, `--validate-manifest` des Guards im Ergebnisstand grün) | Merge-Commit |
+| M2 | `upstream-manifest.json` und `src/domain/sourceRegistry.mjs` gemeinsam bewegt | `chore/backmerge-main-to-develop` | Drei-Wege-Merge gegen `git merge-base origin/main origin/develop`; der Zielzustand muss die lokal prüfbaren Teile der Manifestregel erfüllen (`migrationContractHolds`: kein Pfad unter `scripts/` oder `.github/`, Snapshot gleich oder laut `verifySnapshotProgress` voraus, beide Manifeste v2-gültig, `--validate-manifest` des Guards im Ergebnisstand grün) | Merge-Commit |
 | M3 | Inhalt ohne Manifestpfad | `chore/backmerge-main-to-develop` | Drei-Wege-Merge gegen dieselbe Basis | Merge-Commit |
 | Konflikt | Manifest bewegt, aber weder M1 noch M2 greift | entfällt | — | kein PR, Lauf schlägt mit Befund fehl |
 

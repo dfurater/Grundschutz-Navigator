@@ -63,6 +63,7 @@ import {
   assertManifestChangeScope,
   assertOfficialManifest,
   parseNameStatusDiff,
+  verifySnapshotProgress,
 } from './catalog-sync-guard.mjs';
 
 /** Quellregister-Pfad — Unterscheidungsmerkmal zwischen M1 und M2. */
@@ -201,9 +202,9 @@ export function parseSourceMarkers(body) {
  *
  * `snapshotAdvances` bezeichnet ausschließlich, dass sich `snapshotCommitSha`
  * überhaupt bewegt. Ob der neue Snapshot dem alten tatsächlich **voraus** ist,
- * beantwortet allein `verifySnapshotProgress` gegen die GitHub-Compare-API;
- * das läuft am Pull Request im `catalog-sync-guard` und wird hier nicht
- * vorweggenommen.
+ * beantwortet allein `verifySnapshotProgress` gegen die GitHub-Compare-API:
+ * für M2 in `migrationContractHolds` vor dem Pull Request, für jede Klasse im
+ * `catalog-sync-guard` am Pull Request.
  */
 export function classifyBackmerge({ changedPaths, snapshotAdvances }) {
   const paths = [...new Set(changedPaths)].sort(compareStringsByCodeUnit);
@@ -580,10 +581,11 @@ async function validateResultManifest(cwd) {
 /**
  * Prüft für M2 die lokal prüfbaren Teile der Manifestregel aus
  * `catalog-sync-guard.mjs` (ADR-13) gegen den **resultierenden Zielzustand**:
- * kein Diff-Pfad unter `scripts/` oder `.github/`, beide Manifeste v2-gültig
- * mit offiziellem Repository, das neue Manifest passt zum Register des
- * Ergebnisstands. Snapshot-Fortschritt und Dateiinhalte prüft
- * `catalog-sync-guard` gegen die BSI-API am entstehenden Pull Request. Greift
+ * kein Diff-Pfad unter `scripts/` oder `.github/`, der Snapshot ist gleich oder
+ * laut `verifySnapshotProgress` voraus, beide Manifeste v2-gültig mit
+ * offiziellem Repository, das neue Manifest passt zum Register des
+ * Ergebnisstands. Die Dateiinhalte prüft `catalog-sync-guard` gegen die
+ * BSI-API am entstehenden Pull Request. Greift
  * die Regel nicht, entsteht kein Pull Request: Ein roter Pull Request wäre ein
  * schlechterer Befund als ein roter Lauf mit genannten Zuständen.
  */
@@ -602,6 +604,7 @@ export async function migrationContractHolds(git, {
   resultRef,
   cwd,
   validateManifests = defaultValidateManifests,
+  verifySnapshot = verifySnapshotProgress,
 }) {
   const previousManifest = await readManifestAtRef(git, integrationRef);
   const nextManifest = await readManifestAtRef(git, resultRef);
@@ -617,6 +620,11 @@ export async function migrationContractHolds(git, {
   ]);
   try {
     assertManifestChangeScope(parseNameStatusDiff(diffOutput));
+    if (previousManifest.snapshotCommitSha !== nextManifest.snapshotCommitSha) {
+      await verifySnapshot(previousManifest.snapshotCommitSha, nextManifest.snapshotCommitSha, {
+        token: process.env.GH_TOKEN || process.env.GITHUB_TOKEN,
+      });
+    }
   } catch {
     return { holds: false, contract: null };
   }

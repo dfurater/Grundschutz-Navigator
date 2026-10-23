@@ -357,7 +357,7 @@ function MetadataReference({ reference }: Readonly<{ reference: ResolvedOscalRef
 
 const lineageStateLabels: Record<Exclude<CatalogLineageState, 'complete'>, string> = {
   'import-href-missing': 'Import ohne href',
-  'import-href-not-fragment': 'Import-href ist kein lokales Fragment',
+  'import-href-not-fragment': 'Import-href ist weder lokales Fragment noch relativer Pfad',
   'resource-missing': 'Back-matter-Ressource fehlt',
   'resource-ambiguous': 'Back-matter-Ressource ist mehrdeutig',
   'rlink-missing': 'Ressourcen-Link fehlt',

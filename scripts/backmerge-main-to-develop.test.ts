@@ -1040,11 +1040,13 @@ describe('migrationContractHolds', () => {
 
   it('hält bei Manifest- und Registeränderung, wenn das Register des Ergebnisstands passt', async () => {
     const validateManifests = vi.fn(async () => true);
+    const verifySnapshot = vi.fn(async () => ({ status: 'ahead' }));
     await expect(migrationContractHolds(
       stubGit('M\tupstream-manifest.json\nM\tsrc/domain/sourceRegistry.mjs\n', v2Manifest('a'.repeat(40)), v2Manifest('b'.repeat(40))),
-      { ...refs, validateManifests },
+      { ...refs, validateManifests, verifySnapshot },
     )).resolves.toEqual({ holds: true, contract: 'manifest-change-rule' });
     expect(validateManifests).toHaveBeenCalledWith(expect.objectContaining({ cwd: '/tmp' }));
+    expect(verifySnapshot).toHaveBeenCalledWith('a'.repeat(40), 'b'.repeat(40), expect.any(Object));
   });
 
   it.each(['scripts/fetch-catalog.mjs', '.github/workflows/ci.yml'])(
@@ -1056,6 +1058,31 @@ describe('migrationContractHolds', () => {
       )).resolves.toEqual({ holds: false, contract: null });
     },
   );
+
+  it.each(['behind', 'diverged'])(
+    'hält nicht, wenn der Snapshot des Ergebnisstands %s ist',
+    async (status) => {
+      const validateManifests = vi.fn(async () => true);
+      const verifySnapshot = vi.fn(async () => {
+        throw new Error(`New BSI snapshot must be ahead of the tracked snapshot (status=${status})`);
+      });
+      await expect(migrationContractHolds(
+        stubGit('M\tupstream-manifest.json\nM\tsrc/domain/sourceRegistry.mjs\n', v2Manifest('b'.repeat(40)), v2Manifest('a'.repeat(40))),
+        { ...refs, validateManifests, verifySnapshot },
+      )).resolves.toEqual({ holds: false, contract: null });
+      expect(verifySnapshot).toHaveBeenCalledWith('b'.repeat(40), 'a'.repeat(40), expect.any(Object));
+      expect(validateManifests).not.toHaveBeenCalled();
+    },
+  );
+
+  it('prüft bei gleichem Snapshot keinen Fortschritt', async () => {
+    const verifySnapshot = vi.fn();
+    await expect(migrationContractHolds(
+      stubGit('M\tupstream-manifest.json\nM\tsrc/domain/sourceRegistry.mjs\n', v2Manifest('a'.repeat(40)), v2Manifest('a'.repeat(40))),
+      { ...refs, validateManifests: async () => true, verifySnapshot },
+    )).resolves.toEqual({ holds: true, contract: 'manifest-change-rule' });
+    expect(verifySnapshot).not.toHaveBeenCalled();
+  });
 
   it('hält nicht für ein Manifest ohne gültige v2-Form', async () => {
     await expect(migrationContractHolds(

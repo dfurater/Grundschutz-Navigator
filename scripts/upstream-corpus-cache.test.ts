@@ -7,6 +7,7 @@ import {
   corpusArtifactKeys,
   writeCorpusCache,
 } from './upstream-corpus-cache.mjs';
+import { projectCatalogLineage } from '../src/domain/catalogLineage.mjs';
 
 function inspected(artifactKey, repoPath, text) {
   const buffer = Buffer.from(text, 'utf8');
@@ -50,6 +51,26 @@ describe('corpusArtifactKeys', () => {
       'catalog-lieferkette',
       'profile-lieferkette',
     ]);
+  });
+
+  it('nimmt die Quelle eines direkten relativen Profilimports auf', () => {
+    const doc = (root, uuid, extra = {}) => ({
+      [root]: { uuid, metadata: { title: uuid, version: '1', 'oscal-version': '1.1.3' }, ...extra },
+    });
+    const sourcePath = 'control_layer/Example/source.json';
+    const projected = projectCatalogLineage({
+      catalogKey: 'example',
+      profileArtifact: {
+        document: doc('profile', 'p', { imports: [{ href: '../source.json', 'include-all': {} }] }),
+        manifestFile: { artifactKey: 'profile-example', path: 'control_layer/Example/profiles/p.json' },
+      },
+      artifactsByPath: new Map([
+        [sourcePath, { document: doc('catalog', 's'), manifestFile: { artifactKey: 'example-source', path: sourcePath } }],
+      ]),
+    });
+
+    expect(projected.imports[0].state).toBe('complete');
+    expect(corpusArtifactKeys([projected])).toContain('example-source');
   });
 });
 
