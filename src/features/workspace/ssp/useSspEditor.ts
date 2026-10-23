@@ -177,6 +177,13 @@ export function useSspEditor(localId: LocalId): SspEditor {
 
   // Eine ungespeicherte Baseline-Wahl ist eine offene Änderung, auch wenn die Quelle gleich bleibt.
   const dirty = core.dirty || choice !== undefined || hasPendingForms;
+  // Nach erfolgreicher Löschung gibt es keine Eingaben mehr zu schützen; bei einem Fehler bleibt die Sperre bestehen.
+  const { remove: removeDocument } = core;
+  const remove = useCallback(async () => {
+    const removed = await removeDocument();
+    if (removed) { pendingForms.current.clear(); setHasPendingForms(false); }
+    return removed;
+  }, [removeDocument]);
   const exportDocument = useCallback(async () => { if (!dirty) await exportWith(document => exportSspInWorker(document, categories), 'ssp.json'); }, [categories, dirty, exportWith]);
 
   const checkTargetRemoval = useCallback(async (path: SspPath): Promise<readonly string[]> => {
@@ -199,6 +206,6 @@ export function useSspEditor(localId: LocalId): SspEditor {
   return {
     categories, targetFailure, checkTargetRemoval, exportPreserved, setTargetFormPending,
     status: core.status, envelope: core.envelope, working, dirty, saveState: core.saveState, busy: core.busy, message: core.message,
-    baseline, baselineBindable, apply, chooseBaseline, save, bindCatalogStand, exportDocument, remove: core.remove, adopt: core.adopt,
+    baseline, baselineBindable, apply, chooseBaseline, save, bindCatalogStand, exportDocument, remove, adopt: core.adopt,
   };
 }

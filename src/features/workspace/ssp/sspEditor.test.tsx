@@ -512,4 +512,14 @@ describe('Listenzeilen und Löschung', () => {
     expect(await readStore((store) => store.getDocument(seeded.ssp.localId))).toBeUndefined();
     expect((await readStore((store) => store.listBindings())).filter((binding) => binding.fromLocalId === seeded.ssp.localId)).toEqual([]);
   });
+
+  it('kehrt nach dem Löschen trotz nicht übernommener Bewertungseingabe zur Liste zurück', async () => {
+    const ssp = await addSsp(seeded.verbundId, makeFullSsp());
+    const { router } = renderArea(buildWorkspaceDocumentUrl(seeded.verbundId, ssp.localId), withGspp());
+    const first = await within(main()).findByRole('listitem', { name: /^Inventareintrag 1/ });
+    fireEvent.change(within(first).getByLabelText('Begründung des Schutzbedarfs'), { target: { value: 'Offene Eingabe' } });
+    await click('SSP löschen…');
+    fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Endgültig löschen' }));
+    await waitFor(() => expect(router.state.location.pathname).toBe(buildStationUrl(seeded.verbundId, 'ssp')), WAIT);
+  });
 });
