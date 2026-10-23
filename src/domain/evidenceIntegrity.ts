@@ -6,6 +6,8 @@
 // =============================================================================
 
 import { isJsonObject, readArray, readString, type JsonObject } from '@/domain/jsonGuards';
+import { decodedBase64ByteLength } from '@/domain/oscalBackMatterBase64';
+import { CLASS_2_IMPORT_LIMITS } from '@/domain/oscalImportContract';
 import { readDeclaredHashes, type ResolvedResourceLink } from '@/domain/referenceResolution';
 
 /** Projektentscheidung, keine NIST-Vorgabe: die Algorithmen, die `crypto.subtle.digest` berechnet, mit ihrer Hex-Länge. */
@@ -38,17 +40,29 @@ function toHex(buffer: ArrayBuffer): string {
   return Array.from(new Uint8Array(buffer), (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
+type DigestOf = (algorithm: EvidenceHashAlgorithm) => Promise<string>;
+
+/** Berechnet jeden Algorithmus über `content` höchstens einmal. */
+function digestCache(content: Uint8Array<ArrayBuffer>): DigestOf {
+  const digests = new Map<EvidenceHashAlgorithm, Promise<string>>();
+  return (algorithm) => {
+    let digest = digests.get(algorithm);
+    if (!digest) {
+      digest = crypto.subtle.digest(algorithm, content).then(toHex);
+      digests.set(algorithm, digest);
+    }
+    return digest;
+  };
+}
+
 /**
- * Prüft deklarierte Hashes gegen `content`. Vorrang bei mehreren Hashes:
- * Abweichung vor fehlgeformtem Wert vor Übereinstimmung vor nicht zugelassenem
- * Algorithmus; nicht zugelassene Algorithmen neben zugelassenen bleiben unbewertet.
+ * Vorrang bei mehreren Hashes: Abweichung vor fehlgeformtem Wert vor
+ * Übereinstimmung vor nicht zugelassenem Algorithmus; nicht zugelassene
+ * Algorithmen neben zugelassenen bleiben unbewertet.
  */
-export async function verifyEvidenceHashes(
-  hashes: DeclaredHashes,
-  content: Uint8Array<ArrayBuffer> | undefined,
-): Promise<EvidenceHashCheck> {
+async function checkHashes(hashes: DeclaredHashes, digestOf: DigestOf | undefined): Promise<EvidenceHashCheck> {
   if (hashes.length === 0) return { status: 'not-verifiable', reason: 'no-hash' };
-  if (!content) return { status: 'not-verifiable', reason: 'no-local-content' };
+  if (!digestOf) return { status: 'not-verifiable', reason: 'no-local-content' };
 
   let matched = false;
   let malformed = false;
@@ -58,8 +72,7 @@ export async function verifyEvidenceHashes(
       malformed = true;
       continue;
     }
-    const digest = toHex(await crypto.subtle.digest(algorithm, content));
-    if (digest !== value.toLowerCase()) return { status: 'verified-mismatch' };
+    if ((await digestOf(algorithm)) !== value.toLowerCase()) return { status: 'verified-mismatch' };
     matched = true;
   }
   if (malformed) return { status: 'not-verifiable', reason: 'malformed-hash' };
@@ -67,12 +80,25 @@ export async function verifyEvidenceHashes(
   return { status: 'not-verifiable', reason: 'algorithm-not-allowed' };
 }
 
-/** Dekodiert `base64.value` im Speicher; fehlender oder ungültiger Wert ergibt `undefined`. */
+/** Prüft deklarierte Hashes gegen `content` nach der Vorrangregel von `checkHashes()`. */
+export function verifyEvidenceHashes(
+  hashes: DeclaredHashes,
+  content: Uint8Array<ArrayBuffer> | undefined,
+): Promise<EvidenceHashCheck> {
+  return checkHashes(hashes, content && digestCache(content));
+}
+
+/**
+ * Dekodiert `base64.value` im Speicher; ein fehlender, ungültiger oder über
+ * `maxDecodedBase64Bytes` liegender Wert ergibt `undefined`. Die eigene
+ * Größenprüfung hält die Funktion auch für Aufrufer außerhalb der Importkette fail-closed.
+ */
 function decodeEmbeddedContent(resource: JsonObject): Uint8Array<ArrayBuffer> | undefined {
   const encoded = isJsonObject(resource.base64) ? readString(resource.base64.value) : undefined;
   if (encoded === undefined) return undefined;
+  if (decodedBase64ByteLength(encoded) > CLASS_2_IMPORT_LIMITS.maxDecodedBase64Bytes) return undefined;
   try {
-    return Uint8Array.from(atob(encoded), (char) => char.charCodeAt(0));
+    return Uint8Array.from(atob(encoded), (char) => char.codePointAt(0)!);
   } catch {
     return undefined;
   }
@@ -80,7 +106,8 @@ function decodeEmbeddedContent(resource: JsonObject): Uint8Array<ArrayBuffer> | 
 
 /**
  * Ein Ergebnis je `rlink` der rohen `back-matter`-Ressource in Quellreihenfolge,
- * geprüft gegen die eigene `base64`-Nutzlast.
+ * geprüft gegen die eigene `base64`-Nutzlast; jeder Algorithmus wird je
+ * Ressource einmal berechnet.
  */
 export async function verifyResourceIntegrity(
   resource: JsonObject,
@@ -88,5 +115,6 @@ export async function verifyResourceIntegrity(
   const rlinks = readArray(resource.rlinks).filter(isJsonObject);
   if (rlinks.length === 0) return [];
   const content = decodeEmbeddedContent(resource);
-  return Promise.all(rlinks.map((rlink) => verifyEvidenceHashes(readDeclaredHashes(rlink), content)));
+  const digestOf = content && digestCache(content);
+  return Promise.all(rlinks.map((rlink) => checkHashes(readDeclaredHashes(rlink), digestOf)));
 }

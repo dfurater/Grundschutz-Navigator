@@ -1794,7 +1794,7 @@ Ein `relevant-evidence`-Eintrag ohne `href` ist `descriptive` und gültig. `href
 | `verified-match` | mindestens ein zugelassener Hash stimmt überein, kein zugelassener Hash weicht ab oder ist fehlgeformt |
 | `verified-mismatch` | ein zugelassener Hash weicht vom berechneten Wert ab |
 | `not-verifiable`, Grund `no-hash` | der `rlink` deklariert keinen Hash mit `algorithm` und `value` |
-| `not-verifiable`, Grund `no-local-content` | `base64.value` fehlt oder ist kein gültiges base64 |
+| `not-verifiable`, Grund `no-local-content` | `base64.value` fehlt, ist kein gültiges base64 oder überschreitet dekodiert `CLASS_2_IMPORT_LIMITS.maxDecodedBase64Bytes`; ein solcher Wert wird nicht dekodiert |
 | `not-verifiable`, Grund `malformed-hash` | ein zugelassener Hash ist keine Hex-Zeichenfolge der Länge seines Algorithmus |
 | `not-verifiable`, Grund `algorithm-not-allowed` | kein deklarierter Algorithmus ist zugelassen |
 

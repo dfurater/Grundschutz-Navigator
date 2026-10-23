@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { expectNoNetworkCalls, stubNoNetwork } from '@/test/noNetwork';
 import { verifyEvidenceHashes, verifyResourceIntegrity } from '@/domain/evidenceIntegrity';
+import { CLASS_2_IMPORT_LIMITS } from '@/domain/oscalImportContract';
 import { createReferenceDocument, resolveCatalogResources } from '@/domain/referenceResolution';
 
 // Synthetischer Inhalt; SHA-256 von "hallo" per `printf hallo | shasum -a 256`.
@@ -98,6 +99,26 @@ describe('verifyResourceIntegrity', () => {
   ])('liefert no-local-content %s', async (_label, extra) => {
     const [first] = await verifyResourceIntegrity(resource(extra));
     expect(first).toEqual({ status: 'not-verifiable', reason: 'no-local-content' });
+  });
+
+  it('liefert für eine Ressource ohne rlinks ein leeres Ergebnis', async () => {
+    await expect(verifyResourceIntegrity({ uuid: 'r', base64: { value: BASE64 } })).resolves.toEqual([]);
+  });
+
+  it('berechnet denselben Algorithmus je Ressource nur einmal', async () => {
+    const digest = vi.spyOn(crypto.subtle, 'digest');
+    const hashed = { href: 'https://evidence.example.test/a', hashes: [{ algorithm: 'SHA-256', value: SHA256 }] };
+    const results = await verifyResourceIntegrity({ uuid: 'r', rlinks: [hashed, hashed, hashed], base64: { value: BASE64 } });
+    expect(results).toEqual(Array.from({ length: 3 }, () => ({ status: 'verified-match' })));
+    expect(digest).toHaveBeenCalledTimes(1);
+  });
+
+  it('dekodiert keine Nutzlast über maxDecodedBase64Bytes', async () => {
+    const atob = vi.spyOn(globalThis, 'atob');
+    const value = 'AAAA'.repeat(Math.floor(CLASS_2_IMPORT_LIMITS.maxDecodedBase64Bytes / 3) + 1);
+    const [first] = await verifyResourceIntegrity(resource({ base64: { value } }));
+    expect(first).toEqual({ status: 'not-verifiable', reason: 'no-local-content' });
+    expect(atob).not.toHaveBeenCalled();
   });
 
   it('lässt den nicht zugelassenen Algorithmus in der aufgelösten Ressource unverändert', () => {
