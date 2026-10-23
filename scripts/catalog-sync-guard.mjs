@@ -245,6 +245,57 @@ function isRegistrySnapshotMigrationPath(path) {
   );
 }
 
+function isExpectedKernelRegistryTransition(previousSourceRegistry) {
+  const removedG0Path =
+    'control_layer/Grundschutz++/sources/catalogs/Kernel/BSI-Stand-der-Technik-Kernel-G0-catalog.json';
+  const previousKernelPath =
+    'control_layer/Grundschutz++/sources/catalogs/Kernel/BSI-Stand-der-Technik-Kernel-catalog.json';
+  const currentKernelPath = 'control_layer/Kernel/BSI-Stand-der-Technik-Kernel-catalog.json';
+  const removedG0Key = 'catalog-source-gspp-kernel-g0';
+  const kernelKey = 'catalog-source-lieferkette-kernel';
+
+  if (
+    !Array.isArray(previousSourceRegistry) ||
+    previousSourceRegistry.length !== SOURCE_REGISTRY.length + 1 ||
+    SOURCE_REGISTRY.some((entry) => entry.artifactKey === removedG0Key)
+  ) {
+    return false;
+  }
+
+  const previousG0 = previousSourceRegistry.find((entry) => entry.artifactKey === removedG0Key);
+  const previousKernel = previousSourceRegistry.find((entry) => entry.artifactKey === kernelKey);
+  const currentKernel = SOURCE_REGISTRY.find((entry) => entry.artifactKey === kernelKey);
+  if (
+    previousG0?.kind !== 'oscal' ||
+    previousG0.expectedRootType !== 'catalog' ||
+    previousG0.lifecycle !== 'preview' ||
+    previousG0.upstreamPath !== removedG0Path ||
+    !previousKernel ||
+    previousKernel.upstreamPath !== previousKernelPath ||
+    !currentKernel ||
+    currentKernel.upstreamPath !== currentKernelPath
+  ) {
+    return false;
+  }
+
+  const previousByKey = new Map(previousSourceRegistry.map((entry) => [entry.artifactKey, entry]));
+  const currentByKey = new Map(SOURCE_REGISTRY.map((entry) => [entry.artifactKey, entry]));
+  return (
+    previousByKey.size === previousSourceRegistry.length &&
+    currentByKey.size === SOURCE_REGISTRY.length &&
+    SOURCE_REGISTRY.every((entry) => previousByKey.has(entry.artifactKey)) &&
+    previousSourceRegistry.every((entry) => {
+      if (entry.artifactKey === removedG0Key) return true;
+      const current = currentByKey.get(entry.artifactKey);
+      if (!current) return false;
+      if (entry.artifactKey === kernelKey) {
+        return isStructurallyEqual({ ...entry, upstreamPath: currentKernelPath }, current);
+      }
+      return isStructurallyEqual(entry, current);
+    })
+  );
+}
+
 export function isRegistrySnapshotMigration({
   baseRef,
   branch,
@@ -268,8 +319,7 @@ export function isRegistrySnapshotMigration({
     !previousManifest ||
     !nextManifest ||
     previousManifest.snapshotCommitSha === nextManifest.snapshotCommitSha ||
-    !Array.isArray(previousSourceRegistry) ||
-    isStructurallyEqual(previousSourceRegistry, SOURCE_REGISTRY)
+    !isExpectedKernelRegistryTransition(previousSourceRegistry)
   ) {
     return false;
   }

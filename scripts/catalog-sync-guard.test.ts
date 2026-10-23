@@ -1232,7 +1232,22 @@ describe('Registry-Snapshot-Migration', () => {
   const previous = makeFixture({ snapshotCommitSha: OLD_SHA });
   const next = makeFixture({ snapshotCommitSha: NEW_SHA });
   const previousSourceRegistry = JSON.parse(JSON.stringify(SOURCE_REGISTRY)) as Record<string, unknown>[];
-  previousSourceRegistry[0].upstreamPath = `${String(previousSourceRegistry[0].upstreamPath)}.previous`;
+  const previousKernel = previousSourceRegistry.find(
+    (entry) => entry.artifactKey === 'catalog-source-lieferkette-kernel',
+  );
+  if (!previousKernel) throw new Error('Fixture requires the registered kernel source');
+  previousKernel.upstreamPath =
+    'control_layer/Grundschutz++/sources/catalogs/Kernel/BSI-Stand-der-Technik-Kernel-catalog.json';
+  previousSourceRegistry.push({
+    artifactKey: 'catalog-source-gspp-kernel-g0',
+    kind: 'oscal',
+    oscalVersion: '1.1.3',
+    expectedRootType: 'catalog',
+    upstreamPath:
+      'control_layer/Grundschutz++/sources/catalogs/Kernel/BSI-Stand-der-Technik-Kernel-G0-catalog.json',
+    lifecycle: 'preview',
+    title: 'BSI Stand der Technik Kernel G0',
+  });
 
   it('accepts a manual develop PR only when the registry and official snapshot both change', () => {
     expect(previous.manifest.snapshotCommitSha).not.toBe(next.manifest.snapshotCommitSha);
@@ -1288,6 +1303,13 @@ describe('Registry-Snapshot-Migration', () => {
     }],
     ['an unchanged snapshot', { nextManifest: previous.manifest }],
     ['an unchanged registry', { previousSourceRegistry: SOURCE_REGISTRY }],
+    ['an unrelated registry change', {
+      previousSourceRegistry: SOURCE_REGISTRY.map((entry) =>
+        entry.artifactKey === 'catalog-source-gspp-methodik'
+          ? { ...entry, title: `${entry.title} changed` }
+          : entry,
+      ),
+    }],
   ])('rejects %s', (_label, overrides) => {
     expect(isRegistrySnapshotMigration({
       baseRef: 'develop',
