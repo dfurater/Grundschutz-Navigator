@@ -182,9 +182,10 @@ export function SspRowList({ editor, path, title, required = false, uuidKeyed, n
           {addLabel}
         </Button>
       )}
-      {uses.length > 0 && <div role="status" className="space-y-1 text-sm text-[var(--color-text-secondary)]"><p>Das Zielobjekt bleibt: vorhandene oder nicht vollständig prüfbare Verwendungen.</p><ul>{uses.map(use => <li key={use} className="break-all font-mono text-xs">{use}</li>)}</ul></div>}
+      {uses.length > 0 && <div className="space-y-1 text-sm text-[var(--color-text-secondary)]"><output className="block">Das Zielobjekt bleibt: vorhandene oder nicht vollständig prüfbare Verwendungen.</output><ul>{uses.map(use => <li key={use} className="break-all font-mono text-xs">{use}</li>)}</ul></div>}
       <ConfirmDialog open={pending !== undefined} title="Zielobjekt entfernen?" confirmLabel="Zielobjekt entfernen" onCancel={() => setPending(undefined)} onConfirm={() => {
-        if (pending && rows.keyAt(items[pending.index], pending.index) === pending.key && JSON.stringify(items[pending.index]) === pending.item) removeAt(pending.index);
+        if (!pending) return;
+        if (rows.keyAt(items[pending.index], pending.index) === pending.key && JSON.stringify(items[pending.index]) === pending.item) removeAt(pending.index);
         setPending(undefined);
       }}>Geprüft wird nur der lokale Informationsverbund. Außerhalb gespeicherte Kopien können weiterhin auf dieses Zielobjekt verweisen. Das Entfernen wird mit dem SSP gespeichert.</ConfirmDialog>
     </section>

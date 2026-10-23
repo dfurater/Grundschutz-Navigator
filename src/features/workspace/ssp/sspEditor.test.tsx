@@ -93,6 +93,39 @@ async function fillRequired() {
 }
 
 describe('Zielobjektbestand', () => {
+  it('übernimmt bei offenen Bewertungseingaben keine UUID-lose Umordnung aus einem anderen Tab', async () => {
+    const source = withSspBody(makeFullSsp(), body => {
+      const first = body['system-characteristics']['system-information']!['information-types']![0];
+      delete first.uuid;
+      body['system-characteristics']['system-information']!['information-types']!.push({ ...structuredClone(first), title: 'Zweite Informationsart' });
+    });
+    const ssp = await addSsp(seeded.verbundId, source);
+    renderArea(buildWorkspaceDocumentUrl(seeded.verbundId, ssp.localId), withGspp());
+    const first = await within(main()).findByRole('listitem', { name: /^Informationsart 1/ });
+    fireEvent.change(within(first).getByLabelText('Begründung des Schutzbedarfs'), { target: { value: 'Eingabe für Betriebsdaten' } });
+    const newer = withSspBody(source, body => { body['system-characteristics']['system-information']!['information-types']!.reverse(); });
+    await readStore(store => store.saveDocument(ssp.localId, ssp.savedAt, null, { source: JSON.parse(JSON.stringify(newer)), context: { trustClass: 'class-2-local-user' }, rootType: 'system-security-plan', oscalVersion: '1.2.2' }));
+    fireEvent.click(within(main()).getByText('Prüfung und Freigabe'));
+    await within(main()).findByText('Prüfzustand', undefined, WAIT);
+    await new Promise(resolve => setTimeout(resolve, 100));
+    const currentFirst = within(main()).getByRole('listitem', { name: /^Informationsart 1/ });
+    expect(within(currentFirst).getByLabelText(/information-types.title/)).toHaveValue('Betriebsdaten');
+    expect(within(currentFirst).getByLabelText('Begründung des Schutzbedarfs')).toHaveValue('Eingabe für Betriebsdaten');
+  });
+  it('zeigt Groß-/Kleinschreibung lokaler UUID-Bezüge ohne falschen Auflösungsfehler und erhält die Quelle', async () => {
+    const source = withSspBody(makeFullSsp(), body => {
+      body['system-implementation'].components[1].uuid = 'abcdefab-0000-4000-8000-000000000002';
+      body['system-implementation']['inventory-items']![0]['implemented-components']![0]['component-uuid'] = 'ABCDEFAB-0000-4000-8000-000000000002';
+      body.metadata.parties![0].uuid = 'abcdefab-0000-4000-8000-000000000003';
+      body['system-implementation']['inventory-items']![0]['responsible-parties']![0]['party-uuids'] = ['ABCDEFAB-0000-4000-8000-000000000003'];
+    });
+    const ssp = await addSsp(seeded.verbundId, source);
+    renderArea(buildWorkspaceDocumentUrl(seeded.verbundId, ssp.localId), withGspp());
+    const item = await within(main()).findByRole('listitem', { name: /^Inventareintrag 1/ });
+    expect(within(item).queryAllByText(/nicht auflösbar/)).toEqual([]);
+    expect(within(item).getByLabelText('Lokale Komponente')).toHaveValue('ABCDEFAB-0000-4000-8000-000000000002');
+    expect(within(item).getByLabelText('Lokale Partei')).toHaveValue('ABCDEFAB-0000-4000-8000-000000000003');
+  });
   it('hält Eingaben an UUID-losen Informationsarten beim Hinzufügen und Umordnen', async () => {
     const source = withSspBody(makeFullSsp(), body => {
       const first = body['system-characteristics']['system-information']!['information-types']![0];

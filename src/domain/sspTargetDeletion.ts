@@ -3,6 +3,7 @@ import type { SspPath } from '@/domain/sspAuthoring';
 import { readSspValue } from '@/domain/sspAuthoring';
 import { isJsonObject, pointerString, readArray, readString } from '@/domain/jsonGuards';
 import { TARGET_LISTS } from '@/domain/sspTargetObjects';
+import { localFragmentUuid } from '@/domain/referenceResolution';
 
 function localUses(source: unknown, uuid: string | undefined): string[] {
   if (uuid === undefined) return [];
@@ -13,7 +14,7 @@ function localUses(source: unknown, uuid: string | undefined): string[] {
     for (const [key, value] of Object.entries(node)) {
       // Eigene Identitäten, Freitext und fremde Properties beweisen keinen Bezug.
       if ((['component-uuid', 'inventory-item-uuid', 'information-type-uuid', 'subject-uuid'].includes(key) && typeof value === 'string' && value.toLowerCase() === uuid)
-        || (key === 'href' && typeof value === 'string' && value.toLowerCase() === `#${uuid}`)) found.push(`${path}/${key}`);
+        || (key === 'href' && typeof value === 'string' && localFragmentUuid(value) === uuid)) found.push(`${path}/${key}`);
       walk(value, `${path}/${key.replaceAll('~', '~0').replaceAll('/', '~1')}`);
     }
   };
@@ -45,17 +46,37 @@ export function targetDeletionUses(source: unknown, path: SspPath, localId: Loca
   return [...localUses(source, readString(item.uuid)?.toLowerCase()), ...incomingUses(localId, members, bindings)];
 }
 
-/** Läuft mit aktuellen Quellen und Bindungen in der Schreibtransaktion, auch nach einem Autosave/Tabwechsel. */
-export function sspDeletionBlocked(before: unknown, after: unknown, localId: LocalId, members: readonly WorkspaceEnvelope[], bindings: readonly WorkspaceBinding[]): boolean {
-  for (const { path } of TARGET_LISTS) {
+function uuidCounts(items: readonly unknown[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const item of items) {
+    const uuid = isJsonObject(item) ? readString(item.uuid)?.toLowerCase() : undefined;
+    if (uuid !== undefined) counts.set(uuid, (counts.get(uuid) ?? 0) + 1);
+  }
+  return counts;
+}
+
+function targetDeletions(before: unknown, after: unknown) {
+  return TARGET_LISTS.flatMap(({ path }) => {
     const old = readArray(readSspValue(before, path));
     const next = readArray(readSspValue(after, path));
-    const countUuid = (items: readonly unknown[], uuid: string) => items.filter(item => isJsonObject(item) && readString(item.uuid)?.toLowerCase() === uuid).length;
-    const removed = old.filter(item => isJsonObject(item) && typeof item.uuid === 'string' && countUuid(old, item.uuid.toLowerCase()) > countUuid(next, item.uuid.toLowerCase()));
+    const oldCounts = uuidCounts(old);
+    const nextCounts = uuidCounts(next);
+    const removed = old.filter(item => isJsonObject(item) && typeof item.uuid === 'string' && oldCounts.get(item.uuid.toLowerCase())! > (nextCounts.get(item.uuid.toLowerCase()) ?? 0));
     const noUuid = (items: readonly unknown[]) => items.filter(item => isJsonObject(item) && item.uuid === undefined).length;
-    if (!removed.length && noUuid(old) <= noUuid(next) && next.length >= old.length) continue;
-    if (incomingUses(localId, members, bindings).length) return true;
-    if (old.some(item => !isJsonObject(item) || (typeof item.uuid !== 'string' && !(path.at(-1) === 'information-types' && item.uuid === undefined)))) return true;
+    return !removed.length && noUuid(old) <= noUuid(next) && next.length >= old.length ? [] : [{ old, removed, uuidOptional: path.at(-1) === 'information-types' }];
+  });
+}
+
+export function hasSspTargetDeletion(before: unknown, after: unknown): boolean {
+  return targetDeletions(before, after).length > 0;
+}
+
+/** Läuft mit aktuellen Quellen und Bindungen in der Schreibtransaktion, auch nach einem Autosave/Tabwechsel. */
+export function sspDeletionBlocked(before: unknown, after: unknown, localId: LocalId, members: readonly WorkspaceEnvelope[], bindings: readonly WorkspaceBinding[]): boolean {
+  const deletions = targetDeletions(before, after);
+  if (deletions.length && incomingUses(localId, members, bindings).length) return true;
+  for (const { old, removed, uuidOptional } of deletions) {
+    if (old.some(item => !isJsonObject(item) || (typeof item.uuid !== 'string' && !(uuidOptional && item.uuid === undefined)))) return true;
     if (removed.some(item => isJsonObject(item) && localUses(after, readString(item.uuid)?.toLowerCase()).length)) return true;
   }
   return false;

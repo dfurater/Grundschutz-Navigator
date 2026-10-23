@@ -13,6 +13,20 @@ vi.mock('@/adapters/oscalImportGate', async () => {
 
 const input = (source: unknown, rootType = 'system-security-plan') => ({ source, rootType, oscalVersion: '1.2.2', context: { trustClass: 'class-2-local-user' } }) as const;
 
+it('lädt bei einer Titeländerung keine Nachbardokumente oder vollständigen Bindungslisten', async () => {
+  const store = await open();
+  const v = value(await store.createVerbund('Synthetisch'));
+  const original = JSON.parse(JSON.stringify(makeFullSsp()));
+  const ssp = value(await store.addDocument(v.verbundId, input(original) as never, 'draft'));
+  const documents = vi.spyOn(store['documents'], 'where');
+  const bindings = vi.spyOn(store['bindings'], 'toArray');
+  const next = structuredClone(original) as { 'system-security-plan': { metadata: { title: string } } };
+  next['system-security-plan'].metadata.title = 'Neuer Titel';
+  expect(await store.saveDocument(ssp.localId, ssp.savedAt, null, input(next) as never, undefined, 'draft')).toMatchObject({ ok: true });
+  expect(documents).not.toHaveBeenCalled();
+  expect(bindings).not.toHaveBeenCalled();
+});
+
 it('prüft nach der Vorprüfung hinzugekommene Bindungen in der Save-Transaktion und erhält Quelle/Entwurf', async () => {
   const store = await open();
   const v = value(await store.createVerbund('Synthetisch'));

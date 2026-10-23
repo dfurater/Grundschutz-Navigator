@@ -4,6 +4,7 @@ import { createCatalogReferenceProjectProps, createProjectProp, readProjectProps
 import { readSspValue, sspBody, SspPatchError, type SspPath } from '@/domain/sspAuthoring';
 import { readCatalogPins } from '@/domain/workspaceCatalogPin';
 import { closeTargetCategories, type CategoryClosure } from '@/domain/targetObjectCategories';
+import { compareStringsByCodeUnit } from '@/domain/codeUnitOrder.mjs';
 
 export interface TargetCategoryContext { readonly commit: string; readonly namespace: VocabularyNamespaceData }
 export const TARGET_LISTS = [
@@ -28,13 +29,15 @@ export function targetCoverage(source: unknown): { assessed: number; total: numb
 }
 
 function replaceProps(item: JsonObject, names: readonly string[], added: readonly RawOscalProp[]): void {
-  // Unberührte Properties und Erweiterungsfelder bearbeiteter Properties bleiben erhalten.
   const previous = readArray<RawOscalProp>(item.props);
-  const props = previous.filter(prop => prop.ns !== ns || !names.includes(prop.name));
-  for (const prop of added) {
-    const old = previous.find(old => old.ns === ns && old.name === prop.name && old.group === prop.group && (names.length === 1 || old.value === prop.value));
-    props.push({ ...old, ...prop });
+  const pending = [...added];
+  const props: RawOscalProp[] = [];
+  for (const old of previous) {
+    if (old.ns !== ns || !names.includes(old.name)) { props.push(old); continue; }
+    const index = pending.findIndex(prop => old.name === prop.name && (names.length === 1 || (old.group === prop.group && old.value === prop.value)));
+    if (index >= 0) props.push({ ...old, ...pending.splice(index, 1)[0] });
   }
+  props.push(...pending);
   if (props.length) item.props = props;
   else delete item.props;
 }
@@ -88,25 +91,43 @@ export function setTargetCategories(source: unknown, path: SspPath, selected: re
 
 export interface TargetFailure { readonly code: string; readonly path: string }
 
+function carrierFailure(node: unknown, path: string, carriers: ReadonlyMap<string, ProjectPropCarrier>): TargetFailure | undefined {
+  if (!isJsonObject(node) || !readArray<RawOscalProp>(node.props).some(prop => isJsonObject(prop) && prop.ns === ns)) return undefined;
+  const carrier = carriers.get(path);
+  if (!carrier) return { code: 'OSCAL_PROJECT_PROP_CARRIER_INVALID', path: '/system-security-plan' };
+  const read = readProjectProps(node.props, carrier);
+  return read.writeAllowed ? undefined : { code: read.diagnostics[0].code, path: `${path}/props` };
+}
+
+function walkCarriers(node: unknown, path: string, carriers: ReadonlyMap<string, ProjectPropCarrier>): TargetFailure | undefined {
+  if (!Array.isArray(node) && !isJsonObject(node)) return undefined;
+  const own = carrierFailure(node, path, carriers);
+  if (own) return own;
+  for (const [key, child] of Object.entries(node)) {
+    if (key === 'props') continue;
+    const found = walkCarriers(child, `${path}/${key}`, carriers);
+    if (found) return found;
+  }
+  return undefined;
+}
+
 function misplacedProjectProps(source: unknown): TargetFailure | undefined {
   const carriers = new Map<string, ProjectPropCarrier>([['/system-security-plan/metadata', 'metadata']]);
   for (const target of sspTargets(source)) carriers.set(`/system-security-plan/${target.path.join('/')}`, target.carrier);
   readArray(readSspValue(source, ['control-implementation', 'implemented-requirements'])).forEach((_, index) => carriers.set(`/system-security-plan/control-implementation/implemented-requirements/${index}`, 'implemented-requirement'));
-  const walk = (node: unknown, path: string): TargetFailure | undefined => {
-    if (Array.isArray(node)) {
-      for (let index = 0; index < node.length; index++) { const found = walk(node[index], `${path}/${index}`); if (found) return found; }
-    } else if (isJsonObject(node)) {
-      if (readArray<RawOscalProp>(node.props).some(prop => isJsonObject(prop) && prop.ns === ns)) {
-        const carrier = carriers.get(path);
-        if (!carrier) return { code: 'OSCAL_PROJECT_PROP_CARRIER_INVALID', path: '/system-security-plan' };
-        const read = readProjectProps(node.props, carrier);
-        if (!read.writeAllowed) return { code: read.diagnostics[0].code, path: `${path}/props` };
-      }
-      for (const [key, child] of Object.entries(node)) { if (key === 'props') continue; const found = walk(child, `${path}/${key}`); if (found) return found; }
-    }
-    return undefined;
-  };
-  return walk(source, '');
+  return walkCarriers(source, '', carriers);
+}
+
+function categoryFailure(source: unknown, path: SspPath, context: TargetCategoryContext | undefined, checkDerived: boolean): TargetFailure | undefined {
+  const item = readSspValue(source, path);
+  const direct = targetProps(item, 'target-object-category');
+  const effective = targetProps(item, 'effective-target-object-category');
+  if (!direct.length && !effective.length) return undefined;
+  const pointer = `/system-security-plan/${path.join('/')}/props`;
+  const closure = targetCategoryClosure(source, path, context);
+  if (closure.status !== 'ready') return { code: closure.code, path: pointer };
+  if (checkDerived && JSON.stringify(effective.map(prop => prop.value).sort(compareStringsByCodeUnit)) !== JSON.stringify(closure.effective)) return { code: 'SSP_CATEGORY_MISMATCH', path: pointer };
+  return undefined;
 }
 
 /** Importprüfung verändert keine Quelle; Ableitungen werden ausschließlich beim Speichern geschrieben. */
@@ -122,12 +143,8 @@ export function validateSspTargets(source: unknown, context?: TargetCategoryCont
     const pointer = `/system-security-plan/${path.join('/')}/props`;
     const read = readProjectProps(item.props, carrier);
     if (!read.writeAllowed) return { code: read.diagnostics[0].code, path: pointer };
-    const direct = targetProps(item, 'target-object-category');
-    const effective = targetProps(item, 'effective-target-object-category');
-    if (!direct.length && !effective.length) continue;
-    const closure = targetCategoryClosure(source, path, context);
-    if (closure.status !== 'ready') return { code: closure.code, path: pointer };
-    if (checkDerived && JSON.stringify(effective.map(prop => prop.value).sort()) !== JSON.stringify(closure.effective)) return { code: 'SSP_CATEGORY_MISMATCH', path: pointer };
+    const categories = categoryFailure(source, path, context, checkDerived);
+    if (categories) return categories;
   }
   return undefined;
 }

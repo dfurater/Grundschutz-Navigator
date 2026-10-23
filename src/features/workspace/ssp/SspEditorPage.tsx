@@ -27,6 +27,7 @@ import { useBaselineControls } from '@/features/workspace/ssp/useBaselineControl
 import { useSspEditor, type SspEditorMessage } from '@/features/workspace/ssp/useSspEditor';
 
 const MESSAGES: Readonly<Record<SspEditorMessage, string>> = {
+  'target-form-pending': 'Bitte die offenen Schutzbedarfseingaben zuerst übernehmen oder zurücksetzen.',
   'target-invalid': 'Die Projektregeln für Zielobjekte sind nicht erfüllt. Quelle und Backup bleiben erhalten.',
   'target-delete-blocked': 'Das Zielobjekt bleibt gespeichert: Verwendungen oder Bindungen haben sich geändert. Bestand neu prüfen.',
   'saved-as-draft': 'Schema oder Referenzprüfung sind nicht bestanden; das SSP ist als Entwurf gespeichert.',
@@ -98,7 +99,7 @@ export function SspEditorPage({ view, document }: Readonly<{ view: VerbundView; 
             <p>{editor.envelope.documentState === 'export-ready' && !editor.dirty && !editor.targetFailure ? 'Technisch gültig' : 'Technische Gültigkeit noch nicht bestätigt'}</p>
             <p className="tabular-nums">{`Schutzbedarf: ${coverage.assessed} von ${coverage.total} Objekten bewertet`}</p>
             {coverage.value === 'incomplete' && <p>Arbeitsstand mit offenen Bewertungen. Die Abdeckung beschreibt ausschließlich die erfassten Objekte.</p>}
-            {editor.targetFailure && <p role="status">Projektregelbefund: <span className="font-mono text-xs">{editor.targetFailure.code} · {editor.targetFailure.path}</span>. Semantische Änderungen und validierter Export sind gesperrt.</p>}
+            {editor.targetFailure && <output className="block">Projektregelbefund: <span className="font-mono text-xs">{editor.targetFailure.code} · {editor.targetFailure.path}</span>. Semantische Änderungen und validierter Export sind gesperrt.</output>}
             <Button variant="ghost" size="sm" className="min-h-touch desktop:min-h-0" onClick={editor.exportPreserved}>Ungeprüften Erhaltungs-Export herunterladen</Button>
           </section>
           {!desktop && <OpenStructure missing={missing} />}

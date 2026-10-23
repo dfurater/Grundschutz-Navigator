@@ -30,6 +30,31 @@ describe('Zielobjekt-Properties', () => {
 });
 
 describe('SSP-Zielobjektvertrag', () => {
+  it('erhält Reihenfolge und Erweiterungen unveränderter Properties beim Speichern anderer Felder', () => {
+    const second = 'bbbbbbbb-0000-4000-8000-000000000002';
+    const categories = { ...context, namespace: { entries: [category, second].map(UUID => ({ value: UUID, columns: { UUID, ChildOfUUID: '', Typ: '' } })) } as unknown as VocabularyNamespaceData };
+    const foreign = { ns: 'urn:foreign', name: 'preserve', value: 'x' };
+    const props = [
+      { ns, name: 'target-object-category', value: second, group: 'gspp', remarks: 'Erhalten' },
+      foreign,
+      { ns, name: 'effective-target-object-category', value: second, group: 'gspp' },
+      { ns, name: 'target-object-category', value: category, group: 'gspp' },
+      { ns, name: 'protection-need-level', value: 'normal', remarks: 'Begründung', group: 'imported', uuid: category, class: 'preserve' },
+      { ns, name: 'effective-target-object-category', value: category, group: 'gspp' },
+    ];
+    const source = withSspBody(bindSspCategories(makeFullSsp(), categories) as Record<string, unknown>, body => {
+      body['system-implementation'].components[0].props = props;
+      body['system-implementation'].components[1].title = 'Anderes Objekt bearbeitet';
+      body.metadata.props = [{ ns, name: 'protection-need-coverage', value: 'incomplete', remarks: 'Erhalten', group: 'imported', uuid: second, class: 'preserve' }, foreign, ...body.metadata.props!];
+    });
+    const prepared = prepareSspTargets(source, categories);
+    expect(prepared.ok).toBe(true);
+    if (!prepared.ok) return;
+    expect(readSspValue(prepared.source, [...componentPath, 'props'])).toEqual(props);
+    expect(readSspValue(prepared.source, ['metadata', 'props'])).toEqual(readSspValue(source, ['metadata', 'props']));
+    const assessed = setTargetProtection(source, componentPath, 'hoch', 'Neue Begründung');
+    expect(readSspValue(assessed, [...componentPath, 'props'])).toEqual(props.map(prop => prop.name === 'protection-need-level' ? { ...prop, value: 'hoch', remarks: 'Neue Begründung' } : prop));
+  });
   it('trennt offene Bewertung und technische Quelle, schreibt Coverage beim expliziten Speichern', () => {
     const original = makeFullSsp();
     expect(targetCoverage(original)).toEqual({ assessed: 0, total: 4, value: 'incomplete' });

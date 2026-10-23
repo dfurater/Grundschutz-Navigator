@@ -708,22 +708,28 @@ function collectProjectProp(
   collectCustomTag(prop, accumulator, carrier);
 }
 
+function duplicateCategoryNames(props: readonly RawOscalProp[]): Set<ProjectPropName> {
+  const categoryValues = new Set<string>();
+  const invalidNames = new Set<ProjectPropName>();
+  for (const prop of props) {
+    if (!isProjectPropName(prop.name) || PROJECT_PROP_REGISTRY[prop.name].valueContract !== 'target-category') continue;
+    const key = `${prop.name}:${prop.group}:${prop.value}`;
+    if (categoryValues.has(key)) invalidNames.add(prop.name);
+    categoryValues.add(key);
+  }
+  return invalidNames;
+}
+
 function validateProjectPropCardinalities(
   props: readonly RawOscalProp[],
   carrier: ProjectPropCarrier,
 ): OscalDiagnostic[] {
-  const categoryValues = new Set<string>();
   const carrierCounts = new Map<ProjectPropName, number>();
   const groupCounts = new Map<ProjectPropName, Map<unknown, number>>();
-  const invalidNames = new Set<ProjectPropName>();
+  const invalidNames = duplicateCategoryNames(props);
 
   for (const prop of props) {
     if (!isProjectPropName(prop.name)) continue;
-    if (prop.name === 'target-object-category' || prop.name === 'effective-target-object-category') {
-      const key = `${prop.name}:${prop.group}:${prop.value}`;
-      if (categoryValues.has(key)) invalidNames.add(prop.name);
-      categoryValues.add(key);
-    }
     const { maximum, scope } = PROJECT_PROP_REGISTRY[prop.name].cardinality;
     if (maximum === null) continue;
 

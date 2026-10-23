@@ -1,4 +1,5 @@
-import { useId, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
+import { uuidKey } from '@/adapters/oscalSspReaders';
 import { Button } from '@/components/Button';
 import { CheckboxLabel } from '@/components/CheckboxLabel';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
@@ -15,15 +16,23 @@ function ProtectionForm({ editor, path }: Readonly<{ editor: SspEditor; path: Ss
   const [level, setLevel] = useState(prop?.value ?? '');
   const [remarks, setRemarks] = useState(prop?.remarks ?? '');
   const [confirming, setConfirming] = useState(false);
+  const { setTargetFormPending } = editor;
+  useEffect(() => () => setTargetFormPending(id, false), [id, setTargetFormPending]);
+  const update = (nextLevel: string, nextRemarks: string) => {
+    setLevel(nextLevel);
+    setRemarks(nextRemarks);
+    setTargetFormPending(id, nextLevel !== (prop?.value ?? '') || nextRemarks !== (prop?.remarks ?? ''));
+  };
   return <div className="space-y-2 border-t border-[var(--color-border-subtle)] pt-3">
     {!prop && <p className="text-sm text-[var(--color-text-secondary)]">Schutzbedarf noch nicht bewertet</p>}
     <div className="grid gap-3 md:grid-cols-2">
-      <div className="space-y-1"><label htmlFor={id} className="text-sm font-medium">Schutzbedarf</label><select id={id} className={INPUT} value={level} onChange={event => setLevel(event.target.value)}><option value="">Bitte wählen</option><option value="normal">normal</option><option value="hoch">hoch</option></select></div>
-      <div className="space-y-1"><label htmlFor={`${id}-remarks`} className="text-sm font-medium">Begründung des Schutzbedarfs</label><textarea id={`${id}-remarks`} className={`${INPUT} min-h-20`} value={remarks} onChange={event => setRemarks(event.target.value)} /></div>
+      <div className="space-y-1"><label htmlFor={id} className="text-sm font-medium">Schutzbedarf</label><select id={id} className={INPUT} value={level} onChange={event => update(event.target.value, remarks)}><option value="">Bitte wählen</option><option value="normal">normal</option><option value="hoch">hoch</option></select></div>
+      <div className="space-y-1"><label htmlFor={`${id}-remarks`} className="text-sm font-medium">Begründung des Schutzbedarfs</label><textarea id={`${id}-remarks`} className={`${INPUT} min-h-20`} value={remarks} onChange={event => update(level, event.target.value)} /></div>
     </div>
     <div className="flex flex-wrap gap-2">
       <Button variant="secondary" size="sm" className="min-h-touch desktop:min-h-0" disabled={(level !== 'normal' && level !== 'hoch') || !remarks.trim() || (level === prop?.value && remarks === prop?.remarks)} onClick={() => { editor.apply(source => setTargetProtection(source, path, level as 'normal' | 'hoch', remarks)); }}>Bewertung übernehmen</Button>
       {prop && <Button variant="ghost" size="sm" className="min-h-touch desktop:min-h-0" onClick={() => setConfirming(true)}>Bewertung entfernen…</Button>}
+      {(level !== (prop?.value ?? '') || remarks !== (prop?.remarks ?? '')) && <Button variant="ghost" size="sm" className="min-h-touch desktop:min-h-0" onClick={() => update(prop?.value ?? '', prop?.remarks ?? '')}>Eingaben zurücksetzen</Button>}
     </div>
     <ConfirmDialog open={confirming} title="Schutzbedarfsbewertung entfernen?" confirmLabel="Bewertung entfernen" onCancel={() => setConfirming(false)} onConfirm={() => { editor.apply(source => setTargetProtection(source, path, undefined)); setConfirming(false); }}>Die Bewertung und ihre Begründung werden entfernt. Das Zielobjekt ist anschließend noch nicht bewertet.</ConfirmDialog>
   </div>;
@@ -71,10 +80,10 @@ export function InventoryReferences({ editor, path }: Readonly<{ editor: SspEdit
   return <SspRowList editor={editor} path={[...path, 'implemented-components']} title="Lokale Komponentenbezüge" uuidKeyed={false} addLabel="Komponentenbezug hinzufügen" newItem={() => ({})} rowTitle={(_, index) => `Komponentenbezug ${index + 1}`} renderRow={(row, item) => {
     const value = isJsonObject(item) ? readString(item['component-uuid']) ?? '' : '';
     const fieldId = `${id}-${row.at(-1)}`;
-    return <div className="space-y-1"><label htmlFor={fieldId} className="text-sm font-medium">Lokale Komponente</label><select id={fieldId} className={INPUT} value={value} onChange={event => { editor.apply(source => setSspValue(source, [...row, 'component-uuid'], event.target.value)); }}>
+    return <div className="space-y-1"><label htmlFor={fieldId} className="text-sm font-medium">Lokale Komponente</label><select id={fieldId} className={`${INPUT} font-mono`} value={value} onChange={event => { editor.apply(source => setSspValue(source, [...row, 'component-uuid'], event.target.value)); }}>
       <option value="">Bitte wählen</option>
-      {value && !components.some(component => component.uuid === value) && <option value={value}>{value} · nicht auflösbar</option>}
-      {components.map(component => <option key={String(component.uuid)} value={String(component.uuid)}>{readString(component.title) ?? 'Komponente'} · {String(component.uuid)}</option>)}
+      {value && !components.some(component => uuidKey(String(component.uuid)) === uuidKey(value)) && <option value={value}>{value} · nicht auflösbar</option>}
+      {components.map(component => <option key={String(component.uuid)} value={uuidKey(String(component.uuid)) === uuidKey(value) ? value : String(component.uuid)}>{readString(component.title) ?? 'Komponente'} · {String(component.uuid)}</option>)}
     </select></div>;
   }} />;
 }
@@ -96,10 +105,10 @@ export function TargetResponsibility({ editor, path, inventory = false }: Readon
       </select>
       <SspRowList editor={editor} path={[...row, 'party-uuids']} title="Verantwortliche Parteien" uuidKeyed={false} addLabel="Parteibezug hinzufügen" newItem={() => ''} rowTitle={(_, index) => `Parteibezug ${index + 1}`} renderRow={(partyPath, party) => {
         const partyId = `${fieldId}-party-${partyPath.at(-1)}`;
-        return <><label htmlFor={partyId} className="block text-sm font-medium">Lokale Partei</label><select id={partyId} className={INPUT} value={typeof party === 'string' ? party : ''} onChange={event => { editor.apply(source => setSspValue(source, partyPath, event.target.value)); }}>
+        return <><label htmlFor={partyId} className="block text-sm font-medium">Lokale Partei</label><select id={partyId} className={`${INPUT} font-mono`} value={typeof party === 'string' ? party : ''} onChange={event => { editor.apply(source => setSspValue(source, partyPath, event.target.value)); }}>
           <option value="">Bitte wählen</option>
-          {typeof party === 'string' && party && !parties.some(candidate => candidate.uuid === party) && <option value={party}>{party} · nicht auflösbar</option>}
-          {parties.map(candidate => <option key={String(candidate.uuid)} value={String(candidate.uuid)}>{readString(candidate.name) ?? String(candidate.uuid)}</option>)}
+          {typeof party === 'string' && party && !parties.some(candidate => uuidKey(String(candidate.uuid)) === uuidKey(party)) && <option value={party}>{party} · nicht auflösbar</option>}
+          {parties.map(candidate => <option key={String(candidate.uuid)} value={typeof party === 'string' && uuidKey(String(candidate.uuid)) === uuidKey(party) ? party : String(candidate.uuid)}>{readString(candidate.name) ?? String(candidate.uuid)}</option>)}
         </select></>;
       }} />
     </div>;

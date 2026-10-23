@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { exportSspInWorker } from '@/adapters/sspWorkbench';
 import { readString } from '@/domain/jsonGuards';
 import { SSP_ADAPTER_DIAGNOSTIC_CODES } from '@/adapters/oscalSspReaders';
@@ -17,7 +17,7 @@ import { useWorkspace } from '@/hooks/useWorkspace';
 import { useDocumentEditor, type DocumentEditorCoreMessage, type DocumentSaveState } from '@/features/workspace/useDocumentEditor';
 import type { PendingImportTarget } from '@/state/workspaceDocuments';
 
-type SspMessage = 'saved-as-draft' | 'component-unresolved' | 'component-referenced' | 'patch-failed' | 'catalog-locked' | 'target-invalid' | 'target-delete-blocked';
+type SspMessage = 'saved-as-draft' | 'component-unresolved' | 'component-referenced' | 'patch-failed' | 'catalog-locked' | 'target-invalid' | 'target-delete-blocked' | 'target-form-pending';
 
 export type SspEditorMessage = DocumentEditorCoreMessage | SspMessage;
 
@@ -43,6 +43,7 @@ export interface SspEditor {
   readonly remove: () => Promise<boolean>;
   readonly categories?: TargetCategoryContext;
   readonly targetFailure?: TargetFailure;
+  readonly setTargetFormPending: (id: string, pending: boolean) => void;
   readonly checkTargetRemoval: (path: SspPath) => Promise<readonly string[]>;
   readonly exportPreserved: () => void;
   /** Übernimmt einen neueren gespeicherten Stand nur ohne offene Eingaben. */
@@ -72,10 +73,17 @@ export function useSspEditor(localId: LocalId): SspEditor {
   const { documents, catalogDelivery } = useWorkspace();
   const catalog = useCatalog();
   const categories = useMemo(() => sspCategoryContext(catalog), [catalog]);
+  const pendingForms = useRef(new Set<string>());
+  const [hasPendingForms, setHasPendingForms] = useState(false);
+  const setTargetFormPending = useCallback((id: string, pending: boolean) => {
+    if (pending) pendingForms.current.add(id);
+    else pendingForms.current.delete(id);
+    setHasPendingForms(pendingForms.current.size > 0);
+  }, []);
   // Ungespeicherte Baseline-Wahl im Arbeitsspeicher des Tabs, wie die Importziele der Profile.
   const pending = documents.importTargets(localId);
   const hasPendingBindings = useCallback((current: unknown, envelope: WorkspaceEnvelope | undefined) =>
-    effectiveChoice(pending.get(SSP_IMPORT_PROFILE_POINTER), baselineHref(current), envelope) !== undefined, [pending]);
+    pendingForms.current.size > 0 || effectiveChoice(pending.get(SSP_IMPORT_PROFILE_POINTER), baselineHref(current), envelope) !== undefined, [pending]);
   const core = useDocumentEditor<SspMessage>({ localId, rootType: 'system-security-plan', sameContent: sameSspContent, hasPendingBindings });
   const { working, stored, change, commit, latest, setMessage, exportWith } = core;
   const [pendingBaseline, setPendingBaseline] = useState<PendingImportTarget | undefined>(() => pending.get(SSP_IMPORT_PROFILE_POINTER));
@@ -118,6 +126,7 @@ export function useSspEditor(localId: LocalId): SspEditor {
   }, [change, latest, pending]);
 
   const commitSsp = useCallback(async (rebind: boolean) => {
+    if (pendingForms.current.size) { setMessage('target-form-pending'); return; }
     const result = await commit(latest.current.working, async (storedSource, snapshot) => {
       const importedFailure = validateSspTargets(storedSource, categories);
       if (importedFailure) { setMessage('target-invalid'); return { ok: false, code: importedFailure.code }; }
@@ -160,7 +169,7 @@ export function useSspEditor(localId: LocalId): SspEditor {
   const bindCatalogStand = useCallback(() => commitSsp(true), [commitSsp]);
 
   // Eine ungespeicherte Baseline-Wahl ist eine offene Änderung, auch wenn die Quelle gleich bleibt.
-  const dirty = core.dirty || choice !== undefined;
+  const dirty = core.dirty || choice !== undefined || hasPendingForms;
   const exportDocument = useCallback(async () => { if (!dirty) await exportWith(document => exportSspInWorker(document, categories), 'ssp.json'); }, [categories, dirty, exportWith]);
 
   const checkTargetRemoval = useCallback(async (path: SspPath): Promise<readonly string[]> => {
@@ -181,7 +190,7 @@ export function useSspEditor(localId: LocalId): SspEditor {
   }, [latest]);
 
   return {
-    categories, targetFailure, checkTargetRemoval, exportPreserved,
+    categories, targetFailure, checkTargetRemoval, exportPreserved, setTargetFormPending,
     status: core.status, envelope: core.envelope, working, dirty, saveState: core.saveState, busy: core.busy, message: core.message,
     baseline, baselineBindable, apply, chooseBaseline, save, bindCatalogStand, exportDocument, remove: core.remove, adopt: core.adopt,
   };

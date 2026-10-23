@@ -1,4 +1,5 @@
 import type { VocabularyNamespaceData } from '@/domain/models';
+import { compareStringsByCodeUnit } from '@/domain/codeUnitOrder.mjs';
 
 export type CategoryClosure =
   | { readonly status: 'invalid'; readonly code: string }
@@ -31,9 +32,9 @@ export function closeTargetCategories(namespace: VocabularyNamespaceData, select
     }
     ancestors.set(uuid, chain);
   }
-  const direct = [...new Set(selected.map(value => value.toLowerCase()))].sort();
+  const direct = [...new Set(selected.map(value => value.toLowerCase()))].sort(compareStringsByCodeUnit);
   if (direct.some(uuid => !parents.has(uuid))) return { status: 'invalid', code: 'SSP_CATEGORY_UNKNOWN' };
-  const effective = [...new Set(direct.flatMap(uuid => [uuid, ...ancestors.get(uuid)!]))].sort();
+  const effective = [...new Set(direct.flatMap(uuid => [uuid, ...ancestors.get(uuid)!]))].sort(compareStringsByCodeUnit);
   return { status: 'ready', catalogKey: 'gspp', commit, objectId, direct, effective,
     entries: effective.map(uuid => ({ uuid, direct: direct.includes(uuid), derivedFrom: direct.filter(chosen => ancestors.get(chosen)!.includes(uuid)) })) };
 }

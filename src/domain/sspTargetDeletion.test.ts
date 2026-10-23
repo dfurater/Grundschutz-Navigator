@@ -10,6 +10,21 @@ const list = path.slice(0, -1);
 const member = (id: string, source: unknown): WorkspaceEnvelope => ({ localId: id as LocalId, source } as WorkspaceEnvelope);
 
 describe('Zielobjekt-Löschschutz', () => {
+  it('prüft unveränderte große Listen mit linear vielen UUID-Zugriffen', () => {
+    let reads = 0;
+    const components = Array.from({ length: 500 }, (_, index) => ({ get uuid() { reads++; return `aaaaaaaa-0000-4000-8000-${String(index).padStart(12, '0')}`; } }));
+    const source = { 'system-security-plan': { 'system-implementation': { components } } };
+    expect(sspDeletionBlocked(source, source, localId, [], [])).toBe(false);
+    expect(reads).toBeLessThan(500 * 10);
+  });
+  it('prüft lokale Fragmente zentral und ignoriert Bezüge auf fremde Dokumente', () => {
+    const source = makeFullSsp();
+    const uuid = String((source['system-security-plan'] as { 'system-implementation': { components: { uuid: string }[] } })['system-implementation'].components[0].uuid);
+    const linked = withSspBody(source, body => { body.metadata.links = [{ href: `#${uuid.toUpperCase()}` }, { href: `other.json#${uuid}` }]; });
+    const uses = targetDeletionUses(linked, path, localId, [], []);
+    expect(uses).toContain('/system-security-plan/metadata/links/0/href');
+    expect(uses).not.toContain('/system-security-plan/metadata/links/1/href');
+  });
   it('nennt lokale Verwendungen und sperrt entfernte referenzierte Komponenten', () => {
     const source = makeFullSsp();
     expect(targetDeletionUses(source, path, localId, [], [])).toContain('/system-security-plan/control-implementation/implemented-requirements/0/by-components/0/component-uuid');
