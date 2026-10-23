@@ -36,7 +36,7 @@ import {
 } from '../src/domain/sourceRegistry.mjs';
 import {
   COMPANION_LIFECYCLES,
-  UNKNOWN_COMPANION_ROOT_TYPE,
+  COMPANION_ROOT_TYPES,
   classifyCompanionArtifact,
   listCompanionTreePaths,
 } from './companion-artifacts.mjs';
@@ -73,13 +73,6 @@ export const CATALOG_IMPORT_SOURCE_REF = 'origin/main';
  * läuft aus dem PR-Head und darf nicht über seine eigene Änderung entscheiden.
  */
 const MANIFEST_CHANGE_FORBIDDEN_PREFIXES = Object.freeze(['scripts/', '.github/']);
-const COMPANION_ROOT_TYPES = new Set([
-  'catalog',
-  'profile',
-  'mapping-collection',
-  'component-definition',
-  UNKNOWN_COMPANION_ROOT_TYPE,
-]);
 
 const SHA_PATTERN = /^[0-9a-f]{40}$/;
 
@@ -134,7 +127,7 @@ function assertCompanionFileIsValid(file, companionKeys) {
     throw new Error(`Manifest companion has an invalid or duplicate artifactKey: ${file.path}`);
   }
   companionKeys.add(file.artifactKey);
-  if (!COMPANION_ROOT_TYPES.has(file.rootType) || !COMPANION_LIFECYCLES.includes(file.lifecycle)) {
+  if (!COMPANION_ROOT_TYPES.includes(file.rootType) || !COMPANION_LIFECYCLES.includes(file.lifecycle)) {
     throw new Error(`Manifest companion metadata is invalid: ${file.path}`);
   }
 }

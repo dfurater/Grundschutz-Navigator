@@ -587,7 +587,7 @@ async function validateResultManifest(cwd) {
  * die Regel nicht, entsteht kein Pull Request: Ein roter Pull Request wäre ein
  * schlechterer Befund als ein roter Lauf mit genannten Zuständen.
  */
-function defaultValidateManifests({ previousManifest, nextManifest, cwd }) {
+async function defaultValidateManifests({ previousManifest, nextManifest, cwd }) {
   try {
     assertOfficialManifest(previousManifest);
     assertOfficialManifest(nextManifest);

@@ -362,7 +362,7 @@ const lineageStateLabels: Record<Exclude<CatalogLineageState, 'complete'>, strin
   'resource-ambiguous': 'Back-matter-Ressource ist mehrdeutig',
   'rlink-missing': 'Ressourcen-Link fehlt',
   'rlink-ambiguous': 'Ressourcen-Link ist mehrdeutig',
-  'artifact-unregistered': 'Quelle liegt nicht im gepinnten BSI-Snapshot',
+  'artifact-unregistered': 'Quelle konnte nicht aufgelöst werden',
   'import-duplicate': 'Profilimport ist mehrfach vorhanden',
 };
 

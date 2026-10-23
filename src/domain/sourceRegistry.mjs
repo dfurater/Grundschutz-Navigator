@@ -376,7 +376,7 @@ export function deriveCompanionArtifactKey(path) {
     .slice(0, -'.json'.length)
     .toLowerCase()
     .replaceAll(/[^a-z0-9]+/g, '-')
-    .replaceAll(/^-+|-+$/g, '');
+    .replaceAll(/^-|-$/g, '');
   return hasRegistryKeyGrammar(key) ? key : null;
 }
 
@@ -426,7 +426,7 @@ export function listSupportedCatalogs(entries = SOURCE_REGISTRY) {
       entry.kind === 'oscal' &&
       entry.expectedRootType === 'catalog' &&
       entry.lifecycle === 'supported' &&
-      entry.catalogKey !== undefined,
+      hasRegistryKeyGrammar(entry.catalogKey),
   );
 }
 

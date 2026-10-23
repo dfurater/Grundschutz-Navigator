@@ -9,8 +9,8 @@
 // =============================================================================
 
 import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { join } from 'node:path';
-import { Ajv } from 'ajv';
 import { sha256Hex } from './contentHashes.mjs';
 import { REPO_ROOT } from './security-guards.mjs';
 import {
@@ -18,17 +18,12 @@ import {
   isPathWithinMonitoredRoot,
   listProductUpstreamPaths,
 } from '../src/domain/sourceRegistry.mjs';
-import { resolveSchemaBinding } from '../src/domain/oscalVersionMatrix.mjs';
-
-const OSCAL_ROOT_TYPES = Object.freeze([
-  'catalog',
-  'profile',
-  'mapping-collection',
-  'component-definition',
-]);
+import { OSCAL_ROOT_KEYS, resolveSchemaBinding } from '../src/domain/oscalVersionMatrix.mjs';
 
 /** Root-Typ eines Begleitartefakts, dessen Dokument keine eindeutige OSCAL-Wurzel trägt. */
 export const UNKNOWN_COMPANION_ROOT_TYPE = 'unknown';
+/** Jedes Root-Modell der Versionsmatrix, dazu der Platzhalter für eine fehlende Wurzel. */
+export const COMPANION_ROOT_TYPES = Object.freeze([...OSCAL_ROOT_KEYS, UNKNOWN_COMPANION_ROOT_TYPE]);
 export const COMPANION_LIFECYCLES = Object.freeze(['preview', 'blocked-by-upstream']);
 
 /** Begleitpfade des Trees in Tree-Reihenfolge. */
@@ -77,6 +72,9 @@ function compilePinnedSchema(pin) {
   if (sha256Hex(bytes) !== pin.sha256) {
     throw new Error(`Gepinntes OSCAL-Schema weicht vom Matrix-Hash ab: ${pin.vendorPath}`);
   }
+  // Ajv erst bei Bedarf laden: Normale PRs und `--validate-manifest` laufen
+  // ohne installierte Abhängigkeiten.
+  const { Ajv } = createRequire(join(REPO_ROOT, 'package.json'))('ajv');
   const ajv = new Ajv({ validateFormats: false, allErrors: false, strictTypes: false });
   const validate = ajv.compile(JSON.parse(bytes.toString('utf8')));
   compiledSchemas.set(pin.vendorPath, validate);
@@ -97,7 +95,7 @@ export function classifyCompanionArtifact(buffer) {
     return { rootType: UNKNOWN_COMPANION_ROOT_TYPE, lifecycle: 'blocked-by-upstream', document: null };
   }
   const roots = document !== null && typeof document === 'object' && !Array.isArray(document)
-    ? OSCAL_ROOT_TYPES.filter((rootType) => document[rootType] !== undefined)
+    ? OSCAL_ROOT_KEYS.filter((rootType) => document[rootType] !== undefined)
     : [];
   if (roots.length !== 1) {
     return { rootType: UNKNOWN_COMPANION_ROOT_TYPE, lifecycle: 'blocked-by-upstream', document: null };

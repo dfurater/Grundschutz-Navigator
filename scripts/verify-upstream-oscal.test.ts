@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
@@ -290,6 +290,23 @@ describe('Sperrsemantik und Werkzeugfehler', () => {
     });
   });
 
+  it.each([
+    ['blocked-by-upstream', 'passed', 'companion-validator-disagreement'],
+    ['preview', 'failed', 'companion-validator-disagreement'],
+    ['blocked-by-upstream', 'not-checked', 'companion-not-checked'],
+  ])('weist bei einem Begleitartefakt (%s, go-oscal %s) die Abweichung aus, ohne zu blockieren', (lifecycle, schemaStatus, outcome) => {
+    expect(evaluateArtifactExpectation({ ...artifact(lifecycle), companion: true }, schemaStatus)).toMatchObject({
+      schemaStatus,
+      outcome,
+      verificationPassed: true,
+    });
+  });
+
+  it('lässt nur Begleitartefakte ungeprüft', () => {
+    expect(() => evaluateArtifactExpectation(artifact('supported'), 'not-checked'))
+      .toThrow('Only a companion artifact may remain unchecked');
+  });
+
   it('meldet ein bestandenes gesperrtes Artefakt als Entsperrungskandidaten', () => {
     expect(evaluateArtifactExpectation(artifact('blocked-by-upstream'), 'passed')).toMatchObject({
       expectedSchemaStatus: 'failed',
@@ -497,6 +514,38 @@ async function createCorpusFixture() {
 }
 
 describe('Korpus-Orchestrierung', () => {
+  it('prüft ein Begleitartefakt ohne vorbereitbare $schema-Direktive nicht, ohne den Lauf abzubrechen', async () => {
+    const fixture = await createCorpusFixture();
+    const companion = Buffer.from('{"$schema":5,"catalog":{"metadata":{"oscal-version":"9.9.9"}}}');
+    const companionPath = 'control_layer/companion.json';
+    const manifest = JSON.parse(await readFile(resolve(fixture.tempRoot, 'upstream-manifest.json'), 'utf8'));
+    await writeFile(resolve(fixture.tempRoot, 'upstream-manifest.json'), JSON.stringify(buildUpstreamManifest({
+      repository: manifest.repository,
+      snapshotCommitSha: manifest.snapshotCommitSha,
+      files: [...manifest.files, {
+        artifactKey: 'companion-fixture',
+        rootType: 'catalog',
+        lifecycle: 'blocked-by-upstream',
+        path: companionPath,
+        contentSha256: sha256(companion),
+        gitBlobSha: gitBlobSha(companion),
+      }],
+    })));
+    const companionUrl = fixture.bsiUrl.replace('control_layer/fixture.json', companionPath);
+
+    try {
+      const result = await fixture.run(async (url: string) =>
+        url === companionUrl ? new Response(companion) : fixture.respond(url));
+
+      expect(result.verificationPassed).toBe(true);
+      expect(result.artifactResults.find((entry) => entry.artifactKey === 'companion-fixture'))
+        .toMatchObject({ schemaStatus: 'not-checked', outcome: 'companion-not-checked' });
+      expect(fixture.executeTool).toHaveBeenCalledTimes(1);
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
   it('liefert eine deterministische, redigierte Zusammenfassung ohne Schema- oder Referenzabrufe', async () => {
     const fixture = await createCorpusFixture();
     const { tempRoot, registry, releaseConfig, releaseBase, executeTool } = fixture;

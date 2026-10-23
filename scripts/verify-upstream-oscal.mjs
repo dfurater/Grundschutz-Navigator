@@ -211,6 +211,7 @@ export function selectManifestOscalArtifacts(manifest, registry = listOscalArtif
       upstreamPath: entry.upstreamPath,
       contentSha256: manifestFile.contentSha256,
       gitBlobSha: manifestFile.gitBlobSha,
+      companion: false,
     });
   });
   const productPaths = new Set(registry.map((entry) => entry.upstreamPath));
@@ -229,6 +230,7 @@ export function selectManifestOscalArtifacts(manifest, registry = listOscalArtif
       upstreamPath: file.path,
       contentSha256: file.contentSha256,
       gitBlobSha: file.gitBlobSha,
+      companion: true,
     }));
   const oscalArtifacts = [...productArtifacts, ...companionArtifacts];
 
@@ -571,14 +573,27 @@ function resolveArtifactExpectationOutcome(expectedSchemaStatus, verificationPas
     : 'expected-schema-success';
 }
 
+/**
+ * Ein Begleitartefakt wird nie ausgeliefert, und sein Lifecycle stammt aus der
+ * Ajv-Prüfung des Fetch (ADR-13). Urteilt go-oscal anders, gibt es keinen
+ * Registereintrag zum Nachführen; die Abweichung wird deshalb ausgewiesen,
+ * blockiert aber nicht. Für Produktartefakte bleibt sie blockierend.
+ */
 export function evaluateArtifactExpectation(artifact, schemaStatus) {
-  if (schemaStatus !== 'passed' && schemaStatus !== 'failed') {
+  if (schemaStatus !== 'passed' && schemaStatus !== 'failed' && schemaStatus !== 'not-checked') {
     throw new Error('Schema status is invalid');
+  }
+  if (schemaStatus === 'not-checked' && !artifact.companion) {
+    throw new Error('Only a companion artifact may remain unchecked');
   }
 
   const expectedSchemaStatus = artifact.lifecycle === 'blocked-by-upstream' ? 'failed' : 'passed';
-  const verificationPassed = schemaStatus === expectedSchemaStatus;
-  const outcome = resolveArtifactExpectationOutcome(expectedSchemaStatus, verificationPassed);
+  const matches = schemaStatus === expectedSchemaStatus;
+  let outcome = resolveArtifactExpectationOutcome(expectedSchemaStatus, matches);
+  if (artifact.companion && !matches) {
+    outcome = schemaStatus === 'not-checked' ? 'companion-not-checked' : 'companion-validator-disagreement';
+  }
+  const verificationPassed = matches || Boolean(artifact.companion);
 
   return Object.freeze({
     artifactKey: artifact.artifactKey,
@@ -740,7 +755,7 @@ export function formatVerifyUpstreamOscalSummary({ snapshotCommitSha, selection,
     `Snapshot: ${snapshotCommitSha}`,
     `OSCAL: ${artifactResults.length} geprüft`,
     `vocabulary: ${selection.vocabularyArtifacts.length} übersprungen (kein OSCAL-Root-Modell)`,
-    'Versionen:',
+    'Versionen der Produktartefakte:',
     versionLines,
     'Artefakte:',
     artifactLines,
@@ -853,7 +868,15 @@ export async function runVerifyUpstreamOscal({
         // Ein syntaktisch defektes Dokument ist ein Befund der Stufe 1 und wird
         // von go-oscal ausgewiesen; Stufe 5 lässt es schlicht aus.
       }
-      await writeFile(inputPath, prepareGoOscalInput(verifiedBytes, artifact.artifactKey));
+      let goOscalInput;
+      try {
+        goOscalInput = prepareGoOscalInput(verifiedBytes, artifact.artifactKey);
+      } catch (error) {
+        if (!artifact.companion) throw error;
+        artifactResults.push(evaluateArtifactExpectation(artifact, 'not-checked'));
+        continue;
+      }
+      await writeFile(inputPath, goOscalInput);
       await executeTool({ binaryPath, inputPath, resultPath, artifactKey: artifact.artifactKey });
       artifactResults.push(
         evaluateArtifactExpectation(

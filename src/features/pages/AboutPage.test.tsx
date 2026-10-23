@@ -470,7 +470,7 @@ describe('AboutPage', () => {
     expect(screen.getByText('Kernel G0')).toBeInTheDocument();
     expect(screen.getByText('kernel-uuid')).toBeInTheDocument();
     expect(screen.getByText(/Back-matter-Ressource fehlt/i)).toBeInTheDocument();
-    expect(screen.getByText(/Quelle liegt nicht im gepinnten BSI-Snapshot/i)).toBeInTheDocument();
+    expect(screen.getByText(/Quelle konnte nicht aufgelöst werden/i)).toBeInTheDocument();
     expect(
       screen.getByText(
         /Link: \.\.\/catalogs\/Methodik-Grundschutz\+\+\/BSI-Methodik-Grundschutz\+\+-catalog\.json$/,
