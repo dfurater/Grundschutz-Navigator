@@ -869,8 +869,10 @@ bewertbare Kanten und keine `no-relationship`-Aussage.
 * Die 2374 `mapping-item`-Verweise des ITGS-Mappings bleiben nicht bewertbar;
   die drei gesperrten Artefakte gelangen wegen ihrer erwarteten Schemafehler
   nicht in den Referenzgraphen.
-* Die Profile lösen ihre registrierten Katalogimporte auf: Grundschutz++ 3,
-  Lieferkettensicherheit 1 und WLAN 1.
+* Die Profil-Lineage ordnet Grundschutz++ drei, Lieferkettensicherheit einen
+  und WLAN einen Quellkatalog zu. Die Referenzgraph-Prüfung löst dagegen nur
+  dokumentinterne Back-Matter-Referenzen auf; sie erhält keine Dokumentbindungen
+  für Katalog-Lineage und bewertet `with-ids` im `resource`-Kontext nicht.
 
 ## Prüftiefen-Landkarte
 
@@ -1262,7 +1264,7 @@ Der Wartungssync `scripts/sync-oscal-content-oracle.mjs` begrenzt jeden Download
   tests, kein unabhängiges Orakel.
 - **Bauzeitlauf:** Verpflichtend nach `npm run fetch-catalog`, schreibt
   verifizierte Rohbytes nach `.cache/upstream-corpus/` (gitignoriert,
-  10 Dokumente), kein zweiter Fetch, keine Env-Variablen-Pfade, kein
+  9 Dokumente), kein zweiter Fetch, keine Env-Variablen-Pfade, kein
   Überspringen. Workflows `validate.yml`/`deploy.yml` führen
   `npm run test:profile-resolution` (eigene Vitest-Lane
   `scripts/vitest.corpus.config.ts`) direkt nach dem Fetch aus.

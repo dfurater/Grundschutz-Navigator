@@ -21,7 +21,7 @@ Inoffizielles Community-Projekt, kein Angebot des BSI. Keine Rechtsberatung, kei
 - Die BSI-Vokabulare nachschlagen, also die Begriffslisten, auf denen Filter und Kontrollen aufbauen.
 - Die gefilterte Liste, Suchtreffer oder eine eigene Auswahl als CSV-Datei exportieren.
 
-Filter und Detailangaben richten sich nach den Daten des jeweiligen Katalogs: Der Katalog „Supply Chain Security“ enthält zum Beispiel keine Schutzziele, deshalb fehlt dort auch der Schutzziel-Filter.
+Filter und Detailangaben richten sich nach den Daten des jeweiligen Katalogs. Der Lieferkettensicherheitskatalog enthält im Snapshot `160c177` Schutzziel- und `threats`-Properties; die Oberfläche zeigt vorhandene Schutzziel-Werte als Filter und die Properties in der Detailansicht.
 
 Die App funktioniert am Desktop und auf dem Smartphone.
 

@@ -231,6 +231,51 @@ export function isCatalogSyncCandidate({ branch, title, diffEntries }) {
   );
 }
 
+const REGISTRY_SNAPSHOT_MIGRATION_PATHS = new Set([
+  TRACKED_MANIFEST_PATH,
+  REGISTRY_LIFECYCLE_MIGRATION_PATH,
+]);
+
+function isRegistrySnapshotMigrationPath(path) {
+  return (
+    path.startsWith('src/') ||
+    path.startsWith('docs/') ||
+    /^scripts\/.+\.test\.[cm]?[jt]sx?$/.test(path)
+  );
+}
+
+export function isRegistrySnapshotMigration({
+  baseRef,
+  branch,
+  title,
+  diffEntries,
+  previousManifest,
+  nextManifest,
+  previousSourceRegistry,
+}) {
+  if (
+    baseRef !== 'develop' ||
+    branch.startsWith('chore/catalog-sync-') ||
+    title.startsWith(SYNC_TITLE_PREFIX) ||
+    !Array.isArray(diffEntries) ||
+    !diffEntries.some((entry) => entry.status === 'M' && entry.path === TRACKED_MANIFEST_PATH) ||
+    !diffEntries.some((entry) => entry.status === 'M' && entry.path === REGISTRY_LIFECYCLE_MIGRATION_PATH) ||
+    diffEntries.some((entry) =>
+      entry.status !== 'M' ||
+      (!REGISTRY_SNAPSHOT_MIGRATION_PATHS.has(entry.path) && !isRegistrySnapshotMigrationPath(entry.path))
+    ) ||
+    !previousManifest ||
+    !nextManifest ||
+    previousManifest.snapshotCommitSha === nextManifest.snapshotCommitSha ||
+    !Array.isArray(previousSourceRegistry) ||
+    isStructurallyEqual(previousSourceRegistry, SOURCE_REGISTRY)
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
 /**
  * Ein fachlich geprüfter Lifecycle-Wechsel ist kein autonomer Catalog-Sync.
  * Er ist nur zulässig, wenn derselbe Snapshot und sämtliche Content-Pins
@@ -945,6 +990,33 @@ export async function guardCatalogSyncPullRequest({
     };
   }
 
+  if (isRegistrySnapshotMigration({
+    baseRef,
+    branch,
+    title,
+    diffEntries,
+    previousManifest,
+    nextManifest,
+    previousSourceRegistry,
+  })) {
+    validateManifestV2Shape(previousManifest);
+    if (previousManifest.repository !== OFFICIAL_BSI_REPOSITORY_URL) {
+      throw new Error(`Previous manifest repository must be ${OFFICIAL_BSI_REPOSITORY_URL}`);
+    }
+    validateCatalogSyncManifest(nextManifest);
+    await verifySnapshotProgress(
+      previousManifest.snapshotCommitSha,
+      nextManifest.snapshotCommitSha,
+      { fetchImpl, token, requestTimeoutMs },
+    );
+    await verifySnapshotFiles(nextManifest, { fetchImpl, token, requestTimeoutMs });
+    return {
+      catalogSync: false,
+      registrySnapshotMigration: true,
+      snapshotCommitSha: nextManifest.snapshotCommitSha,
+    };
+  }
+
   if (!isCatalogSyncCandidate({ branch, title, diffEntries })) {
     return { catalogSync: false };
   }
@@ -1083,6 +1155,12 @@ async function runCli() {
 
   if (result.registryLifecycleMigration) {
     console.log('Registry-Lifecycle-Migration geprüft; kein autonomer Catalog-Sync.');
+    return;
+  }
+  if (result.registrySnapshotMigration) {
+    console.log(
+      `Registry-Snapshot-Migration vollständig gegen Snapshot ${result.snapshotCommitSha} geprüft.`,
+    );
     return;
   }
   if (result.registryPreviewArtifactExpansion) {

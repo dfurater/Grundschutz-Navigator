@@ -15,6 +15,7 @@ import {
   isCatalogImportToDevelop,
   guardCatalogSyncPullRequest,
   isRegistryPreviewArtifactExpansion,
+  isRegistrySnapshotMigration,
   isRegistryLifecycleOnlyMigration,
   isRegistryOscalVersionMigration,
   loadSourceRegistryAtRef,
@@ -1222,6 +1223,83 @@ describe('snapshot progression', () => {
   });
 });
 
+
+describe('Registry-Snapshot-Migration', () => {
+  const requiredPaths = [
+    { status: 'M', path: 'upstream-manifest.json' },
+    { status: 'M', path: 'src/domain/sourceRegistry.mjs' },
+  ];
+  const previous = makeFixture({ snapshotCommitSha: OLD_SHA });
+  const next = makeFixture({ snapshotCommitSha: NEW_SHA });
+  const previousSourceRegistry = JSON.parse(JSON.stringify(SOURCE_REGISTRY)) as Record<string, unknown>[];
+  previousSourceRegistry[0].upstreamPath = `${String(previousSourceRegistry[0].upstreamPath)}.previous`;
+
+  it('accepts a manual develop PR only when the registry and official snapshot both change', () => {
+    expect(previous.manifest.snapshotCommitSha).not.toBe(next.manifest.snapshotCommitSha);
+    expect(previousSourceRegistry).not.toEqual(SOURCE_REGISTRY);
+    expect(requiredPaths.every((entry) => entry.status === 'M')).toBe(true);
+    expect(isRegistrySnapshotMigration({
+      baseRef: 'develop',
+      branch: 'codex/gspp-620-fixcatalog-sync',
+      title: 'GSPP-620: BSI-Kernel-Snapshot übernehmen',
+      diffEntries: [
+        ...requiredPaths,
+        { status: 'M', path: 'src/domain/sourceRegistry.test.ts' },
+        { status: 'M', path: 'scripts/catalog-sync-guard.test.ts' },
+        { status: 'M', path: 'docs/OSCAL_VALIDATION.md' },
+      ],
+      previousManifest: previous.manifest,
+      nextManifest: next.manifest,
+      previousSourceRegistry,
+    })).toBe(true);
+  });
+
+  it('checks the full official snapshot progression and every manifest blob', async () => {
+    const fetchImpl = makeGitHubFetch(next);
+    await expect(guardCatalogSyncPullRequest({
+      baseRef: 'develop',
+      branch: 'codex/gspp-620-fixcatalog-sync',
+      title: 'GSPP-620: BSI-Kernel-Snapshot übernehmen',
+      diffEntries: requiredPaths,
+      previousManifest: previous.manifest,
+      nextManifest: next.manifest,
+      previousSourceRegistry,
+      fetchImpl,
+    })).resolves.toMatchObject({
+      catalogSync: false,
+      registrySnapshotMigration: true,
+      snapshotCommitSha: NEW_SHA,
+    });
+    expect(fetchImpl).toHaveBeenCalledWith(expect.stringContaining(`/compare/${OLD_SHA}...${NEW_SHA}`), expect.anything());
+    expect(fetchImpl.mock.calls.some(([url]) => String(url).includes('/git/blobs/'))).toBe(true);
+  });
+
+  it.each([
+    ['a base outside develop', { baseRef: 'main' }],
+    ['the automated catalog-sync branch', { branch: 'chore/catalog-sync-222222222222' }],
+    ['the automated catalog-sync title', { title: 'chore(ci): BSI-Katalog-Sync 222222222222' }],
+    ['a missing registry diff', { diffEntries: [{ status: 'M', path: 'upstream-manifest.json' }] }],
+    ['a change to the guard itself', {
+      diffEntries: [
+        ...requiredPaths,
+        { status: 'M', path: 'scripts/catalog-sync-guard.mjs' },
+      ],
+    }],
+    ['an unchanged snapshot', { nextManifest: previous.manifest }],
+    ['an unchanged registry', { previousSourceRegistry: SOURCE_REGISTRY }],
+  ])('rejects %s', (_label, overrides) => {
+    expect(isRegistrySnapshotMigration({
+      baseRef: 'develop',
+      branch: 'codex/gspp-620-fixcatalog-sync',
+      title: 'GSPP-620: BSI-Kernel-Snapshot übernehmen',
+      diffEntries: requiredPaths,
+      previousManifest: previous.manifest,
+      nextManifest: next.manifest,
+      previousSourceRegistry,
+      ...overrides,
+    })).toBe(false);
+  });
+});
 
 describe('OSCAL-Versionsmigration (GSPP-376)', () => {
   const MIGRATED_KEY = 'component-aws-security-hub';
