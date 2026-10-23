@@ -294,11 +294,11 @@ describe('Sperrsemantik und Werkzeugfehler', () => {
     ['blocked-by-upstream', 'passed', 'companion-validator-disagreement'],
     ['preview', 'failed', 'companion-validator-disagreement'],
     ['blocked-by-upstream', 'not-checked', 'companion-not-checked'],
-  ])('weist bei einem Begleitartefakt (%s, go-oscal %s) die Abweichung aus, ohne zu blockieren', (lifecycle, schemaStatus, outcome) => {
+  ])('weist bei einem Begleitartefakt (%s, go-oscal %s) die Abweichung aus und blockiert', (lifecycle, schemaStatus, outcome) => {
     expect(evaluateArtifactExpectation({ ...artifact(lifecycle), companion: true }, schemaStatus)).toMatchObject({
       schemaStatus,
       outcome,
-      verificationPassed: true,
+      verificationPassed: false,
     });
   });
 
@@ -514,7 +514,7 @@ async function createCorpusFixture() {
 }
 
 describe('Korpus-Orchestrierung', () => {
-  it('prüft ein Begleitartefakt ohne vorbereitbare $schema-Direktive nicht, ohne den Lauf abzubrechen', async () => {
+  it('bricht bei einem Begleitartefakt ohne vorbereitbare $schema-Direktive ab', async () => {
     const fixture = await createCorpusFixture();
     const companion = Buffer.from('{"$schema":5,"catalog":{"metadata":{"oscal-version":"9.9.9"}}}');
     const companionPath = 'control_layer/companion.json';
@@ -534,12 +534,9 @@ describe('Korpus-Orchestrierung', () => {
     const companionUrl = fixture.bsiUrl.replace('control_layer/fixture.json', companionPath);
 
     try {
-      const result = await fixture.run(async (url: string) =>
-        url === companionUrl ? new Response(companion) : fixture.respond(url));
-
-      expect(result.verificationPassed).toBe(true);
-      expect(result.artifactResults.find((entry) => entry.artifactKey === 'companion-fixture'))
-        .toMatchObject({ schemaStatus: 'not-checked', outcome: 'companion-not-checked' });
+      await expect(fixture.run(async (url: string) =>
+        url === companionUrl ? new Response(companion) : fixture.respond(url)))
+        .rejects.toMatchObject({ code: 'GO_OSCAL_SCHEMA_DIRECTIVE_INVALID' });
       expect(fixture.executeTool).toHaveBeenCalledTimes(1);
     } finally {
       await fixture.cleanup();
