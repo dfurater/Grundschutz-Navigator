@@ -91,7 +91,7 @@ Jeder Pull Request wird von zwei KI-Review-Werkzeugen geprüft: Greptile als Pfl
 
 ## Lokal starten
 
-Voraussetzung ist Node.js 22.22.2 oder neuer. Ein GitHub-Token in `GH_TOKEN` ist optional und erhöht die API-Rate-Limits beim Laden der Katalogdaten.
+Voraussetzung ist Node.js 22.23.4 oder neuer. Ein GitHub-Token in `GH_TOKEN` ist optional und erhöht die API-Rate-Limits beim Laden der Katalogdaten.
 
 ```bash
 git clone https://github.com/dfurater/Grundschutz-Navigator.git
