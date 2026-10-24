@@ -141,6 +141,13 @@ describe('exportEvidencePackage', () => {
     expect(await exportSource(fixture())).toEqual({ ok: false, code: 'EVIDENCE_ZIP_INVALID' });
   });
 
+  it('maps non-Error ZIP failures to the fixed source error code', async () => {
+    const failure = Object.create(null);
+    vi.spyOn(storedZip, 'createStoredZip').mockImplementation(() => { throw failure; });
+
+    expect(await exportSource(fixture())).toEqual({ ok: false, code: 'EVIDENCE_EXPORT_SOURCE_INVALID' });
+  });
+
   it('keeps the snapshot stable when the caller changes source or selection during validation', async () => {
     const source = fixture();
     const uuids: string[] = [RESOURCE];

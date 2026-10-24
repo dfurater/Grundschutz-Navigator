@@ -18,6 +18,10 @@ export type EvidenceExportResult =
   | { readonly ok: false; readonly code: string };
 
 const fail = (code: string): EvidenceExportResult => ({ ok: false, code });
+function evidenceExportErrorCode(error: unknown): string {
+  if (error instanceof Error && error.message === 'EVIDENCE_ZIP_INVALID') return 'EVIDENCE_ZIP_INVALID';
+  return 'EVIDENCE_EXPORT_SOURCE_INVALID';
+}
 
 function indexResources(body: JsonObject): Map<string, JsonObject> | undefined {
   const index = new Map<string, JsonObject>();
@@ -69,6 +73,6 @@ export async function exportEvidencePackage(input: EvidenceExportInput): Promise
       report: { schema: 'passed', constraints: 'not-checked', references: 'not-checked' },
     };
   } catch (error) {
-    return fail(error instanceof Error && error.message === 'EVIDENCE_ZIP_INVALID' ? 'EVIDENCE_ZIP_INVALID' : 'EVIDENCE_EXPORT_SOURCE_INVALID');
+    return fail(evidenceExportErrorCode(error));
   }
 }
