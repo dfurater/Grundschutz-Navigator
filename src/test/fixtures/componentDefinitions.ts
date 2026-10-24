@@ -74,9 +74,9 @@ interface CapabilitySpec {
 
 export interface ComponentArtifactSpec {
   readonly artifactKey: string;
-  /** Aus dem Quellregister abgeleitet — hier nie zweitgepflegt (ADR-1). */
+  /** Synthetischer Herkunftspfad des Fixtures. */
   readonly upstreamPath: string;
-  /** Aus dem Quellregister abgeleitet — hier nie zweitgepflegt (GSPP-283). */
+  /** OSCAL-Version des eingefrorenen Dokuments. */
   readonly oscalVersion: PinnedOscalVersion;
   /** Ob das Dokument gegen sein gepinntes Schema valide ist (ADR-7). */
   readonly schemaValid: boolean;
@@ -119,31 +119,16 @@ function componentsFrom(
 }
 
 /**
- * Die registrierten Component Definitions, adressiert über ihren
- * Artefaktschlüssel.
- *
- * `upstreamPath` und `oscalVersion` sind **Registerfakten**, keine Messwerte:
- * Das Quellregister ist ihre einzige Quelle der Wahrheit (ADR-1, GSPP-283).
- * Sie hier zweitzupflegen hätte genau den Fehler ermöglicht, den dieses
- * Projekt schon zweimal hatte — die WLAN-Definition wurde upstream durch
- * Keycloak ersetzt (GSPP-319), die AWS-Definitionen durch die
- * Security-Hub-V2-Datei (GSPP-308). Ein Fixture mit eigenem Pfad und eigener
- * Version wäre danach grün geblieben, obwohl es ein Artefakt nachbildet, das
- * es nicht mehr gibt.
- *
- * Eingefroren sind hier ausschließlich die **gemessenen Strukturzahlen**.
+ * Eingefrorene Dokumentversionen und synthetische Herkunftspfade.
+ * Der Korpus liest weder Quellregister noch Manifest und ruft die Pfade nicht ab.
  */
-/**
- * Am Snapshot gemessene Artefaktfakten. Sie sind Teil des eingefrorenen
- * Korpus und lesen weder Quellregister noch Manifest.
- */
-const MEASURED_COMPONENT_FACTS = Object.freeze({
-  'component-aws-security-hub': { artifactKey: 'component-aws-security-hub', upstreamPath: 'implementation_layer/AWS Beispiel-Components/AWS Security Hub-component_definition.json', oscalVersion: '1.2.2' },
-  'component-ga-lotse-grundmodul': { artifactKey: 'component-ga-lotse-grundmodul', upstreamPath: 'implementation_layer/GA-Lotse_Grundmodul/GA-Lotse_Grundmodul-component_definition.json', oscalVersion: '1.1.2' },
-  'component-keycloak': { artifactKey: 'component-keycloak', upstreamPath: 'implementation_layer/Keycloak/Keycloak-component_definition.json', oscalVersion: '1.2.2' },
-  'component-lieferkette': { artifactKey: 'component-lieferkette', upstreamPath: 'implementation_layer/Lieferkettensicherheit/Lieferkettensicherheit-component_definition.json', oscalVersion: '1.1.2' },
-  'component-netzarchitektur': { artifactKey: 'component-netzarchitektur', upstreamPath: 'implementation_layer/Netzarchitektur/Netzarchitektur-component_definition.json', oscalVersion: '1.2.2' },
-  'component-passwortrichtlinie': { artifactKey: 'component-passwortrichtlinie', upstreamPath: 'implementation_layer/Passwortrichtlinie/Passwortrichtlinie-component_definition.json', oscalVersion: '1.1.2' },
+const COMPONENT_FIXTURE_FACTS = Object.freeze({
+  'component-aws-security-hub': { artifactKey: 'component-aws-security-hub', upstreamPath: 'fixtures/component-definitions/component-aws-security-hub.json', oscalVersion: '1.2.2' },
+  'component-ga-lotse-grundmodul': { artifactKey: 'component-ga-lotse-grundmodul', upstreamPath: 'fixtures/component-definitions/component-ga-lotse-grundmodul.json', oscalVersion: '1.1.2' },
+  'component-keycloak': { artifactKey: 'component-keycloak', upstreamPath: 'fixtures/component-definitions/component-keycloak.json', oscalVersion: '1.2.2' },
+  'component-lieferkette': { artifactKey: 'component-lieferkette', upstreamPath: 'fixtures/component-definitions/component-lieferkette.json', oscalVersion: '1.1.2' },
+  'component-netzarchitektur': { artifactKey: 'component-netzarchitektur', upstreamPath: 'fixtures/component-definitions/component-netzarchitektur.json', oscalVersion: '1.2.2' },
+  'component-passwortrichtlinie': { artifactKey: 'component-passwortrichtlinie', upstreamPath: 'fixtures/component-definitions/component-passwortrichtlinie.json', oscalVersion: '1.1.2' },
 } as const satisfies Record<string, {
   readonly artifactKey: string;
   readonly upstreamPath: string;
@@ -151,7 +136,7 @@ const MEASURED_COMPONENT_FACTS = Object.freeze({
 }>);
 
 /**
- * Die sechs registrierten Definitionen mit ihren gemessenen Strukturzahlen.
+ * Die sechs Component-Fixtures mit ihren gemessenen Strukturzahlen.
  *
  * Summen über alle sechs: **35 Components, 10 Capabilities, 35
  * Control-Implementations, 307 implemented requirements.** Genau eine
@@ -160,7 +145,7 @@ const MEASURED_COMPONENT_FACTS = Object.freeze({
  */
 export const COMPONENT_ARTIFACT_SPECS: readonly ComponentArtifactSpec[] = Object.freeze([
   {
-    ...MEASURED_COMPONENT_FACTS['component-aws-security-hub'],
+    ...COMPONENT_FIXTURE_FACTS['component-aws-security-hub'],
     schemaValid: true,
     // 2 Components mit je einer Implementierung, 1 Capability mit **eigener**
     // Implementierung; 17 implemented requirements über drei Implementierungen.
@@ -181,7 +166,7 @@ export const COMPONENT_ARTIFACT_SPECS: readonly ComponentArtifactSpec[] = Object
     backMatterUuids: [],
   },
   {
-    ...MEASURED_COMPONENT_FACTS['component-ga-lotse-grundmodul'],
+    ...COMPONENT_FIXTURE_FACTS['component-ga-lotse-grundmodul'],
     schemaValid: false,
     // 3 Components, 1 Capability, **keine** Control-Implementation und damit
     // keine implemented requirements — schemaseitig gültig.
@@ -191,7 +176,7 @@ export const COMPONENT_ARTIFACT_SPECS: readonly ComponentArtifactSpec[] = Object
     backMatterUuids: [],
   },
   {
-    ...MEASURED_COMPONENT_FACTS['component-keycloak'],
+    ...COMPONENT_FIXTURE_FACTS['component-keycloak'],
     schemaValid: true,
     // 3 Components, **keine** Capability, 43 implemented requirements.
     components: componentsFrom(
@@ -205,7 +190,7 @@ export const COMPONENT_ARTIFACT_SPECS: readonly ComponentArtifactSpec[] = Object
     backMatterUuids: [COMPONENT_SOURCE_UUIDS.keycloak.slice(1)],
   },
   {
-    ...MEASURED_COMPONENT_FACTS['component-lieferkette'],
+    ...COMPONENT_FIXTURE_FACTS['component-lieferkette'],
     schemaValid: false,
     // 11 Components mit je einer Implementierung, 3 Capabilities ohne eigene;
     // 145 implemented requirements. Der Defekt sitzt an
@@ -222,7 +207,7 @@ export const COMPONENT_ARTIFACT_SPECS: readonly ComponentArtifactSpec[] = Object
     backMatterUuids: [COMPONENT_SOURCE_UUIDS.lieferkette.slice(1)],
   },
   {
-    ...MEASURED_COMPONENT_FACTS['component-netzarchitektur'],
+    ...COMPONENT_FIXTURE_FACTS['component-netzarchitektur'],
     schemaValid: true,
     // 9 Components, 4 Capabilities ohne eigene Implementierung, 11
     // Control-Implementations und 85 implemented requirements — und **zwei**
@@ -249,7 +234,7 @@ export const COMPONENT_ARTIFACT_SPECS: readonly ComponentArtifactSpec[] = Object
     ],
   },
   {
-    ...MEASURED_COMPONENT_FACTS['component-passwortrichtlinie'],
+    ...COMPONENT_FIXTURE_FACTS['component-passwortrichtlinie'],
     schemaValid: true,
     // 7 Components mit je einer Implementierung, 1 Capability ohne eigene;
     // 17 implemented requirements.

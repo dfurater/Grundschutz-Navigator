@@ -12,11 +12,10 @@
 // je Import, `with-child-controls` in beiden Werten, die Merge-Variante, Zahl
 // und Verteilung der `alters`, `set-parameters` und `back-matter`-Ressourcen
 // sowie die realen relativen `rlinks`. Die Prosa und die Identitäten sind
-// erfunden; die Strukturzahlen und die Pfade sind es nicht.
+// erfunden; die Strukturzahlen und relativen Dokumentverweise sind gemessen.
 //
-// `upstreamPath` und `oscalVersion` kommen aus dem Quellregister und werden
-// hier nie zweitgepflegt (ADR-1, GSPP-283): Ein Fixture mit eigenem Pfad bliebe
-// grün, obwohl es ein Artefakt nachbildet, das es upstream nicht mehr gibt.
+// Die Herkunftspfade sind synthetisch; die Dokumentversionen gehören zum
+// eingefrorenen Korpus. Die relativen Verweise sind reine Dokumentinhalte.
 // =============================================================================
 
 import { makeUuid } from '@/test/fixtures/fixtureUuid';
@@ -41,7 +40,7 @@ export const PROFILE_SOURCE_RLINKS = Object.freeze({
 });
 
 /* ------------------------------------------------------------------ */
-/*  Strukturbeschreibung der drei registrierten Profile                */
+/*  Strukturbeschreibung der drei Profil-Fixtures                */
 /* ------------------------------------------------------------------ */
 
 interface SelectorSpec {
@@ -66,9 +65,9 @@ interface BackMatterResourceSpec {
 
 export interface ProfileArtifactSpec {
   readonly artifactKey: string;
-  /** Aus dem Quellregister abgeleitet — hier nie zweitgepflegt (ADR-1). */
+  /** Synthetischer Herkunftspfad des Fixtures. */
   readonly upstreamPath: string;
-  /** Aus dem Quellregister abgeleitet — hier nie zweitgepflegt (GSPP-283). */
+  /** OSCAL-Version des eingefrorenen Dokuments. */
   readonly oscalVersion: PinnedOscalVersion;
   /** Ob das Dokument gegen sein gepinntes Schema valide ist (ADR-7). */
   readonly schemaValid: boolean;
@@ -83,13 +82,13 @@ export interface ProfileArtifactSpec {
 }
 
 /**
- * Am Snapshot gemessene Artefaktfakten. Sie sind Teil des eingefrorenen
- * Korpus und lesen weder Quellregister noch Manifest.
+ * Eingefrorene Dokumentversionen und synthetische Herkunftspfade.
+ * Der Korpus liest weder Quellregister noch Manifest und ruft die Pfade nicht ab.
  */
-const MEASURED_PROFILE_FACTS = Object.freeze({
-  'profile-gspp': { artifactKey: 'profile-gspp', upstreamPath: 'control_layer/Grundschutz++/sources/profiles/Grundschutz++-profile.json', oscalVersion: '1.1.3' },
-  'profile-lieferkette': { artifactKey: 'profile-lieferkette', upstreamPath: 'control_layer/Lieferkettensicherheit/sources/profiles/Lieferkettensicherheit-profile.json', oscalVersion: '1.1.3' },
-  'profile-wlan': { artifactKey: 'profile-wlan', upstreamPath: 'control_layer/WLAN/sources/profiles/WLAN-profile.json', oscalVersion: '1.1.3' },
+const PROFILE_FIXTURE_FACTS = Object.freeze({
+  'profile-gspp': { artifactKey: 'profile-gspp', upstreamPath: 'fixtures/profiles/profile-gspp.json', oscalVersion: '1.1.3' },
+  'profile-lieferkette': { artifactKey: 'profile-lieferkette', upstreamPath: 'fixtures/profiles/profile-lieferkette.json', oscalVersion: '1.1.3' },
+  'profile-wlan': { artifactKey: 'profile-wlan', upstreamPath: 'fixtures/profiles/profile-wlan.json', oscalVersion: '1.1.3' },
 } as const satisfies Record<string, {
   readonly artifactKey: string;
   readonly upstreamPath: string;
@@ -97,7 +96,7 @@ const MEASURED_PROFILE_FACTS = Object.freeze({
 }>);
 
 /**
- * Die drei registrierten Profile mit ihren gemessenen Strukturzahlen.
+ * Die drei Profil-Fixtures mit ihren gemessenen Strukturzahlen.
  *
  * Zum WLAN-Profil: gemessen sind **290** `alters` über **58** eindeutige
  * `control-id` bei einem Maximum von **fünf** Einträgen je Control. Da
@@ -108,7 +107,7 @@ const MEASURED_PROFILE_FACTS = Object.freeze({
  */
 export const PROFILE_ARTIFACT_SPECS: readonly ProfileArtifactSpec[] = Object.freeze([
   {
-    ...MEASURED_PROFILE_FACTS['profile-gspp'],
+    ...PROFILE_FIXTURE_FACTS['profile-gspp'],
     schemaValid: true,
     // 3 Imports: zweimal `include-all`, einmal `include-controls` mit 4 IDs.
     imports: [
@@ -135,7 +134,7 @@ export const PROFILE_ARTIFACT_SPECS: readonly ProfileArtifactSpec[] = Object.fre
     ],
   },
   {
-    ...MEASURED_PROFILE_FACTS['profile-lieferkette'],
+    ...PROFILE_FIXTURE_FACTS['profile-lieferkette'],
     schemaValid: true,
     imports: [
       {
@@ -153,7 +152,7 @@ export const PROFILE_ARTIFACT_SPECS: readonly ProfileArtifactSpec[] = Object.fre
     backMatter: [{ rlink: PROFILE_SOURCE_RLINKS.lieferketteKernel }],
   },
   {
-    ...MEASURED_PROFILE_FACTS['profile-wlan'],
+    ...PROFILE_FIXTURE_FACTS['profile-wlan'],
     schemaValid: true,
     // Ein Import mit **zwei** Selektoren — und `with-child-controls` in beiden
     // Werten, was sonst nirgends im Bestand vorkommt.
