@@ -1,4 +1,5 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { execFileSync } from 'node:child_process';
+import { describe, expect, it } from 'vitest';
 import {
   COMPANION_ROOT_TYPES,
   UNKNOWN_COMPANION_ROOT_TYPE,
@@ -118,19 +119,21 @@ describe('classifyCompanionArtifact', () => {
 });
 
 describe('gepinnte Schemabytes', () => {
-  afterEach(() => {
-    vi.doUnmock('node:fs');
-    vi.resetModules();
-  });
-
-  it('bricht ab, wenn die Schemadatei nicht zum Matrix-Hash passt', async () => {
-    vi.resetModules();
-    vi.doMock('node:fs', async (importOriginal) => {
-      const actual = await importOriginal<typeof import('node:fs')>();
-      return { ...actual, readFileSync: () => Buffer.from('{}') };
-    });
-    const { classifyCompanionArtifact: classify } = await import('./companion-artifacts.mjs');
-
-    expect(() => classify(json(VALID_CATALOG))).toThrow('Gepinntes OSCAL-Schema weicht vom Matrix-Hash ab');
+  it('bricht ab, wenn die Schemadatei nicht zum Matrix-Hash passt', () => {
+    // Native ESM imports need the builtin binding updated in a fresh process.
+    const script = `
+      import fs from 'node:fs';
+      import { syncBuiltinESMExports } from 'node:module';
+      const readFileSync = fs.readFileSync;
+      fs.readFileSync = (path, ...args) => String(path).includes('/schemas/oscal/')
+        ? Buffer.from('{}')
+        : readFileSync(path, ...args);
+      syncBuiltinESMExports();
+      const { classifyCompanionArtifact } = await import('./scripts/companion-artifacts.mjs');
+      classifyCompanionArtifact(Buffer.from(${JSON.stringify(JSON.stringify(VALID_CATALOG))}));
+    `;
+    expect(() => execFileSync(process.execPath, ['--input-type=module', '-e', script], {
+      stdio: 'pipe',
+    })).toThrow('Gepinntes OSCAL-Schema weicht vom Matrix-Hash ab');
   });
 });

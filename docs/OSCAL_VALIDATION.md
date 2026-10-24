@@ -1067,21 +1067,7 @@ Das Artefakt wird weiter geprüft und sein Schema-Status bleibt sichtbar
 `failed`. Besteht es die Prüfung in einem späteren Snapshot, steht es dort
 wieder als `preview`.
 
-Der Korpuslauf erwartet für jedes nicht gesperrte Artefakt `schema=passed` und
-für jedes gesperrte Artefakt `schema=failed`. Bei einem Produktartefakt lässt
-ein Fehler im nicht gesperrten oder ein Bestehen im gesperrten Zustand den Lauf
-fehlschlagen; letzteres wird als Entsperrungskandidat ausgewiesen. Bei einem
-Begleitartefakt weist der Lauf ein abweichendes go-oscal-Urteil als
-`companion-validator-disagreement` und eine nicht vorbereitbare
-`$schema`-Direktive als `companion-not-checked` aus, ohne fehlzuschlagen: Sein
-Lifecycle folgt aus der Ajv-Prüfung des Fetch, und es wird nie ausgeliefert. Es existiert
-keine Diagnosesignatur-Liste, keine Aggregat-Zerlegung und keine
-Fortsetzungssemantik für diesen Lauf.
-
-Für diesen Lauf gibt es keine aktive Ausnahme. Eine spätere Ausnahme für ein
-unverzichtbares ausgeliefertes Artefakt wäre eine neue, ADR-pflichtige
-Produktentscheidung; sie darf weder durch eine Diagnosesignatur noch durch eine
-Änderung der Sperrsemantik dieses Korpuslaufs entstehen.
+Der Korpuslauf erwartet für jedes nicht gesperrte Artefakt `schema=passed` und für jedes gesperrte Artefakt `schema=failed`. Bei einem Produktartefakt lässt ein Fehler im nicht gesperrten oder ein Bestehen im gesperrten Zustand den Lauf fehlschlagen; letzteres wird als Entsperrungskandidat ausgewiesen. Bei einem Begleitartefakt weist der Lauf ein abweichendes go-oscal-Urteil als `companion-validator-disagreement` und eine nicht vorbereitbare Eingabe als `companion-not-checked` aus, ohne fehlzuschlagen. Sein Lifecycle folgt aus der gepinnten Ajv-Prüfung des Fetch, und es wird nie ausgeliefert. Fehlende oder nicht auswertbare Werkzeugergebnisse sowie Ausführungsfehler brechen den Lauf für alle Artefakte ab. Es existiert keine Diagnosesignatur-Liste und keine Aggregat-Zerlegung.
 
 **Tree-Abwesenheit:** Verschwindet der
 registrierte Pfad eines gesperrten Artefakts vollständig aus dem gepinnten

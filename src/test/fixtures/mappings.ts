@@ -14,11 +14,10 @@
 // `status` und `method`, die sechs relativen Ressourcen-`href`, das
 // Top-Level-`$schema` des ITGS-Mappings und die beiden schemafremden
 // `provenance`-Felder des ISO-Mappings. Die Prosa und die Identitäten sind
-// erfunden; die Strukturzahlen und die Pfade sind es nicht.
+// erfunden; die Strukturzahlen und relativen Dokumentverweise sind gemessen.
 //
-// `upstreamPath` und `oscalVersion` kommen aus dem Quellregister und werden
-// hier nie zweitgepflegt (ADR-1, GSPP-283); das `$schema` des ITGS-Mappings
-// kommt aus der Versionsmatrix und nicht aus einem zweiten Literal.
+// Die Herkunftspfade sind synthetisch; die Dokumentversionen gehören zum
+// eingefrorenen Korpus. Die relativen Verweise sind reine Dokumentinhalte.
 // =============================================================================
 
 import { makeUuid } from '@/test/fixtures/fixtureUuid';
@@ -54,7 +53,7 @@ export const MAPPING_RESOURCE_HREFS = Object.freeze({
 });
 
 /* ------------------------------------------------------------------ */
-/*  Strukturbeschreibung der beiden registrierten Mappings             */
+/*  Strukturbeschreibung der beiden Mapping-Fixtures             */
 /* ------------------------------------------------------------------ */
 
 interface MappingSetSpec {
@@ -73,9 +72,9 @@ interface MappingSetSpec {
 
 export interface MappingArtifactSpec {
   readonly artifactKey: string;
-  /** Aus dem Quellregister abgeleitet — hier nie zweitgepflegt (ADR-1). */
+  /** Synthetischer Herkunftspfad des Fixtures. */
   readonly upstreamPath: string;
-  /** Aus dem Quellregister abgeleitet — hier nie zweitgepflegt (GSPP-283). */
+  /** OSCAL-Version des eingefrorenen Dokuments. */
   readonly oscalVersion: PinnedOscalVersion;
   /** Ob das Dokument gegen sein gepinntes Schema valide ist (ADR-7). */
   readonly schemaValid: boolean;
@@ -92,12 +91,12 @@ export interface MappingArtifactSpec {
 }
 
 /**
- * Am Snapshot gemessene Artefaktfakten. Sie sind Teil des eingefrorenen
- * Korpus und lesen weder Quellregister noch Manifest.
+ * Eingefrorene Dokumentversionen und synthetische Herkunftspfade.
+ * Der Korpus liest weder Quellregister noch Manifest und ruft die Pfade nicht ab.
  */
-const MEASURED_MAPPING_FACTS = Object.freeze({
-  'mapping-iso27001-annex-a-zu-gspp': { artifactKey: 'mapping-iso27001-annex-a-zu-gspp', upstreamPath: 'control_layer/Mappings/ISO-27001-zu-GSpp/ISO27001-AnnexA-to-GS++-mapping_collection.json', oscalVersion: '1.2.2' },
-  'mapping-itgs2023-zu-gspp': { artifactKey: 'mapping-itgs2023-zu-gspp', upstreamPath: 'control_layer/Mappings/IT-GS2023-zu-GSpp/ITGS-to-GS++-mapping_collection.json', oscalVersion: '1.2.1' },
+const MAPPING_FIXTURE_FACTS = Object.freeze({
+  'mapping-iso27001-annex-a-zu-gspp': { artifactKey: 'mapping-iso27001-annex-a-zu-gspp', upstreamPath: 'fixtures/mappings/mapping-iso27001-annex-a-zu-gspp.json', oscalVersion: '1.2.2' },
+  'mapping-itgs2023-zu-gspp': { artifactKey: 'mapping-itgs2023-zu-gspp', upstreamPath: 'fixtures/mappings/mapping-itgs2023-zu-gspp.json', oscalVersion: '1.2.1' },
 } as const satisfies Record<string, {
   readonly artifactKey: string;
   readonly upstreamPath: string;
@@ -105,7 +104,7 @@ const MEASURED_MAPPING_FACTS = Object.freeze({
 }>);
 
 /**
- * Die beiden registrierten Mappings mit ihren gemessenen Strukturzahlen.
+ * Die beiden Mapping-Fixtures mit ihren gemessenen Strukturzahlen.
  *
  * Auffällig und bewusst so übernommen: `no-relationship` kommt in **keinem**
  * der beiden Artefakte vor, `sources` ist überall einelementig, und
@@ -115,7 +114,7 @@ const MEASURED_MAPPING_FACTS = Object.freeze({
  */
 export const MAPPING_ARTIFACT_SPECS: readonly MappingArtifactSpec[] = Object.freeze([
   {
-    ...MEASURED_MAPPING_FACTS['mapping-iso27001-annex-a-zu-gspp'],
+    ...MAPPING_FIXTURE_FACTS['mapping-iso27001-annex-a-zu-gspp'],
     // `provenance.qa-reviewed` und `provenance.qa-note` verletzen
     // `additionalProperties: false` — genau zwei Befunde (ADR-7).
     schemaValid: false,
@@ -148,7 +147,7 @@ export const MAPPING_ARTIFACT_SPECS: readonly MappingArtifactSpec[] = Object.fre
     ],
   },
   {
-    ...MEASURED_MAPPING_FACTS['mapping-itgs2023-zu-gspp'],
+    ...MAPPING_FIXTURE_FACTS['mapping-itgs2023-zu-gspp'],
     schemaValid: true,
     schemaDirective: true,
     sets: [
@@ -280,7 +279,7 @@ export function makeMappingSource(spec: MappingArtifactSpec): JsonObject {
     : { 'mapping-collection': collection };
 }
 
-/** Beide registrierten Mappings mit ihrer Strukturbeschreibung. */
+/** Beide Mapping-Fixtures mit ihrer Strukturbeschreibung. */
 export function makeAllMappingSources(): readonly {
   readonly specification: MappingArtifactSpec;
   readonly source: JsonObject;
