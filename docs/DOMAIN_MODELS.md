@@ -1808,6 +1808,14 @@ UUID-Referenzen führen `resolved` (Ziel im Dokument), `resolved-in-context` (Zi
 
 OSCAL garantiert für Evidenz weder eine Ressource (`relevant-evidence.href` ist optional), noch Ressourceninhalt (`back-matter.resource` verlangt nur `uuid`), noch einen Hash (`rlinks[].hashes` ist optional), noch eine Medienart oder einen Dateinamen (`media-type` und `base64.filename` sind optional), noch ein Ablaufdatum (`expires` ist optional), noch ein geschlossenes Vokabular für `methods`, `types` und `hash.algorithm`.
 
+### Evidenzpaket
+
+`exportEvidencePackage({ source, resourceUuids, confirmedFullDocument })` in `src/domain/evidenceExport.ts` liefert für `assessment-results` und `plan-of-action-and-milestones` ein ZIP als `Uint8Array` oder `{ ok: false, code }`. `confirmedFullDocument` muss ausdrücklich `true` sein: `document.json` enthält die vollständige OSCAL-Quelle einschließlich sämtlicher eingebetteter Anhänge. `resourceUuids` wählt ausschließlich zusätzliche dekodierte Dateien aus `back-matter.resources[].base64` desselben Dokuments; eine leere Auswahl erzeugt ein ZIP mit nur `document.json`.
+
+Die Funktion kopiert die Quelle über `toDerivedOscalTree()`, prüft den privaten Graphen mit `processClass2OscalValue()` und serialisiert ihn mit `serializeWorkspaceJson()`. Root- und Ressourcen-UUIDs, Beobachtungen, `metadata.last-modified`, fremde `props` und Referenzen bleiben inhaltlich unverändert. Der Export öffnet keine Dokumentreferenzen, Dateien oder Netzwerkziele und verändert keinen gespeicherten Zustand. Die aufrufende Station prüft ihre fachliche Exportfreigabe.
+
+UUID-Vergleiche erfolgen ohne Groß-/Kleinschreibung. Doppelte Ressourcen-UUIDs, wiederholte Auswahlwerte, fehlende Ressourcen und ausgewählte Ressourcen ohne Base64-Inhalt verhindern die gesamte Ausgabe. Ausgewählte Dateien liegen unter `evidence/<kleingeschriebene-Ressourcen-UUID>.bin`; dokumenteigene Dateinamen bestimmen keinen Archivpfad. `src/adapters/storedZip.ts` erzeugt ein ZIP mit STORE-Methode, CRC-32, UTF-8-Namensflag und festem Zeitstempel 1980-01-01. Die Funktion dekodiert ausschließlich ausgewählte Inhalte über `decodeEvidenceContent()` nach der Größenprüfung.
+
 ## POA&Ms (Assessment Layer)
 
 `src/domain/poamModel.ts` definiert `Poam`, `PoamItem`, `PoamObservation`, `PoamFinding` und `PoamRisk`. `parsePoamDocument()` in `src/adapters/oscalPoamDocument.ts` erhält die Quelle unverändert und leitet über `derivePoam()` die Metadaten, den optionalen `import-ssp`, `system-id`, lokale Definitionen, Maßnahmen, Beobachtungen, Risiken und Findings ab. Der Root `plan-of-action-and-milestones` ist in `src/adapters/oscalRootAdapters.ts` registriert. Schema- und Versionsprüfungen laufen über die gemeinsame Klasse-2-Importkette; die typisierte Dokumentableitung und `validatePoamSchema()` sind getrennte Schritte.
