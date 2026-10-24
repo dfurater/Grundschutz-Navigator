@@ -299,6 +299,14 @@ vorbeigeführten Stufe.
 
 Import, Schemaprüfung und Größenprüfung dekodieren `base64` nicht. `decodeEvidenceContent()` in [`evidencePreview.ts`](../src/domain/evidencePreview.ts) prüft dieselbe Grenze je Ressource vor der Dekodierung und gibt bei Überschreitung `undefined` zurück. `verifyResourceIntegrity()` in [`evidenceIntegrity.ts`](../src/domain/evidenceIntegrity.ts) nutzt diesen Dekoder für die Hashprüfung; die eigenständige Evidenzkomponente nutzt ihn für Vorschau und Download auf ausdrückliche Nutzeraktion. Das Kostenmodell der Grenze ist die Heap-Allokation einer Dekodierung.
 
+#### Evidenzpaketierung
+
+`exportEvidencePackage()` in `src/domain/evidenceExport.ts` bindet Assessment Results und POA&M über die gemeinsame Klasse-2-Pipeline an das gepinnte Schema ihrer `metadata.oscal-version`. Die Ausgabe meldet `schema: 'passed'`, `constraints: 'not-checked'` und `references: 'not-checked'`. Eine erfolgreiche Paketierung bewertet keine fachliche Beweiskraft und öffnet keine Referenzziele.
+
+`EVIDENCE_EXPORT_LIMITS` begrenzt die Auswahl auf 1.000 Ressourcen und das ZIP auf 16 MiB einschließlich lokaler Header, zentralem Verzeichnis und Abschlussdatensatz. Die Klasse-2-Grenzen gelten für das vollständige Dokument einschließlich nicht ausgewählter eingebetteter Inhalte. `storedZipByteLength()` berechnet die STORE-Archivgröße vor Inhaltsdekodierung und Archivaufbau; `createStoredZip()` prüft sie erneut vor der Ausgabeallokation. Grenzwerte sind einschließlich zulässig.
+
+Fehlende ausdrückliche Bestätigung des vollständigen JSON-Inhalts, ungültige Auswahl, fehlgeschlagene Quellenprüfung, überschrittenes Paketbudget und fehlerhafte Inhaltsdekodierung liefern feste `EVIDENCE_EXPORT_*`-Codes ohne Quelldaten. Ein Fehler liefert keine ZIP-Bytes; Diagnosen enthalten keine Dateinamen, Hashwerte, Quellpfade oder externen URLs. Das JSON behält auch nicht ausgewählte Einbettungen. `src/domain/evidenceExport.test.ts` prüft beide Roots, die vier gepinnten Versionen, No-op-Round-trips, unveränderte eingefrorene Quellen und Netzwerkfreiheit; `src/adapters/storedZip.test.ts` prüft Archivpfade, Größenrechnung und unabhängiges Entpacken mit Python `zipfile` einschließlich CRC-Prüfung. Diese Tests benötigen `python3` im Suchpfad.
+
 #### `matching.pattern`: iterativer Abgleich
 
 Der Abgleich von `matching`-Globs gegen Control-IDs läuft in

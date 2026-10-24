@@ -120,6 +120,7 @@ src/                              # Anwendungsquellcode
 │   ├── controlRelationships.ts       # Link-Relationen, Beschriftungen, eingehende Links
 │   ├── documentContent.ts            # Dokumentinhalt ohne Root-UUID und `last-modified`, Inhaltsgleichheit
 │   ├── documentDiff.ts               # Struktureller Checkpoint-Diff (Pfad, Art, Wertart)
+│   ├── evidenceExport.ts             # Vollständiges OSCAL-JSON und ausgewählte Einbettungen als ZIP
 │   ├── germanCollation.ts            # Wiederverwendete deutsche Sortierkomparatoren
 │   ├── identifierQuery.ts            # Query-Vertrag für Kennungssuchen (UUID v4/v5)
 │   ├── integrity.ts                  # SHA-256 Integritätsprüfung
@@ -264,6 +265,7 @@ src/                              # Anwendungsquellcode
 │   ├── profileAnalysisClient.ts      # Wiederverwendbarer Analyse-Worker mit Abbruch und Basisübertragung
 │   ├── profileWorkbench.ts           # Einmal-Worker für Verbundansicht, unabhängige Analyse und Export
 │   ├── reviewTrailWork.ts            # Client des Prüf-Workers: Hash und Diff ohne In-Process-Fallback
+│   ├── storedZip.ts                  # Größenbegrenzter ZIP-STORE-Encoder mit CRC-32 und sicheren Pfaden
 │   ├── sspWorkbench.ts               # SSP-Export über den Worker der Informationsverbünde
 │   ├── workspaceBackup.ts            # Begrenzter Backup-Einstieg über einen Modul-Worker
 │   ├── workspaceBackupContract.ts    # Redigierte Backup-Diagnosen und Workerfrist
