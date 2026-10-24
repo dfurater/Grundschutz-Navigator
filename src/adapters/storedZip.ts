@@ -11,9 +11,9 @@ const CRC_TABLE = Uint32Array.from({ length: 256 }, (_, value) => {
 });
 
 function crc32(data: Uint8Array): number {
-  let crc = 0xffff_ffff;
+  let crc = 0xffffffff;
   for (const byte of data) crc = (crc >>> 8) ^ CRC_TABLE[(crc ^ byte) & 0xff];
-  return (crc ^ 0xffff_ffff) >>> 0;
+  return (crc ^ 0xffffffff) >>> 0;
 }
 
 /** Exact size of ZIP STORE: local headers, central directory and EOCD; no extra fields. */
@@ -22,11 +22,11 @@ export function storedZipByteLength(entries: readonly ZipEntrySize[]): number {
   const names = new Set<string>();
   let bytes = 22;
   for (const { name, byteLength } of entries) {
-    if (!SAFE_NAME.test(name) || names.has(name) || !Number.isSafeInteger(byteLength) || byteLength < 0 || byteLength > 0xffff_ffff) return invalid();
+    if (!SAFE_NAME.test(name) || names.has(name) || !Number.isSafeInteger(byteLength) || byteLength < 0 || byteLength > 0xffffffff) return invalid();
     names.add(name);
     bytes += 76 + 2 * encoder.encode(name).length + byteLength;
   }
-  if (bytes > 0xffff_ffff) return invalid();
+  if (bytes > 0xffffffff) return invalid();
   return bytes;
 }
 

@@ -13,7 +13,7 @@ describe('stored ZIP', () => {
     ];
     const size = storedZipByteLength(entries.map(({ name, data }) => ({ name, byteLength: data.length })));
     const zip = createStoredZip(entries, size);
-    expect(zip.length).toBe(size);
+    expect(zip).toHaveLength(size);
     const decoded = JSON.parse(execFileSync('python3', ['-c',
       'import sys,io,zipfile,json; z=zipfile.ZipFile(io.BytesIO(sys.stdin.buffer.read())); assert z.testzip() is None; print(json.dumps({n:list(z.read(n)) for n in z.namelist()}))',
     ], { input: zip, encoding: 'utf8' }));
@@ -26,7 +26,7 @@ describe('stored ZIP', () => {
     const maxBytes = 16 * 1024 * 1024;
     const overhead = storedZipByteLength([{ name: 'document.json', byteLength: 0 }]);
     const data = new Uint8Array(maxBytes - overhead);
-    expect(createStoredZip([{ name: 'document.json', data }], maxBytes).length).toBe(maxBytes);
+    expect(createStoredZip([{ name: 'document.json', data }], maxBytes)).toHaveLength(maxBytes);
     expect(() => createStoredZip([{ name: 'document.json', data: new Uint8Array(data.length + 1) }], maxBytes)).toThrow('EVIDENCE_ZIP_INVALID');
   });
 
@@ -38,7 +38,7 @@ describe('stored ZIP', () => {
     const entry = { name: 'document.json', data: encode('x') };
     expect(() => createStoredZip([entry, entry], 1024)).toThrow('EVIDENCE_ZIP_INVALID');
     expect(() => storedZipByteLength(Array.from({ length: 65_536 }, () => ({ name: 'document.json', byteLength: 0 })))).toThrow('EVIDENCE_ZIP_INVALID');
-    for (const byteLength of [-1, NaN, 0x1_0000_0000, 1.5]) {
+    for (const byteLength of [-1, NaN, 0x100000000, 1.5]) {
       expect(() => storedZipByteLength([{ name: 'document.json', byteLength }])).toThrow('EVIDENCE_ZIP_INVALID');
     }
   });
