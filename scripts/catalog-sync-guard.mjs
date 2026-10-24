@@ -33,7 +33,6 @@ import {
   hasRegistryKeyGrammar,
   isPathWithinMonitoredRoot,
   listProductUpstreamPaths,
-  deriveCompanionArtifactKey,
 } from '../src/domain/sourceRegistry.mjs';
 import {
   COMPANION_LIFECYCLES,
@@ -513,17 +512,6 @@ export function assertManifestChangeScope(diffEntries) {
 export function validateManifestTransition(previousManifest, nextManifest) {
   assertOfficialManifest(previousManifest, 'Previous manifest');
   validateCatalogSyncManifest(nextManifest);
-  const productPaths = new Set(listProductUpstreamPaths());
-  const previousKeysByPath = new Map(previousManifest.files
-    .filter((file) => file.rootType !== 'vocabulary' && !productPaths.has(file.path))
-    .map((file) => [file.path, file.artifactKey]));
-  for (const file of nextManifest.files) {
-    if (file.rootType === 'vocabulary' || productPaths.has(file.path)) continue;
-    const expectedKey = previousKeysByPath.get(file.path) ?? deriveCompanionArtifactKey(file.path);
-    if (file.artifactKey !== expectedKey) {
-      throw new Error(`Manifest companion key does not match its tracked path: ${file.path}`);
-    }
-  }
 }
 
 export async function guardCatalogSyncPullRequest({

@@ -1,8 +1,8 @@
+import { execFileSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 import {
   COMPANION_ROOT_TYPES,
   UNKNOWN_COMPANION_ROOT_TYPE,
-  assertPinnedSchemaHash,
   assignCompanionArtifactKeys,
   classifyCompanionArtifact,
   listCompanionTreePaths,
@@ -120,9 +120,20 @@ describe('classifyCompanionArtifact', () => {
 
 describe('gepinnte Schemabytes', () => {
   it('bricht ab, wenn die Schemadatei nicht zum Matrix-Hash passt', () => {
-    expect(() => assertPinnedSchemaHash(Buffer.from('{}'), {
-      sha256: '0'.repeat(64),
-      vendorPath: 'schemas/oscal/test.json',
+    // Native ESM imports need the builtin binding updated in a fresh process.
+    const script = `
+      import fs from 'node:fs';
+      import { syncBuiltinESMExports } from 'node:module';
+      const readFileSync = fs.readFileSync;
+      fs.readFileSync = (path, ...args) => String(path).includes('/schemas/oscal/')
+        ? Buffer.from('{}')
+        : readFileSync(path, ...args);
+      syncBuiltinESMExports();
+      const { classifyCompanionArtifact } = await import('./scripts/companion-artifacts.mjs');
+      classifyCompanionArtifact(Buffer.from(${JSON.stringify(JSON.stringify(VALID_CATALOG))}));
+    `;
+    expect(() => execFileSync(process.execPath, ['--input-type=module', '-e', script], {
+      stdio: 'pipe',
     })).toThrow('Gepinntes OSCAL-Schema weicht vom Matrix-Hash ab');
   });
 });

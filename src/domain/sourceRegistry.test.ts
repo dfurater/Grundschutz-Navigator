@@ -146,7 +146,7 @@ describe('sourceRegistry', () => {
   it.each([
     OFFICIAL_CATALOG_PATH,
     'documentation/namespaces/tags.csv',
-    'implementation_layer/example/companion.json',
+    'implementation_layer/example components/companion.json',
     'control_layer/example/sources/profiles/example-profile.json',
   ])('accepts safe repository path %s', (repoPath) => {
     expect(isSafeRepoPath(repoPath)).toBe(true);

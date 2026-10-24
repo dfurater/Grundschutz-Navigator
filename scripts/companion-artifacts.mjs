@@ -69,7 +69,9 @@ function compilePinnedSchema(pin) {
   if (cached) return cached;
   const bytes = readFileSync(join(REPO_ROOT, pin.vendorPath));
   // Fail-closed: Nur die gepinnten Schemabytes entscheiden über den Lifecycle.
-  assertPinnedSchemaHash(bytes, pin);
+  if (sha256Hex(bytes) !== pin.sha256) {
+    throw new Error(`Gepinntes OSCAL-Schema weicht vom Matrix-Hash ab: ${pin.vendorPath}`);
+  }
   // Ajv erst bei Bedarf laden: Normale PRs und `--validate-manifest` laufen
   // ohne installierte Abhängigkeiten.
   const { Ajv } = createRequire(join(REPO_ROOT, 'package.json'))('ajv');
@@ -77,12 +79,6 @@ function compilePinnedSchema(pin) {
   const validate = ajv.compile(JSON.parse(bytes.toString('utf8')));
   compiledSchemas.set(pin.vendorPath, validate);
   return validate;
-}
-
-export function assertPinnedSchemaHash(bytes, pin) {
-  if (sha256Hex(bytes) !== pin.sha256) {
-    throw new Error(`Gepinntes OSCAL-Schema weicht vom Matrix-Hash ab: ${pin.vendorPath}`);
-  }
 }
 
 /**

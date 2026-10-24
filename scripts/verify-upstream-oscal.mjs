@@ -573,7 +573,12 @@ function resolveArtifactExpectationOutcome(expectedSchemaStatus, verificationPas
     : 'expected-schema-success';
 }
 
-/** Ein Widerspruch zwischen Fetch-Schema und go-oscal blockiert alle Artefakte. */
+/**
+ * Ein Begleitartefakt wird nie ausgeliefert, und sein Lifecycle stammt aus der
+ * Ajv-Prüfung des Fetch (ADR-13). Urteilt go-oscal anders, gibt es keinen
+ * Registereintrag zum Nachführen; die Abweichung wird deshalb ausgewiesen,
+ * blockiert aber nicht. Für Produktartefakte bleibt sie blockierend.
+ */
 export function evaluateArtifactExpectation(artifact, schemaStatus) {
   if (schemaStatus !== 'passed' && schemaStatus !== 'failed' && schemaStatus !== 'not-checked') {
     throw new Error('Schema status is invalid');
@@ -588,7 +593,7 @@ export function evaluateArtifactExpectation(artifact, schemaStatus) {
   if (artifact.companion && !matches) {
     outcome = schemaStatus === 'not-checked' ? 'companion-not-checked' : 'companion-validator-disagreement';
   }
-  const verificationPassed = matches;
+  const verificationPassed = matches || Boolean(artifact.companion);
 
   return Object.freeze({
     artifactKey: artifact.artifactKey,
@@ -863,7 +868,14 @@ export async function runVerifyUpstreamOscal({
         // Ein syntaktisch defektes Dokument ist ein Befund der Stufe 1 und wird
         // von go-oscal ausgewiesen; Stufe 5 lässt es schlicht aus.
       }
-      const goOscalInput = prepareGoOscalInput(verifiedBytes, artifact.artifactKey);
+      let goOscalInput;
+      try {
+        goOscalInput = prepareGoOscalInput(verifiedBytes, artifact.artifactKey);
+      } catch (error) {
+        if (!artifact.companion) throw error;
+        artifactResults.push(evaluateArtifactExpectation(artifact, 'not-checked'));
+        continue;
+      }
       await writeFile(inputPath, goOscalInput);
       await executeTool({ binaryPath, inputPath, resultPath, artifactKey: artifact.artifactKey });
       artifactResults.push(
