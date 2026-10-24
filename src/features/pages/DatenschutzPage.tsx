@@ -182,6 +182,9 @@ export function DatenschutzPage() {
           Browser-Einstellungen.
         </p>
         <p className="catalog-prose-text text-sm text-slate-700 leading-relaxed">
+          An der Station Assessment lesen Sie lokale Prüfergebnisse als Assessment-Results-JSON ein. Die Anwendung prüft und speichert die Datei ausschließlich in diesem Browser im gewählten Informationsverbund. Prüfergebnisse, Urheberangaben und Evidenz bleiben nach dem Schließen des Tabs gespeichert und sind in der Sicherungsdatei enthalten. Die Leseansicht verändert die gespeicherte Quelle nicht. Verweise und eingebettete Evidenz werden beim Öffnen der Ansicht nicht abgerufen oder ausgeführt. Vorschau, Download und Hashprüfung einer Evidenzressource starten nur auf Ihre Aktion; „Extern öffnen“ öffnet den angegebenen Link in einem neuen Tab. Die Löschung des Informationsverbunds oder der lokalen Website-Daten entfernt die gespeicherte Kopie.
+        </p>
+        <p className="catalog-prose-text text-sm text-slate-700 leading-relaxed">
           Im Reiter Prüfung eines Profils können Sie Prüfpunkte und
           Prüfentscheidungen festhalten. Ein Prüfpunkt speichert einen
           Inhalts-Hash und einen strukturellen Vergleich zum vorherigen

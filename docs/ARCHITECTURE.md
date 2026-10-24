@@ -387,14 +387,14 @@ src/                              # Anwendungsquellcode
 │   └── workspace/                    # Bereich Informationsverbünde
 │       ├── CatalogPinNotice.tsx          # Schreibschutz durch den gebundenen Katalogstand, Bindungsangebot
 │       ├── DocumentMarks.tsx             # Herkunftslabel und Statuswort lokaler Dokumente
-│       ├── DocumentReferenceDetail.tsx   # Dokumentroute: Referenzkanten, für Profile und SSPs die Bearbeitungsansicht
+│       ├── DocumentReferenceDetail.tsx   # Dokumentroute: Bearbeitung für Profile/SSP, Lesepfad für Assessment Results
 │       ├── EditorFrame.tsx               # Werkzeugleiste und rechtes Panel einer Bearbeitungsansicht
 │       ├── ReferenceEdges.tsx            # Referenzkanten eines Dokuments mit Feld, Pflicht und Zustand
 │       ├── StationCards.tsx              # Fünf Stationskarten der Verbund-Übersicht mit Statuswort und Kennzahl
 │       ├── StationStrip.tsx              # Stationsreiter unter der Kopfzeile mit Statuspunkt, alle Layoutstufen
 │       ├── VerbundOverviewPage.tsx       # Verbünde anlegen, umbenennen, mit Bestätigung löschen, sichern
 │       ├── VerbundPage.tsx               # Verbund-Übersicht mit Kopf und Stationskarten; Stationsrouten mit Dokumentliste und Diagnosen
-│       ├── WorkspaceFileImport.tsx       # Gemeinsame Klasse-2-Dateiaufnahme für Profile und SSPs
+│       ├── WorkspaceFileImport.tsx       # Klasse-2-Dateiaufnahme für Profile, SSP und Assessment Results
 │       ├── WorkspaceNotices.tsx          # Speichermeldungen mit Export bzw. Neu laden
 │       ├── WorkspaceStatePage.tsx        # Lade-, Nicht-gefunden- und Fehlerzustand im Bereich
 │       ├── useDocumentEditor.ts          # Gemeinsamer Arbeitsstand: Laden, Autosave, Speichern, Übernahme, Export, Löschen
@@ -420,7 +420,11 @@ src/                              # Anwendungsquellcode
 │       │   ├── ReviewTab.tsx                 # Reiter Prüfung: Prüfpunkt, Entscheidungen und Freigabe
 │       │   ├── reviewView.ts                 # Ableitung der Anzeige aus Trail und Stand
 │       │   └── useReviewTrail.ts             # Trail laden, Prüfpunkt setzen, Entscheidung schreiben
-│       ├── assessment/                   # Eigenständige Evidenzkomponente, nicht in Stationsrouten eingebunden
+│       ├── assessment/                   # Assessment-Results-Leseansicht
+│       │   ├── AssessmentResultsPage.tsx    # Dokumentkopf, Ergebniswahl, Abschnitte und Modelldiagnosen
+│       │   ├── AssessmentResultList.tsx     # Findings, Observations und Risks mit begrenzter Listengröße
+│       │   ├── AssessmentDetail.tsx         # Rückverfolgung, Urheberangaben und Evidenz im Detail
+│       │   ├── loadAssessmentResults.ts    # Ausgewähltes Dokument und lokale AP→SSP-Kontextbindung
 │       │   └── EvidenceResourcePreview.tsx  # Metadaten; Vorschau, Download und Hashprüfung auf Nutzeraktion
 │       ├── poam/                         # POA&M-Station
 │       │   └── PoamProgressList.tsx          # Lesende Fristenliste über alle POA&Ms des Verbunds
@@ -850,13 +854,23 @@ Die Verbund-Übersicht (`VerbundPage` ohne Station) zeigt den Kopf mit Name, „
 
 Stationsrouten zeigen Stationsaktionen, die auf den Root-Typ der Station gefilterte Dokumentliste und die Diagnosen des Verbunds. `VerbundPage` zeigt an der Station `poam` unter der Dokumentliste `PoamProgressList` (`src/features/workspace/poam/PoamProgressList.tsx`). Die Liste lädt jede gespeicherte POA&M-Quelle des Verbunds über `useWorkspace().documents.getDocument()`, leitet sie mit `parsePoamDocument()` ab und bildet mit `derivePoamProgress()` aus `src/domain/poamProgress.ts` je `poam-item` eine Zeile. Entwürfe aus dem Autosave fließen nicht ein. Offene und abgeschlossene Maßnahmen stehen in getrennten, gezählten Abschnitten. Die Sortierung nach Frist, Verantwortlichen oder Stand liegt im Komponentenzustand und erreicht die URL nicht. Die Liste schreibt nicht in den Speicher; jede Zeile verlinkt die Dokumentroute des POA&M. Die Frist erscheint als unveränderter Quellwert mit Zeitzonenangabe, der Fristzustand mit dem Zeitpunkt seiner Berechnung.
 
+### Assessment-Results-Lesepfad
+
+`VerbundPage` bietet an der Station `assessment` „Prüfergebnisse-Datei einlesen“ über `WorkspaceFileImport` mit Root `assessment-results`. Die Dateigröße wird vor `arrayBuffer()` geprüft; `importClass2OscalDocument()` prüft Bytes, Root, Version und Schema. `addDocument()` speichert die unveränderte Quelle als `imported`; die Dokumentroute enthält ausschließlich Verbund-ID und lokale Dokument-ID. Importablehnungen zeigen Stufe und Code ohne Dateiname, Inhalt oder rohe Fehlertexte.
+
+`DocumentReferenceDetailPage` öffnet für `assessment-results` die `AssessmentResultsPage`. `loadAssessmentResults()` lädt genau das ausgewählte Dokument und leitet es mit `parseAssessmentResultsDocument()` ab. Ein Prüfplan kommt ausschließlich aus einer einzelnen aufgelösten lokalen `ar-import-ap`-Kante desselben Verbunds; ein SSP ausschließlich aus dessen `ap-import-ssp`-Kante. Die Kanten müssen zum aktuellen `href` passen; fehlende oder unpassende Ziele bleiben unaufgelöst. Die Ansicht ruft keine Referenzziele über das Netz ab.
+
+Ergebniswahl, Abschnittswahl und Auswahl einer Zeile liegen im Komponentenzustand. `AssessmentResultList` zeigt Findings, Observations oder Risks mit Zählungen und zunächst 50 Zeilen; weitere Zeilen erscheinen in Schritten von 50. Ab `46.5rem` steht das gewählte Detail neben der Liste; darunter ersetzt es die Liste, und „Zur Liste“ setzt den Tastaturfokus auf die gewählte Zeile zurück. Modelldiagnosen zeigen Stufe, Code und strukturellen Pfad in Schritten von 50.
+
+`AssessmentDetail` zeigt Quellstatus, Observation-Gültigkeit aus dem Evidenz-Read-Model, Remediations, Referenzzustände und Urheberangaben als Text. Namen und SSP-Aussagen stammen aus den vom Adapter aufgelösten Pfaden der explizit gebundenen Quellen. `EvidenceResourcePreview` erhält nur eindeutig aufgelöste Ressourcen des eigenen Back Matter; Vorschau, Download und Hashprüfung beginnen auf Nutzeraktion. Die Ansicht interpretiert kein Quell-Markup, aktiviert keine Quell-UUID als Route und dekodiert keine Evidenz beim Öffnen.
+
 ### SSP-Station
 
 `VerbundPage` bietet an der Station `ssp` „Neues SSP“ (`NewSspForm`) und „SSP-Datei einlesen“ (`src/features/workspace/WorkspaceFileImport.tsx`). Die Dateigröße wird vor `arrayBuffer()` geprüft; `importClass2OscalDocument()` prüft Bytes, Root, Version und Schema im Klasse-2-Worker. Nur `system-security-plan` wird über `useWorkspace().documents.addDocument()` als `imported` aufgenommen; die Quelle bleibt unverändert. Nach einem Verbundwechsel oder Verlassen der Station darf ein ausstehender Import weder eine neue Aufnahme beginnen noch die aktuelle Route steuern. Eine bereits laufende Speichertransaktion bleibt atomar.
 
 `SspEditorPage` zeigt unter den Formularen `SspDocumentContent`: Die Ansicht lädt das ausgewählte Dokument, hält die mit `parseSspDocument()` abgeleitete Projektion und entlässt den Quellgraphen. Metadaten, Baseline, Systemmerkmale, Systemimplementierung und Anforderungsumsetzung sind aufklappbar. `SspFields` rendert ausschließlich erlaubte Projektionsfelder als Text; Referenzobjekte und interne Pfade gehören nicht zum Feldbaum. Listen zeigen zunächst 50 Einträge und lassen weitere in Schritten von 50 anzeigen. Geschlossene Gruppen halten ihren Feldinhalt nicht im DOM. UUIDs und `href` bleiben inaktiv; Markup wird nicht als HTML interpretiert, Back-Matter-base64 wird nicht aktiviert.
 
-Die SSP-Detailprojektion erhält keinen Baseline-Katalog und kennzeichnet ihre Anforderungsbezüge als „nicht auflösbar im aktuellen Kontext“. Die vorhandene Referenzansicht zeigt die separat berechneten Graphkanten und Bindungszustände. Modelldiagnosen erscheinen mit Stufe, Code und strukturellem Pfad in Schritten von 50 Einträgen. Importablehnungen zeigen Stufe und Code ohne Dateiname oder Inhalt; Speicherfehler erscheinen über die Workspace-Meldung. Die gemeinsame Dateiaufnahme `WorkspaceFileImport` öffnet für Profile und SSPs die Dokumentroute, sobald die aktualisierte Verbundansicht das gespeicherte Dokument enthält. Sie sperrt doppelte Dateiereignisse während einer Aufnahme und bricht beim Verlassen der Station oder beim Verbundwechsel ihr Speichersignal ab. Schlägt das Nachladen fehl, zeigt `WorkspaceStatePage` die Speichermeldung mit „Neu laden“. Herkunftslabel und feste Dokumentseitentitel stammen aus der gemeinsamen Dokumentansicht.
+Die SSP-Detailprojektion erhält keinen Baseline-Katalog und kennzeichnet ihre Anforderungsbezüge als „nicht auflösbar im aktuellen Kontext“. Die vorhandene Referenzansicht zeigt die separat berechneten Graphkanten und Bindungszustände. Modelldiagnosen erscheinen mit Stufe, Code und strukturellem Pfad in Schritten von 50 Einträgen. Importablehnungen zeigen Stufe und Code ohne Dateiname oder Inhalt; Speicherfehler erscheinen über die Workspace-Meldung. Die gemeinsame Dateiaufnahme `WorkspaceFileImport` öffnet für Profile, SSPs und Assessment Results die Dokumentroute, sobald die aktualisierte Verbundansicht das gespeicherte Dokument enthält. Sie sperrt doppelte Dateiereignisse während einer Aufnahme und bricht beim Verlassen der Station oder beim Verbundwechsel ihr Speichersignal ab. Schlägt das Nachladen fehl, zeigt `WorkspaceStatePage` die Speichermeldung mit „Neu laden“. Herkunftslabel und feste Dokumentseitentitel stammen aus der gemeinsamen Dokumentansicht.
 
 Die Bearbeitung (`src/features/workspace/ssp/`) nutzt dieselben Routen und denselben Speicherzugang wie die Profile-Station; einen eigenen Store oder eine eigene Route hat sie nicht.
 

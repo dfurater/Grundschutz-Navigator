@@ -9,12 +9,12 @@ import { useWorkspace } from '@/hooks/useWorkspace';
 
 type Rejection = { readonly stage: OscalDiagnosticStage; readonly code: string };
 
-/** Dateiaufnahme für Profile und SSPs über das Klasse-2-Importgate. */
+/** Dateiaufnahme über das Klasse-2-Importgate. */
 export function WorkspaceFileImport({ verbundId, rootType, rejectionCode, label }: Readonly<{
   verbundId: VerbundId;
-  rootType: 'profile' | 'system-security-plan';
+  rootType: 'profile' | 'system-security-plan' | 'assessment-results';
   rejectionCode: string;
-  label: 'Profil' | 'SSP';
+  label: 'Profil' | 'SSP' | 'Prüfergebnisse';
 }>) {
   const inputId = useId();
   const statusId = useId();

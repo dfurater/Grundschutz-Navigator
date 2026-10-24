@@ -266,6 +266,7 @@ function StationContent({ view, station }: Readonly<{ view: VerbundView; station
         <p className="px-4 text-xs text-[var(--color-text-secondary)]">{STATION_DEFINITIONS[station].explanation}</p>
         {station === 'profile' && <ProfileStationActions key={verbund.verbundId} view={view} />}
         {station === 'ssp' && <SspStationActions key={verbund.verbundId} view={view} />}
+        {station === 'assessment' && <div className="px-4 pt-3"><WorkspaceFileImport key={verbund.verbundId} verbundId={verbund.verbundId} rootType="assessment-results" rejectionCode="OSCAL_ROOT_NOT_ASSESSMENT_RESULTS" label="Prüfergebnisse" /></div>}
         <DocumentList verbundId={verbund.verbundId} documents={shown} empty="An dieser Station liegt noch kein Dokument." />
         {station === 'poam' && <PoamProgressList verbundId={verbund.verbundId} documents={documents} />}
       </section>

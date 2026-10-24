@@ -13,6 +13,7 @@ import { WorkspaceStatePage, useRoutedVerbund } from '@/features/workspace/Works
 import { ProfileEditorPage } from '@/features/workspace/profile/ProfileEditorPage';
 import { ReviewSection } from '@/features/workspace/review/ReviewSection';
 import { SspEditorPage } from '@/features/workspace/ssp/SspEditorPage';
+import { AssessmentResultsPage } from '@/features/workspace/assessment/AssessmentResultsPage';
 
 function DocumentDetail({ view, document }: Readonly<{ view: VerbundView; document: WorkspaceDocumentView }>) {
   return (
@@ -54,7 +55,8 @@ export function DocumentReferenceDetailPage() {
       {document.rootType === 'system-security-plan' && (
         <SspEditorPage key={document.localId} view={routed.view} document={document} />
       )}
-      {document.rootType !== 'profile' && document.rootType !== 'system-security-plan' && <DocumentDetail key={document.localId} view={routed.view} document={document} />}
+      {document.rootType === 'assessment-results' && <AssessmentResultsPage key={document.localId} view={routed.view} document={document} />}
+      {document.rootType !== 'profile' && document.rootType !== 'system-security-plan' && document.rootType !== 'assessment-results' && <DocumentDetail key={document.localId} view={routed.view} document={document} />}
     </>
   );
 }
