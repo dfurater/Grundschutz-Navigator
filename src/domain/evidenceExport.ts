@@ -55,6 +55,7 @@ export async function exportEvidencePackage(input: EvidenceExportInput): Promise
     }
     const json = new TextEncoder().encode(serializeWorkspaceJson(source));
     const size = storedZipByteLength([{ name: 'document.json', byteLength: json.length }, ...selected]);
+    // The current 10 MiB source and 4 MiB payload limits stay below the 16 MiB ZIP cap.
     if (size > EVIDENCE_EXPORT_LIMITS.maxBytes) return fail('EVIDENCE_EXPORT_SIZE_EXCEEDED');
     const entries = [{ name: 'document.json', data: json }];
     for (const { name, resource } of selected) {
@@ -67,7 +68,7 @@ export async function exportEvidencePackage(input: EvidenceExportInput): Promise
       zip: createStoredZip(entries, EVIDENCE_EXPORT_LIMITS.maxBytes),
       report: { schema: 'passed', constraints: 'not-checked', references: 'not-checked' },
     };
-  } catch {
-    return fail('EVIDENCE_EXPORT_SOURCE_INVALID');
+  } catch (error) {
+    return fail(error instanceof Error && error.message === 'EVIDENCE_ZIP_INVALID' ? 'EVIDENCE_ZIP_INVALID' : 'EVIDENCE_EXPORT_SOURCE_INVALID');
   }
 }

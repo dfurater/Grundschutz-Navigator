@@ -10,6 +10,7 @@ import { makeSchemaValidOscalDocument } from '@/test/fixtures/oscalSchemaFixture
 import { deepFreeze } from '@/test/oscalStructure';
 import { runNoOpRoundTrip } from '@/test/oscalRoundTrip';
 import { expectNoNetworkCalls, stubNoNetwork } from '@/test/noNetwork';
+import * as storedZip from '@/adapters/storedZip';
 
 const RESOURCE = AR_UUIDS.resource;
 const SECOND = 'abcdefab-0000-4000-8000-000000000222';
@@ -123,6 +124,21 @@ describe('exportEvidencePackage', () => {
   it('rejects invalid versions, wrong roots and schema-invalid documents', async () => {
     const invalid = [fixture('assessment-results', '9.9.9'), makeSchemaValidOscalDocument('catalog', '1.2.2'), { 'assessment-results': { metadata: { 'oscal-version': '1.2.2' } } }];
     for (const source of invalid) expect(await exportSource(source)).toEqual({ ok: false, code: 'EVIDENCE_EXPORT_SOURCE_INVALID' });
+  });
+
+  it('does not resolve an external relevant-evidence href', async () => {
+    const source = makeFullAssessmentResults();
+    source['assessment-results'].results[0].observations![0]['relevant-evidence']![0].href = 'https://evidence.invalid/private';
+    const network = stubNoNetwork();
+
+    expect((await exportSource(source)).ok).toBe(true);
+    expectNoNetworkCalls(network);
+  });
+
+  it('preserves a fixed ZIP adapter error code', async () => {
+    vi.spyOn(storedZip, 'createStoredZip').mockImplementation(() => { throw new Error('EVIDENCE_ZIP_INVALID'); });
+
+    expect(await exportSource(fixture())).toEqual({ ok: false, code: 'EVIDENCE_ZIP_INVALID' });
   });
 
   it('keeps the snapshot stable when the caller changes source or selection during validation', async () => {
