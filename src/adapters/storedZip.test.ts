@@ -34,6 +34,19 @@ describe('stored ZIP', () => {
     expect(() => createStoredZip([{ name, data: encode('x') }], 1024)).toThrow('EVIDENCE_ZIP_INVALID');
   });
 
+  it('rejects invalid archive budgets', () => {
+    for (const maxBytes of [NaN, Infinity, -Infinity, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
+      expect(() => createStoredZip([{ name: 'document.json', data: encode('x') }], maxBytes)).toThrow('EVIDENCE_ZIP_INVALID');
+    }
+  });
+
+  it('bounds the complete ZIP to 32-bit offsets using metadata without large allocations', () => {
+    const overhead = storedZipByteLength([{ name: 'document.json', byteLength: 0 }]);
+    const byteLength = 0xffffffff - overhead;
+    expect(storedZipByteLength([{ name: 'document.json', byteLength }])).toBe(0xffffffff);
+    expect(() => storedZipByteLength([{ name: 'document.json', byteLength: byteLength + 1 }])).toThrow('EVIDENCE_ZIP_INVALID');
+  });
+
   it('rejects duplicate names, excessive entries and invalid size metadata', () => {
     const entry = { name: 'document.json', data: encode('x') };
     expect(() => createStoredZip([entry, entry], 1024)).toThrow('EVIDENCE_ZIP_INVALID');
