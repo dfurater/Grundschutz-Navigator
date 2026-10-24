@@ -70,6 +70,11 @@ jobs:
       - name: Fetch main for the catalog import provenance check
         run: git fetch --no-tags origin main:refs/remotes/origin/main
 
+      # Für einen manifestverändernden PR prüft der Guard jedes Begleitartefakt
+      # gegen sein gepinntes OSCAL-Schema (Ajv, scripts/companion-artifacts.mjs).
+      - name: Setup Node environment
+        uses: $/.github/actions/setup-node-env
+
       - name: Validate catalog sync PR contract
         env:
           GH_TOKEN: ${{ github.token }}

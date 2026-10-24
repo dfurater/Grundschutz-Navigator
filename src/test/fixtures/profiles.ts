@@ -3,7 +3,7 @@
 //
 // Die drei realen BSI-Profile liegen **nicht** im Repository: `npm run
 // fetch-catalog` materialisiert ausschließlich `supported`-Artefakte, und alle
-// drei Profile sind `preview` (`src/domain/sourceRegistry.mjs`). Der
+// drei Profile sind Begleitartefakte (`scripts/companion-artifacts.mjs`). Der
 // verbindliche Korpus ist deshalb fixture-basiert — dieselbe Konvention wie in
 // `oscalRootDispatch.corpus.test.ts`, GSPP-286 und GSPP-248.
 //
@@ -12,17 +12,14 @@
 // je Import, `with-child-controls` in beiden Werten, die Merge-Variante, Zahl
 // und Verteilung der `alters`, `set-parameters` und `back-matter`-Ressourcen
 // sowie die realen relativen `rlinks`. Die Prosa und die Identitäten sind
-// erfunden; die Strukturzahlen und die Pfade sind es nicht.
+// erfunden; die Strukturzahlen und relativen Dokumentverweise sind gemessen.
 //
-// `upstreamPath` und `oscalVersion` kommen aus dem Quellregister und werden
-// hier nie zweitgepflegt (ADR-1, GSPP-283): Ein Fixture mit eigenem Pfad bliebe
-// grün, obwohl es ein Artefakt nachbildet, das es upstream nicht mehr gibt.
+// Die Herkunftspfade sind synthetisch; die Dokumentversionen gehören zum
+// eingefrorenen Korpus. Die relativen Verweise sind reine Dokumentinhalte.
 // =============================================================================
 
 import { makeUuid } from '@/test/fixtures/fixtureUuid';
-import { compareStringsByCodeUnit } from '@/domain/codeUnitOrder.mjs';
 import type { PinnedOscalVersion } from '@/domain/oscalVersionMatrix';
-import { listOscalArtifacts } from '@/domain/sourceRegistry';
 
 type JsonObject = Record<string, unknown>;
 
@@ -43,7 +40,7 @@ export const PROFILE_SOURCE_RLINKS = Object.freeze({
 });
 
 /* ------------------------------------------------------------------ */
-/*  Strukturbeschreibung der drei registrierten Profile                */
+/*  Strukturbeschreibung der drei Profil-Fixtures                */
 /* ------------------------------------------------------------------ */
 
 interface SelectorSpec {
@@ -68,9 +65,9 @@ interface BackMatterResourceSpec {
 
 export interface ProfileArtifactSpec {
   readonly artifactKey: string;
-  /** Aus dem Quellregister abgeleitet — hier nie zweitgepflegt (ADR-1). */
+  /** Synthetischer Herkunftspfad des Fixtures. */
   readonly upstreamPath: string;
-  /** Aus dem Quellregister abgeleitet — hier nie zweitgepflegt (GSPP-283). */
+  /** OSCAL-Version des eingefrorenen Dokuments. */
   readonly oscalVersion: PinnedOscalVersion;
   /** Ob das Dokument gegen sein gepinntes Schema valide ist (ADR-7). */
   readonly schemaValid: boolean;
@@ -84,37 +81,22 @@ export interface ProfileArtifactSpec {
   readonly backMatter: readonly BackMatterResourceSpec[];
 }
 
-const REGISTERED_PROFILE_ARTIFACTS = new Map(
-  listOscalArtifacts()
-    .filter((entry) => entry.expectedRootType === 'profile')
-    .map((entry) => [entry.artifactKey, entry] as const),
-);
-
-/** Die Schlüssel der registrierten Profile, alphabetisch. */
-export function listRegisteredProfileArtifactKeys(): readonly string[] {
-  return [...REGISTERED_PROFILE_ARTIFACTS.keys()].sort(compareStringsByCodeUnit);
-}
-
-function registryFactsFor(artifactKey: string): {
+/**
+ * Eingefrorene Dokumentversionen und synthetische Herkunftspfade.
+ * Der Korpus liest weder Quellregister noch Manifest und ruft die Pfade nicht ab.
+ */
+const PROFILE_FIXTURE_FACTS = Object.freeze({
+  'profile-gspp': { artifactKey: 'profile-gspp', upstreamPath: 'fixtures/profiles/profile-gspp.json', oscalVersion: '1.1.3' },
+  'profile-lieferkette': { artifactKey: 'profile-lieferkette', upstreamPath: 'fixtures/profiles/profile-lieferkette.json', oscalVersion: '1.1.3' },
+  'profile-wlan': { artifactKey: 'profile-wlan', upstreamPath: 'fixtures/profiles/profile-wlan.json', oscalVersion: '1.1.3' },
+} as const satisfies Record<string, {
   readonly artifactKey: string;
   readonly upstreamPath: string;
   readonly oscalVersion: PinnedOscalVersion;
-} {
-  const entry = REGISTERED_PROFILE_ARTIFACTS.get(artifactKey);
-  if (!entry) {
-    // Fail-loud statt eines Ersatzwerts: Ein Fixture für ein nicht (mehr)
-    // registriertes Artefakt bildet nichts Reales nach.
-    throw new Error(`Kein registriertes profile-Artefakt mit dem Schlüssel "${artifactKey}"`);
-  }
-  return {
-    artifactKey: entry.artifactKey,
-    upstreamPath: entry.upstreamPath,
-    oscalVersion: entry.oscalVersion,
-  };
-}
+}>);
 
 /**
- * Die drei registrierten Profile mit ihren gemessenen Strukturzahlen.
+ * Die drei Profil-Fixtures mit ihren gemessenen Strukturzahlen.
  *
  * Zum WLAN-Profil: gemessen sind **290** `alters` über **58** eindeutige
  * `control-id` bei einem Maximum von **fünf** Einträgen je Control. Da
@@ -125,7 +107,7 @@ function registryFactsFor(artifactKey: string): {
  */
 export const PROFILE_ARTIFACT_SPECS: readonly ProfileArtifactSpec[] = Object.freeze([
   {
-    ...registryFactsFor('profile-gspp'),
+    ...PROFILE_FIXTURE_FACTS['profile-gspp'],
     schemaValid: true,
     // 3 Imports: zweimal `include-all`, einmal `include-controls` mit 4 IDs.
     imports: [
@@ -152,7 +134,7 @@ export const PROFILE_ARTIFACT_SPECS: readonly ProfileArtifactSpec[] = Object.fre
     ],
   },
   {
-    ...registryFactsFor('profile-lieferkette'),
+    ...PROFILE_FIXTURE_FACTS['profile-lieferkette'],
     schemaValid: true,
     imports: [
       {
@@ -170,7 +152,7 @@ export const PROFILE_ARTIFACT_SPECS: readonly ProfileArtifactSpec[] = Object.fre
     backMatter: [{ rlink: PROFILE_SOURCE_RLINKS.lieferketteKernel }],
   },
   {
-    ...registryFactsFor('profile-wlan'),
+    ...PROFILE_FIXTURE_FACTS['profile-wlan'],
     schemaValid: true,
     // Ein Import mit **zwei** Selektoren — und `with-child-controls` in beiden
     // Werten, was sonst nirgends im Bestand vorkommt.

@@ -4,7 +4,7 @@
 // Die beiden realen BSI-Mappings liegen **nicht** im Repository: `npm run
 // fetch-catalog` materialisiert ausschließlich `supported`-Artefakte, und die
 // beiden sind `preview` beziehungsweise `blocked-by-upstream`
-// (`src/domain/sourceRegistry.mjs`). Der verbindliche Korpus ist deshalb
+// (`scripts/companion-artifacts.mjs`). Der verbindliche Korpus ist deshalb
 // fixture-basiert — dieselbe Konvention wie in `oscalRootDispatch.corpus.test.ts`,
 // GSPP-286, GSPP-248 und GSPP-240.
 //
@@ -14,18 +14,15 @@
 // `status` und `method`, die sechs relativen Ressourcen-`href`, das
 // Top-Level-`$schema` des ITGS-Mappings und die beiden schemafremden
 // `provenance`-Felder des ISO-Mappings. Die Prosa und die Identitäten sind
-// erfunden; die Strukturzahlen und die Pfade sind es nicht.
+// erfunden; die Strukturzahlen und relativen Dokumentverweise sind gemessen.
 //
-// `upstreamPath` und `oscalVersion` kommen aus dem Quellregister und werden
-// hier nie zweitgepflegt (ADR-1, GSPP-283); das `$schema` des ITGS-Mappings
-// kommt aus der Versionsmatrix und nicht aus einem zweiten Literal.
+// Die Herkunftspfade sind synthetisch; die Dokumentversionen gehören zum
+// eingefrorenen Korpus. Die relativen Verweise sind reine Dokumentinhalte.
 // =============================================================================
 
 import { makeUuid } from '@/test/fixtures/fixtureUuid';
-import { compareStringsByCodeUnit } from '@/domain/codeUnitOrder.mjs';
 import { getSchemaPin, PINNED_OSCAL_VERSIONS } from '@/domain/oscalVersionMatrix';
 import type { PinnedOscalVersion } from '@/domain/oscalVersionMatrix';
-import { listOscalArtifacts } from '@/domain/sourceRegistry';
 
 type JsonObject = Record<string, unknown>;
 
@@ -56,7 +53,7 @@ export const MAPPING_RESOURCE_HREFS = Object.freeze({
 });
 
 /* ------------------------------------------------------------------ */
-/*  Strukturbeschreibung der beiden registrierten Mappings             */
+/*  Strukturbeschreibung der beiden Mapping-Fixtures             */
 /* ------------------------------------------------------------------ */
 
 interface MappingSetSpec {
@@ -75,9 +72,9 @@ interface MappingSetSpec {
 
 export interface MappingArtifactSpec {
   readonly artifactKey: string;
-  /** Aus dem Quellregister abgeleitet — hier nie zweitgepflegt (ADR-1). */
+  /** Synthetischer Herkunftspfad des Fixtures. */
   readonly upstreamPath: string;
-  /** Aus dem Quellregister abgeleitet — hier nie zweitgepflegt (GSPP-283). */
+  /** OSCAL-Version des eingefrorenen Dokuments. */
   readonly oscalVersion: PinnedOscalVersion;
   /** Ob das Dokument gegen sein gepinntes Schema valide ist (ADR-7). */
   readonly schemaValid: boolean;
@@ -93,39 +90,21 @@ export interface MappingArtifactSpec {
   readonly sets: readonly MappingSetSpec[];
 }
 
-const REGISTERED_MAPPING_ARTIFACTS = new Map(
-  listOscalArtifacts()
-    .filter((entry) => entry.expectedRootType === 'mapping-collection')
-    .map((entry) => [entry.artifactKey, entry] as const),
-);
-
-/** Die Schlüssel der registrierten Mappings, alphabetisch. */
-export function listRegisteredMappingArtifactKeys(): readonly string[] {
-  return [...REGISTERED_MAPPING_ARTIFACTS.keys()].sort(compareStringsByCodeUnit);
-}
-
-function registryFactsFor(artifactKey: string): {
+/**
+ * Eingefrorene Dokumentversionen und synthetische Herkunftspfade.
+ * Der Korpus liest weder Quellregister noch Manifest und ruft die Pfade nicht ab.
+ */
+const MAPPING_FIXTURE_FACTS = Object.freeze({
+  'mapping-iso27001-annex-a-zu-gspp': { artifactKey: 'mapping-iso27001-annex-a-zu-gspp', upstreamPath: 'fixtures/mappings/mapping-iso27001-annex-a-zu-gspp.json', oscalVersion: '1.2.2' },
+  'mapping-itgs2023-zu-gspp': { artifactKey: 'mapping-itgs2023-zu-gspp', upstreamPath: 'fixtures/mappings/mapping-itgs2023-zu-gspp.json', oscalVersion: '1.2.1' },
+} as const satisfies Record<string, {
   readonly artifactKey: string;
   readonly upstreamPath: string;
   readonly oscalVersion: PinnedOscalVersion;
-} {
-  const entry = REGISTERED_MAPPING_ARTIFACTS.get(artifactKey);
-  if (!entry) {
-    // Fail-loud statt eines Ersatzwerts: Ein Fixture für ein nicht (mehr)
-    // registriertes Artefakt bildet nichts Reales nach.
-    throw new Error(
-      `Kein registriertes mapping-collection-Artefakt mit dem Schlüssel "${artifactKey}"`,
-    );
-  }
-  return {
-    artifactKey: entry.artifactKey,
-    upstreamPath: entry.upstreamPath,
-    oscalVersion: entry.oscalVersion,
-  };
-}
+}>);
 
 /**
- * Die beiden registrierten Mappings mit ihren gemessenen Strukturzahlen.
+ * Die beiden Mapping-Fixtures mit ihren gemessenen Strukturzahlen.
  *
  * Auffällig und bewusst so übernommen: `no-relationship` kommt in **keinem**
  * der beiden Artefakte vor, `sources` ist überall einelementig, und
@@ -135,7 +114,7 @@ function registryFactsFor(artifactKey: string): {
  */
 export const MAPPING_ARTIFACT_SPECS: readonly MappingArtifactSpec[] = Object.freeze([
   {
-    ...registryFactsFor('mapping-iso27001-annex-a-zu-gspp'),
+    ...MAPPING_FIXTURE_FACTS['mapping-iso27001-annex-a-zu-gspp'],
     // `provenance.qa-reviewed` und `provenance.qa-note` verletzen
     // `additionalProperties: false` — genau zwei Befunde (ADR-7).
     schemaValid: false,
@@ -168,7 +147,7 @@ export const MAPPING_ARTIFACT_SPECS: readonly MappingArtifactSpec[] = Object.fre
     ],
   },
   {
-    ...registryFactsFor('mapping-itgs2023-zu-gspp'),
+    ...MAPPING_FIXTURE_FACTS['mapping-itgs2023-zu-gspp'],
     schemaValid: true,
     schemaDirective: true,
     sets: [
@@ -300,7 +279,7 @@ export function makeMappingSource(spec: MappingArtifactSpec): JsonObject {
     : { 'mapping-collection': collection };
 }
 
-/** Beide registrierten Mappings mit ihrer Strukturbeschreibung. */
+/** Beide Mapping-Fixtures mit ihrer Strukturbeschreibung. */
 export function makeAllMappingSources(): readonly {
   readonly specification: MappingArtifactSpec;
   readonly source: JsonObject;

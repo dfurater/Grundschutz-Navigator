@@ -1,4 +1,4 @@
-import type { CatalogKey, CatalogLineage as RegistryCatalogLineage } from './sourceRegistry.mjs';
+import type { CatalogKey } from './sourceRegistry.mjs';
 
 export type CatalogLineageState =
   | 'complete'
@@ -9,8 +9,7 @@ export type CatalogLineageState =
   | 'rlink-missing'
   | 'rlink-ambiguous'
   | 'artifact-unregistered'
-  | 'import-duplicate'
-  | 'configured-import-missing';
+  | 'import-duplicate';
 
 export interface CatalogLineageDocument {
   readonly artifactKey: string;
@@ -24,8 +23,7 @@ export interface CatalogLineageDocument {
 }
 
 export interface CatalogLineageImport {
-  /** `null`, wenn allein der konfigurierte Import im Profil fehlt. */
-  readonly index: number | null;
+  readonly index: number;
   readonly state: CatalogLineageState;
   readonly importHref: string | null;
   readonly resourceUuid: string | null;
@@ -42,13 +40,17 @@ export interface CatalogLineageProjection {
 export interface ValidatedLineageArtifact {
   readonly document: unknown;
   readonly manifestFile: {
-    readonly path?: string;
+    readonly artifactKey: string;
+    readonly path: string;
     readonly gitBlobSha?: string;
     readonly contentSha256?: string;
   };
 }
 
+export declare function resolveRelativeRepoPath(baseFilePath: string, href: string): string | null;
+
 export declare function projectCatalogLineage(input: {
-  readonly lineage: RegistryCatalogLineage;
-  readonly artifactsByKey: ReadonlyMap<string, ValidatedLineageArtifact>;
+  readonly catalogKey: CatalogKey;
+  readonly profileArtifact: ValidatedLineageArtifact;
+  readonly artifactsByPath: ReadonlyMap<string, ValidatedLineageArtifact>;
 }): CatalogLineageProjection;

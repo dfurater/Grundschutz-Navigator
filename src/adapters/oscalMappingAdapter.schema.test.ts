@@ -273,7 +273,7 @@ describe('ADR-7 — schemainvalides Bestandsartefakt', () => {
     // Der beanstandete Schlüssel ist Dokumentinhalt und bleibt redigiert.
     expect(result.diagnostic.code).toBe('OSCAL_SCHEMA_ADDITIONAL_PROPERTY');
     expect(result.diagnostic.path).toBe('/mapping-collection/provenance/*');
-    expect(result.diagnostic.artifact.key).toBe(specification.artifactKey);
+    expect(result.diagnostic.artifact.key).toBeNull();
 
     // Das Dokument wird trotzdem nicht verworfen: `source` ist unverändert,
     // und die beiden schemafremden Felder sind noch da.

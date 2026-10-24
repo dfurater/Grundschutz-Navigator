@@ -14,11 +14,11 @@ Die Matrix lebt als Daten in
 [`src/domain/oscalVersionMatrix.mjs`](../src/domain/oscalVersionMatrix.mjs),
 **nicht** in `sourceRegistry.mjs`:
 
-- Die Matrix führt alle **acht** OSCAL-Root-Modelle, auch die vier nicht
-  registrierten. Das Quellregister ist auf tatsächlich existierende
-  BSI-Upstream-Pfade begrenzt; Zellen ohne Artefakt gehören nicht dorthin.
-- Das Quellregister sagt, welche Artefakte es gibt und welche Version das
-  konkrete BSI-Dokument deklariert. Die Matrix sagt, welche
+- Die Matrix führt alle **acht** OSCAL-Root-Modelle. Das Quellregister führt
+  nur Produktartefakte; Zellen ohne Artefakt gehören nicht dorthin.
+- Das Quellregister sagt, welche Produktartefakte es gibt und welche Version
+  das konkrete BSI-Dokument deklariert. Begleitartefakte bringen ihre Version
+  in `metadata.oscal-version` selbst mit. Die Matrix sagt, welche
   Root×Version-Paare der Standard kennt und welches Schema dafür gilt.
 
 Jeder Fakt hat damit genau einen Ort:
@@ -27,12 +27,15 @@ Jeder Fakt hat damit genau einen Ort:
 | --- | --- |
 | Root-Typ × Version existiert im Standard | `oscalVersionMatrix.mjs` |
 | Schema-Dateiname, Release-Tag, `$id`, SHA-256, Ablageort | `oscalVersionMatrix.mjs` |
-| Deklarierte `oscal-version` eines konkreten BSI-Artefakts | `sourceRegistry.mjs` |
-| Lifecycle eines Artefakts (`supported`/`preview`/`draft`/`blocked-by-upstream`) | `sourceRegistry.mjs` |
+| Erwartete `oscal-version` eines Produktartefakts | `sourceRegistry.mjs` |
+| Lifecycle eines Produktartefakts (`supported`/`draft`) | `sourceRegistry.mjs` |
+| `oscal-version` eines Begleitartefakts | das Dokument selbst (`metadata.oscal-version`) |
+| Lifecycle eines Begleitartefakts (`preview`/`blocked-by-upstream`) | Prüfergebnis in `scripts/companion-artifacts.mjs` |
 
 Der Lifecycle wird **nicht** in die Matrix dupliziert: er ist eine
-Eigenschaft des Artefakts, nicht der Root×Version-Zelle. Die Verbindung
-stellt `getSchemaPinForArtifact()` her.
+Eigenschaft des Artefakts, nicht der Root×Version-Zelle. Für Produktartefakte
+stellt `getSchemaPinForArtifact()` die Verbindung her; für Begleitartefakte
+wählt `resolveSchemaBinding()` die Zelle aus der deklarierten Version.
 
 `validateSourceRegistry()` kreuzt beide beim Import: eine fehlende, nicht
 gepinnte oder für den Root-Typ unmögliche Version lässt das Modul sofort
@@ -304,12 +307,18 @@ mehr deklariert.
 
 ### Fall B — ein BSI-Artefakt wechselt seine Version
 
-Ein Versionswechsel im Upstream wird im Sync-Lauf **automatisch bemerkt**:
-sowohl `scripts/fetch-catalog.mjs` als auch `scripts/catalog-sync-guard.mjs`
-vergleichen die gelesene `metadata.oscal-version` gegen die
-Registry-Erwartung und brechen bei Abweichung ab.
+Bei einem Begleitartefakt übernimmt der Sync den Versionswechsel ohne
+Codeänderung: Bindet die neue Version eine gepinnte Matrixzelle und erfüllt das
+Dokument deren Schema, bleibt es `preview`, sonst wird es
+`blocked-by-upstream`.
 
-Zwingende Schritte:
+Bei einem Produktartefakt wird ein Versionswechsel im Sync-Lauf **automatisch
+bemerkt**: sowohl `scripts/fetch-catalog.mjs` als auch
+`scripts/catalog-sync-guard.mjs` vergleichen die gelesene
+`metadata.oscal-version` gegen die Registry-Erwartung und brechen bei
+Abweichung ab.
+
+Zwingende Schritte für ein Produktartefakt:
 
 1. Die neue deklarierte Version am gepinnten Snapshot auslesen und dabei
    Git-Blob-SHA und SHA-256 gegen `upstream-manifest.json` verifizieren.
@@ -326,44 +335,11 @@ liest jedes Dokument gegen die Version, die es selbst deklariert.
 
 ## Kompatibilitätstest
 
-`src/domain/sourceRegistry.test.ts` prüft alle **19** registrierten
-OSCAL-Artefakte gegen die Matrix: vollständige Abdeckung, exakte
-Versionsübereinstimmung mit einem unabhängig ausgeschriebenen Orakel, ein
-auflösbarer Schema-Pin pro Artefakt und die Beschränkung auf genau die vier
-gepinnten Versionen. Das Orakel ist ausgeschrieben, nicht aus der Registry
-abgeleitet — eine stille Registry-Änderung fällt damit auf.
-
-## Deklarierte Versionen im Bestand
-
-Ausgelesen am BSI-Snapshot `47de2824a341812438ef3f044b3f65ce2cad6e32`;
-Git-Blob-SHA und SHA-256 jedes Dokuments wurden dabei gegen
-`upstream-manifest.json` verifiziert.
-
-| Artefakt | Root-Typ | `oscal-version` |
-| --- | --- | --- |
-| `catalog-gspp` | `catalog` | 1.1.3 |
-| `catalog-lieferkette` | `catalog` | 1.1.3 |
-| `catalog-mindeststandard-tls` | `catalog` | 1.1.3 |
-| `catalog-wlan` | `catalog` | 1.1.3 |
-| `catalog-source-gspp-kernel-g0` | `catalog` | 1.1.3 |
-| `catalog-source-gspp-methodik` | `catalog` | 1.1.3 |
-| `catalog-source-risikomanagement` | `catalog` | 1.1.3 |
-| `catalog-source-lieferkette-kernel` | `catalog` | 1.1.3 |
-| `profile-gspp` | `profile` | 1.1.3 |
-| `profile-lieferkette` | `profile` | 1.1.3 |
-| `profile-wlan` | `profile` | 1.1.3 |
-| `mapping-iso27001-annex-a-zu-gspp` | `mapping-collection` | 1.2.2 |
-| `mapping-itgs2023-zu-gspp` | `mapping-collection` | 1.2.1 |
-| `component-aws-security-hub` | `component-definition` | 1.2.2 |
-| `component-ga-lotse-grundmodul` | `component-definition` | 1.1.2 |
-| `component-keycloak` | `component-definition` | 1.2.2 |
-| `component-lieferkette` | `component-definition` | 1.1.2 |
-| `component-netzarchitektur` | `component-definition` | 1.2.2 |
-| `component-passwortrichtlinie` | `component-definition` | 1.1.2 |
-
-Die Component Definitions stehen auf zwei Versionen, die beiden Mapping
-Collections liegen auf zwei verschiedenen. Ein einzelner „OSCAL-1.1.3-Raw-Typ"
-deckt den Bestand nachweislich nicht ab.
+`src/domain/sourceRegistry.test.ts` prüft alle registrierten
+Produktartefakte gegen die Matrix: vollständige Abdeckung, exakte
+Versionsübereinstimmung mit einem unabhängig ausgeschriebenen Orakel und ein
+auflösbarer Schema-Pin pro Artefakt. Das Orakel ist ausgeschrieben, nicht aus
+der Registry abgeleitet — eine stille Registry-Änderung fällt damit auf.
 
 ## Quellen
 

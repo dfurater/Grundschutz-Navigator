@@ -3,7 +3,7 @@
 import { encodeRepositoryPath } from '../src/domain/repositoryPath.mjs';
 import { compareStringsByCodeUnit } from '../src/domain/codeUnitOrder.mjs';
 import { computeGitBlobSha } from './contentHashes.mjs';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import {
@@ -14,6 +14,7 @@ import {
 } from './vocabulary-utils.mjs';
 import {
   DEFAULT_ARTIFACTS_DIR,
+  DEFAULT_TRACKED_MANIFEST_PATH,
   OFFICIAL_BSI_REPO,
   OFFICIAL_BSI_REPOSITORY_URL,
   assertAllowedGitHubRef,
@@ -22,7 +23,6 @@ import {
   resolveOptionalSnapshotSha,
 } from './security-guards.mjs';
 import {
-  CATALOG_LINEAGES,
   MONITORED_UPSTREAM_ROOTS,
   SOURCE_REGISTRY,
   catalogDataFileName,
@@ -33,6 +33,11 @@ import {
 } from '../src/domain/sourceRegistry.mjs';
 import { projectCatalogLineage } from '../src/domain/catalogLineage.mjs';
 import { resolveSchemaBinding } from '../src/domain/oscalVersionMatrix.mjs';
+import {
+  assignCompanionArtifactKeys,
+  classifyCompanionArtifact,
+  listCompanionTreePaths,
+} from './companion-artifacts.mjs';
 import {
   buildCorpusCachePayload,
   CORPUS_CACHE_DIRECTORY,
@@ -258,11 +263,11 @@ function resolveDownloadLimit(path, expectedSizeBytes) {
 async function fetchRawRegisteredFile(
   path,
   ref,
-  materializedNamespacePaths,
+  allowedPaths,
   transport,
   expectedSizeBytes = null,
 ) {
-  const allowedPath = assertRegisteredUpstreamRepoPath(path, { materializedNamespacePaths });
+  const allowedPath = assertRegisteredUpstreamRepoPath(path, allowedPaths);
   const allowedRef = assertAllowedGitHubRef(ref, 'GitHub fetch ref');
   const url = `https://raw.githubusercontent.com/${REPO}/${encodeURIComponent(allowedRef)}/${encodeRepositoryPath(allowedPath)}`;
   const { response } = await fetchWithTransientRetry(transport.fetchImpl, url, TOKEN
@@ -509,18 +514,16 @@ function collectOscalRegistryDescriptors(registryEntries, treeFileByPath) {
 
   for (const entry of registryEntries) {
     if (entry.kind !== 'oscal') continue;
-    const treeFile = treeFileByPath.get(entry.upstreamPath);
-    if (!treeFile) {
-      // ADR-7-Nachtrag: Ein bereits gesperrtes Artefakt, das vollständig aus
-      // dem Tree verschwindet, erfüllt dieselbe inverse Erwartung wie ein
-      // Schema-Fehlschlag — es bleibt gesperrt statt den Fetch abzubrechen.
-      if (entry.lifecycle === 'blocked-by-upstream') continue;
-      throw new Error(
-        `Registriertes Artefakt fehlt im vollständigen BSI-Tree: ${entry.upstreamPath}. ` +
-        'Quellregister manuell gegen den gepinnten BSI-Snapshot prüfen; ' +
-        'keine automatische Pfadfreigabe.',
-      );
+    for (const registeredPath of [entry.upstreamPath, entry.profileUpstreamPath]) {
+      if (registeredPath !== undefined && !treeFileByPath.has(registeredPath)) {
+        throw new Error(
+          `Registriertes Artefakt fehlt im vollständigen BSI-Tree: ${registeredPath}. ` +
+          'Quellregister manuell gegen den gepinnten BSI-Snapshot prüfen; ' +
+          'keine automatische Pfadfreigabe.',
+        );
+      }
     }
+    const treeFile = treeFileByPath.get(entry.upstreamPath);
     descriptors.push({
       artifactKey: entry.artifactKey,
       rootType: entry.expectedRootType,
@@ -574,16 +577,41 @@ function assertUniqueDescriptorPaths(descriptors) {
   }
 }
 
-function materializeRegistryFiles({ registryEntries, treeFiles, namespaceRefs }) {
+function collectCompanionDescriptors(registryEntries, treeFileByPath, companionKeyByPath) {
+  return [...companionKeyByPath].map(([path, artifactKey]) => {
+    const treeFile = treeFileByPath.get(path);
+    return {
+      artifactKey,
+      rootType: null,
+      lifecycle: null,
+      path,
+      gitBlobSha: treeFile.gitBlobSha,
+      sizeBytes: treeFile.sizeBytes,
+      companion: true,
+    };
+  });
+}
+
+function materializeRegistryFiles({ registryEntries, treeFiles, namespaceRefs, companionKeyByPath }) {
   const treeFileByPath = new Map(treeFiles.map((file) => [file.path, file]));
   const descriptors = [
     ...collectOscalRegistryDescriptors(registryEntries, treeFileByPath),
     ...collectNamespaceRefDescriptors(registryEntries, treeFileByPath, namespaceRefs),
+    ...collectCompanionDescriptors(registryEntries, treeFileByPath, companionKeyByPath),
   ];
 
   assertUniqueDescriptorPaths(descriptors);
 
   return descriptors.sort((left, right) => compareStringsByCodeUnit(left.path, right.path));
+}
+
+async function readTrackedManifest(manifestPath = DEFAULT_TRACKED_MANIFEST_PATH) {
+  try {
+    return JSON.parse(await readFile(manifestPath, 'utf8'));
+  } catch (error) {
+    if (error?.code === 'ENOENT') return null;
+    throw error;
+  }
 }
 
 async function buildFetchArtifacts(logger = console, {
@@ -592,6 +620,7 @@ async function buildFetchArtifacts(logger = console, {
   registryEntries = SOURCE_REGISTRY,
   snapshotSelection,
   treeResponse: providedTreeResponse,
+  trackedManifest: providedTrackedManifest,
 } = {}) {
   // Mehrere ausgelieferte Kataloge sind seit GSPP-284 der Regelfall. Die Lane
   // liest ihre Katalogmenge deshalb aus dem Quellregister; der Einstiegskatalog
@@ -632,7 +661,7 @@ async function buildFetchArtifacts(logger = console, {
     const raw = await fetchRawRegisteredFile(
       entry.upstreamPath,
       fetchRef,
-      [],
+      {},
       transport,
       treeFile.sizeBytes,
     );
@@ -692,37 +721,33 @@ async function buildFetchArtifacts(logger = console, {
   logger.log(`  ${namespaceRefs.length} freigegebene Namespace-Dateien gefunden.`);
 
   const materializedNamespacePaths = namespaceRefs.map((namespaceRef) => namespaceRef.path);
+  const companionPaths = listCompanionTreePaths(tree.files, registryEntries);
+  const trackedManifest = providedTrackedManifest === undefined
+    ? await readTrackedManifest()
+    : providedTrackedManifest;
+  const companionKeyByPath = assignCompanionArtifactKeys(companionPaths, {
+    trackedManifest,
+    registryEntries,
+  });
   const registryFiles = materializeRegistryFiles({
     registryEntries,
     treeFiles: tree.files,
     namespaceRefs,
+    companionKeyByPath,
   });
 
-  const materializedRegistryPaths = new Set(registryFiles.map((file) => file.path));
-  for (const entry of registryEntries) {
-    if (
-      entry.kind === 'oscal' &&
-      entry.lifecycle === 'blocked-by-upstream' &&
-      !materializedRegistryPaths.has(entry.upstreamPath)
-    ) {
-      logger.warn(
-        `  ! Gesperrtes Artefakt ${entry.artifactKey} fehlt im BSI-Tree (${entry.upstreamPath}) — bleibt gesperrt, kein Fetch.`,
-      );
-    }
-  }
-
-  logger.log(`[3/5] Validiere ${registryFiles.length} registrierte Artefakte ...`);
+  logger.log(`[3/5] Validiere ${registryFiles.length} Artefakte ...`);
   const rawFileByPath = new Map(
     catalogRecords.map((record) => [record.entry.upstreamPath, record.raw]),
   );
   const inspectedArtifacts = await Promise.all(registryFiles.map(async (descriptor) => {
     let rawFile = rawFileByPath.get(descriptor.path);
     if (!rawFile) {
-      logger.log(`  - ${descriptor.path} (${descriptor.lifecycle})`);
+      logger.log(`  - ${descriptor.path}`);
       rawFile = await fetchRawRegisteredFile(
         descriptor.path,
         fetchRef,
-        materializedNamespacePaths,
+        { materializedNamespacePaths, companionPaths },
         transport,
         descriptor.sizeBytes,
       );
@@ -734,6 +759,26 @@ async function buildFetchArtifacts(logger = console, {
     }
     if (computeGitBlobSha(rawFile.buffer) !== descriptor.gitBlobSha) {
       throw new Error(`Git-Blob-SHA stimmt nicht mit dem BSI-Tree überein: ${descriptor.path}`);
+    }
+
+    if (descriptor.companion) {
+      const companion = classifyCompanionArtifact(rawFile.buffer);
+      if (companion.lifecycle === 'blocked-by-upstream') {
+        logger.warn(`  ! Begleitartefakt ${descriptor.path} verletzt Schema oder Datenvertrag — blocked-by-upstream.`);
+      }
+      return {
+        descriptor,
+        rawFile,
+        document: companion.lifecycle === 'preview' ? companion.document : null,
+        manifestFile: {
+          artifactKey: descriptor.artifactKey,
+          rootType: companion.rootType,
+          lifecycle: companion.lifecycle,
+          path: descriptor.path,
+          gitBlobSha: descriptor.gitBlobSha,
+          contentSha256: sha256Hex(rawFile.buffer),
+        },
+      };
     }
 
     const validatedArtifact = descriptor.rootType !== 'vocabulary'
@@ -761,13 +806,16 @@ async function buildFetchArtifacts(logger = console, {
   const inspectedByPath = new Map(
     inspectedArtifacts.map((artifact) => [artifact.descriptor.path, artifact]),
   );
-  const lineageArtifactsByKey = new Map(
+  const lineageArtifactsByPath = new Map(
     inspectedArtifacts
       .filter((artifact) => artifact.document !== null)
       .map((artifact) => [
-        artifact.descriptor.artifactKey,
+        artifact.descriptor.path,
         { document: artifact.document, manifestFile: artifact.manifestFile },
       ]),
+  );
+  const lineageSourcesByPath = new Map(
+    [...lineageArtifactsByPath].filter(([, artifact]) => artifact.manifestFile.rootType === 'catalog'),
   );
   const namespaceArtifacts = namespaceRefs.map((namespaceRef) => {
     const inspected = inspectedByPath.get(namespaceRef.path);
@@ -831,11 +879,21 @@ async function buildFetchArtifacts(logger = console, {
     snapshotCommitSha: snapshot.snapshotCommitSha,
     files: inspectedArtifacts.map((artifact) => artifact.manifestFile),
   });
-  const catalogLineages = CATALOG_LINEAGES
-    .filter((lineage) =>
-      registryEntries.some((entry) => entry.artifactKey === lineage.profileArtifactKey),
-    )
-    .map((lineage) => projectCatalogLineage({ lineage, artifactsByKey: lineageArtifactsByKey }));
+  const catalogLineages = supportedCatalogs
+    .filter((entry) => entry.profileUpstreamPath !== undefined)
+    .map((entry) => {
+      const profileArtifact = lineageArtifactsByPath.get(entry.profileUpstreamPath);
+      if (profileArtifact?.manifestFile.rootType !== 'profile') {
+        throw new Error(
+          `Profil von ${entry.artifactKey} ist kein gültiges OSCAL-Profil: ${entry.profileUpstreamPath}`,
+        );
+      }
+      return projectCatalogLineage({
+        catalogKey: entry.catalogKey,
+        profileArtifact,
+        artifactsByPath: lineageSourcesByPath,
+      });
+    });
 
   const fetchedAt = new Date().toISOString();
   const buildMetadata = buildBuildMetadata();
@@ -938,11 +996,11 @@ async function buildFetchArtifacts(logger = console, {
       manifestSignature: manifest.signatureSha256,
     },
     // Verpflichtender Bauzeitlauf (GSPP-291): die verifizierten Rohbytes der
-    // drei Profile, ihrer Importziele und der drei Vergleichskataloge für
-    // den gitignorierten Korpus-Cache — kein zweiter Fetch, keine Auslieferung.
+    // Profile, ihrer Importziele und der Vergleichskataloge für den
+    // gitignorierten Korpus-Cache — kein zweiter Fetch, keine Auslieferung.
     corpusCache: buildCorpusCachePayload({
       inspectedArtifacts,
-      lineages: CATALOG_LINEAGES,
+      lineages: catalogLineages,
       snapshotCommitSha: snapshot.snapshotCommitSha,
     }),
   };

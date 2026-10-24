@@ -114,7 +114,7 @@ describe('Schemastand der sechs registrierten Definitionen', () => {
       `/component-definition/import-component-definitions/0/${REDACTED_PATH_SEGMENT}`,
     );
     expect(result.diagnostic.artifact.oscalVersion).toBe('1.1.2');
-    expect(result.diagnostic.artifact.key).toBe('component-ga-lotse-grundmodul');
+    expect(result.diagnostic.artifact.key).toBeNull();
   });
 
   it('weist den Lieferketten-Befund am gemessenen Pointer aus (BSI #71)', async () => {

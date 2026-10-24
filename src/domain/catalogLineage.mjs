@@ -1,12 +1,17 @@
 /**
- * Rein lesende Projektion einer Profile-Importkette für die About-Provenienz.
+ * Rein lesende Projektion einer Profile-Importkette für die About-Provenienz
+ * (ADR-13).
  *
- * Relative `rlinks.href` bleiben absichtlich unverändert: Nur ein exakter
- * Stringtreffer in der vom Quellregister gepflegten Zuordnung darf eine
- * Quelle sichtbar als belegt markieren. Diese Projektion benutzt bewusst
- * nicht den generischen Referenzresolver, dessen fail-closed-Vertrag relative
- * Referenzen als nicht auflösbar einstuft.
+ * Ein Import `#<uuid>` zeigt auf eine Back-Matter-Ressource; deren
+ * `rlinks[].href` wird relativ zum Profilpfad zu einem Repository-Pfad
+ * normalisiert (OSCAL 1.1.3 `import/@href`). Ein relativer Import-href wird
+ * direkt auf dieselbe Weise normalisiert. Nur ein Pfad unter
+ * `MONITORED_UPSTREAM_ROOTS`, der im selben gepinnten Tree als validiertes
+ * Dokument vorliegt, belegt eine Quelle. Absolute URLs und Pfade außerhalb
+ * dieser Menge bleiben benannte Zustände; aufgelöst wird nie über das Netz.
  */
+
+import { isPathWithinMonitoredRoot } from './sourceRegistry.mjs';
 
 function asRecord(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value) ? value : null;
@@ -53,17 +58,108 @@ function unresolvedImport({ index, state, importHref = null, resourceUuid = null
   };
 }
 
+/**
+ * Normalisiert einen relativen href gegen den Ordner des Profils. Absolute
+ * URIs, Wurzelpfade, Fragmente und Pfade oberhalb der Repository-Wurzel
+ * liefern `null`.
+ * shortcut: Prozentkodierung wird nicht dekodiert; die BSI-Profile nutzen
+ * unkodierte relative Pfade. Erst ein kodierter relativer href braucht es.
+ */
+function isRelativeHref(href) {
+  return !/^[a-z][a-z0-9+.-]*:/i.test(href) && !href.startsWith('/') && !href.startsWith('#');
+}
+
+export function resolveRelativeRepoPath(baseFilePath, href) {
+  if (!isRelativeHref(href)) return null;
+  const segments = baseFilePath.split('/').slice(0, -1);
+  for (const segment of href.split('/')) {
+    if (segment === '' || segment === '.') continue;
+    if (segment === '..') {
+      if (segments.length === 0) return null;
+      segments.pop();
+      continue;
+    }
+    segments.push(segment);
+  }
+  const resolved = segments.join('/');
+  return isPathWithinMonitoredRoot(resolved) ? resolved : null;
+}
+
+/**
+ * Wählt aus den hrefs eines Imports genau eine validierte Quelle desselben
+ * Trees. `resourceUuid` ist bei einem Direktimport `null`; dann bleibt auch
+ * `rlinkHref` leer, weil der Import-href selbst das Ziel nennt.
+ */
+function selectImportSource({
+  index,
+  importHref,
+  resourceUuid,
+  hrefs,
+  profilePath,
+  resolvedImportPaths,
+  artifactsByPath,
+}) {
+  const viaResource = resourceUuid !== null;
+  const candidates = [
+    ...new Map(
+      hrefs
+        .map((href) => [href, resolveRelativeRepoPath(profilePath, href)])
+        .filter(([, path]) => path !== null && artifactsByPath.has(path))
+        .map(([href, path]) => [path, href]),
+    ),
+  ];
+  if (candidates.length === 0) {
+    return unresolvedImport({
+      index,
+      state: 'artifact-unregistered',
+      importHref,
+      resourceUuid,
+      rlinkHref: viaResource && hrefs.length === 1 ? hrefs[0] : null,
+    });
+  }
+  if (candidates.length !== 1) {
+    return unresolvedImport({ index, state: 'rlink-ambiguous', importHref, resourceUuid });
+  }
+
+  const [[sourcePath, href]] = candidates;
+  const rlinkHref = viaResource ? href : null;
+  if (resolvedImportPaths.has(sourcePath)) {
+    return unresolvedImport({
+      index,
+      state: 'import-duplicate',
+      importHref,
+      resourceUuid,
+      rlinkHref,
+    });
+  }
+
+  resolvedImportPaths.add(sourcePath);
+  const sourceArtifact = artifactsByPath.get(sourcePath);
+  return {
+    index,
+    state: 'complete',
+    importHref,
+    resourceUuid,
+    rlinkHref,
+    source: projectDocument(sourceArtifact.manifestFile.artifactKey, sourceArtifact, 'catalog'),
+  };
+}
+
 function resolveImport({
   imported,
   index,
   resourcesByUuid,
-  configuredImportsByHref,
-  configuredImportHrefs,
-  artifactsByKey,
+  profilePath,
+  resolvedImportPaths,
+  artifactsByPath,
 }) {
   const importHref = nonEmptyString(imported?.href);
   if (!importHref) {
     return unresolvedImport({ index, state: 'import-href-missing' });
+  }
+  const target = { index, importHref, profilePath, resolvedImportPaths, artifactsByPath };
+  if (isRelativeHref(importHref)) {
+    return selectImportSource({ ...target, resourceUuid: null, hrefs: [importHref] });
   }
   if (!importHref.startsWith('#') || importHref.length === 1) {
     return unresolvedImport({ index, state: 'import-href-not-fragment', importHref });
@@ -87,68 +183,19 @@ function resolveImport({
     return unresolvedImport({ index, state: 'rlink-missing', importHref, resourceUuid });
   }
 
-  // Keine URL- oder Pfadnormalisierung: Die Map akzeptiert nur den exakten
-  // `rlinks.href`-String, der im Quellregister dokumentiert wurde.
-  const configuredMatches = hrefs.filter((href) => configuredImportsByHref.has(href));
-  if (configuredMatches.length === 0) {
-    return unresolvedImport({
-      index,
-      state: 'artifact-unregistered',
-      importHref,
-      resourceUuid,
-      rlinkHref: hrefs.length === 1 ? hrefs[0] : null,
-    });
-  }
-  if (configuredMatches.length !== 1) {
-    return unresolvedImport({ index, state: 'rlink-ambiguous', importHref, resourceUuid });
-  }
-
-  const rlinkHref = configuredMatches[0];
-  const configuredImport = configuredImportsByHref.get(rlinkHref);
-  const sourceArtifact = artifactsByKey.get(configuredImport.artifactKey);
-  if (!sourceArtifact) {
-    return unresolvedImport({
-      index,
-      state: 'artifact-unregistered',
-      importHref,
-      resourceUuid,
-      rlinkHref,
-    });
-  }
-  if (configuredImportHrefs.has(rlinkHref)) {
-    return unresolvedImport({
-      index,
-      state: 'import-duplicate',
-      importHref,
-      resourceUuid,
-      rlinkHref,
-    });
-  }
-
-  configuredImportHrefs.add(rlinkHref);
-  return {
-    index,
-    state: 'complete',
-    importHref,
-    resourceUuid,
-    rlinkHref,
-    source: projectDocument(configuredImport.artifactKey, sourceArtifact, 'catalog'),
-  };
+  return selectImportSource({ ...target, resourceUuid, hrefs });
 }
 
 /**
- * Projektiert ein validiertes OSCAL-Profile und seine registrierten Quellen
- * zu serialisierbaren Sidecar-Daten. Fehlende Kanten bleiben sichtbare,
- * benannte Zustände; sie werden weder erraten noch über das Netz ergänzt.
+ * Projektiert ein validiertes OSCAL-Profile und seine Quellen aus demselben
+ * gepinnten Tree zu serialisierbaren Sidecar-Daten. Fehlende Kanten bleiben
+ * sichtbare, benannte Zustände; sie werden weder erraten noch über das Netz
+ * ergänzt.
  */
-export function projectCatalogLineage({ lineage, artifactsByKey }) {
-  if (!lineage || !artifactsByKey?.get) {
-    throw new Error('Catalog lineage projection requires a lineage and materialized artifacts');
-  }
-
-  const profileArtifact = artifactsByKey.get(lineage.profileArtifactKey);
-  if (!profileArtifact) {
-    throw new Error(`Catalog lineage profile was not materialized: ${lineage.profileArtifactKey}`);
+export function projectCatalogLineage({ catalogKey, profileArtifact, artifactsByPath }) {
+  const profilePath = nonEmptyString(asRecord(profileArtifact?.manifestFile)?.path);
+  if (!catalogKey || !profilePath || !artifactsByPath?.get) {
+    throw new Error('Catalog lineage projection requires a catalog key, a profile and materialized artifacts');
   }
 
   const profile = getRootDocument(profileArtifact, 'profile');
@@ -163,32 +210,22 @@ export function projectCatalogLineage({ lineage, artifactsByKey }) {
     matchingResources.push(resource);
     resourcesByUuid.set(uuid, matchingResources);
   }
-  const configuredImportsByHref = new Map(lineage.imports.map((item) => [item.href, item]));
   const profileImports = Array.isArray(profile.imports) ? profile.imports : [];
-  const configuredImportHrefs = new Set();
+  const resolvedImportPaths = new Set();
   const imports = profileImports.map((imported, index) =>
     resolveImport({
       imported: asRecord(imported),
       index,
       resourcesByUuid,
-      configuredImportsByHref,
-      configuredImportHrefs,
-      artifactsByKey,
+      profilePath,
+      resolvedImportPaths,
+      artifactsByPath,
     }),
   );
-  const missingConfiguredImports = lineage.imports
-    .filter((configuredImport) => !configuredImportHrefs.has(configuredImport.href))
-    .map((configuredImport) =>
-      unresolvedImport({
-        index: null,
-        state: 'configured-import-missing',
-        rlinkHref: configuredImport.href,
-      }),
-    );
 
   return {
-    catalogKey: lineage.catalogKey,
-    profile: projectDocument(lineage.profileArtifactKey, profileArtifact, 'profile'),
-    imports: [...imports, ...missingConfiguredImports],
+    catalogKey,
+    profile: projectDocument(profileArtifact.manifestFile.artifactKey, profileArtifact, 'profile'),
+    imports,
   };
 }

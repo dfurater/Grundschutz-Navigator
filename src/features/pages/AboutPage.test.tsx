@@ -447,10 +447,10 @@ describe('AboutPage', () => {
             source: null,
           },
           {
-            index: null,
-            state: 'configured-import-missing',
-            importHref: null,
-            resourceUuid: null,
+            index: 2,
+            state: 'artifact-unregistered',
+            importHref: '#methodik-resource',
+            resourceUuid: 'methodik-resource',
             rlinkHref: '../catalogs/Methodik-Grundschutz++/BSI-Methodik-Grundschutz++-catalog.json',
             source: null,
           },
@@ -470,10 +470,10 @@ describe('AboutPage', () => {
     expect(screen.getByText('Kernel G0')).toBeInTheDocument();
     expect(screen.getByText('kernel-uuid')).toBeInTheDocument();
     expect(screen.getByText(/Back-matter-Ressource fehlt/i)).toBeInTheDocument();
-    expect(screen.getByText(/Konfigurierter Quellimport fehlt im Profil/i)).toBeInTheDocument();
+    expect(screen.getByText(/Quelle konnte nicht aufgelöst werden/i)).toBeInTheDocument();
     expect(
       screen.getByText(
-        /^Link: \.\.\/catalogs\/Methodik-Grundschutz\+\+\/BSI-Methodik-Grundschutz\+\+-catalog\.json$/,
+        /Link: \.\.\/catalogs\/Methodik-Grundschutz\+\+\/BSI-Methodik-Grundschutz\+\+-catalog\.json$/,
       ),
     ).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Kernel G0/i })).toHaveAttribute(
@@ -482,54 +482,6 @@ describe('AboutPage', () => {
     );
     expect(screen.getByText('Projekt-Build-Provenienz')).toBeInTheDocument();
     expect(screen.getByText('Ressourcen-Hashes')).toBeInTheDocument();
-  });
-
-  it('renders multiple configured missing imports without duplicate React keys', () => {
-    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    const state = makeCatalogState();
-    state.vocabularyProvenance = makeVocabularyProvenance();
-    state.vocabularyProvenance.catalogLineages = [
-      {
-        catalogKey: 'gspp',
-        profile: {
-          artifactKey: 'profile-gspp',
-          title: 'Grundschutz++ Profil',
-          documentUuid: 'profile-uuid',
-          oscalVersion: '1.1.3',
-          version: '2026-08-13',
-          upstreamPath: 'control_layer/Grundschutz++/sources/profiles/Grundschutz++-profile.json',
-          gitBlobSha: 'profile-blob',
-          contentSha256: 'profile-sha',
-        },
-        imports: [
-          {
-            index: null,
-            state: 'configured-import-missing',
-            importHref: null,
-            resourceUuid: null,
-            rlinkHref: '../catalogs/Methodik-Grundschutz++/BSI-Methodik-Grundschutz++-catalog.json',
-            source: null,
-          },
-          {
-            index: null,
-            state: 'configured-import-missing',
-            importHref: null,
-            resourceUuid: null,
-            rlinkHref: '../catalogs/Methodik-Grundschutz++/BSI-Methodik-Grundschutz++-catalog.json',
-            source: null,
-          },
-        ],
-      },
-    ];
-    mockedUseCatalog.mockReturnValue(state);
-
-    render(<AboutPage />);
-
-    expect(screen.getAllByText('Konfigurierter Quellimport fehlt im Profil')).toHaveLength(2);
-    expect(consoleError.mock.calls.flat().join(' ')).not.toContain(
-      'Encountered two children with the same key',
-    );
-    consoleError.mockRestore();
   });
 
   it('keeps the About page available and rejects a malformed lineage sidecar visibly', () => {
@@ -563,7 +515,8 @@ describe('AboutPage', () => {
         profile: { artifactKey: 'profile-gspp', ...documentFields },
         imports: [
           {
-            index: null,
+            // Bewusst ungültige Sidecar-Daten: Die Laufzeitprüfung muss sie abweisen.
+            index: null as unknown as number,
             state: 'complete',
             importHref: '#kernel-resource',
             resourceUuid: 'kernel-resource',

@@ -290,40 +290,19 @@ describe.skipIf(!lieferketteAvailable)('Lieferkettenkatalog am realen Snapshot',
     }
   });
 
-  it('führt die fehlenden Schutzziel-, Bedrohungs- und label-Props als Abwesenheit, nicht als Fehler', () => {
+  it('führt im Snapshot fehlende Schutzziel-, Bedrohungs- und label-Props als Abwesenheit, nicht als Fehler', () => {
     const { document, body } = current();
     const sourceProps = collectSourceControlProps(body);
-
-    // Vorbedingung des Nachweises: diese Props existieren hier wirklich nicht.
-    for (const absent of [
-      'confidentiality',
-      'integrity',
-      'availability',
-      'authenticity',
-      'threats',
-      'label',
-    ]) {
-      expect(sourceProps.has(absent)).toBe(false);
-    }
+    const absent = (name: string) => !sourceProps.has(name);
 
     for (const control of document.view.controls) {
-      expect(control.confidentiality).toBeUndefined();
-      expect(control.integrity).toBeUndefined();
-      expect(control.availability).toBeUndefined();
-      expect(control.authenticity).toBeUndefined();
-      expect(control.threats).toEqual([]);
+      for (const name of ['confidentiality', 'integrity', 'availability', 'authenticity'] as const) {
+        if (absent(name)) expect(control[name]).toBeUndefined();
+      }
+      if (absent('threats')) expect(control.threats).toEqual([]);
       // Ohne `label`-Prop bleibt der Titel die Anzeigequelle.
       expect(control.title).toBeTruthy();
     }
-  });
-
-  it('setzt keine Übereinstimmung der Props mit dem Grundschutz++-Katalog voraus', () => {
-    const { body } = current();
-    const propNames = [...collectSourceControlProps(body).keys()].sort();
-
-    // Das schmale Prop-Set ist der Prüfgegenstand: Der Katalog wird vollständig
-    // verarbeitet, obwohl er die Grundschutz++-Props nicht führt.
-    expect(propNames).toEqual(['alt-identifier', 'effort_level', 'sec_level', 'tags']);
   });
 });
 

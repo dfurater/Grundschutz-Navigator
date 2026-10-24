@@ -12,6 +12,7 @@ import {
   collectManifestBlobsOnSource,
   formatSourceMarker,
   manifestOriginatesFromSource,
+  migrationContractHolds,
   parseSourceMarkers,
   runBackmerge,
   runProcess,
@@ -19,6 +20,8 @@ import {
 } from './backmerge-main-to-develop.mjs';
 import { CATALOG_IMPORT_BRANCH, TRACKED_MANIFEST_PATH } from './catalog-sync-guard.mjs';
 import { validateDocumentationContract } from './pr-documentation-contract.mjs';
+import { buildUpstreamManifest } from './upstream-artifacts.mjs';
+import { ENTRY_CATALOG } from '../src/domain/sourceRegistry.mjs';
 import {
   type BranchLineFixture,
   createBranchLineFixture,
@@ -846,7 +849,7 @@ describe('runBackmerge, Klasse M2', () => {
     );
   }
 
-  it('stellt einen M2-PR, wenn der Zielzustand einen Migrationsvertrag erfüllt', async () => {
+  it('stellt einen M2-PR, wenn der Zielzustand die Manifestregel erfüllt', async () => {
     const fixture = await createFixture();
     await writeFile(join(fixture.work, TRACKED_MANIFEST_PATH), manifestWithLifecycle('preview'), 'utf8');
     await seedRegistryLine(fixture, 'preview');
@@ -864,6 +867,7 @@ describe('runBackmerge, Klasse M2', () => {
     const github = createGitHubStub();
     const result = await runBackmerge({
       cwd: fixture.work, git: fixture.git, github, logger: silentLogger,
+      validateManifests: async () => true,
     });
 
     expect(result).toMatchObject({ created: true, klasse: 'M2' });
@@ -871,7 +875,7 @@ describe('runBackmerge, Klasse M2', () => {
     expect(call.head).toBe(BACKMERGE_BRANCH);
   });
 
-  it('stellt keinen PR, wenn der Zielzustand keinen Migrationsvertrag erfüllt', async () => {
+  it('stellt keinen PR, wenn der Zielzustand die Manifestregel verletzt', async () => {
     const fixture = await createFixture();
     await writeFile(join(fixture.work, TRACKED_MANIFEST_PATH), manifestWithLifecycle('preview'), 'utf8');
     await seedRegistryLine(fixture, 'preview');
@@ -879,9 +883,10 @@ describe('runBackmerge, Klasse M2', () => {
     await fixture.run('branch', 'develop');
     await fixture.run('push', '--quiet', 'origin', 'main', 'develop');
 
-    // Neue Bytes UND ein bewegter Snapshot: weder Lifecycle-Wechsel noch
-    // Preview-Erweiterung, und das Quellregister im Fixture trägt keine
-    // ladbare Modulkette für die Versionsmigration.
+    // Der Ergebnisstand ändert neben Manifest und Register einen Pfad unter
+    // scripts/ — die Manifestregel lehnt das unabhängig von den Inhalten ab.
+    await execFileAsync('mkdir', ['-p', join(fixture.work, 'scripts')]);
+    await writeFile(join(fixture.work, 'scripts/extra.mjs'), 'export {};\n', 'utf8');
     await writeFile(join(fixture.work, TRACKED_MANIFEST_PATH), `${JSON.stringify({
       schemaVersion: 2,
       snapshotCommitSha: 'b'.repeat(40),
@@ -899,9 +904,11 @@ describe('runBackmerge, Klasse M2', () => {
     await fixture.run('push', '--quiet', 'origin', 'main');
 
     const github = createGitHubStub();
+    const validateManifests = vi.fn(async () => true);
     await expect(runBackmerge({
-      cwd: fixture.work, git: fixture.git, github, logger: silentLogger,
-    })).rejects.toThrow(/keinen der drei Registry-Migrationsverträge/);
+      cwd: fixture.work, git: fixture.git, github, logger: silentLogger, validateManifests,
+    })).rejects.toThrow(/erfüllt die Manifestregel nicht/);
+    expect(validateManifests).not.toHaveBeenCalled();
     expect(github.createPullRequest).not.toHaveBeenCalled();
   });
 
@@ -989,6 +996,7 @@ describe('runBackmerge, Klasse M2', () => {
     const github = createGitHubStub();
     const result = await runBackmerge({
       cwd: fixture.work, git: fixture.git, github, logger: silentLogger,
+      validateManifests: async () => true,
     });
     expect(result).toMatchObject({ created: true, klasse: 'M2' });
 
@@ -1002,5 +1010,85 @@ describe('runBackmerge, Klasse M2', () => {
 
     const registryOnBranch = await fixture.run('show', `origin/${BACKMERGE_BRANCH}:${REGISTRY_PATH}`);
     expect(registryOnBranch.trim()).toBe(registryModule('supported', 'preview').trim());
+  });
+});
+
+describe('migrationContractHolds', () => {
+  const repository = 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek';
+  function v2Manifest(snapshotCommitSha: string) {
+    return buildUpstreamManifest({
+      repository,
+      snapshotCommitSha,
+      files: [{
+        artifactKey: 'catalog-gspp',
+        rootType: 'catalog',
+        lifecycle: 'supported',
+        path: ENTRY_CATALOG.upstreamPath,
+        gitBlobSha: '1'.repeat(40),
+        contentSha256: '2'.repeat(64),
+      }],
+    });
+  }
+  function stubGit(diff: string, previous: unknown, next: unknown) {
+    return vi.fn(async (args: string[]) => {
+      if (args[0] === 'show') {
+        return { code: 0, stdout: JSON.stringify(args[1].startsWith('integration') ? previous : next), stderr: '' };
+      }
+      return { code: 0, stdout: diff, stderr: '' };
+    });
+  }
+  const refs = { integrationRef: 'integration', resultRef: 'result', cwd: '/tmp' };
+
+  it('hält bei Manifest- und Registeränderung, wenn das Register des Ergebnisstands passt', async () => {
+    const validateManifests = vi.fn(async () => true);
+    const verifySnapshot = vi.fn(async () => ({ status: 'ahead' }));
+    await expect(migrationContractHolds(
+      stubGit('M\tupstream-manifest.json\nM\tsrc/domain/sourceRegistry.mjs\n', v2Manifest('a'.repeat(40)), v2Manifest('b'.repeat(40))),
+      { ...refs, validateManifests, verifySnapshot },
+    )).resolves.toEqual({ holds: true, contract: 'manifest-change-rule' });
+    expect(validateManifests).toHaveBeenCalledWith(expect.objectContaining({ cwd: '/tmp' }));
+    expect(verifySnapshot).toHaveBeenCalledWith('a'.repeat(40), 'b'.repeat(40), expect.any(Object));
+  });
+
+  it.each(['scripts/fetch-catalog.mjs', '.github/workflows/ci.yml'])(
+    'hält nicht, wenn der Ergebnisstand %s ändert',
+    async (path) => {
+      await expect(migrationContractHolds(
+        stubGit(`M\tupstream-manifest.json\nM\t${path}\n`, v2Manifest('a'.repeat(40)), v2Manifest('b'.repeat(40))),
+        { ...refs, validateManifests: async () => true },
+      )).resolves.toEqual({ holds: false, contract: null });
+    },
+  );
+
+  it.each(['behind', 'diverged'])(
+    'hält nicht, wenn der Snapshot des Ergebnisstands %s ist',
+    async (status) => {
+      const validateManifests = vi.fn(async () => true);
+      const verifySnapshot = vi.fn(async () => {
+        throw new Error(`New BSI snapshot must be ahead of the tracked snapshot (status=${status})`);
+      });
+      await expect(migrationContractHolds(
+        stubGit('M\tupstream-manifest.json\nM\tsrc/domain/sourceRegistry.mjs\n', v2Manifest('b'.repeat(40)), v2Manifest('a'.repeat(40))),
+        { ...refs, validateManifests, verifySnapshot },
+      )).resolves.toEqual({ holds: false, contract: null });
+      expect(verifySnapshot).toHaveBeenCalledWith('b'.repeat(40), 'a'.repeat(40), expect.any(Object));
+      expect(validateManifests).not.toHaveBeenCalled();
+    },
+  );
+
+  it('prüft bei gleichem Snapshot keinen Fortschritt', async () => {
+    const verifySnapshot = vi.fn();
+    await expect(migrationContractHolds(
+      stubGit('M\tupstream-manifest.json\nM\tsrc/domain/sourceRegistry.mjs\n', v2Manifest('a'.repeat(40)), v2Manifest('a'.repeat(40))),
+      { ...refs, validateManifests: async () => true, verifySnapshot },
+    )).resolves.toEqual({ holds: true, contract: 'manifest-change-rule' });
+    expect(verifySnapshot).not.toHaveBeenCalled();
+  });
+
+  it('hält nicht für ein Manifest ohne gültige v2-Form', async () => {
+    await expect(migrationContractHolds(
+      stubGit('M\tupstream-manifest.json\n', { files: [] }, v2Manifest('b'.repeat(40))),
+      refs,
+    )).resolves.toEqual({ holds: false, contract: null });
   });
 });
