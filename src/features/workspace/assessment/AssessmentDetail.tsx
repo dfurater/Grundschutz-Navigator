@@ -89,7 +89,7 @@ function Observation({ observation, content }: Readonly<{ observation: Assessmen
   const users = [...(content.relations.findingsByObservation.get(id) ?? []), ...(content.relations.risksByObservation.get(id) ?? [])];
   return <>
     <p className="whitespace-pre-wrap break-words">{observation.description}</p>
-    <dl className="space-y-2"><Field name="Methode">{evidence?.methods.map(method => method.value).join(', ')}</Field><Field name="Typ">{evidence?.types.map(type => type.value).join(', ')}</Field><Field name="Erhoben">{evidence?.collected}</Field><Field name="Läuft ab">{evidence?.expires}</Field><Field name="Gültigkeit">{evidence?.validity}</Field></dl>
+    <dl className="space-y-2"><Field name="Methode">{evidence?.methods.map(method => method.value).join(', ')}</Field>{!!evidence?.types.length && <Field name="Typ">{evidence.types.map(type => type.value).join(', ')}</Field>}<Field name="Erhoben">{evidence?.collected}</Field><Field name="Läuft ab">{evidence?.expires}</Field><Field name="Gültigkeit">{evidence?.validity}</Field></dl>
     <Origins origins={observation.origins} content={content} />
     <Group title="Gegenstand">
       {observation.subjects.length ? <DetailList items={observation.subjects} label="Gegenstände">{subject => <li key={subject.path} className="break-words">{subject.title ?? subject.subjectUuid} · {subject.type} · {referenceLabel(subject.reference)}</li>}</DetailList> : <p>Keine Gegenstände angegeben.</p>}

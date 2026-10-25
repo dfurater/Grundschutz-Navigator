@@ -109,6 +109,25 @@ describe('Assessment Results in der Station', () => {
     expect((await readStore(store => store.getDocument(doc.localId)))?.source).toEqual(source);
   });
 
+  it.each([{ types: undefined }, { types: ['control-objective', 'discovery'] }])('zeigt das Typfeld nur für vorhandene Observation-Typen: $types', async ({ types }) => {
+    const source = makeFullAssessmentResults();
+    if (types !== undefined) Object.assign(source['assessment-results'].results[0].observations[0], { types });
+    const doc = await add(source);
+    renderWorkspaceArea(buildWorkspaceDocumentUrl(seeded.verbundId, doc.localId));
+    await within(main()).findByRole('button', { name: /^Findings · 2/ });
+    section('Observations');
+    fireEvent.click(within(main()).getByRole('button', { name: new RegExp(AR_UUIDS.observation) }));
+    const detail = within(within(main()).getByRole('complementary', { name: 'Observation-Detail' }));
+    if (types?.length) {
+      expect(detail.getByText('Typ', { exact: true })).toBeVisible();
+      expect(detail.getByText(types.join(', '), { exact: true })).toBeVisible();
+    } else {
+      expect(detail.queryByText('Typ', { exact: true })).toBeNull();
+    }
+    expect(detail.getByText('INTERVIEW', { exact: true })).toBeVisible();
+    expect((await readStore(store => store.getDocument(doc.localId)))?.source).toEqual(source);
+  });
+
   it('zeigt fehlende optionale Listen als Leerzustände', async () => {
     const doc = await add(makeMinimalAssessmentResults());
     renderWorkspaceArea(buildWorkspaceDocumentUrl(seeded.verbundId, doc.localId));
