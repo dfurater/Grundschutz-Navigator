@@ -22,10 +22,10 @@ export interface TooltipProps {
   /**
    * `mode='hover'`: Öffnen nach `hoverDelayMs` ununterbrochenem Hover ODER bei Fokus
    * (Fokus öffnet SOFORT, ungeachtet `hoverDelayMs`; nicht nach Antippen);
-   * Schließen bei Leave/Blur/Esc.
+   * Schließen bei Leave ohne Fokus im Tooltip-Bereich, Blur oder Esc.
    * `mode='toggle'`: Öffnen/Schließen per Klick/Enter/Space + Schließen per Esc.
    * `mode='hover-toggle'`: außerdem Öffnen nach Hover-Verzögerung, Schließen
-   * beim Verlassen. Für Platzhalter, die auch auf Touch antippbar bleiben.
+   * beim Verlassen ohne Fokus im Tooltip-Bereich. Für antippbare Platzhalter.
    * Touch = Antippen (kein separater Touch-Pfad).
    */
   readonly mode?: 'hover' | 'toggle' | 'hover-toggle';
@@ -126,6 +126,11 @@ export function Tooltip({
     </span>
   );
 
+  const handleMouseLeave = (event: SyntheticEvent<HTMLSpanElement>) => {
+    clearTimer();
+    if (!event.currentTarget.contains(globalThis.document.activeElement)) closeTooltip();
+  };
+
   if (mode === 'toggle' || mode === 'hover-toggle') {
     // Constraint: `describeTarget` liefert hier nur nicht-interaktiven
     // Phrasing-Content (Platzhalter-Text) — er landet in einem <button>.
@@ -144,7 +149,7 @@ export function Tooltip({
           clearTimer();
           timerRef.current = globalThis.setTimeout(() => setOpen(true), hoverDelayMs);
         } : undefined}
-        onMouseLeave={mode === 'hover-toggle' ? closeTooltip : undefined}
+        onMouseLeave={mode === 'hover-toggle' ? handleMouseLeave : undefined}
         data-tooltip-root={id}
         className="relative inline"
       >
@@ -186,9 +191,6 @@ export function Tooltip({
       timerRef.current = undefined;
       setOpen(true);
     }, hoverDelayMs);
-  };
-  const handleMouseLeave = () => {
-    closeTooltip();
   };
   const handleFocus = (event: SyntheticEvent<HTMLSpanElement>) => {
     clearTimer();

@@ -104,6 +104,22 @@ describe('Tooltip (GSPP-303 T3)', () => {
     expect(screen.queryByRole('tooltip')).toBeNull();
   });
 
+  it.each(['hover', 'hover-toggle'] as const)('hält %s bei Mouseleave offen, solange sein Auslöser fokussiert ist', async mode => {
+    const user = setupUser();
+    render(<Tooltip idPrefix="tt-focused-leave" content="Inhalt" mode={mode} describeTarget={id => mode === 'hover'
+      ? <button type="button" aria-describedby={id}>Begriff</button>
+      : <span>Begriff</span>} />);
+    const target = screen.getByRole('button', { name: 'Begriff' });
+    if (mode === 'hover-toggle') await user.click(target);
+    else await user.tab();
+    await user.hover(target);
+    await user.unhover(target);
+    expect(target).toHaveFocus();
+    expect(screen.getByRole('tooltip')).toBeVisible();
+    await user.tab();
+    expect(screen.queryByRole('tooltip')).toBeNull();
+  });
+
   it("mode='toggle': Klick öffnet, zweiter Klick schließt", async () => {
     const user = setupUser();
     render(
