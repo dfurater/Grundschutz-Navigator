@@ -94,6 +94,7 @@ test('hält einen per Tastatur geöffneten Tooltip nach dem Verengen des Panels 
   await document.fonts.ready;
 
   const trigger = panel.querySelector('button')!;
+  await userEvent.hover(trigger, { position: { x: NARROW_PANEL_PX + EDGE_GAP_PX, y: 5 } });
   trigger.focus();
   await settle();
   const tooltip = panel.querySelector<HTMLElement>('[role="tooltip"]')!;

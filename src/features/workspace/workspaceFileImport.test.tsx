@@ -17,6 +17,7 @@ afterEach(async () => { vi.restoreAllMocks(); await resetWorkspace(); });
 describe.each([
   { station: 'profile', rootType: 'profile', label: 'Profil' },
   { station: 'ssp', rootType: 'system-security-plan', label: 'SSP' },
+  { station: 'assessment', rootType: 'assessment-results', label: 'Prüfergebnisse' },
 ] as const)('Dateiaufnahme $label', ({ station, rootType, label }) => {
   const bytes = () => new TextEncoder().encode(JSON.stringify(makeSchemaValidOscalDocument(rootType, '1.2.2'))).buffer;
   async function upload(file = new File([bytes()], 'lokal.json')) {
