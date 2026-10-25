@@ -1,6 +1,6 @@
 import { parseAssessmentResultsDocument } from '@/adapters/oscalAssessmentResultsDocument';
 import { parseAssessmentPlanDocument } from '@/adapters/oscalAssessmentPlanDocument';
-import { parseSspDocument } from '@/adapters/oscalSspDocument';
+import { parseSspDocument, type SspDocument } from '@/adapters/oscalSspDocument';
 import type { ArReference, AssessmentResults } from '@/domain/assessmentResultsModel';
 import { isJsonObject, pointerString, readArray, readString, type JsonObject } from '@/domain/jsonGuards';
 import type { ResolvedResource } from '@/domain/referenceResolution';
@@ -40,7 +40,7 @@ function referenceText(reference: ArReference, sources: ReadonlyMap<string, unkn
   }
 }
 
-function readDisplayTexts(model: AssessmentResults, source: unknown, sources: ReadonlyMap<string, unknown>) {
+function readDisplayTexts(model: AssessmentResults, source: unknown, sources: ReadonlyMap<string, unknown>, ssp: SspDocument | undefined) {
   const actorNames = new Map<string, string>();
   const entities = model.results.flatMap(result => [...result.findings, ...result.observations, ...result.risks, ...result.risks.flatMap(risk => risk.remediations)]);
   for (const actor of entities.flatMap(entity => entity.origins).flatMap(origin => origin.actors)) {
@@ -48,9 +48,14 @@ function readDisplayTexts(model: AssessmentResults, source: unknown, sources: Re
     if (name !== undefined) actorNames.set(actor.path, name);
   }
   const sspStatements = new Map<string, string>();
+  const statementsByPath = new Map(ssp?.view.controlImplementation?.implementedRequirements
+    .flatMap(requirement => requirement.statements)
+    .map(statement => [statement.path, statement.byComponents
+      .flatMap(component => component.description === undefined ? [] : [component.description]).join('\n\n')]) ?? []);
   for (const finding of model.results.flatMap(result => result.findings)) {
-    if (!finding.implementationStatement) continue;
-    const description = referenceText(finding.implementationStatement, sources, ['description']);
+    const reference = finding.implementationStatement;
+    if (reference?.status !== 'resolved' || reference.origin !== 'ssp') continue;
+    const description = statementsByPath.get(reference.path);
     if (description !== undefined) sspStatements.set(finding.path, description);
   }
   const evidenceDescriptions = new Map<string, string>();
@@ -92,7 +97,7 @@ export async function loadAssessmentResults(port: Pick<WorkspacePort, 'getDocume
   return {
     model,
     relations: createAssessmentRelations(model),
-    ...readDisplayTexts(model, envelope.source, sources),
+    ...readDisplayTexts(model, envelope.source, sources, sspDocument),
     resources: readResources(envelope.source, model),
     planTitle: assessmentPlan?.view.metadata.title,
   };

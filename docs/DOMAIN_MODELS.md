@@ -1732,6 +1732,8 @@ Die Ableitung liest ausschließlich die übergebenen Graphen. Sie führt weder N
 
 Das Observation-Detail in `AssessmentDetail.tsx` zeigt das Feld „Typ“ nur bei einer nicht leeren `evidence.types`-Liste.
 
+Das Finding-Detail zeigt für eine aufgelöste SSP-Aussage die Beschreibungen ihrer `by-components` in Quellreihenfolge als Text. `loadAssessmentResults()` ordnet sie über den aufgelösten SSP-Statement-Pfad zu; die Referenz-UUID und der Auflösungsstatus bleiben sichtbar.
+
 Die Station Assessment nimmt lokale Assessment-Results-Dateien über `WorkspaceFileImport` und `importClass2OscalDocument()` als `imported` auf. `AssessmentResultsPage` lädt die gespeicherte Quelle über den Workspace-Port; Root-UUID, `metadata.last-modified` und nicht projizierte Quellfelder bleiben unverändert. Die Ansicht zeigt je Ergebnis Findings, Observations und Risks, Gültigkeitszustände aus `EvidenceReadModel`, Remediations und Modelldiagnosen. `loadAssessmentResults()` übergibt einen Assessment Plan nur über eine aufgelöste lokale `ar-import-ap`-Kante und einen SSP nur über die `ap-import-ssp`-Kante dieses Plans. Ein fehlender Kontext bleibt `not-resolvable-in-context`.
 
 `risk.status`, `response.lifecycle` und `target.status.state` erscheinen wörtlich. Die Ansicht kennzeichnet nicht dokumentierte Risiko- und Maßnahmenvokabulare als „unbekannt“; sie berechnet daraus keine Compliance- oder Auditfreigabe. Urheberangaben zeigen Typ, Rolle und den Namen am aufgelösten Referenzpfad; nicht auflösbare Urheber behalten ihre Quellkennung. Eingebettete Evidenz erhält die Aktionen aus `EvidenceResourcePreview`; ohne Nutzeraktion bleiben Nutzlasten passiv.

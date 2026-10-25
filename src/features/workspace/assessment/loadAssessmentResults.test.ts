@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { loadAssessmentResults } from '@/features/workspace/assessment/loadAssessmentResults';
 import { AR_UUIDS, makeFullAssessmentResults, makeBoundAssessmentPlanSource } from '@/test/fixtures/assessmentResults';
-import { makeFullSsp, SSP_FIXTURE_IDS } from '@/test/fixtures/systemSecurityPlans';
+import { makeFullSsp, SSP_FIXTURE_IDS, withSspBody } from '@/test/fixtures/systemSecurityPlans';
 import type { LocalId, WorkspaceEnvelope } from '@/domain/workspaceModel';
 import type { VerbundView, WorkspaceEdgeView } from '@/state/workspaceVerbundView';
 
@@ -28,10 +28,23 @@ describe('Results-Kontext bleibt im lokalen Verbund', () => {
     const loaded = await loadAssessmentResults({ getDocument: f.getDocument }, f.view, localId);
     expect(loaded.model.importAp?.status).toBe('bound');
     expect(loaded.model.results[0].findings[0].implementationStatement?.status).toBe('resolved');
+    expect(loaded.sspStatements.get(loaded.model.results[0].findings[0].path)).toBe('Umsetzung über die geleaste Plattform.');
     expect(loaded.actorNames.get('/assessment-results/results/0/observations/0/origins/0/actors/0')).toBe('Prüferin');
     expect(loaded.evidenceDescriptions.get('/assessment-results/results/0/observations/0/relevant-evidence/0')).toBe('Protokoll');
     expect(f.getDocument.mock.calls.map(([id]) => id)).toEqual(['ar', 'ap', 'ssp']);
     expect(f.members[0].source).toEqual(f.source);
+  });
+  it('zeigt alle Komponentenbeschreibungen ausschließlich am aufgelösten Statement', async () => {
+    const f = fixture();
+    f.members[2] = { ...f.members[2], source: withSspBody(makeFullSsp(), body => {
+      const statement = body['control-implementation']['implemented-requirements'][1].statements![0];
+      statement['by-components']!.push({
+        uuid: AR_UUIDS.missing, 'component-uuid': SSP_FIXTURE_IDS.thisSystem, description: 'Weitere Umsetzung.',
+      });
+    }) };
+    const loaded = await loadAssessmentResults({ getDocument: f.getDocument }, f.view, localId);
+    expect(loaded.sspStatements.get(loaded.model.results[0].findings[0].path)).toBe('Umsetzung über die geleaste Plattform.\n\nWeitere Umsetzung.');
+    expect(loaded.sspStatements.size).toBe(1);
   });
   it.each(['external', 'error', 'not-evaluable'] as const)('übergibt bei %s keinen beliebigen Plan aus demselben Verbund', async state => {
     const f = fixture();
@@ -52,6 +65,7 @@ describe('Results-Kontext bleibt im lokalen Verbund', () => {
     f.edges.delete(localId);
     const loaded = await loadAssessmentResults({ getDocument: f.getDocument }, f.view, localId);
     expect(loaded.model.results[0].findings[0].implementationStatement?.status).toBe('not-resolvable-in-context');
+    expect(loaded.sspStatements.size).toBe(0);
   });
   it.each(['wrong-root', 'foreign-verbund', 'missing'] as const)('verwirft %s als Plankontext', async kind => {
     const f = fixture();

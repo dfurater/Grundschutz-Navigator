@@ -12,7 +12,8 @@ import { CatalogContext } from '@/state/CatalogContext';
 import { WorkspaceProvider } from '@/state/WorkspaceContext';
 import { createA11yCatalogState } from '@/test/browser/a11yCatalogState';
 import { assertNoAxeViolations } from '@/test/browser/axeAssertions';
-import { AR_UUIDS, makeFullAssessmentResults } from '@/test/fixtures/assessmentResults';
+import { AR_UUIDS, makeFullAssessmentResults, makeBoundAssessmentPlanSource } from '@/test/fixtures/assessmentResults';
+import { makeFullSsp, SSP_FIXTURE_IDS } from '@/test/fixtures/systemSecurityPlans';
 import { readStore, resetWorkspace, seedWorkspace } from '@/test/workspaceAreaFixture';
 import '@/index.css';
 
@@ -51,6 +52,7 @@ describe.each([{ width: 1440, touch: false }, { width: 1032, touch: true }, { wi
     await expect.poll(() => shell.querySelector('[role="alert"]')?.textContent).toContain('json-syntax');
     expect(shell.querySelector('[role="alert"]')?.textContent).not.toContain('RESULTS_GEHEIM');
     const source = makeFullAssessmentResults();
+    source['assessment-results'].results[0].findings[0]['implementation-statement-uuid'] = SSP_FIXTURE_IDS.statement as typeof AR_UUIDS.statement;
     source['assessment-results'].metadata.title = 'Prüfergebnisse – synthetische Prüfung';
     Object.assign(source['assessment-results'].results[0].findings[0], { title: 'Netzwerksegmentierung nicht nachgewiesen' });
     upload(shell, JSON.stringify(source));
@@ -62,12 +64,21 @@ describe.each([{ width: 1440, touch: false }, { width: 1032, touch: true }, { wi
     const imported = (await readStore(store => store.listDocuments(seeded.verbundId))).find(doc => path.endsWith(doc.localId))!;
     expect(imported.documentState).toBe('imported');
     expect((await readStore(store => store.getDocument(imported.localId)))?.source).toEqual(source);
+    const plan = await readStore(store => store.addDocument(seeded.verbundId, {
+      source: makeBoundAssessmentPlanSource(), rootType: 'assessment-plan', oscalVersion: '1.2.2', context: { trustClass: 'class-2-local-user' },
+    }, 'imported'));
+    const ssp = await readStore(store => store.addDocument(seeded.verbundId, {
+      source: JSON.parse(JSON.stringify(makeFullSsp())), rootType: 'system-security-plan', oscalVersion: '1.2.2', context: { trustClass: 'class-2-local-user' },
+    }, 'imported'));
+    await readStore(store => store.setBinding({ fromLocalId: imported.localId, pointer: '/assessment-results/import-ap/href', href: 'ap.json', target: { kind: 'local', localId: plan.localId } }, imported.savedAt));
+    await readStore(store => store.setBinding({ fromLocalId: plan.localId, pointer: '/assessment-plan/import-ssp/href', href: 'ssp.json', target: { kind: 'local', localId: ssp.localId } }, plan.savedAt));
     unmount();
     shell = await renderAt(path, width, touch);
     const finding = page.getByRole('button', { name: /Netzwerksegmentierung nicht nachgewiesen/ });
     await expect.poll(() => shell.textContent).toContain('Netzwerksegmentierung nicht nachgewiesen');
     await finding.click();
     await expect.poll(() => shell.querySelector('[aria-label="Finding-Detail"]')?.checkVisibility()).toBe(true);
+    await expect.poll(() => [...shell.querySelectorAll('p')].some(p => p.textContent === 'Umsetzung über die geleaste Plattform.' && p.checkVisibility())).toBe(true);
     expect(shell.textContent).toContain('ohne verknüpften Beleg');
     expect(shell.querySelector('main img, main iframe, main object, main embed')).toBeNull();
     expect(shell.textContent).not.toContain('PHNjcmlwdD4=');
