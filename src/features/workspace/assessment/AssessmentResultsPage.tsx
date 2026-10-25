@@ -48,7 +48,7 @@ function ResultsView({ content, view, document }: Readonly<{ content: Assessment
   const choose = (entry: AssessmentEntry) => { returnTo.current = entry.path; setSelection(entry.path); };
   const mobileDetail = selected && !twoPanels;
   return <div className="flex min-h-0 flex-1 flex-col bg-[var(--color-surface-base)] md:h-full md:flex-row">
-    <div ref={list} className={`${mobileDetail ? 'hidden' : 'flex'} min-h-0 min-w-0 flex-1 flex-col`}>
+    <div ref={list} className={`${mobileDetail ? 'hidden' : 'flex'} min-h-0 min-w-0 flex-1 flex-col md:overflow-y-auto`}>
       <header className="shrink-0 space-y-3 p-4">
         <Link to={buildStationUrl(view.verbund.verbundId, 'assessment')} className={`inline-flex min-h-touch items-center rounded text-sm text-[var(--color-text-secondary)] ${FOCUS_RING}`}>‹ {view.verbund.name}</Link>
         <h1 className="type-page-title break-words">{content.model.metadata.title ?? 'Prüfergebnisse'}</h1>
@@ -61,13 +61,13 @@ function ResultsView({ content, view, document }: Readonly<{ content: Assessment
           {result && <p className="break-words font-mono text-xs">{result.start ?? '—'} – {result.end ?? '—'}</p>}
         </div>
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div role="group" aria-label="Ergebnisabschnitte" className="flex max-w-full flex-wrap rounded-md border border-[var(--color-border-default)] p-0.5">
+          <fieldset aria-label="Ergebnisabschnitte" className="flex min-w-0 max-w-full flex-wrap rounded-md border border-[var(--color-border-default)] p-0.5">
             {(Object.keys(SECTION_NAMES) as AssessmentSection[]).map(key => <button key={key} type="button" aria-pressed={section === key} aria-controls={sectionsId} onClick={() => { setSection(key); setSelection(undefined); }} className={`min-h-touch rounded px-3 py-2 text-sm tabular-nums ${section === key ? 'bg-[var(--color-primary-light)] font-semibold text-[var(--color-primary-main)]' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-subtle)]'} ${FOCUS_RING}`}>{SECTION_NAMES[key]} · {result?.[key].length ?? 0}</button>)}
-          </div>
+          </fieldset>
           <span className="text-xs tabular-nums text-[var(--color-text-secondary)]">Ergebnis {result ? resultIndex + 1 : 0} von {content.model.results.length}</span>
         </div>
       </header>
-      <div id={sectionsId} className="flex min-h-0 flex-1 flex-col">{result && <AssessmentResultList key={`${result.path}:${section}`} result={result} relations={content.relations} section={section} selected={selection} onSelect={choose} />}</div>
+      <div id={sectionsId} className="flex min-h-0 flex-1 flex-col md:min-h-48">{result && <AssessmentResultList key={`${result.path}:${section}`} result={result} relations={content.relations} section={section} selected={selection} onSelect={choose} />}</div>
       <ModelDiagnostics content={content} />
       <details className="shrink-0 border-t border-[var(--color-border-default)]">
         <summary className={`min-h-touch cursor-pointer px-4 py-3 text-sm ${FOCUS_RING}`}>Dokumentreferenzen</summary>
@@ -89,7 +89,7 @@ export function AssessmentResultsPage({ view, document }: Readonly<{ view: Verbu
       .catch(() => { if (active) setLoaded({ view, content: 'failed' }); });
     return () => { active = false; };
   }, [documents, view, document.localId]);
-  if (!loaded || loaded.view !== view) return <output className="p-4 text-sm">Prüfergebnisse werden geladen…</output>;
+  if (loaded?.view !== view) return <output className="p-4 text-sm">Prüfergebnisse werden geladen…</output>;
   if (loaded.content === 'failed') return <p role="alert" className="p-4 text-sm text-[var(--color-danger-text)]">Prüfergebnisse konnten nicht geladen werden. Die Dokumentansicht erneut öffnen.</p>;
   return <ResultsView key={document.localId} content={loaded.content} view={view} document={document} />;
 }

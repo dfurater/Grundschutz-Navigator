@@ -22,9 +22,9 @@ let router: ReturnType<typeof createMemoryRouter> | undefined;
 function unmount() { root?.unmount(); router?.dispose(); host?.remove(); }
 afterEach(async () => { unmount(); await commands.setBrowserCoarsePointer(false); await resetWorkspace(); });
 
-async function renderAt(path: string, width: number, touch: boolean) {
+async function renderAt(path: string, width: number, touch: boolean, height = 960) {
   await commands.setBrowserCoarsePointer(touch);
-  await page.viewport(width, 960);
+  await page.viewport(width, height);
   router = createMemoryRouter(createAppRoutes(createElement(AppShell)), { initialEntries: [path] });
   host = document.createElement('div'); host.id = 'root'; document.body.append(host);
   root = createRoot(host);
@@ -132,5 +132,23 @@ test.each([1440, 1032])('öffnet tiefe Listenzeilen bei %i px im sichtbaren Deta
   await page.getByRole('button', { name: /Feststellung 69/ }).click();
   const detail = shell.querySelector<HTMLElement>('[aria-label="Finding-Detail"]')!;
   expect(detail.getBoundingClientRect().top).toBeLessThan(300);
+  expect(detail.getBoundingClientRect().bottom).toBeLessThanOrEqual(shell.querySelector('main')!.getBoundingClientRect().bottom + 1);
+});
+
+test.each([1440, 1032])('hält Findings bei %i px auch in niedrigen Fenstern mit langem Kopf erreichbar', async width => {
+  const seeded = await seedWorkspace();
+  const source = makeFullAssessmentResults();
+  source['assessment-results'].metadata.title = 'Langer Titel der synthetischen Wirksamkeitsprüfung '.repeat(20);
+  const doc = await readStore(store => store.addDocument(seeded.verbundId, {
+    source: JSON.parse(JSON.stringify(source)), rootType: 'assessment-results', oscalVersion: '1.2.2', context: { trustClass: 'class-2-local-user' },
+  }, 'imported'));
+  const shell = await renderAt(buildWorkspaceDocumentUrl(seeded.verbundId, doc.localId), width, width === 1032, 480);
+  await expect.poll(() => shell.querySelector('[data-assessment-entry]')).toBeTruthy();
+  for (const details of shell.querySelectorAll<HTMLDetailsElement>('main details')) details.open = true;
+  const list = shell.querySelector<HTMLElement>('section[aria-label="Findings"]')!;
+  expect(list.getBoundingClientRect().height).toBeGreaterThanOrEqual(100);
+  await page.getByRole('button', { name: /^ac-1_obj.*Finding/ }).click();
+  const detail = shell.querySelector<HTMLElement>('[aria-label="Finding-Detail"]')!;
+  expect(detail.getBoundingClientRect().top).toBeLessThan(200);
   expect(detail.getBoundingClientRect().bottom).toBeLessThanOrEqual(shell.querySelector('main')!.getBoundingClientRect().bottom + 1);
 });
