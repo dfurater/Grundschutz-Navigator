@@ -7,7 +7,7 @@ import { afterEach, describe, expect, test } from 'vitest';
 import { commands, page, userEvent } from 'vitest/browser';
 import { AppShell } from '@/app/AppShell';
 import { createAppRoutes } from '@/app/appRoutes';
-import { buildStationUrl } from '@/app/routes';
+import { buildStationUrl, buildWorkspaceDocumentUrl } from '@/app/routes';
 import { CatalogContext } from '@/state/CatalogContext';
 import { WorkspaceProvider } from '@/state/WorkspaceContext';
 import { createA11yCatalogState } from '@/test/browser/a11yCatalogState';
@@ -111,4 +111,26 @@ describe.each([{ width: 1440, touch: false }, { width: 1032, touch: true }, { wi
     await userEvent.keyboard('{Tab}');
     expect(await commands.assertNoBrowserEgress()).toBeUndefined();
   });
+});
+
+test.each([1440, 1032])('öffnet tiefe Listenzeilen bei %i px im sichtbaren Detailpanel', async width => {
+  const seeded = await seedWorkspace();
+  const source = makeFullAssessmentResults();
+  const original = source['assessment-results'].results[0].findings[0];
+  Object.assign(source['assessment-results'].results[0], { findings: Array.from({ length: 70 }, (_, index) => ({
+    ...original, uuid: `00000000-0000-4000-8000-${String(3000 + index).padStart(12, '0')}` as typeof AR_UUIDS.finding,
+    title: `Feststellung ${index}`,
+  })) });
+  const doc = await readStore(store => store.addDocument(seeded.verbundId, {
+    source: JSON.parse(JSON.stringify(source)), rootType: 'assessment-results', oscalVersion: '1.2.2', context: { trustClass: 'class-2-local-user' },
+  }, 'imported'));
+  const shell = await renderAt(buildWorkspaceDocumentUrl(seeded.verbundId, doc.localId), width, width === 1032);
+  await expect.poll(() => shell.querySelector('[data-assessment-entry]')).toBeTruthy();
+  const list = shell.querySelector<HTMLElement>('section[aria-label="Findings"]')!;
+  expect(list.getBoundingClientRect().bottom).toBeLessThanOrEqual(shell.querySelector('main')!.getBoundingClientRect().bottom + 1);
+  await page.getByRole('button', { name: /Weitere Findings/ }).click();
+  await page.getByRole('button', { name: /Feststellung 69/ }).click();
+  const detail = shell.querySelector<HTMLElement>('[aria-label="Finding-Detail"]')!;
+  expect(detail.getBoundingClientRect().top).toBeLessThan(300);
+  expect(detail.getBoundingClientRect().bottom).toBeLessThanOrEqual(shell.querySelector('main')!.getBoundingClientRect().bottom + 1);
 });

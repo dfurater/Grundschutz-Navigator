@@ -3,6 +3,7 @@ import type { AssessmentFinding, AssessmentObservation, AssessmentResult, Assess
 import { DOCUMENTED_LIFECYCLES } from '@/domain/poamProgress';
 import { Button } from '@/components/Button';
 import { FOCUS_RING } from '@/features/workspace/DocumentMarks';
+import type { AssessmentRelations } from '@/features/workspace/assessment/assessmentRelations';
 
 export type AssessmentSection = 'findings' | 'observations' | 'risks';
 export const SECTION_NAMES = { findings: 'Findings', observations: 'Observations', risks: 'Risks' } as const;
@@ -15,15 +16,14 @@ export function Vocabulary({ value, kind }: Readonly<{ value: string | undefined
   return <span className="break-words font-mono text-xs">{!documented.includes(value) && 'unbekannt: '}{value}</span>;
 }
 
-function ObservationUses({ result, observation }: Readonly<{ result: AssessmentResult; observation: AssessmentObservation }>) {
-  const id = observation.uuid?.toLowerCase();
-  const references = (entity: AssessmentFinding | AssessmentRisk) => entity.relatedObservations.some(ref => ref.observationUuid?.toLowerCase() === id);
-  const findings = id ? result.findings.filter(references).length : 0;
-  const risks = id ? result.risks.filter(references).length : 0;
+function ObservationUses({ relations, observation }: Readonly<{ relations: AssessmentRelations; observation: AssessmentObservation }>) {
+  const id = observation.uuid?.toLowerCase() ?? '';
+  const findings = relations.findingsByObservation.get(id)?.length ?? 0;
+  const risks = relations.risksByObservation.get(id)?.length ?? 0;
   return <span className="text-xs tabular-nums">{findings || risks ? `${findings} Findings · ${risks} Risks` : 'ohne Verwendung'}</span>;
 }
 
-function RowCells({ section, entry, result }: Readonly<{ section: AssessmentSection; entry: AssessmentEntry; result: AssessmentResult }>) {
+function RowCells({ section, entry, relations }: Readonly<{ section: AssessmentSection; entry: AssessmentEntry; relations: AssessmentRelations }>) {
   if (section === 'findings') {
     const finding = entry as AssessmentFinding;
     return <>
@@ -40,7 +40,7 @@ function RowCells({ section, entry, result }: Readonly<{ section: AssessmentSect
       <span className="break-words">{observation.title ?? observation.uuid ?? 'Observation'}</span>
       <span className="break-words font-mono text-xs">{observation.evidence?.methods.map(method => method.value).join(', ') || '—'}</span>
       <span className="break-words text-xs">{observation.evidence?.validity}</span>
-      <ObservationUses result={result} observation={observation} />
+      <ObservationUses relations={relations} observation={observation} />
     </>;
   }
   const risk = entry as AssessmentRisk;
@@ -48,15 +48,16 @@ function RowCells({ section, entry, result }: Readonly<{ section: AssessmentSect
     <span className="break-words font-mono text-xs">{risk.deadline ?? '—'}</span>
     <span className="break-words">{risk.title ?? risk.uuid ?? 'Risiko'}<span className="mt-1 block font-mono text-xs text-[var(--color-text-secondary)]">{risk.uuid}</span></span>
     <Vocabulary kind="risk" value={risk.status} />
-    <span className="space-y-1">{risk.remediations.length ? risk.remediations.map(remediation => <span key={remediation.path} className="block"><Vocabulary kind="lifecycle" value={remediation.lifecycle} /></span>) : <span className="text-xs">ohne Maßnahme</span>}</span>
-    <span className="text-xs tabular-nums text-[var(--color-text-secondary)]">{result.findings.filter(finding => finding.relatedRisks.some(reference => reference.riskUuid?.toLowerCase() === risk.uuid?.toLowerCase())).length} Findings</span>
+    <span className="space-y-1">{risk.remediations.length ? risk.remediations.slice(0, 3).map(remediation => <span key={remediation.path} className="block"><Vocabulary kind="lifecycle" value={remediation.lifecycle} /></span>) : <span className="text-xs">ohne Maßnahme</span>}{risk.remediations.length > 3 && <span className="block text-xs tabular-nums">+{risk.remediations.length - 3} Maßnahmen</span>}</span>
+    <span className="text-xs tabular-nums text-[var(--color-text-secondary)]">{relations.findingsByRisk.get(risk.uuid?.toLowerCase() ?? '')?.length ?? 0} Findings</span>
   </>;
 }
 
 const HEADERS = { findings: ['Anforderung', 'Finding', 'Zielstatus', 'Belege'], observations: ['Erhoben', 'Observation', 'Methode', 'Gültigkeit', 'Verwendet in'], risks: ['Frist', 'Risiko', 'Status', 'Maßnahme', 'Findings'] } as const;
 
-export function AssessmentResultList({ result, section, selected, onSelect }: Readonly<{
+export function AssessmentResultList({ result, relations, section, selected, onSelect }: Readonly<{
   result: AssessmentResult;
+  relations: AssessmentRelations;
   section: AssessmentSection;
   selected?: string;
   onSelect: (entry: AssessmentEntry) => void;
@@ -71,7 +72,7 @@ export function AssessmentResultList({ result, section, selected, onSelect }: Re
     {entries.length === 0 ? <p className="p-4 text-sm text-[var(--color-text-secondary)]">Keine {SECTION_NAMES[section]}.</p> : <ul className="divide-y divide-[var(--color-border-subtle)]">
       {entries.slice(0, visible).map(entry => <li key={entry.path}>
         <button type="button" data-assessment-entry={entry.path} aria-pressed={selected === entry.path} onClick={() => onSelect(entry)} className={`grid min-h-touch w-full gap-x-4 gap-y-1 px-4 py-3 text-left text-sm text-[var(--color-text-primary)] ${columns} ${selected === entry.path ? 'bg-[var(--color-primary-light)]' : 'hover:bg-[var(--color-surface-subtle)]'} ${FOCUS_RING} focus-visible:ring-inset`}>
-          <RowCells entry={entry} section={section} result={result} />
+          <RowCells entry={entry} section={section} relations={relations} />
         </button>
       </li>)}
     </ul>}

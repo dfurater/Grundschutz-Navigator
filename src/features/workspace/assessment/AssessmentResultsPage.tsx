@@ -47,7 +47,7 @@ function ResultsView({ content, view, document }: Readonly<{ content: Assessment
   }, [selected]);
   const choose = (entry: AssessmentEntry) => { returnTo.current = entry.path; setSelection(entry.path); };
   const mobileDetail = selected && !twoPanels;
-  return <div className="flex min-h-0 flex-1 flex-col bg-[var(--color-surface-base)] md:flex-row">
+  return <div className="flex min-h-0 flex-1 flex-col bg-[var(--color-surface-base)] md:h-full md:flex-row">
     <div ref={list} className={`${mobileDetail ? 'hidden' : 'flex'} min-h-0 min-w-0 flex-1 flex-col`}>
       <header className="shrink-0 space-y-3 p-4">
         <Link to={buildStationUrl(view.verbund.verbundId, 'assessment')} className={`inline-flex min-h-touch items-center rounded text-sm text-[var(--color-text-secondary)] ${FOCUS_RING}`}>‹ {view.verbund.name}</Link>
@@ -67,14 +67,14 @@ function ResultsView({ content, view, document }: Readonly<{ content: Assessment
           <span className="text-xs tabular-nums text-[var(--color-text-secondary)]">Ergebnis {result ? resultIndex + 1 : 0} von {content.model.results.length}</span>
         </div>
       </header>
-      <div id={sectionsId} className="flex min-h-0 flex-1 flex-col">{result && <AssessmentResultList key={`${result.path}:${section}`} result={result} section={section} selected={selection} onSelect={choose} />}</div>
+      <div id={sectionsId} className="flex min-h-0 flex-1 flex-col">{result && <AssessmentResultList key={`${result.path}:${section}`} result={result} relations={content.relations} section={section} selected={selection} onSelect={choose} />}</div>
       <ModelDiagnostics content={content} />
       <details className="shrink-0 border-t border-[var(--color-border-default)]">
         <summary className={`min-h-touch cursor-pointer px-4 py-3 text-sm ${FOCUS_RING}`}>Dokumentreferenzen</summary>
         <div className="max-h-60 overflow-y-auto p-4"><ReferenceEdges view={view} document={document} /></div>
       </details>
     </div>
-    {selected && result && <AssessmentDetail key={selected.path} section={section} entry={selected} result={result} content={content} mobile={!twoPanels} onClose={() => setSelection(undefined)} />}
+    {selected && result && <AssessmentDetail key={selected.path} section={section} entry={selected} content={content} mobile={!twoPanels} onClose={() => setSelection(undefined)} />}
   </div>;
 }
 

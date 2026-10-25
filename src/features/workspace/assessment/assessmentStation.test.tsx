@@ -144,4 +144,32 @@ describe('Assessment Results in der Station', () => {
     fireEvent.click(within(main()).getByRole('button', { name: /Weitere Findings/ }));
     expect(main().querySelectorAll('[data-assessment-entry]')).toHaveLength(56);
   });
+
+  it('begrenzt Maßnahmen in Zeile und Detail, ohne Quellmaßnahmen zu verlieren', async () => {
+    const source = makeFullAssessmentResults();
+    source['assessment-results'].results[0].risks[0].remediations = Array.from({ length: 56 }, (_, index) => ({
+      uuid: `00000000-0000-4000-8000-${String(2000 + index).padStart(12, '0')}` as typeof AR_UUIDS.response,
+      title: `Maßnahme ${index}`, description: 'Synthetische Maßnahme', lifecycle: 'planned',
+    }));
+    const doc = await add(source);
+    renderWorkspaceArea(buildWorkspaceDocumentUrl(seeded.verbundId, doc.localId));
+    await within(main()).findByRole('button', { name: /^Findings · 2/ });
+    section('Risks');
+    expect(main()).toHaveTextContent('+53 Maßnahmen');
+    fireEvent.click(within(main()).getByRole('button', { name: /Risiko/ }));
+    expect(main().querySelectorAll('li[id]')).toHaveLength(50);
+    fireEvent.click(within(main()).getByRole('button', { name: /Weitere Maßnahmen/ }));
+    expect(main().querySelectorAll('li[id]')).toHaveLength(56);
+    expect((await readStore(store => store.getDocument(doc.localId)))?.source).toEqual(source);
+  });
+
+  it('zeigt bei wiederholten Observation-Verweisen denselben Evidenzbestand nur einmal', async () => {
+    const source = makeFullAssessmentResults();
+    Object.assign(source['assessment-results'].results[0].findings[0], { 'related-observations': Array.from({ length: 100 }, () => ({ 'observation-uuid': AR_UUIDS.observation })) });
+    const doc = await add(source);
+    renderWorkspaceArea(buildWorkspaceDocumentUrl(seeded.verbundId, doc.localId));
+    await within(main()).findByRole('button', { name: /^Findings · 2/ });
+    fireEvent.click(within(main()).getByRole('button', { name: /^ac-1_obj.*Finding/ }));
+    expect(within(main()).getAllByRole('region', { name: 'Evidenzressource' })).toHaveLength(1);
+  });
 });

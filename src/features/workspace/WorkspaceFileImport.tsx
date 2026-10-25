@@ -73,7 +73,7 @@ export function WorkspaceFileImport({ verbundId, rootType, rejectionCode, label 
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <input ref={input} id={inputId} aria-label={`${label}-Datei`} aria-describedby={rejected ? statusId : undefined} type="file" accept="application/json,.json" className="sr-only" tabIndex={-1} disabled={!writable || busy || importedLocalId !== undefined} onChange={read} />
+      <input ref={input} id={inputId} aria-label={`${label}-Datei`} aria-describedby={rejected ? statusId : undefined} type="file" accept="application/json,.json" className="hidden" tabIndex={-1} disabled={!writable || busy || importedLocalId !== undefined} onChange={read} />
       <Button variant="secondary" className="min-h-touch desktop:min-h-0" disabled={!writable || busy || importedLocalId !== undefined} onClick={() => input.current?.click()}>
         {busy || importedLocalId ? `${label} wird geprüft…` : `${label}-Datei einlesen`}
       </Button>

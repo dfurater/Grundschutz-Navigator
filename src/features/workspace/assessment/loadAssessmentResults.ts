@@ -6,9 +6,11 @@ import { isJsonObject, pointerString, readArray, readString, type JsonObject } f
 import type { ResolvedResource } from '@/domain/referenceResolution';
 import type { LocalId, WorkspaceEnvelope } from '@/domain/workspaceModel';
 import type { VerbundView, WorkspacePort } from '@/state/workspaceVerbundView';
+import { createAssessmentRelations, type AssessmentRelations } from '@/features/workspace/assessment/assessmentRelations';
 
 export interface AssessmentResultsContent {
   readonly model: AssessmentResults;
+  readonly relations: AssessmentRelations;
   readonly resources: ReadonlyMap<string, { readonly resource: JsonObject; readonly resolved: ResolvedResource }>;
   readonly actorNames: ReadonlyMap<string, string>;
   readonly sspStatements: ReadonlyMap<string, string>;
@@ -89,6 +91,7 @@ export async function loadAssessmentResults(port: Pick<WorkspacePort, 'getDocume
   const sources = new Map<string, unknown>([['local', envelope.source], ['assessment-plan', plan?.source], ['ssp', ssp?.source]]);
   return {
     model,
+    relations: createAssessmentRelations(model),
     ...readDisplayTexts(model, envelope.source, sources),
     resources: readResources(envelope.source, model),
     planTitle: assessmentPlan?.view.metadata.title,
