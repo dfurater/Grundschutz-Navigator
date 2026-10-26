@@ -250,15 +250,10 @@ describe('useBottomSheetDrag', () => {
 
   describe('bei reduzierter Bewegung', () => {
     function preferReducedMotion() {
+      const matchMedia = globalThis.matchMedia;
       vi.spyOn(globalThis, 'matchMedia').mockImplementation((query: string) => ({
+        ...matchMedia(query),
         matches: query === '(prefers-reduced-motion: reduce)',
-        media: query,
-        onchange: null,
-        addListener: () => {},
-        removeListener: () => {},
-        addEventListener: () => {},
-        removeEventListener: () => {},
-        dispatchEvent: () => false,
       }));
     }
 
