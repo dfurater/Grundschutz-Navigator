@@ -16,7 +16,7 @@ Bei der Anwendung handelt es sich um eine **Client-Side Single-Page Application 
 | Routing | React Router v8 |
 | Volltextsuche | FlexSearch |
 | Scrollleisten | OverlayScrollbars (MIT) |
-| Lokaler Dokumentenspeicher | Dexie 4.4.6 (exakter Produktionspin), IndexedDB `gspp-workspace` |
+| Lokaler Dokumentenspeicher | Dexie 4.4.7 (exakter Produktionspin), IndexedDB `gspp-workspace` |
 | Testing | Vitest + @testing-library/react + jsdom + Chromium-Browser-Lane; jsdom parst im Build zusätzlich die gebaute HTML-Auslieferung für den Titelvertrag |
 | Deployment | GitHub Pages (via GitHub Actions) |
 
