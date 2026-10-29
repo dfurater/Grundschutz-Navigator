@@ -164,7 +164,7 @@ export function writtenRow<T extends { backupSavedAt?: string }>(row: T): T {
 export async function restoreWorkspaceBackupSnapshot(db: Dexie, backup: WorkspaceBackup, target: WorkspaceRestoreTarget): Promise<void> {
   const meta = await db.table<WorkspaceMeta>('workspaceMeta').get('workspace');
   // After auto-reopen db.verno can lag; native IndexedDB uses ten times the Dexie version.
-  if (db.backendDB().version !== target.storageSchemaVersion * 10 || !meta || meta.databaseId !== target.databaseId || meta.storageSchemaVersion !== target.storageSchemaVersion || meta.savedAt !== target.savedAt) reject('WORKSPACE_SAVE_CONFLICT');
+  if (db.backendDB().version !== target.storageSchemaVersion * 10 || meta?.databaseId !== target.databaseId || meta.storageSchemaVersion !== target.storageSchemaVersion || meta.savedAt !== target.savedAt) reject('WORKSPACE_SAVE_CONFLICT');
   const stamp = await restoredStamp(db, [
     ...backup.verbuende, ...backup.documents, ...backup.drafts,
     ...backup.reviewTrail.map(row => ({ savedAt: row.createdAt })),
