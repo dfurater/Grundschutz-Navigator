@@ -9,7 +9,7 @@ const id = '11111111-1111-4111-8111-111111111111' as VerbundId;
 const localId = '22222222-2222-4222-8222-222222222222' as LocalId;
 const timestamp = '2026-10-16T12:00:00.000Z';
 /** v1-Bündel: kein Trail, keine Baseline, Version 1 an jeder Zeile. */
-type V1Backup = Omit<WorkspaceBackup, 'storageSchemaVersion' | 'reviewTrail' | 'reviewBaseline'> & { storageSchemaVersion: 1 };
+type V1Backup = Omit<WorkspaceBackup, 'storageSchemaVersion' | 'reviewTrail' | 'reviewBaseline' | 'workspaceMeta'> & { storageSchemaVersion: 1; workspaceMeta: Omit<WorkspaceBackup['workspaceMeta'][number], 'databaseId'>[] };
 export function backupFixture(): V1Backup {
   return { format: 'gspp-workspace', storageSchemaVersion: 1,
     verbuende: [{ verbundId: id, name: 'Test', createdAt: timestamp, savedAt: timestamp }],
@@ -21,18 +21,18 @@ const encode = (value: unknown) => new TextEncoder().encode(JSON.stringify(value
 describe('workspace backup validation', () => {
   it('retains valid OSCAL source and incomplete drafts', async () => {
     const backup = backupFixture();
-    expect(await parseWorkspaceBackup(encode(backup))).toEqual({ ok: true, value: normalizeWorkspaceBackup(backup) });
+    expect(await parseWorkspaceBackup(encode(backup))).toEqual({ ok: true, value: { ...normalizeWorkspaceBackup(backup), workspaceMeta: [expect.objectContaining({ databaseId: expect.any(String), storageSchemaVersion: 3 })] } });
   });
   it('verifies every review baseline against its source inside the backup worker', async () => {
     const source = makeSchemaValidOscalDocument('catalog', '1.1.3');
     const stand = await documentSnapshot(source, 'catalog');
     if (!stand) throw new Error('fixture has no document stand');
     const backup: WorkspaceBackup = {
-      format: 'gspp-workspace', storageSchemaVersion: 2,
+      format: 'gspp-workspace', storageSchemaVersion: 3,
       verbuende: [{ verbundId: id, name: 'Test', createdAt: timestamp, savedAt: timestamp }],
-      documents: [{ localId, verbundId: id, storageSchemaVersion: 2, rootType: 'catalog', oscalVersion: '1.1.3', trustClass: 'class-2-local-user', documentState: 'imported', createdAt: timestamp, savedAt: timestamp, source }],
+      documents: [{ localId, verbundId: id, storageSchemaVersion: 3, rootType: 'catalog', oscalVersion: '1.1.3', trustClass: 'class-2-local-user', documentState: 'imported', createdAt: timestamp, savedAt: timestamp, source }],
       drafts: [], bindings: [],
-      workspaceMeta: [{ id: 'workspace', storageSchemaVersion: 2, createdAt: timestamp, savedAt: timestamp }],
+      workspaceMeta: [{ id: 'workspace', databaseId: crypto.randomUUID(), storageSchemaVersion: 3, createdAt: timestamp, savedAt: timestamp }],
       reviewTrail: [{ localId, sequence: 1, kind: 'checkpoint', createdAt: timestamp, documentState: 'imported', stand, diff: { version: 1, baseSequence: null, entries: [], truncated: false } }],
       reviewBaseline: [{ localId, sequence: 1, stand, source: structuredClone(source) }],
     };
@@ -43,7 +43,7 @@ describe('workspace backup validation', () => {
   });
   it.each([
     (b: V1Backup) => ({ ...b, extra: 'secret' }),
-    (b: V1Backup) => ({ ...b, storageSchemaVersion: 2 }),
+    (b: V1Backup) => ({ ...b, storageSchemaVersion: 3 }),
     (b: V1Backup) => ({ ...b, documents: [...b.documents, b.documents[0]] }),
     (b: V1Backup) => ({ ...b, documents: [{ ...b.documents[0], localId: 'secret' }] }),
     (b: V1Backup) => ({ ...b, documents: [{ ...b.documents[0], trustClass: 'class-1-verified-public' }] }),
@@ -79,7 +79,7 @@ it('validates every document within the calling worker without spawning nested w
     const backup = backupFixture();
     const second = '33333333-3333-4333-8333-333333333333' as LocalId;
     backup.documents.push({ ...backup.documents[0], localId: second, source: makeSchemaValidOscalDocument('catalog', '1.1.3') });
-    expect(await parseWorkspaceBackup(encode(backup))).toEqual({ ok: true, value: normalizeWorkspaceBackup(backup) });
+    expect(await parseWorkspaceBackup(encode(backup))).toEqual({ ok: true, value: { ...normalizeWorkspaceBackup(backup), workspaceMeta: [expect.objectContaining({ databaseId: expect.any(String), storageSchemaVersion: 3 })] } });
     // Fehlschlag, wenn das zweite Dokument derselben Schemazelle die Klasse-2-Prüfung umgeht.
     delete (backup.documents[1].source as { catalog: { metadata?: unknown } }).catalog.metadata;
     expect(await parseWorkspaceBackup(encode(backup))).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_BACKUP_DOCUMENT_REJECTED' } });

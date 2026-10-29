@@ -1,3 +1,4 @@
+import { restoreWorkspaceBackup } from '@/test/restoreWorkspaceBackup';
 import Dexie from 'dexie';
 import { afterEach, expect, it, vi } from 'vitest';
 import { WorkspaceStore, WORKSPACE_DATABASE_NAME } from '@/adapters/workspaceStore';
@@ -42,7 +43,7 @@ it('returns a node-dense bundle from the real worker in acknowledged bounded fra
       this.addEventListener('message', event => frames.push({ type: event.data.type, sequence: event.data.sequence, size: event.data.operations?.length, acks }));
     }
   });
-  try { value(await store.restoreBackup(new TextEncoder().encode(backup), 'replace-workspace')); }
+  try { value(await restoreWorkspaceBackup(store, new TextEncoder().encode(backup))); }
   finally { vi.unstubAllGlobals(); post.mockRestore(); }
   const chunks = frames.filter(frame => frame.type === 'chunk');
   expect(frames[0].type).toBe('start');

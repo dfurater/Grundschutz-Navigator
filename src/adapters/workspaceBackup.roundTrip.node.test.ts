@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { restoreWorkspaceBackup } from '@/test/restoreWorkspaceBackup';
 import 'fake-indexeddb/auto';
 import { expect, it, vi } from 'vitest';
 import { WorkspaceStore } from '@/adapters/workspaceStore';
@@ -33,7 +34,7 @@ it('rolls back all restored stores when quota fails after existing rows were cle
       if (this.name === 'bindings') throw new DOMException('PRIVATE_SENTINEL', 'QuotaExceededError');
       return original.apply(this, args);
     });
-    const result = await store.restoreBackup(new TextEncoder().encode(backup), 'replace-workspace');
+    const result = await restoreWorkspaceBackup(store, new TextEncoder().encode(backup));
     add.mockRestore();
     expect(result).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_QUOTA_EXCEEDED' } });
     expect(JSON.stringify(result)).not.toContain('PRIVATE_SENTINEL');

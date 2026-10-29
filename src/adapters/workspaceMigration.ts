@@ -30,15 +30,14 @@ function visitRows(transaction: Transaction, store: string, visit: (cursor: IDBC
   });
 }
 
-/** Only v1 → v2 runs here; a future schema version adds its own step. */
+/** Each declared step validates its input inside the shared versionchange transaction. */
 export async function migrateWorkspaceStorage(transaction: Transaction, fromVersion: number, toVersion: number): Promise<void> {
   try {
-    // This implementation knows only the v1 envelope shape and its next version.
-    if (fromVersion !== 1 || toVersion !== 2 || transaction.idbtrans.mode !== 'versionchange') invalid();
-    // `transaction.storeNames` is the target schema: the five v1 stores plus the two empty v2 stores.
+    if (!((fromVersion === 1 && toVersion === 2) || (fromVersion === 2 && toVersion === 3)) || transaction.idbtrans.mode !== 'versionchange') invalid();
+    // Both target versions contain the five base stores and the review stores.
     const stores = ['verbuende', 'documents', 'drafts', 'bindings', 'workspaceMeta', 'reviewTrail', 'reviewBaseline'] as const;
     if (transaction.storeNames.length !== stores.length || stores.some(name => !transaction.storeNames.includes(name))) invalid();
-    const validate = createWorkspaceStructureValidator(1);
+    const validate = createWorkspaceStructureValidator(fromVersion as 1 | 2);
     await visitRows(transaction, 'verbuende', cursor => { if (!validate.verbuende(cursor.value)) invalid(); });
     await visitRows(transaction, 'documents', cursor => {
       const row = cursor.value;
@@ -51,9 +50,11 @@ export async function migrateWorkspaceStorage(transaction: Transaction, fromVers
     await visitRows(transaction, 'bindings', cursor => { if (!validate.bindings(cursor.value)) invalid(); });
     await visitRows(transaction, 'workspaceMeta', cursor => { if (!validate.workspaceMeta(cursor.value)) invalid(); });
     if (!validate.hasWorkspaceMeta) invalid();
+    await visitRows(transaction, 'reviewTrail', cursor => { if (!validate.reviewTrail(cursor.value)) invalid(); });
+    await visitRows(transaction, 'reviewBaseline', cursor => { if (!validate.reviewBaseline(cursor.value)) invalid(); });
     // Validate every row before the first write. A later write failure still aborts the upgrade.
     for (const store of ['documents', 'workspaceMeta']) {
-      await visitRows(transaction, store, cursor => cursor.update({ ...cursor.value, storageSchemaVersion: toVersion }));
+      await visitRows(transaction, store, cursor => cursor.update({ ...cursor.value, storageSchemaVersion: toVersion, ...(store === 'workspaceMeta' && toVersion === 3 ? { databaseId: crypto.randomUUID() } : {}) }));
     }
   } catch {
     invalid();

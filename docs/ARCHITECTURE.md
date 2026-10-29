@@ -522,6 +522,7 @@ src/                              # Anwendungsquellcode
 │   ├── reviewTrailFixtures.ts        # Prüfspur-Mocks und Katalogquellen für die WorkspaceStore-Verträge
 │   ├── workflowFixtures.ts           # Job-Blöcke und temporäre Repository-Fixtures für Skripttests
 │   ├── workspaceAreaFixture.ts       # Speicherfixture mit Sentinels für den Bereich Informationsverbünde
+│   ├── restoreWorkspaceBackup.ts    # Testhelfer für Dateivorschau und bestätigten Gesamt-Restore
 │   └── workspaceNodeWorkers.ts       # In-Process-Ersatz für Import-Gate und Backup-Worker in Node-Tests
 ├── index.css                     # Tailwind-Einstieg und einzige Quelle der Gestaltungstokens
 ├── main.tsx                      # Einstiegspunkt

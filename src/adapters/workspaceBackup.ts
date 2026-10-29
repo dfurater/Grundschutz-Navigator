@@ -44,7 +44,7 @@ function receiveFrame<T>(data: unknown, receiver: Receiver, adopt: (value: unkno
     return undefined;
   }
   if (frame.type === 'done' && hasKeys(frame, ['type', 'sequence']) && decoder && frame.sequence === receiver.sequence) {
-    // This locally created worker is the validation authority; the adopter checks the closed bundle form and maps a v1 bundle to v2.
+    // This locally created worker is the validation authority; the adopter checks the closed bundle form and normalizes supported legacy bundles.
     const value = adopt(decoder.finish());
     if (!value) throw new Error('Invalid bundle');
     return { ok: true, value };

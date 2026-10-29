@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { restoreWorkspaceBackup } from '@/test/restoreWorkspaceBackup';
 import 'fake-indexeddb/auto';
 import Dexie from 'dexie';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -135,12 +136,12 @@ describe('storage boundary failures', () => {
     expect(value(await store.exportBackup())).toBe(before);
   });
   it('requires explicit destructive confirmations before parsing or deletion', async () => {
-    rejected(await store.restoreBackup(new Uint8Array(), '' as 'replace-workspace'), 'WORKSPACE_CONFIRMATION_REQUIRED');
+    rejected(await store.restoreBackup(undefined as never), 'WORKSPACE_CONFIRMATION_REQUIRED');
     rejected(await store.deleteAll('' as 'delete-workspace'), 'WORKSPACE_CONFIRMATION_REQUIRED');
     expect(value(await store.getDocument(envelope.localId))).toEqual(envelope);
   });
   it('does not replace existing rows after a rejected backup', async () => {
-    rejected(await store.restoreBackup(new Uint8Array([255]), 'replace-workspace'), 'WORKSPACE_BACKUP_INPUT_REJECTED');
+    rejected(await restoreWorkspaceBackup(store, new Uint8Array([255])), 'WORKSPACE_BACKUP_INPUT_REJECTED');
     expect(value(await store.getDocument(envelope.localId))).toEqual(envelope);
   });
 });
