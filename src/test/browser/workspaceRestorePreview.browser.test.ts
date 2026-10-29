@@ -111,7 +111,7 @@ it.each(['save', 'draft', 'binding', 'checkpoint', 'decision', 'delete-document'
   expect(value(await store.exportBackup())).toBe(before);
 });
 
-it('restores all seven stores atomically and preserves v2 trail and baseline during normalization', async () => {
+it('restores all seven stores atomically including trail and baseline', async () => {
   const { envelope } = await addDocument();
   value(await store.appendCheckpoint(envelope.localId, envelope.savedAt, null, 0));
   value(await store.appendDecision(envelope.localId, envelope.savedAt, null, { decision: 'reviewed', expectedSequence: 1 }));
@@ -120,9 +120,6 @@ it('restores all seven stores atomically and preserves v2 trail and baseline dur
   value(await store.autosaveDraft(envelope.localId, loaded.savedAt, null, { pending: true }));
   const backup = JSON.parse(value(await store.exportBackup()));
   const id = backup.workspaceMeta[0].databaseId;
-  backup.storageSchemaVersion = 2;
-  for (const row of [...backup.documents, ...backup.workspaceMeta]) row.storageSchemaVersion = 2;
-  delete backup.workspaceMeta[0].databaseId;
   value(await store.deleteVerbund(verbund.verbundId));
   const preview = value(await store.previewRestoreBackup(bytes(JSON.stringify(backup))));
   expect(preview.counts.reviewTrail).toEqual({ file: 2, target: 0 });
@@ -132,7 +129,7 @@ it('restores all seven stores atomically and preserves v2 trail and baseline dur
   const result = JSON.parse(value(await store.exportBackup()));
   expect(result.workspaceMeta[0].databaseId).toBe(id);
   for (const name of ['verbuende', 'drafts', 'bindings', 'reviewTrail', 'reviewBaseline']) expect(result[name]).toEqual(backup[name]);
-  expect(result.documents).toEqual(backup.documents.map((row: object) => ({ ...row, storageSchemaVersion: 3 })));
+  expect(result.documents).toEqual(backup.documents);
   expect(await store.restoreBackup(preview)).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_SAVE_CONFLICT' } });
 });
 

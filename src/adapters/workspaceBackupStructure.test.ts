@@ -3,8 +3,6 @@ import type { LocalId, VerbundId, WorkspaceBackup } from '@/domain/workspaceMode
 import { makeSchemaValidOscalDocument } from '@/test/fixtures/oscalSchemaFixtures';
 import {
   createWorkspaceStructureValidator,
-  normalizeVerbundBackup,
-  normalizeWorkspaceBackup,
   validVerbundBackupStructure,
   validWorkspaceBackupStructure,
 } from './workspaceBackupStructure';
@@ -110,19 +108,12 @@ describe('workspace backup structure v3', () => {
     expect(validator.workspaceMeta(backup.workspaceMeta[0])).toBe(false);
   });
 
-  it('akzeptiert ein v1-Verbundbündel ohne Historie und normalisiert es auf v3', () => {
-    const present = bundle();
-    const legacy = {
-      format: 'gspp-workspace-verbund', storageSchemaVersion: 1, verbuende: present.verbuende,
-      documents: [{ ...present.documents[0], storageSchemaVersion: 1 }], drafts: present.drafts, bindings: present.bindings,
-    };
-    const normalized = normalizeVerbundBackup(legacy);
-    expect(normalized).toMatchObject({
-      format: 'gspp-workspace-verbund', storageSchemaVersion: 3, reviewTrail: [], reviewBaseline: [],
-      documents: [{ storageSchemaVersion: 3 }],
-    });
-    expect(normalized?.verbuende).toEqual(legacy.verbuende);
-    expect(normalized && validVerbundBackupStructure(normalized)).toBe(true);
-    expect(normalizeWorkspaceBackup(legacy)).toBeNull();
+  it.each([1, 2])('weist Sicherungsdateien der Speicherversion %i ab', version => {
+    const backup = bundle();
+    const old = { ...backup, storageSchemaVersion: version };
+    expect(validWorkspaceBackupStructure(old)).toBe(false);
+    const { workspaceMeta, ...verbund } = old;
+    expect(workspaceMeta).toHaveLength(1);
+    expect(validVerbundBackupStructure({ ...verbund, format: 'gspp-workspace-verbund' })).toBe(false);
   });
 });

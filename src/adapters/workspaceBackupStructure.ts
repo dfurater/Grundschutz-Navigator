@@ -4,7 +4,7 @@ import { CONTENT_HASH_ALGORITHM, CONTENT_HASH_VERSION } from '@/domain/reviewTra
 import { bindsEnvelopeSource, withinSourceLimits } from '@/adapters/workspaceDraftSource';
 import {
   STORAGE_SCHEMA_VERSION, isVerbundName,
-  type DocumentSnapshot, type WorkspaceBackup, type WorkspaceEnvelope, type WorkspaceVerbundBackup,
+  type DocumentSnapshot, type WorkspaceBackup, type WorkspaceVerbundBackup,
 } from '@/domain/workspaceModel';
 
 type StorageVersion = 1 | 2 | 3;
@@ -274,66 +274,28 @@ export function createWorkspaceStructureValidator(version: StorageVersion = STOR
   };
 }
 
-function validBackupStructure(value: unknown, format: 'gspp-workspace' | 'gspp-workspace-verbund', version: StorageVersion): boolean {
+function validBackupStructure(value: unknown, format: 'gspp-workspace' | 'gspp-workspace-verbund'): boolean {
   const required = ['format', 'storageSchemaVersion', 'verbuende', 'documents', 'drafts', 'bindings'];
   if (format === 'gspp-workspace') required.push('workspaceMeta');
-  if (version >= 2) required.push('reviewTrail', 'reviewBaseline');
-  if (!fields(value, required) || value.format !== format || value.storageSchemaVersion !== version
+  required.push('reviewTrail', 'reviewBaseline');
+  if (!fields(value, required) || value.format !== format || value.storageSchemaVersion !== STORAGE_SCHEMA_VERSION
     || ![value.verbuende, value.documents, value.drafts, value.bindings].every(Array.isArray)) return false;
   const backup = value as unknown as WorkspaceBackup;
   if (!Array.isArray(backup.verbuende) || !Array.isArray(backup.documents)) return false;
-  if (format === 'gspp-workspace' && (!Array.isArray(backup.workspaceMeta) || !validWorkspaceMeta(backup.workspaceMeta, version))) return false;
+  if (format === 'gspp-workspace' && (!Array.isArray(backup.workspaceMeta) || !validWorkspaceMeta(backup.workspaceMeta, STORAGE_SCHEMA_VERSION))) return false;
   if (format === 'gspp-workspace-verbund' && backup.verbuende.length !== 1) return false;
-  const context = newContext(version);
-  const trail = version >= 2 ? backup.reviewTrail : [];
-  const baseline = version >= 2 ? backup.reviewBaseline : [];
-  if (version >= 2 && (!Array.isArray(trail) || !Array.isArray(baseline))) return false;
+  const context = newContext(STORAGE_SCHEMA_VERSION);
+  const trail = backup.reviewTrail;
+  const baseline = backup.reviewBaseline;
+  if (!Array.isArray(trail) || !Array.isArray(baseline)) return false;
   return collectVerbuende(context, backup.verbuende) && collectDocuments(context, backup.documents)
     && validDrafts(context, backup.drafts) && collectBindings(context, backup.bindings)
     && collectReviewTrail(context, trail) && collectReviewBaseline(context, baseline);
 }
 
 export function validWorkspaceBackupStructure(value: unknown): value is WorkspaceBackup {
-  return validBackupStructure(value, 'gspp-workspace', STORAGE_SCHEMA_VERSION);
+  return validBackupStructure(value, 'gspp-workspace');
 }
 export function validVerbundBackupStructure(value: unknown): value is WorkspaceVerbundBackup {
-  return validBackupStructure(value, 'gspp-workspace-verbund', STORAGE_SCHEMA_VERSION);
-}
-
-function upgradeRows<T extends object>(rows: readonly T[]): T[] {
-  return rows.map(row => ({ ...row, storageSchemaVersion: STORAGE_SCHEMA_VERSION }));
-}
-
-/** Altbündel erhalten die aktuelle Hülle; v2 behält seine Historie. */
-export function normalizeWorkspaceBackup(value: unknown): WorkspaceBackup | null {
-  if (validWorkspaceBackupStructure(value)) return value;
-  if (!validBackupStructure(value, 'gspp-workspace', 1) && !validBackupStructure(value, 'gspp-workspace', 2)) return null;
-  const legacy = value as unknown as WorkspaceBackup;
-  return {
-    format: 'gspp-workspace',
-    storageSchemaVersion: STORAGE_SCHEMA_VERSION,
-    verbuende: legacy.verbuende,
-    documents: upgradeRows(legacy.documents) as WorkspaceEnvelope[],
-    drafts: legacy.drafts,
-    bindings: legacy.bindings,
-    workspaceMeta: upgradeRows(legacy.workspaceMeta).map(row => ({ ...row, databaseId: crypto.randomUUID() })),
-    reviewTrail: legacy.storageSchemaVersion >= 2 ? legacy.reviewTrail : [],
-    reviewBaseline: legacy.storageSchemaVersion >= 2 ? legacy.reviewBaseline : [],
-  };
-}
-
-export function normalizeVerbundBackup(value: unknown): WorkspaceVerbundBackup | null {
-  if (validVerbundBackupStructure(value)) return value;
-  if (!validBackupStructure(value, 'gspp-workspace-verbund', 1) && !validBackupStructure(value, 'gspp-workspace-verbund', 2)) return null;
-  const legacy = value as unknown as WorkspaceVerbundBackup;
-  return {
-    format: 'gspp-workspace-verbund',
-    storageSchemaVersion: STORAGE_SCHEMA_VERSION,
-    verbuende: legacy.verbuende,
-    documents: upgradeRows(legacy.documents) as WorkspaceEnvelope[],
-    drafts: legacy.drafts,
-    bindings: legacy.bindings,
-    reviewTrail: legacy.storageSchemaVersion >= 2 ? legacy.reviewTrail : [],
-    reviewBaseline: legacy.storageSchemaVersion >= 2 ? legacy.reviewBaseline : [],
-  };
+  return validBackupStructure(value, 'gspp-workspace-verbund');
 }

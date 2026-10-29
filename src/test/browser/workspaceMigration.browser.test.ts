@@ -5,7 +5,7 @@ import { WORKSPACE_DATABASE_NAME, WORKSPACE_SCHEMA, WORKSPACE_SCHEMA_V1, Workspa
 import { makeSchemaValidOscalDocument } from '@/test/fixtures/oscalSchemaFixtures';
 import type { LocalId, VerbundId, WorkspaceBackup } from '@/domain/workspaceModel';
 import { documentSnapshot } from '@/domain/reviewTrail';
-import { normalizeWorkspaceBackup } from '@/adapters/workspaceBackupStructure';
+import { createWorkspaceStructureValidator } from '@/adapters/workspaceBackupStructure';
 
 const databases: Dexie[] = [];
 const names: string[] = [];
@@ -26,7 +26,10 @@ function fixture(): V1Backup {
     bindings: [{ fromLocalId: documents[0].localId, pointer: '/catalog/metadata/title', href: 'reference', target: { kind: 'local', localId: documents[1].localId } }],
     workspaceMeta: [{ id: 'workspace', storageSchemaVersion: 1, createdAt: now, savedAt: now }],
   };
-  if (!normalizeWorkspaceBackup(backup)) throw new Error('Invalid migration fixture');
+  const validator = createWorkspaceStructureValidator(1);
+  for (const name of ['verbuende', 'documents', 'drafts', 'bindings', 'workspaceMeta'] as const) {
+    for (const row of backup[name]) if (!validator[name](row)) throw new Error('Invalid migration fixture');
+  }
   return backup;
 }
 async function seed(data: V1Backup, name = `gspp-migration-test-${crypto.randomUUID()}`) {

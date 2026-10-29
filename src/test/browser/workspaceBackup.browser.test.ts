@@ -88,24 +88,16 @@ it.each(['workspace', 'verbund'] as const)('retains a binding after its source h
   expect(value(await store.getDocument(envelope.localId))?.source).toEqual(source);
 });
 
-it('re-exports a restored v1 bundle and accepts that export again', async () => {
-  const current = JSON.parse(value(await store.exportBackup())) as {
-    storageSchemaVersion: number; documents: Record<string, unknown>[]; workspaceMeta: Record<string, unknown>[];
-    verbuende: unknown[];
-  };
-  const legacy: Record<string, unknown> = {
-    ...current,
-    storageSchemaVersion: 1,
-    documents: current.documents.map(row => ({ ...row, storageSchemaVersion: 1 })),
-    workspaceMeta: current.workspaceMeta.map(row => ({ id: row.id, storageSchemaVersion: 1, createdAt: row.createdAt, savedAt: row.savedAt })),
-  };
-  delete legacy.reviewTrail;
-  delete legacy.reviewBaseline;
-  value(await restoreWorkspaceBackup(store, new TextEncoder().encode(JSON.stringify(legacy))));
-  const exported = value(await store.exportBackup());
-  expect(JSON.parse(exported).verbuende).toEqual(current.verbuende);
-  expect(JSON.parse(exported).documents[0].storageSchemaVersion).toBe(3);
-  value(await restoreWorkspaceBackup(store, new TextEncoder().encode(exported)));
+it.each([1, 2])('rejects version %i backup files without changing the target', async version => {
+  const before = value(await store.exportBackup());
+  const old = JSON.parse(before);
+  old.storageSchemaVersion = version;
+  for (const row of [...old.documents, ...old.workspaceMeta]) row.storageSchemaVersion = version;
+  delete old.workspaceMeta[0].databaseId;
+  if (version === 1) { delete old.reviewTrail; delete old.reviewBaseline; }
+  expect(await store.previewRestoreBackup(new TextEncoder().encode(JSON.stringify(old))))
+    .toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_BACKUP_INVALID' } });
+  expect(value(await store.exportBackup())).toBe(before);
 });
 
 it('rejects a baseline whose source no longer matches its bound stand', async () => {
