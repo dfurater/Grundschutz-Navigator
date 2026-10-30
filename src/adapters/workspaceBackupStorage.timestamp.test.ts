@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { restoreWorkspaceBackup } from '@/test/restoreWorkspaceBackup';
 import 'fake-indexeddb/auto';
 import Dexie from 'dexie';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
@@ -44,6 +45,9 @@ it('keeps every stamp within four-digit years and every exported bundle restorab
   await Dexie.delete(WORKSPACE_DATABASE_NAME);
   store = value(await WorkspaceStore.open());
   // Fehlschlag, wenn die Gesamtsicherung mit dem Grenzstempel in der Metazeile in einer frischen Datenbank nicht wiederherstellbar ist.
-  value(await store.restoreBackup(bytes(exported), 'replace-workspace'));
-  expect(value(await store.exportBackup())).toBe(exported);
+  value(await restoreWorkspaceBackup(store, bytes(exported)));
+  const reexported = JSON.parse(value(await store.exportBackup()));
+  const expected = JSON.parse(exported);
+  expected.workspaceMeta[0].databaseId = reexported.workspaceMeta[0].databaseId;
+  expect(reexported).toEqual(expected);
 });

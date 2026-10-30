@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { restoreWorkspaceBackup } from '@/test/restoreWorkspaceBackup';
 import 'fake-indexeddb/auto';
 import Dexie, { type IndexableTypePart } from 'dexie';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
@@ -103,9 +104,9 @@ it('restores an empty verbund without admitting foreign drafts or retaining stal
 it('rejects crossed formats, invalid sources, newer schemas and oversized bytes without mutation', async () => {
   const total = value(await store.exportBackup());
   const selected = value(await store.exportVerbundBackup(a.verbundId));
-  expect(await store.restoreBackup(bytes(selected), 'replace-workspace')).toMatchObject({ ok: false });
+  expect(await restoreWorkspaceBackup(store, bytes(selected))).toMatchObject({ ok: false });
   const invalid = JSON.parse(selected); invalid.documents[0].source = { catalog: {} };
-  for (const input of [bytes(total), bytes(JSON.stringify(invalid)), bytes(selected.replace('"storageSchemaVersion":2', '"storageSchemaVersion":3')), new Uint8Array(WORKSPACE_BACKUP_MAX_BYTES + 1)]) {
+  for (const input of [bytes(total), bytes(JSON.stringify(invalid)), bytes(selected.replace('"storageSchemaVersion":3', '"storageSchemaVersion":4')), new Uint8Array(WORKSPACE_BACKUP_MAX_BYTES + 1)]) {
     expect(await store.restoreVerbundBackup(input, 'replace-verbund')).toMatchObject({ ok: false });
     expect(value(await store.exportBackup())).toBe(total);
   }
@@ -128,9 +129,9 @@ it('keeps each verbund restorable when the aggregate workspace exceeds the byte 
 }, 30_000);
 
 it('preserves unknown future data through the global export path', async () => {
-  await db.table('workspaceMeta').update('workspace', { storageSchemaVersion: 3, future: 'FUTURE_METADATA' });
+  await db.table('workspaceMeta').update('workspace', { storageSchemaVersion: 4, future: 'FUTURE_METADATA' });
   const backup = await db.transaction('r', db.tables, () => exportWorkspaceBackupSnapshot(db));
-  expect(JSON.parse(backup)).toMatchObject({ storageSchemaVersion: 3, workspaceMeta: [{ future: 'FUTURE_METADATA' }] });
+  expect(JSON.parse(backup)).toMatchObject({ storageSchemaVersion: 4, workspaceMeta: [{ future: 'FUTURE_METADATA' }] });
   expect(await store.exportVerbundBackup(a.verbundId)).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_SCHEMA_NEWER' } });
 });
 
@@ -142,7 +143,7 @@ it.each(['workspace', 'verbund'] as const)('never reissues a comparison value lo
   // Jede Zeile des Bündels zählt: die Verbundzeile trägt hier den höchsten Wert.
   for (const row of parsed.verbuende) row.savedAt = later;
   const backup = bytes(JSON.stringify(parsed));
-  const restore = () => scope === 'workspace' ? store.restoreBackup(backup, 'replace-workspace') : store.restoreVerbundBackup(backup, 'replace-verbund');
+  const restore = () => scope === 'workspace' ? restoreWorkspaceBackup(store, backup) : store.restoreVerbundBackup(backup, 'replace-verbund');
   value(await restore());
   // Fehlschlag, wenn der Dateiwert des Bündels nach der Wiederherstellung noch als Vergleichswert passt.
   expect(await store.saveDocument(one.localId, future, future, imported)).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_SAVE_CONFLICT' } });
@@ -166,7 +167,7 @@ it.each(['workspace', 'verbund'] as const)('rejects a pre-restore comparison val
   // Inhalt mit identischem Stempel erzeugen (p2Stamp == p1.savedAt).
   const future = new Date(Date.now() + 3_600_000).toISOString();
   const exportBundle = (verbundId: VerbundId) => scope === 'workspace' ? store.exportBackup() : store.exportVerbundBackup(verbundId);
-  const restoreBundle = (text: string) => scope === 'workspace' ? store.restoreBackup(bytes(text), 'replace-workspace') : store.restoreVerbundBackup(bytes(text), 'replace-verbund');
+  const restoreBundle = (text: string) => scope === 'workspace' ? restoreWorkspaceBackup(store, bytes(text)) : store.restoreVerbundBackup(bytes(text), 'replace-verbund');
 
   // Ausgangsbündel: ein Verbund mit zwei Dokumenten und einem Entwurf, alle Zeilenstempel über die Uhr gehoben.
   await nextProfile();
@@ -223,7 +224,7 @@ it.each(['workspace', 'verbund'] as const)('rejects a pre-restore comparison val
 
 it.each(['workspace', 'verbund'] as const)('validates the file stamp of restored rows and never exports it (%s)', async scope => {
   const exportBundle = () => scope === 'workspace' ? store.exportBackup() : store.exportVerbundBackup(a.verbundId);
-  const restore = (text: string) => scope === 'workspace' ? store.restoreBackup(bytes(text), 'replace-workspace') : store.restoreVerbundBackup(bytes(text), 'replace-verbund');
+  const restore = (text: string) => scope === 'workspace' ? restoreWorkspaceBackup(store, bytes(text)) : store.restoreVerbundBackup(bytes(text), 'replace-verbund');
   const parsed = JSON.parse(value(await exportBundle()));
   const documentRow = parsed.documents.find((row: { localId: string }) => row.localId === one.localId);
   const draftRow = parsed.drafts.find((row: { localId: string }) => row.localId === one.localId);
@@ -263,8 +264,8 @@ it('exports out-of-line keys of newer stores and rejects stores named like bundl
   db.close();
   store.close();
   const next = new Dexie(WORKSPACE_DATABASE_NAME);
-  next.version(3).stores({ ...WORKSPACE_SCHEMA, futureStore: 'id', outbound: '' }).upgrade(async tx => {
-    await tx.table('workspaceMeta').update('workspace', { storageSchemaVersion: 3 });
+  next.version(4).stores({ ...WORKSPACE_SCHEMA, futureStore: 'id', outbound: '' }).upgrade(async tx => {
+    await tx.table('workspaceMeta').update('workspace', { storageSchemaVersion: 4 });
     await tx.table('futureStore').add({ id: 'inline' });
     const keys: IndexableTypePart[] = ['key-1', new Date('2026-10-17T00:00:00.000Z'), new Uint8Array([1, 2, 255]), Infinity, -Infinity];
     await tx.table('outbound').bulkAdd([{ value: 'TEXT' }, { value: 'DATE' }, { value: 'BINARY' }, { value: 'MAX' }, { value: 'MIN' }], keys);
@@ -279,7 +280,7 @@ it('exports out-of-line keys of newer stores and rejects stores named like bundl
   // Fehlschlag, wenn Schlüssel außerhalb der Datensätze fehlen, Datums-, Binär- oder ±Infinity-Schlüssel den Export brechen oder ein Store mit Schlüsselpfad Schlüssel erhält.
   expect(parsed.outOfLineKeys).toEqual({ outbound: [{ number: '-Infinity' }, { number: 'Infinity' }, { date: '2026-10-17T00:00:00.000Z' }, 'key-1', { binary: 'AQL/' }, [{ number: 'Infinity' }], ['a', { date: '1970-01-01T00:00:00.000Z' }]] });
   const reserved = new Dexie(WORKSPACE_DATABASE_NAME);
-  reserved.version(4).stores({ ...WORKSPACE_SCHEMA, futureStore: 'id', outbound: '', format: 'id' });
+  reserved.version(5).stores({ ...WORKSPACE_SCHEMA, futureStore: 'id', outbound: '', format: 'id' });
   await reserved.open();
   await expect(reserved.transaction('r', reserved.tables, () => exportWorkspaceBackupSnapshot(reserved))).rejects.toMatchObject({ code: 'WORKSPACE_SCHEMA_INVALID' });
   reserved.close();

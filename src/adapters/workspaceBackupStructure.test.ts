@@ -3,8 +3,6 @@ import type { LocalId, VerbundId, WorkspaceBackup } from '@/domain/workspaceMode
 import { makeSchemaValidOscalDocument } from '@/test/fixtures/oscalSchemaFixtures';
 import {
   createWorkspaceStructureValidator,
-  normalizeVerbundBackup,
-  normalizeWorkspaceBackup,
   validVerbundBackupStructure,
   validWorkspaceBackupStructure,
 } from './workspaceBackupStructure';
@@ -24,14 +22,14 @@ const stand = {
   contentHash: { version: 1, algorithm: 'sha-256', value: 'a'.repeat(64) },
 };
 
-/** v2-Bündel mit Prüfpunkt, Entscheidungen und Vergleichsbasis. */
+/** v3-Bündel mit Prüfpunkt, Entscheidungen und Vergleichsbasis. */
 function bundle(): WorkspaceBackup {
   return {
     format: 'gspp-workspace',
-    storageSchemaVersion: 2,
+    storageSchemaVersion: 3,
     verbuende: [{ verbundId, name: 'Test', createdAt: timestamp, savedAt: timestamp }],
     documents: [{
-      localId, verbundId, storageSchemaVersion: 2, rootType: 'catalog', oscalVersion: '1.1.3',
+      localId, verbundId, storageSchemaVersion: 3, rootType: 'catalog', oscalVersion: '1.1.3',
       trustClass: 'class-2-local-user', documentState: 'export-ready', createdAt: timestamp, savedAt: timestamp, source,
     }],
     drafts: [],
@@ -46,7 +44,7 @@ function bundle(): WorkspaceBackup {
       { localId, sequence: 4, kind: 'decision', createdAt: timestamp, decision: 'withdrawn', stand, withdraws: { sequence: 3, actionUuid } },
     ],
     reviewBaseline: [{ localId, sequence: 1, stand, source }],
-    workspaceMeta: [{ id: 'workspace', storageSchemaVersion: 2, createdAt: timestamp, savedAt: timestamp }],
+    workspaceMeta: [{ id: 'workspace', databaseId: '66666666-6666-4666-8666-666666666666', storageSchemaVersion: 3, createdAt: timestamp, savedAt: timestamp }],
   };
 }
 
@@ -76,7 +74,7 @@ const rejected: readonly (readonly [string, Mutation])[] = [
   ['baseline-fehlt', (b) => ({ ...b, reviewBaseline: undefined })],
 ];
 
-describe('workspace backup structure v2', () => {
+describe('workspace backup structure v3', () => {
   it('akzeptiert Trail, Entscheidungen und Vergleichsbasis in Dokumentreihenfolge', () => {
     expect(validWorkspaceBackupStructure(bundle())).toBe(true);
   });
@@ -97,7 +95,7 @@ describe('workspace backup structure v2', () => {
   });
 
   it('validiert inkrementell in Abhängigkeitsreihenfolge', () => {
-    const validator = createWorkspaceStructureValidator(2);
+    const validator = createWorkspaceStructureValidator(3);
     const backup = bundle();
     for (const row of backup.verbuende) expect(validator.verbuende(row)).toBe(true);
     for (const row of backup.documents) expect(validator.documents(row)).toBe(true);
@@ -110,19 +108,12 @@ describe('workspace backup structure v2', () => {
     expect(validator.workspaceMeta(backup.workspaceMeta[0])).toBe(false);
   });
 
-  it('akzeptiert ein v1-Verbundbündel ohne Historie und normalisiert es auf v2', () => {
-    const present = bundle();
-    const legacy = {
-      format: 'gspp-workspace-verbund', storageSchemaVersion: 1, verbuende: present.verbuende,
-      documents: [{ ...present.documents[0], storageSchemaVersion: 1 }], drafts: present.drafts, bindings: present.bindings,
-    };
-    const normalized = normalizeVerbundBackup(legacy);
-    expect(normalized).toMatchObject({
-      format: 'gspp-workspace-verbund', storageSchemaVersion: 2, reviewTrail: [], reviewBaseline: [],
-      documents: [{ storageSchemaVersion: 2 }],
-    });
-    expect(normalized?.verbuende).toEqual(legacy.verbuende);
-    expect(normalized && validVerbundBackupStructure(normalized)).toBe(true);
-    expect(normalizeWorkspaceBackup(legacy)).toBeNull();
+  it.each([1, 2])('weist Sicherungsdateien der Speicherversion %i ab', version => {
+    const backup = bundle();
+    const old = { ...backup, storageSchemaVersion: version };
+    expect(validWorkspaceBackupStructure(old)).toBe(false);
+    const { workspaceMeta, ...verbund } = old;
+    expect(workspaceMeta).toHaveLength(1);
+    expect(validVerbundBackupStructure({ ...verbund, format: 'gspp-workspace-verbund' })).toBe(false);
   });
 });

@@ -519,6 +519,7 @@ src/                              # Anwendungsquellcode
 │   ├── oscalStructure.ts             # Strukturorakel (Zählregeln A und B)
 │   ├── renderAppShell.tsx            # Rendert die Shell mit echter Routentabelle für Komponententests
 │   ├── renderWorkspaceArea.tsx       # Shell mit WorkspaceProvider für Router-Tests des Bereichs Informationsverbünde
+│   ├── restoreWorkspaceBackup.ts     # Testhelfer für Dateivorschau und bestätigten Gesamt-Restore
 │   ├── reviewTrailFixtures.ts        # Prüfspur-Mocks und Katalogquellen für die WorkspaceStore-Verträge
 │   ├── workflowFixtures.ts           # Job-Blöcke und temporäre Repository-Fixtures für Skripttests
 │   ├── workspaceAreaFixture.ts       # Speicherfixture mit Sentinels für den Bereich Informationsverbünde

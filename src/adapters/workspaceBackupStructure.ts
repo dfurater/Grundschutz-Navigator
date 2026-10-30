@@ -4,8 +4,10 @@ import { CONTENT_HASH_ALGORITHM, CONTENT_HASH_VERSION } from '@/domain/reviewTra
 import { bindsEnvelopeSource, withinSourceLimits } from '@/adapters/workspaceDraftSource';
 import {
   STORAGE_SCHEMA_VERSION, isVerbundName,
-  type DocumentSnapshot, type ReviewTrailRow, type WorkspaceBackup, type WorkspaceEnvelope, type WorkspaceVerbundBackup,
+  type DocumentSnapshot, type WorkspaceBackup, type WorkspaceVerbundBackup,
 } from '@/domain/workspaceModel';
+
+type StorageVersion = 1 | 2 | 3;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SHA256 = /^[a-f0-9]{64}$/;
@@ -34,7 +36,7 @@ function times(value: Record<string, unknown>): boolean { return timestamp(value
  * verlangt beide Schlüssel. Die Version wird nie aus dem Inhalt geraten.
  */
 interface BundleContext {
-  readonly version: 1 | 2;
+  readonly version: StorageVersion;
   readonly verbuende: Set<string>;
   readonly documents: Map<string, { verbundId: string; rootType: string; oscalVersion: string }>;
   readonly drafts: Set<string>;
@@ -46,7 +48,7 @@ interface BundleContext {
   metaSeen: boolean;
 }
 
-function newContext(version: 1 | 2): BundleContext {
+function newContext(version: StorageVersion): BundleContext {
   return {
     version,
     verbuende: new Set(),
@@ -63,8 +65,8 @@ function newContext(version: 1 | 2): BundleContext {
 
 function collectVerbuende(context: BundleContext, rows: readonly unknown[]): boolean {
   for (const row of rows) {
-    if (!fields(row, ['verbundId', 'name', 'createdAt', 'savedAt']) || !uuid(row.verbundId) || !isVerbundName(row.name)
-      || !times(row) || context.verbuende.has(row.verbundId)) return false;
+    if (!fields(row, ['verbundId', 'name', 'createdAt', 'savedAt'], context.version >= 3 ? ['backupSavedAt'] : []) || !uuid(row.verbundId) || !isVerbundName(row.name)
+      || !times(row) || !validBackupSavedAt(row.backupSavedAt) || context.verbuende.has(row.verbundId)) return false;
     context.verbuende.add(row.verbundId);
   }
   return true;
@@ -83,7 +85,7 @@ function validBackupSavedAt(value: unknown): boolean {
   return value === undefined || timestamp(value);
 }
 
-function validDocumentFields(row: unknown, version: 1 | 2): row is Record<string, unknown> {
+function validDocumentFields(row: unknown, version: StorageVersion): row is Record<string, unknown> {
   return fields(row, ['localId', 'verbundId', 'storageSchemaVersion', 'rootType', 'oscalVersion', 'trustClass', 'documentState', 'createdAt', 'savedAt', 'source'], ['derivedFrom', 'backupSavedAt'])
     && uuid(row.localId) && uuid(row.verbundId) && row.storageSchemaVersion === version
     && OSCAL_ROOT_KEYS.includes(row.rootType as never) && nonEmptyString(row.oscalVersion)
@@ -140,9 +142,9 @@ function collectBindings(context: BundleContext, rows: readonly unknown[]): bool
   return true;
 }
 
-function validWorkspaceMeta(rows: readonly unknown[], version: 1 | 2): boolean {
-  return rows.length === 1 && rows.every(row => fields(row, ['id', 'storageSchemaVersion', 'createdAt', 'savedAt'])
-    && row.id === 'workspace' && row.storageSchemaVersion === version && times(row));
+function validWorkspaceMeta(rows: readonly unknown[], version: StorageVersion): boolean {
+  return rows.length === 1 && rows.every(row => fields(row, ['id', 'storageSchemaVersion', 'createdAt', 'savedAt', ...(version >= 3 ? ['databaseId'] : [])])
+    && row.id === 'workspace' && row.storageSchemaVersion === version && times(row) && (version < 3 || uuid(row.databaseId)));
 }
 
 function validSnapshot(value: unknown): value is DocumentSnapshot {
@@ -223,7 +225,7 @@ function collectDecision(context: BundleContext, row: Record<string, unknown>, l
 }
 
 function collectReviewTrail(context: BundleContext, rows: readonly unknown[]): boolean {
-  if (context.version !== STORAGE_SCHEMA_VERSION) return true;
+  if (context.version < 2) return true;
   for (const row of rows) {
     if (!record(row) || !context.documents.has(row.localId as string)) return false;
     const localId = row.localId as string;
@@ -239,7 +241,7 @@ function collectReviewTrail(context: BundleContext, rows: readonly unknown[]): b
 }
 
 function collectReviewBaseline(context: BundleContext, rows: readonly unknown[]): boolean {
-  if (context.version !== STORAGE_SCHEMA_VERSION) return true;
+  if (context.version < 2) return true;
   for (const row of rows) {
     if (!fields(row, ['localId', 'sequence', 'stand', 'source']) || !context.documents.has(row.localId as string)
       || !positiveInteger(row.sequence) || context.baselines.has(row.localId as string)) return false;
@@ -254,16 +256,16 @@ function collectReviewBaseline(context: BundleContext, rows: readonly unknown[])
 }
 
 /** Call in store dependency order; retained state contains identifiers, never source graphs. */
-export function createWorkspaceStructureValidator(version: 1 | 2 = STORAGE_SCHEMA_VERSION) {
+export function createWorkspaceStructureValidator(version: StorageVersion = STORAGE_SCHEMA_VERSION) {
   const context = newContext(version);
   return {
-    verbuende: (row: WorkspaceBackup['verbuende'][number]) => collectVerbuende(context, [row]),
-    documents: (row: WorkspaceBackup['documents'][number]) => collectDocuments(context, [row]),
-    drafts: (row: WorkspaceBackup['drafts'][number]) => validDrafts(context, [row]),
-    bindings: (row: WorkspaceBackup['bindings'][number]) => collectBindings(context, [row]),
-    reviewTrail: (row: ReviewTrailRow) => collectReviewTrail(context, [row]),
-    reviewBaseline: (row: WorkspaceBackup['reviewBaseline'][number]) => collectReviewBaseline(context, [row]),
-    workspaceMeta: (row: WorkspaceBackup['workspaceMeta'][number]) => {
+    verbuende: (row: unknown) => collectVerbuende(context, [row]),
+    documents: (row: unknown) => collectDocuments(context, [row]),
+    drafts: (row: unknown) => validDrafts(context, [row]),
+    bindings: (row: unknown) => collectBindings(context, [row]),
+    reviewTrail: (row: unknown) => collectReviewTrail(context, [row]),
+    reviewBaseline: (row: unknown) => collectReviewBaseline(context, [row]),
+    workspaceMeta: (row: unknown) => {
       if (context.metaSeen || !validWorkspaceMeta([row], version)) return false;
       context.metaSeen = true;
       return true;
@@ -272,66 +274,28 @@ export function createWorkspaceStructureValidator(version: 1 | 2 = STORAGE_SCHEM
   };
 }
 
-function validBackupStructure(value: unknown, format: 'gspp-workspace' | 'gspp-workspace-verbund', version: 1 | 2): boolean {
+function validBackupStructure(value: unknown, format: 'gspp-workspace' | 'gspp-workspace-verbund'): boolean {
   const required = ['format', 'storageSchemaVersion', 'verbuende', 'documents', 'drafts', 'bindings'];
   if (format === 'gspp-workspace') required.push('workspaceMeta');
-  if (version === STORAGE_SCHEMA_VERSION) required.push('reviewTrail', 'reviewBaseline');
-  if (!fields(value, required) || value.format !== format || value.storageSchemaVersion !== version
+  required.push('reviewTrail', 'reviewBaseline');
+  if (!fields(value, required) || value.format !== format || value.storageSchemaVersion !== STORAGE_SCHEMA_VERSION
     || ![value.verbuende, value.documents, value.drafts, value.bindings].every(Array.isArray)) return false;
   const backup = value as unknown as WorkspaceBackup;
   if (!Array.isArray(backup.verbuende) || !Array.isArray(backup.documents)) return false;
-  if (format === 'gspp-workspace' && (!Array.isArray(backup.workspaceMeta) || !validWorkspaceMeta(backup.workspaceMeta, version))) return false;
+  if (format === 'gspp-workspace' && (!Array.isArray(backup.workspaceMeta) || !validWorkspaceMeta(backup.workspaceMeta, STORAGE_SCHEMA_VERSION))) return false;
   if (format === 'gspp-workspace-verbund' && backup.verbuende.length !== 1) return false;
-  const context = newContext(version);
-  const trail = version === STORAGE_SCHEMA_VERSION ? backup.reviewTrail : [];
-  const baseline = version === STORAGE_SCHEMA_VERSION ? backup.reviewBaseline : [];
-  if (version === STORAGE_SCHEMA_VERSION && (!Array.isArray(trail) || !Array.isArray(baseline))) return false;
+  const context = newContext(STORAGE_SCHEMA_VERSION);
+  const trail = backup.reviewTrail;
+  const baseline = backup.reviewBaseline;
+  if (!Array.isArray(trail) || !Array.isArray(baseline)) return false;
   return collectVerbuende(context, backup.verbuende) && collectDocuments(context, backup.documents)
     && validDrafts(context, backup.drafts) && collectBindings(context, backup.bindings)
     && collectReviewTrail(context, trail) && collectReviewBaseline(context, baseline);
 }
 
 export function validWorkspaceBackupStructure(value: unknown): value is WorkspaceBackup {
-  return validBackupStructure(value, 'gspp-workspace', STORAGE_SCHEMA_VERSION);
+  return validBackupStructure(value, 'gspp-workspace');
 }
 export function validVerbundBackupStructure(value: unknown): value is WorkspaceVerbundBackup {
-  return validBackupStructure(value, 'gspp-workspace-verbund', STORAGE_SCHEMA_VERSION);
-}
-
-function upgradeRows<T extends object>(rows: readonly T[]): T[] {
-  return rows.map(row => ({ ...row, storageSchemaVersion: STORAGE_SCHEMA_VERSION }));
-}
-
-/** Ein v1-Bündel wird beim Restore auf v2 normalisiert; die Historie startet leer. */
-export function normalizeWorkspaceBackup(value: unknown): WorkspaceBackup | null {
-  if (validWorkspaceBackupStructure(value)) return value;
-  if (!validBackupStructure(value, 'gspp-workspace', 1)) return null;
-  const legacy = value as unknown as WorkspaceBackup;
-  return {
-    format: 'gspp-workspace',
-    storageSchemaVersion: STORAGE_SCHEMA_VERSION,
-    verbuende: legacy.verbuende,
-    documents: upgradeRows(legacy.documents) as WorkspaceEnvelope[],
-    drafts: legacy.drafts,
-    bindings: legacy.bindings,
-    workspaceMeta: upgradeRows(legacy.workspaceMeta),
-    reviewTrail: [],
-    reviewBaseline: [],
-  };
-}
-
-export function normalizeVerbundBackup(value: unknown): WorkspaceVerbundBackup | null {
-  if (validVerbundBackupStructure(value)) return value;
-  if (!validBackupStructure(value, 'gspp-workspace-verbund', 1)) return null;
-  const legacy = value as unknown as WorkspaceVerbundBackup;
-  return {
-    format: 'gspp-workspace-verbund',
-    storageSchemaVersion: STORAGE_SCHEMA_VERSION,
-    verbuende: legacy.verbuende,
-    documents: upgradeRows(legacy.documents) as WorkspaceEnvelope[],
-    drafts: legacy.drafts,
-    bindings: legacy.bindings,
-    reviewTrail: [],
-    reviewBaseline: [],
-  };
+  return validBackupStructure(value, 'gspp-workspace-verbund');
 }
