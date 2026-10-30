@@ -27,6 +27,9 @@ test('Verbund-Backup ersetzt oder ergänzt nur den gewählten Verbund in je eine
   transaction.mockClear();
   value(await store.restoreVerbundBackup(bytes(backup), 'replace-verbund'));
   expect(transaction).toHaveBeenCalledTimes(1);
+  const restored = value(await store.listVerbuende()).find(row => row.verbundId === a.verbundId)!;
+  expect(restored.savedAt > a.savedAt).toBe(true);
+  expect(restored.backupSavedAt).toBe(a.savedAt);
   expect(value(await store.exportVerbundBackup(a.verbundId))).toBe(backup);
   expect(value(await store.exportVerbundBackup(b.verbundId))).toBe(untouched);
   expect(value(await store.getDocument(other.localId))).toEqual(other);
