@@ -4,12 +4,13 @@ import { migrateWorkspaceStorage } from '@/adapters/workspaceMigration';
 import { WORKSPACE_DATABASE_NAME, WORKSPACE_SCHEMA, WORKSPACE_SCHEMA_V1, WorkspaceStore } from '@/adapters/workspaceStore';
 import { makeSchemaValidOscalDocument } from '@/test/fixtures/oscalSchemaFixtures';
 import type { LocalId, VerbundId, WorkspaceBackup } from '@/domain/workspaceModel';
-import { normalizeWorkspaceBackup } from '@/adapters/workspaceBackupStructure';
+import { documentSnapshot } from '@/domain/reviewTrail';
+import { createWorkspaceStructureValidator } from '@/adapters/workspaceBackupStructure';
 
 const databases: Dexie[] = [];
 const names: string[] = [];
 const now = '2026-10-16T10:00:00.000Z';
-type V1Backup = Omit<WorkspaceBackup, 'storageSchemaVersion' | 'reviewTrail' | 'reviewBaseline'> & { storageSchemaVersion: 1 };
+type V1Backup = Omit<WorkspaceBackup, 'storageSchemaVersion' | 'reviewTrail' | 'reviewBaseline' | 'workspaceMeta'> & { storageSchemaVersion: 1; workspaceMeta: Omit<WorkspaceBackup['workspaceMeta'][number], 'databaseId'>[] };
 function fixture(): V1Backup {
   const verbundId = crypto.randomUUID() as VerbundId;
   const documents = [0, 1].map(() => ({
@@ -25,7 +26,10 @@ function fixture(): V1Backup {
     bindings: [{ fromLocalId: documents[0].localId, pointer: '/catalog/metadata/title', href: 'reference', target: { kind: 'local', localId: documents[1].localId } }],
     workspaceMeta: [{ id: 'workspace', storageSchemaVersion: 1, createdAt: now, savedAt: now }],
   };
-  if (!normalizeWorkspaceBackup(backup)) throw new Error('Invalid migration fixture');
+  const validator = createWorkspaceStructureValidator(1);
+  for (const name of ['verbuende', 'documents', 'drafts', 'bindings', 'workspaceMeta'] as const) {
+    for (const row of backup[name]) if (!validator[name](row)) throw new Error('Invalid migration fixture');
+  }
   return backup;
 }
 async function seed(data: V1Backup, name = `gspp-migration-test-${crypto.randomUUID()}`) {
@@ -239,4 +243,80 @@ test('verweigert Migration in einer gewöhnlichen Schreibtransaktion', async () 
   await expect(db.transaction('rw', db.tables, tx => migrateWorkspaceStorage(tx, 1, 2)))
     .rejects.toMatchObject({ message: 'WORKSPACE_MIGRATION_INVALID' });
   expect(await rows(db)).toEqual(before);
+});
+
+test.each([1, 2] as const)('öffnet v%i atomar als v3 mit neuer Datenbank-ID und unveränderten Quellen', async version => {
+  const legacy = fixture();
+  const data = version === 1 ? legacy : {
+    ...legacy, storageSchemaVersion: 2,
+    documents: legacy.documents.map(row => ({ ...row, storageSchemaVersion: 2 })),
+    workspaceMeta: legacy.workspaceMeta.map(row => ({ ...row, storageSchemaVersion: 2 })),
+    reviewTrail: [] as WorkspaceBackup['reviewTrail'], reviewBaseline: [] as WorkspaceBackup['reviewBaseline'],
+  };
+  if ('reviewTrail' in data) {
+    const doc = data.documents[0];
+    const stand = await documentSnapshot(doc.source, doc.rootType);
+    if (!stand) throw new Error('Missing fixture snapshot');
+    data.reviewTrail.push({ localId: doc.localId, sequence: 1, kind: 'checkpoint', createdAt: now, documentState: 'imported', stand, diff: { version: 1, baseSequence: null, entries: [], truncated: false } });
+    data.reviewBaseline.push({ localId: doc.localId, sequence: 1, stand, source: doc.source });
+  }
+  names.push(WORKSPACE_DATABASE_NAME);
+  const seedDb = new Dexie(WORKSPACE_DATABASE_NAME);
+  seedDb.version(version).stores(version === 1 ? WORKSPACE_SCHEMA_V1 : WORKSPACE_SCHEMA);
+  await seedDb.open();
+  for (const table of seedDb.tables) await table.bulkAdd(data[table.name as keyof typeof data] as object[]);
+  seedDb.close();
+  const opened = await WorkspaceStore.open();
+  if (!opened.ok) throw new Error(opened.diagnostic.code);
+  try {
+    const exported = await opened.value.exportBackup();
+    if (!exported.ok) throw new Error(exported.diagnostic.code);
+    const result = JSON.parse(exported.value);
+    expect(result.storageSchemaVersion).toBe(3);
+    expect(result.workspaceMeta[0]).toEqual({ ...legacy.workspaceMeta[0], storageSchemaVersion: 3, databaseId: expect.stringMatching(/^[0-9a-f-]{36}$/) });
+    expect(result.documents).toEqual([...legacy.documents].sort((a, b) => a.localId.localeCompare(b.localId)).map(row => ({ ...row, storageSchemaVersion: 3 })));
+    expect(result.drafts).toEqual(legacy.drafts);
+    expect(result.reviewTrail).toEqual('reviewTrail' in data ? data.reviewTrail : []);
+    expect(result.reviewBaseline).toEqual('reviewBaseline' in data ? data.reviewBaseline : []);
+    const id = result.workspaceMeta[0].databaseId;
+    opened.value.close();
+    const again = await WorkspaceStore.open();
+    if (!again.ok) throw new Error(again.diagnostic.code);
+    try {
+      const backup = await again.value.exportBackup();
+      if (!backup.ok) throw new Error(backup.diagnostic.code);
+      expect(JSON.parse(backup.value).workspaceMeta[0].databaseId).toBe(id);
+    } finally { again.value.close(); }
+  } finally { opened.value.close(); }
+});
+
+test.each([1, 2] as const)('rollt einen Fehler im v3-Schritt bis zum ursprünglichen v%i zurück und erlaubt Rettungsexport', async version => {
+  const data = fixture();
+  names.push(WORKSPACE_DATABASE_NAME);
+  const seedDb = new Dexie(WORKSPACE_DATABASE_NAME);
+  seedDb.version(version).stores(version === 1 ? WORKSPACE_SCHEMA_V1 : WORKSPACE_SCHEMA);
+  await seedDb.open();
+  for (const table of seedDb.tables) {
+    const rows = (data[table.name as keyof V1Backup] ?? []) as object[];
+    await table.bulkAdd(['documents', 'workspaceMeta'].includes(table.name) ? rows.map(row => ({ ...row, storageSchemaVersion: version })) : rows);
+  }
+  const before = await rows(seedDb);
+  seedDb.close();
+  const update = IDBCursor.prototype.update;
+  vi.spyOn(IDBCursor.prototype, 'update').mockImplementation(function (this: IDBCursor, value: unknown) {
+    if (this.source instanceof IDBObjectStore && this.source.name === 'workspaceMeta' && (value as { storageSchemaVersion: number }).storageSchemaVersion === 3) {
+      throw new Error('PRIVATE_MIGRATION_FAILURE');
+    }
+    return update.call(this, value);
+  });
+  expect(await WorkspaceStore.open()).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_MIGRATION_FAILED' } });
+  vi.restoreAllMocks();
+  const rescue = await WorkspaceStore.exportRecoveryBackup();
+  if (!rescue.ok) throw new Error(rescue.diagnostic.code);
+  expect(JSON.parse(rescue.value)).toMatchObject({ storageSchemaVersion: version });
+  const raw = new Dexie(WORKSPACE_DATABASE_NAME);
+  databases.push(raw);
+  await raw.open();
+  expect(raw.verno).toBe(version);
+  expect(await rows(raw)).toEqual(before);
 });

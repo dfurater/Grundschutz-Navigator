@@ -1,3 +1,4 @@
+import { restoreWorkspaceBackup } from '@/test/restoreWorkspaceBackup';
 import Dexie from 'dexie';
 import { afterEach, expect, it, vi } from 'vitest';
 import { WorkspaceStore, WORKSPACE_DATABASE_NAME } from '@/adapters/workspaceStore';
@@ -5,6 +6,7 @@ import { importClass2OscalDocument } from '@/adapters/oscalImportGate';
 import type { WorkspaceResult } from '@/domain/workspaceModel';
 import { makeSchemaValidOscalDocument } from '@/test/fixtures/oscalSchemaFixtures';
 import { CLASS_2_IMPORT_LIMITS } from '@/domain/class2ImportLimits.mjs';
+import { countObjectGraphNodesCapped } from '@/domain/oscalObjectGraph';
 import { TRANSPORT_MAX_OPERATIONS } from '@/domain/oscalImportTransport';
 
 function value<T>(result: WorkspaceResult<T>): T {
@@ -25,9 +27,13 @@ it('returns a node-dense bundle from the real worker in acknowledged bounded fra
   const imported = await importClass2OscalDocument(new TextEncoder().encode(JSON.stringify(makeSchemaValidOscalDocument('catalog', '1.1.3'))), { trustClass: 'class-2-local-user' });
   if (!imported.ok) throw new Error(imported.diagnostic.code);
   const envelope = value(await store.addDocument(verbund.verbundId, imported.document));
-  const source = Array.from({ length: CLASS_2_IMPORT_LIMITS.maxNodes - 5_000 }, (_, index) => index);
-  value(await store.autosaveDraft(envelope.localId, envelope.savedAt, null, source));
-  const backup = value(await store.exportBackup());
+  value(await store.autosaveDraft(envelope.localId, envelope.savedAt, null, []));
+  const bundle = JSON.parse(value(await store.exportBackup()));
+  const limit = CLASS_2_IMPORT_LIMITS.maxNodes;
+  const source = Array(limit - countObjectGraphNodesCapped(bundle, limit)).fill(null);
+  bundle.drafts[0].source = source;
+  expect(countObjectGraphNodesCapped(bundle, limit)).toBe(limit);
+  const backup = JSON.stringify(bundle);
   const frames: { type: string; sequence?: number; size?: number; acks: number }[] = [];
   let acks = 0;
   const NativeWorker = Worker;
@@ -42,7 +48,7 @@ it('returns a node-dense bundle from the real worker in acknowledged bounded fra
       this.addEventListener('message', event => frames.push({ type: event.data.type, sequence: event.data.sequence, size: event.data.operations?.length, acks }));
     }
   });
-  try { value(await store.restoreBackup(new TextEncoder().encode(backup), 'replace-workspace')); }
+  try { value(await restoreWorkspaceBackup(store, new TextEncoder().encode(backup))); }
   finally { vi.unstubAllGlobals(); post.mockRestore(); }
   const chunks = frames.filter(frame => frame.type === 'chunk');
   expect(frames[0].type).toBe('start');

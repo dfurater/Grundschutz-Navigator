@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { restoreWorkspaceBackup } from '@/test/restoreWorkspaceBackup';
 import 'fake-indexeddb/auto';
 import Dexie from 'dexie';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
@@ -74,7 +75,7 @@ it.each(['workspace', 'verbund'] as const)('restores an incomplete draft profile
   const backup = value(scope === 'workspace' ? await store.exportBackup() : await store.exportVerbundBackup(verbund.verbundId));
   value(await store.deleteDocument(envelope.localId));
   const bytes = new TextEncoder().encode(backup);
-  value(scope === 'workspace' ? await store.restoreBackup(bytes, 'replace-workspace') : await store.restoreVerbundBackup(bytes, 'replace-verbund'));
+  value(scope === 'workspace' ? await restoreWorkspaceBackup(store, bytes) : await store.restoreVerbundBackup(bytes, 'replace-verbund'));
   expect(value(await store.getDocument(envelope.localId))).toMatchObject({ documentState: 'draft', source: profile([]) });
 });
 
@@ -82,7 +83,7 @@ it.each<DocumentState>(['imported', 'export-ready'])('rejects a bundle that carr
   value(await store.addDocument(verbund.verbundId, incomplete(), 'draft'));
   const bundle = JSON.parse(value(await store.exportBackup())) as { documents: { documentState: DocumentState }[] };
   bundle.documents[0].documentState = state;
-  const result = await store.restoreBackup(new TextEncoder().encode(JSON.stringify(bundle)), 'replace-workspace');
+  const result = await restoreWorkspaceBackup(store, new TextEncoder().encode(JSON.stringify(bundle)));
   expect(code(result)).toBe('WORKSPACE_BACKUP_DOCUMENT_REJECTED');
 });
 
@@ -95,7 +96,7 @@ it.each([
   const before = value(await store.exportBackup());
   const bundle = JSON.parse(before) as { documents: Record<string, unknown>[] };
   manipulate(bundle.documents[0]);
-  const result = await store.restoreBackup(new TextEncoder().encode(JSON.stringify(bundle)), 'replace-workspace');
+  const result = await restoreWorkspaceBackup(store, new TextEncoder().encode(JSON.stringify(bundle)));
   expect(code(result)).toBe('WORKSPACE_BACKUP_DOCUMENT_REJECTED');
   expect(value(await store.exportBackup())).toBe(before);
 });

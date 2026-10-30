@@ -6,7 +6,7 @@ declare const localIdBrand: unique symbol;
 declare const verbundIdBrand: unique symbol;
 export type LocalId = string & { readonly [localIdBrand]: 'LocalId' };
 export type VerbundId = string & { readonly [verbundIdBrand]: 'VerbundId' };
-export const STORAGE_SCHEMA_VERSION = 2;
+export const STORAGE_SCHEMA_VERSION = 3;
 export type DocumentState = 'imported' | 'draft' | 'export-ready';
 
 /** A verbund name carries at least one non-whitespace character. */
@@ -15,6 +15,7 @@ export function isVerbundName(value: unknown): value is string {
 }
 
 export interface WorkspaceVerbund {
+  readonly backupSavedAt?: string;
   readonly verbundId: VerbundId;
   readonly name: string;
   readonly createdAt: string;
@@ -128,6 +129,7 @@ export interface WorkspaceDraft {
 }
 
 export interface WorkspaceMeta {
+  readonly databaseId: string;
   readonly id: 'workspace';
   readonly storageSchemaVersion: number;
   readonly createdAt: string;
@@ -150,6 +152,15 @@ export type WorkspaceVerbundBackup = Omit<WorkspaceBackup, 'format' | 'workspace
   readonly format: 'gspp-workspace-verbund';
   readonly verbuende: [WorkspaceVerbund];
 };
+
+export type WorkspaceRestoreTarget = Pick<WorkspaceMeta, 'databaseId' | 'storageSchemaVersion' | 'savedAt'>;
+
+export interface WorkspaceRestorePreview {
+  readonly kind: 'workspace';
+  readonly backup: WorkspaceBackup;
+  readonly target: WorkspaceRestoreTarget;
+  readonly counts: Readonly<Record<Exclude<keyof WorkspaceBackup, 'format' | 'storageSchemaVersion'>, { readonly file: number; readonly target: number }>>;
+}
 
 export type WorkspaceResult<T> =
   | { readonly ok: true; readonly value: T }

@@ -1,10 +1,10 @@
-import { normalizeWorkspaceBackup, normalizeVerbundBackup } from '@/adapters/workspaceBackupStructure';
+import { validWorkspaceBackupStructure, validVerbundBackupStructure } from '@/adapters/workspaceBackupStructure';
 import { CLASS_2_IMPORT_LIMITS, WORKSPACE_BACKUP_FRAME_DEPTH, WORKSPACE_BACKUP_MAX_BYTES } from '@/domain/class2ImportLimits.mjs';
 import { OscalSourceDecoder, type TransportLimits } from '@/domain/oscalImportTransport';
 import { rejectWorkspaceBackup, WORKSPACE_BACKUP_DIAGNOSTIC_CODES, WORKSPACE_BACKUP_WORKER_TIMEOUT_MS } from '@/adapters/workspaceBackupContract';
 import type { WorkspaceBackup, WorkspaceVerbundBackup, WorkspaceResult } from '@/domain/workspaceModel';
 
-/** Bundle bounds of the return transport: the node and depth limits of the bundle graph, string units within the byte limit. */
+/** Return transport uses the same node and string budgets as the validated backup file. */
 const BACKUP_TRANSPORT_LIMITS: TransportLimits = {
   maxNodes: CLASS_2_IMPORT_LIMITS.maxNodes,
   maxDepth: CLASS_2_IMPORT_LIMITS.maxDepth + WORKSPACE_BACKUP_FRAME_DEPTH,
@@ -44,7 +44,7 @@ function receiveFrame<T>(data: unknown, receiver: Receiver, adopt: (value: unkno
     return undefined;
   }
   if (frame.type === 'done' && hasKeys(frame, ['type', 'sequence']) && decoder && frame.sequence === receiver.sequence) {
-    // This locally created worker is the validation authority; the adopter checks the closed bundle form and maps a v1 bundle to v2.
+    // This locally created worker is the validation authority; the adopter checks the closed bundle form.
     const value = adopt(decoder.finish());
     if (!value) throw new Error('Invalid bundle');
     return { ok: true, value };
@@ -95,8 +95,8 @@ function parseBackup<T extends WorkspaceBackup | WorkspaceVerbundBackup>(bytes: 
 }
 
 export function parseWorkspaceBackup(bytes: Uint8Array): Promise<WorkspaceResult<WorkspaceBackup>> {
-  return parseBackup(bytes, 'workspace', normalizeWorkspaceBackup);
+  return parseBackup(bytes, 'workspace', value => validWorkspaceBackupStructure(value) ? value : null);
 }
 export function parseVerbundBackup(bytes: Uint8Array): Promise<WorkspaceResult<WorkspaceVerbundBackup>> {
-  return parseBackup(bytes, 'verbund', normalizeVerbundBackup);
+  return parseBackup(bytes, 'verbund', value => validVerbundBackupStructure(value) ? value : null);
 }

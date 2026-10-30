@@ -26,12 +26,12 @@ function input(dense = true): Uint8Array {
   const timestamp = '2026-10-16T12:00:00.000Z';
   const localId = '22222222-2222-4222-8222-222222222222';
   const verbundId = '11111111-1111-4111-8111-111111111111';
-  const value = { format: 'gspp-workspace', storageSchemaVersion: 2,
+  const value = { format: 'gspp-workspace', storageSchemaVersion: 3,
     verbuende: [{ verbundId, name: 'Test', createdAt: timestamp, savedAt: timestamp }],
-    documents: [{ localId, verbundId, storageSchemaVersion: 2, rootType: 'catalog', oscalVersion: '1.1.3', trustClass: 'class-2-local-user', documentState: 'imported', createdAt: timestamp, savedAt: timestamp, source: makeSchemaValidOscalDocument('catalog', '1.1.3') }],
+    documents: [{ localId, verbundId, storageSchemaVersion: 3, rootType: 'catalog', oscalVersion: '1.1.3', trustClass: 'class-2-local-user', documentState: 'imported', createdAt: timestamp, savedAt: timestamp, source: makeSchemaValidOscalDocument('catalog', '1.1.3') }],
     drafts: [{ localId, savedAt: timestamp, source: [] as unknown[] }], bindings: [],
     reviewTrail: [], reviewBaseline: [],
-    workspaceMeta: [{ id: 'workspace', storageSchemaVersion: 2, createdAt: timestamp, savedAt: timestamp }] };
+    workspaceMeta: [{ id: 'workspace', databaseId: '66666666-6666-4666-8666-666666666666', storageSchemaVersion: 3, createdAt: timestamp, savedAt: timestamp }] };
   for (let index = 1; index < 4; index++) {
     const nextId = `22222222-2222-4222-8222-22222222222${index + 3}`;
     value.documents.push({ ...value.documents[0], localId: nextId });

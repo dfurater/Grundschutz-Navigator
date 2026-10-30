@@ -1,6 +1,7 @@
 // @vitest-environment node
 // Contract of the review trail (GSPP-315): checkpoint CAS, decision transitions,
 // atomic approval, reference validation and worker failure without a write.
+import { restoreWorkspaceBackup } from '@/test/restoreWorkspaceBackup';
 import 'fake-indexeddb/auto';
 import Dexie from 'dexie';
 import { expect, it, vi } from 'vitest';
@@ -94,7 +95,7 @@ it.each(['workspace', 'verbund'] as const)('keeps a root change backupable with 
 
     const backup = value(await (scope === 'workspace' ? store.exportBackup() : store.exportVerbundBackup(verbund.verbundId)));
     value(await (scope === 'workspace'
-      ? store.restoreBackup(bytes(backup), 'replace-workspace')
+      ? restoreWorkspaceBackup(store, bytes(backup))
       : store.restoreVerbundBackup(bytes(backup), 'replace-verbund')));
     const view = value(await store.listReviewTrail(envelope.localId));
     expect(view.document.rootType).toBe('profile');

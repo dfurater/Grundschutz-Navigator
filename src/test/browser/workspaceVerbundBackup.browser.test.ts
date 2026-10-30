@@ -1,3 +1,4 @@
+import { restoreWorkspaceBackup } from '@/test/restoreWorkspaceBackup';
 import { expect, test, vi } from 'vitest';
 import { value, open, document } from '@/test/browser/workspaceStoreFixtures';
 import { WORKSPACE_BACKUP_MAX_BYTES } from '@/domain/class2ImportLimits.mjs';
@@ -26,6 +27,9 @@ test('Verbund-Backup ersetzt oder ergänzt nur den gewählten Verbund in je eine
   transaction.mockClear();
   value(await store.restoreVerbundBackup(bytes(backup), 'replace-verbund'));
   expect(transaction).toHaveBeenCalledTimes(1);
+  const restored = value(await store.listVerbuende()).find(row => row.verbundId === a.verbundId)!;
+  expect(restored.savedAt > a.savedAt).toBe(true);
+  expect(restored.backupSavedAt).toBe(a.savedAt);
   expect(value(await store.exportVerbundBackup(a.verbundId))).toBe(backup);
   expect(value(await store.exportVerbundBackup(b.verbundId))).toBe(untouched);
   expect(value(await store.getDocument(other.localId))).toEqual(other);
@@ -57,11 +61,11 @@ test('Verbund-Wiederherstellung lehnt Kollisionen, falsche Formate und ungültig
   const conflict = selected.replaceAll(one.localId, other.localId);
   expect(await store.restoreVerbundBackup(bytes(conflict), 'replace-verbund')).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_BACKUP_CONFLICT' } });
   expect(value(await store.exportBackup())).toBe(before);
-  expect(await store.restoreBackup(bytes(selected), 'replace-workspace')).toMatchObject({ ok: false });
+  expect(await restoreWorkspaceBackup(store, bytes(selected))).toMatchObject({ ok: false });
   const invalid = JSON.parse(selected); invalid.documents[0].source = { catalog: {} };
   const multiple = JSON.parse(selected); multiple.verbuende.push({ ...multiple.verbuende[0], verbundId: b.verbundId });
   const metadata = { ...JSON.parse(selected), workspaceMeta: JSON.parse(before).workspaceMeta };
-  for (const input of [bytes(before), bytes(JSON.stringify(invalid)), bytes(JSON.stringify(multiple)), bytes(JSON.stringify(metadata)), bytes(selected.replace('"storageSchemaVersion":2', '"storageSchemaVersion":3')), new Uint8Array(WORKSPACE_BACKUP_MAX_BYTES + 1)]) {
+  for (const input of [bytes(before), bytes(JSON.stringify(invalid)), bytes(JSON.stringify(multiple)), bytes(JSON.stringify(metadata)), bytes(selected.replace('"storageSchemaVersion":3', '"storageSchemaVersion":4')), new Uint8Array(WORKSPACE_BACKUP_MAX_BYTES + 1)]) {
     expect(await store.restoreVerbundBackup(input, 'replace-verbund')).toMatchObject({ ok: false });
     expect(value(await store.exportBackup())).toBe(before);
   }

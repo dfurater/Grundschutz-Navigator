@@ -1,3 +1,4 @@
+import { restoreWorkspaceBackup } from '@/test/restoreWorkspaceBackup';
 import Dexie from 'dexie';
 import { expect, test, vi } from 'vitest';
 import { WORKSPACE_DATABASE_NAME } from '@/adapters/workspaceStore';
@@ -191,7 +192,7 @@ test('Backup erhält negative Null in einem eigenen Dokument und Entwurf', async
   value(await store.autosaveDraft(envelope.localId, envelope.savedAt, null, { value: -0 }));
   const backup = value(await store.exportBackup());
   expect(backup).toContain('"start":-0');
-  value(await store.restoreBackup(new TextEncoder().encode(backup), 'replace-workspace'));
+  value(await restoreWorkspaceBackup(store, new TextEncoder().encode(backup)));
   const restored = value(await store.getDraft(envelope.localId))!.source as { value: number };
   expect(Object.is(restored.value, -0)).toBe(true);
   const loaded = value(await store.getDocument(envelope.localId))!.source as typeof source;
@@ -210,7 +211,7 @@ test('Backup erhält gespeicherte Artefaktverweise auch nach einer Registersperr
   db.close();
   const backup = value(await store.exportBackup());
   expect(JSON.parse(backup).bindings[0].target).toEqual(target);
-  value(await store.restoreBackup(new TextEncoder().encode(backup), 'replace-workspace'));
+  value(await restoreWorkspaceBackup(store, new TextEncoder().encode(backup)));
   expect(value(await store.listBindings())[0].target).toEqual(target);
   expect(await store.setBinding({ fromLocalId: envelope.localId, pointer: '/catalog/metadata/title', href: 'DOCUMENT_SENTINEL', target: target as never }, value(await store.getDocument(envelope.localId))!.savedAt)).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_ARTIFACT_UNSUPPORTED' } });
 });
