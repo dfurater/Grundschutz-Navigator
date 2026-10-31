@@ -1,4 +1,4 @@
-import { restoreWorkspaceBackup } from '@/test/restoreWorkspaceBackup';
+import { restoreWorkspaceBackup, restoreVerbundBackup } from '@/test/restoreWorkspaceBackup';
 import Dexie from 'dexie';
 import { afterEach, beforeEach, expect, it } from 'vitest';
 import { WorkspaceStore, WORKSPACE_DATABASE_NAME } from '@/adapters/workspaceStore';
@@ -40,7 +40,7 @@ it.each(['workspace', 'verbund'] as const)('round-trips a schema-valid profile a
   const imported = valueImported(await importClass2OscalDocument(new TextEncoder().encode(JSON.stringify(source)), { trustClass: 'class-2-local-user' }));
   const stored = value(await store.addDocument(verbund.verbundId, imported));
   const backup = value(await (scope === 'workspace' ? store.exportBackup() : store.exportVerbundBackup(verbund.verbundId)));
-  value(await (scope === 'workspace' ? restoreWorkspaceBackup(store, new TextEncoder().encode(backup)) : store.restoreVerbundBackup(new TextEncoder().encode(backup), 'replace-verbund')));
+  value(await (scope === 'workspace' ? restoreWorkspaceBackup(store, new TextEncoder().encode(backup)) : restoreVerbundBackup(store, new TextEncoder().encode(backup))));
   expect(value(await store.getDocument(stored.localId))?.source).toEqual(source);
 });
 
@@ -49,7 +49,7 @@ it.each(['workspace', 'verbund'] as const)('round-trips a draft at the full sour
   for (let depth = 1; depth < CLASS_2_IMPORT_LIMITS.maxDepth; depth++) source = { child: source };
   value(await store.autosaveDraft(envelope.localId, envelope.savedAt, null, source));
   const backup = value(await (scope === 'workspace' ? store.exportBackup() : store.exportVerbundBackup(verbund.verbundId)));
-  value(await (scope === 'workspace' ? restoreWorkspaceBackup(store, new TextEncoder().encode(backup)) : store.restoreVerbundBackup(new TextEncoder().encode(backup), 'replace-verbund')));
+  value(await (scope === 'workspace' ? restoreWorkspaceBackup(store, new TextEncoder().encode(backup)) : restoreVerbundBackup(store, new TextEncoder().encode(backup))));
   expect(value(await store.getDraft(envelope.localId))?.source).toEqual(source);
 });
 
@@ -64,7 +64,7 @@ it.each(['workspace', 'verbund'] as const)('round-trips documents whose combined
     value(await store.addDocument(verbund.verbundId, imported));
   }
   const backup = value(await (scope === 'workspace' ? store.exportBackup() : store.exportVerbundBackup(verbund.verbundId)));
-  value(await (scope === 'workspace' ? restoreWorkspaceBackup(store, new TextEncoder().encode(backup)) : store.restoreVerbundBackup(new TextEncoder().encode(backup), 'replace-verbund')));
+  value(await (scope === 'workspace' ? restoreWorkspaceBackup(store, new TextEncoder().encode(backup)) : restoreVerbundBackup(store, new TextEncoder().encode(backup))));
   const restored = JSON.parse(value(await (scope === 'workspace' ? store.exportBackup() : store.exportVerbundBackup(verbund.verbundId))));
   const expected = JSON.parse(backup);
   // Im Re-Export unterscheidet sich nur der fortgeschriebene Metazeitstempel.
@@ -83,7 +83,7 @@ it.each(['workspace', 'verbund'] as const)('retains a binding after its source h
   const imported = valueImported(await importClass2OscalDocument(new TextEncoder().encode(JSON.stringify(source)), { trustClass: 'class-2-local-user' }));
   value(await store.replaceDocument(envelope.localId, current.savedAt, null, imported));
   const backup = value(await (scope === 'workspace' ? store.exportBackup() : store.exportVerbundBackup(verbund.verbundId)));
-  value(await (scope === 'workspace' ? restoreWorkspaceBackup(store, new TextEncoder().encode(backup)) : store.restoreVerbundBackup(new TextEncoder().encode(backup), 'replace-verbund')));
+  value(await (scope === 'workspace' ? restoreWorkspaceBackup(store, new TextEncoder().encode(backup)) : restoreVerbundBackup(store, new TextEncoder().encode(backup))));
   expect(value(await store.listBindings())).toEqual([binding]);
   expect(value(await store.getDocument(envelope.localId))?.source).toEqual(source);
 });

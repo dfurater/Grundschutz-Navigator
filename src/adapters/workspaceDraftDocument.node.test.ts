@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { restoreWorkspaceBackup } from '@/test/restoreWorkspaceBackup';
+import { restoreWorkspaceBackup, restoreVerbundBackup } from '@/test/restoreWorkspaceBackup';
 import 'fake-indexeddb/auto';
 import Dexie from 'dexie';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
@@ -75,7 +75,7 @@ it.each(['workspace', 'verbund'] as const)('restores an incomplete draft profile
   const backup = value(scope === 'workspace' ? await store.exportBackup() : await store.exportVerbundBackup(verbund.verbundId));
   value(await store.deleteDocument(envelope.localId));
   const bytes = new TextEncoder().encode(backup);
-  value(scope === 'workspace' ? await restoreWorkspaceBackup(store, bytes) : await store.restoreVerbundBackup(bytes, 'replace-verbund'));
+  value(scope === 'workspace' ? await restoreWorkspaceBackup(store, bytes) : await restoreVerbundBackup(store, bytes));
   expect(value(await store.getDocument(envelope.localId))).toMatchObject({ documentState: 'draft', source: profile([]) });
 });
 

@@ -1,6 +1,6 @@
 import type Dexie from 'dexie';
 import type { Collection } from 'dexie';
-import { STORAGE_SCHEMA_VERSION, type LocalId, type VerbundId, type WorkspaceBackup, type WorkspaceVerbundBackup, type WorkspaceRestoreTarget, type WorkspaceMeta, type WorkspaceEnvelope, type WorkspaceDraft, type WorkspaceBinding, type WorkspaceVerbund, type ReviewTrailRow, type ReviewBaseline } from '@/domain/workspaceModel';
+import { STORAGE_SCHEMA_VERSION, type LocalId, type VerbundId, type WorkspaceBackup, type WorkspaceVerbundBackup, type WorkspaceRestoreTarget, type WorkspaceVerbundRestoreTarget, type WorkspaceVerbundRestorePreview, type WorkspaceMeta, type WorkspaceEnvelope, type WorkspaceDraft, type WorkspaceBinding, type WorkspaceVerbund, type ReviewTrailRow, type ReviewBaseline } from '@/domain/workspaceModel';
 import { CLASS_2_IMPORT_LIMITS, WORKSPACE_BACKUP_MAX_BYTES } from '@/domain/class2ImportLimits.mjs';
 import { countObjectGraphNodesCapped, enforceClass2ObjectGraphInvariants, enforceWorkspaceBackupGraphInvariants } from '@/domain/oscalObjectGraph';
 import { serializeWorkspaceJson } from '@/domain/workspaceJson';
@@ -179,12 +179,55 @@ export async function restoreWorkspaceBackupSnapshot(db: Dexie, backup: Workspac
   await db.table('workspaceMeta').bulkAdd(backup.workspaceMeta.map(row => ({ ...row, databaseId: meta.databaseId, savedAt: stamp })));
 }
 
-/** Validate collisions before the first write; the caller owns the single write transaction. */
-export async function restoreVerbundBackupSnapshot(db: Dexie, backup: WorkspaceVerbundBackup): Promise<void> {
+/** Caller owns one transaction covering all workspace stores, in preview and before replacement. */
+export async function readVerbundRestorePreviewSnapshot(db: Dexie, backup: WorkspaceVerbundBackup): Promise<WorkspaceVerbundRestorePreview> {
+  if (db.backendDB().version > STORAGE_SCHEMA_VERSION * 10) reject('WORKSPACE_SCHEMA_NEWER');
+  const meta = await db.table<WorkspaceMeta>('workspaceMeta').get('workspace');
+  if (meta?.storageSchemaVersion !== STORAGE_SCHEMA_VERSION || typeof meta.databaseId !== 'string') reject('WORKSPACE_SCHEMA_INVALID');
   const verbundId = backup.verbuende[0].verbundId;
   const documents = db.table<WorkspaceEnvelope, LocalId>('documents');
   const incoming = await documents.bulkGet(backup.documents.map(row => row.localId));
   if (incoming.some(row => row && row.verbundId !== verbundId)) reject('WORKSPACE_BACKUP_CONFLICT');
+  const existingVerbund = await db.table<WorkspaceVerbund>('verbuende').get(verbundId) ?? null;
+  const members = await documents.where('verbundId').equals(verbundId).sortBy('localId');
+  const ids = members.map(row => row.localId);
+  const memberIds = new Set(ids);
+  const targetDocuments: WorkspaceVerbundRestoreTarget['documents'][number][] = [];
+  let draftCount = 0;
+  let trailCount = 0;
+  let baselineCount = 0;
+  for (const row of members) {
+    const draft = await db.table<WorkspaceDraft>('drafts').get(row.localId);
+    const trail = db.table<ReviewTrailRow>('reviewTrail').where('localId').equals(row.localId);
+    const last = await trail.last();
+    const baseline = await db.table<ReviewBaseline>('reviewBaseline').get(row.localId);
+    if (draft) draftCount++;
+    trailCount += await trail.count();
+    if (baseline) baselineCount++;
+    targetDocuments.push({ localId: row.localId, savedAt: row.savedAt, draftSavedAt: draft?.savedAt ?? null, trailSequence: last?.sequence ?? null, baselineSequence: baseline?.sequence ?? null });
+  }
+  return {
+    kind: 'verbund', backup, verbundId, name: backup.verbuende[0].name, existingVerbund,
+    target: { databaseId: meta.databaseId, storageSchemaVersion: meta.storageSchemaVersion, nativeDatabaseVersion: db.backendDB().version, verbundSavedAt: existingVerbund?.savedAt ?? null, documents: targetDocuments },
+    counts: {
+      verbuende: { file: 1, target: existingVerbund ? 1 : 0 },
+      documents: { file: backup.documents.length, target: members.length },
+      drafts: { file: backup.drafts.length, target: draftCount },
+      bindings: { file: backup.bindings.length, target: await db.table<WorkspaceBinding>('bindings').filter(row => memberIds.has(row.fromLocalId)).count() },
+      reviewTrail: { file: backup.reviewTrail.length, target: trailCount },
+      reviewBaseline: { file: backup.reviewBaseline.length, target: baselineCount },
+    },
+  };
+}
+
+/** Validate collisions before the first write; the caller owns the single write transaction. */
+export async function restoreVerbundBackupSnapshot(db: Dexie, backup: WorkspaceVerbundBackup, target: WorkspaceVerbundRestoreTarget): Promise<void> {
+  const meta = await db.table<WorkspaceMeta>('workspaceMeta').get('workspace');
+  if (db.backendDB().version !== target.nativeDatabaseVersion || meta?.databaseId !== target.databaseId || meta.storageSchemaVersion !== target.storageSchemaVersion) reject('WORKSPACE_SAVE_CONFLICT');
+  const current = await readVerbundRestorePreviewSnapshot(db, backup);
+  if (JSON.stringify(current.target) !== JSON.stringify(target)) reject('WORKSPACE_SAVE_CONFLICT');
+  const verbundId = backup.verbuende[0].verbundId;
+  const documents = db.table<WorkspaceEnvelope, LocalId>('documents');
   const stamp = await restoredStamp(db, [
     ...backup.verbuende, ...backup.documents, ...backup.drafts,
     ...backup.reviewTrail.map(row => ({ savedAt: row.createdAt })),

@@ -6,7 +6,7 @@ import {
   STORAGE_SCHEMA_VERSION, isVerbundName,
   type DocumentState, type LocalId, type VerbundId, type WorkspaceBinding,
   type WorkspaceDraft, type WorkspaceEnvelope, type WorkspaceMeta, type WorkspaceDocumentSummary,
-  type WorkspaceResult, type WorkspaceVerbund, type WorkspaceRestorePreview,
+  type WorkspaceResult, type WorkspaceVerbund, type WorkspaceRestorePreview, type WorkspaceVerbundRestorePreview,
   type ReviewBaseline, type ReviewCheckpoint, type ReviewDecision, type ReviewDecisionKind, type ReviewTrailRow,
   type ReviewTrailView, type DocumentSnapshot,
 } from '@/domain/workspaceModel';
@@ -15,7 +15,7 @@ import { parseWorkspaceBackup, parseVerbundBackup } from '@/adapters/workspaceBa
 import { CLASS_2_IMPORT_LIMITS } from '@/domain/oscalImportContract';
 import { serializeWorkspaceJson } from '@/domain/workspaceJson';
 import { exportNewerWorkspaceBackup } from '@/adapters/workspaceRecoveryStorage';
-import { exportWorkspaceBackupSnapshot, restoreWorkspaceBackupSnapshot, exportVerbundBackupSnapshot, restoreVerbundBackupSnapshot, writtenRow } from '@/adapters/workspaceBackupStorage';
+import { exportWorkspaceBackupSnapshot, restoreWorkspaceBackupSnapshot, exportVerbundBackupSnapshot, restoreVerbundBackupSnapshot, readVerbundRestorePreviewSnapshot, writtenRow } from '@/adapters/workspaceBackupStorage';
 import { StorageFailure, failure, reject, timestamp } from '@/adapters/workspaceStorageFailure';
 import { deleteDatabase, storedDatabaseShape, withinDeadline } from '@/adapters/workspaceDatabaseLifecycle';
 import { migrateWorkspaceStorage } from '@/adapters/workspaceMigration';
@@ -120,7 +120,7 @@ async function approvalStandFor(document: Class2OscalImportedDocument, schemaVal
 /** No singleton, cached sources, search index or document-content event payloads. */
 export class WorkspaceStore {
   private readonly db: Dexie;
-  private readonly restorePreviews = new WeakSet<WorkspaceRestorePreview>();
+  private readonly restorePreviews = new WeakSet<WorkspaceRestorePreview | WorkspaceVerbundRestorePreview>();
   // Bound on use: a newer schema without one of these stores still opens for the global export.
   private get documents(): Table<WorkspaceEnvelope, LocalId> { return this.db.table('documents'); }
   private get verbuende(): Table<WorkspaceVerbund, VerbundId> { return this.db.table('verbuende'); }
@@ -578,31 +578,47 @@ export class WorkspaceStore {
         kind: 'workspace', backup: parsed.value,
         target: { databaseId: meta.databaseId, storageSchemaVersion: meta.storageSchemaVersion, savedAt: meta.savedAt }, counts,
       };
-      // The bounded, validated JSON graph is immutable all the way down to source fields.
-      const pending: unknown[] = [preview];
-      while (pending.length) {
-        const entry = pending.pop();
-        if (entry && typeof entry === 'object' && !Object.isFrozen(entry)) {
-          for (const child of Object.values(entry)) pending.push(child);
-          Object.freeze(entry);
-        }
-      }
-      this.restorePreviews.add(preview);
+      this.bindRestorePreview(preview);
       return preview;
     });
   }
 
+  /** The bounded, validated graph is immutable down to source fields and bound to this store. */
+  private bindRestorePreview(preview: WorkspaceRestorePreview | WorkspaceVerbundRestorePreview): void {
+    const pending: unknown[] = [preview];
+    while (pending.length) {
+      const entry = pending.pop();
+      if (entry && typeof entry === 'object' && !Object.isFrozen(entry)) {
+        for (const child of Object.values(entry)) pending.push(child);
+        Object.freeze(entry);
+      }
+    }
+    this.restorePreviews.add(preview);
+  }
+
   async restoreBackup(preview: WorkspaceRestorePreview): Promise<WorkspaceResult<void>> {
-    if (!this.restorePreviews.has(preview)) return failure(new StorageFailure('WORKSPACE_CONFIRMATION_REQUIRED'));
+    if (!this.restorePreviews.has(preview) || preview.kind !== 'workspace') return failure(new StorageFailure('WORKSPACE_CONFIRMATION_REQUIRED'));
     const restored = await this.write(() => restoreWorkspaceBackupSnapshot(this.db, preview.backup, preview.target), false);
     return !restored.ok && restored.diagnostic.code === 'WORKSPACE_SCHEMA_NEWER'
       ? failure(new StorageFailure('WORKSPACE_SAVE_CONFLICT')) : restored;
   }
-  async restoreVerbundBackup(bytes: Uint8Array, confirmation: 'replace-verbund'): Promise<WorkspaceResult<void>> {
-    if (confirmation !== 'replace-verbund') return failure(new StorageFailure('WORKSPACE_CONFIRMATION_REQUIRED'));
+
+  async previewRestoreVerbundBackup(bytes: Uint8Array): Promise<WorkspaceResult<WorkspaceVerbundRestorePreview>> {
     const parsed = await parseVerbundBackup(bytes);
     if (!parsed.ok) return parsed;
-    return this.write(() => restoreVerbundBackupSnapshot(this.db, parsed.value), false);
+    return this.read(Object.keys(WORKSPACE_SCHEMA), async () => {
+      if (this.newerSchema) reject('WORKSPACE_SCHEMA_NEWER');
+      const preview = await readVerbundRestorePreviewSnapshot(this.db, parsed.value);
+      this.bindRestorePreview(preview);
+      return preview;
+    });
+  }
+
+  async restoreVerbundBackup(preview: WorkspaceVerbundRestorePreview): Promise<WorkspaceResult<void>> {
+    if (!this.restorePreviews.has(preview) || preview.kind !== 'verbund') return failure(new StorageFailure('WORKSPACE_CONFIRMATION_REQUIRED'));
+    const restored = await this.write(() => restoreVerbundBackupSnapshot(this.db, preview.backup, preview.target), false);
+    return !restored.ok && restored.diagnostic.code === 'WORKSPACE_SCHEMA_NEWER'
+      ? failure(new StorageFailure('WORKSPACE_SAVE_CONFLICT')) : restored;
   }
 
   async estimate(): Promise<WorkspaceResult<StorageEstimate | undefined>> {

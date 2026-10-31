@@ -1,4 +1,4 @@
-import { restoreWorkspaceBackup } from '@/test/restoreWorkspaceBackup';
+import { restoreWorkspaceBackup, restoreVerbundBackup } from '@/test/restoreWorkspaceBackup';
 import { expect, test, vi } from 'vitest';
 import { value, open, document } from '@/test/browser/workspaceStoreFixtures';
 import { WORKSPACE_BACKUP_MAX_BYTES } from '@/domain/class2ImportLimits.mjs';
@@ -25,7 +25,10 @@ test('Verbund-Backup ersetzt oder ergänzt nur den gewählten Verbund in je eine
   value(await store.renameVerbund(a.verbundId, 'Changed'));
   value(await store.deleteDocument(two.localId));
   transaction.mockClear();
-  value(await store.restoreVerbundBackup(bytes(backup), 'replace-verbund'));
+  const preview = value(await store.previewRestoreVerbundBackup(bytes(backup)));
+  expect(transaction).toHaveBeenCalledTimes(1);
+  transaction.mockClear();
+  value(await store.restoreVerbundBackup(preview));
   expect(transaction).toHaveBeenCalledTimes(1);
   const restored = value(await store.listVerbuende()).find(row => row.verbundId === a.verbundId)!;
   expect(restored.savedAt > a.savedAt).toBe(true);
@@ -34,7 +37,7 @@ test('Verbund-Backup ersetzt oder ergänzt nur den gewählten Verbund in je eine
   expect(value(await store.exportVerbundBackup(b.verbundId))).toBe(untouched);
   expect(value(await store.getDocument(other.localId))).toEqual(other);
   value(await store.deleteVerbund(a.verbundId));
-  value(await store.restoreVerbundBackup(bytes(backup), 'replace-verbund'));
+  value(await restoreVerbundBackup(store, bytes(backup)));
   expect(value(await store.exportVerbundBackup(a.verbundId))).toBe(backup);
   expect(value(await store.exportVerbundBackup(b.verbundId))).toBe(untouched);
 });
@@ -46,7 +49,7 @@ test('Verbund-Wiederherstellung ersetzt eine vorhandene Prüfspur ohne Schlüsse
   value(await store.appendCheckpoint(one.localId, one.savedAt, null, 0));
   const backup = value(await store.exportVerbundBackup(a.verbundId));
   expect(JSON.parse(backup).reviewTrail).toHaveLength(1);
-  value(await store.restoreVerbundBackup(bytes(backup), 'replace-verbund'));
+  value(await restoreVerbundBackup(store, bytes(backup)));
   expect(value(await store.exportVerbundBackup(a.verbundId))).toBe(backup);
 });
 
@@ -59,14 +62,14 @@ test('Verbund-Wiederherstellung lehnt Kollisionen, falsche Formate und ungültig
   const selected = value(await store.exportVerbundBackup(a.verbundId));
   const before = value(await store.exportBackup());
   const conflict = selected.replaceAll(one.localId, other.localId);
-  expect(await store.restoreVerbundBackup(bytes(conflict), 'replace-verbund')).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_BACKUP_CONFLICT' } });
+  expect(await restoreVerbundBackup(store, bytes(conflict))).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_BACKUP_CONFLICT' } });
   expect(value(await store.exportBackup())).toBe(before);
   expect(await restoreWorkspaceBackup(store, bytes(selected))).toMatchObject({ ok: false });
   const invalid = JSON.parse(selected); invalid.documents[0].source = { catalog: {} };
   const multiple = JSON.parse(selected); multiple.verbuende.push({ ...multiple.verbuende[0], verbundId: b.verbundId });
   const metadata = { ...JSON.parse(selected), workspaceMeta: JSON.parse(before).workspaceMeta };
   for (const input of [bytes(before), bytes(JSON.stringify(invalid)), bytes(JSON.stringify(multiple)), bytes(JSON.stringify(metadata)), bytes(selected.replace('"storageSchemaVersion":3', '"storageSchemaVersion":4')), new Uint8Array(WORKSPACE_BACKUP_MAX_BYTES + 1)]) {
-    expect(await store.restoreVerbundBackup(input, 'replace-verbund')).toMatchObject({ ok: false });
+    expect(await restoreVerbundBackup(store, input)).toMatchObject({ ok: false });
     expect(value(await store.exportBackup())).toBe(before);
   }
 });
@@ -84,7 +87,7 @@ test('ein übergroßer Gesamtbestand bleibt verbundweise verlustfrei sicherbar',
   expect(await store.exportBackup()).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_BACKUP_LIMIT_EXCEEDED' } });
   for (const verbund of verbuende) {
     const backup = value(await store.exportVerbundBackup(verbund.verbundId));
-    value(await store.restoreVerbundBackup(bytes(backup), 'replace-verbund'));
+    value(await restoreVerbundBackup(store, bytes(backup)));
     expect(value(await store.exportVerbundBackup(verbund.verbundId))).toBe(backup);
   }
 }, 30_000);
@@ -102,7 +105,7 @@ test('ein fehlgeschlagener Verbund-Restore rollt Löschungen, Bindungen und Meta
     if (this.name === 'bindings') throw new DOMException('PRIVATE_SENTINEL', 'QuotaExceededError');
     return original.apply(this, args);
   });
-  const result = await store.restoreVerbundBackup(bytes(backup), 'replace-verbund');
+  const result = await restoreVerbundBackup(store, bytes(backup));
   add.mockRestore();
   expect(result).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_QUOTA_EXCEEDED' } });
   expect(JSON.stringify(result)).not.toContain('PRIVATE_SENTINEL');

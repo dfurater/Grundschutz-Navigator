@@ -162,6 +162,30 @@ export interface WorkspaceRestorePreview {
   readonly counts: Readonly<Record<Exclude<keyof WorkspaceBackup, 'format' | 'storageSchemaVersion'>, { readonly file: number; readonly target: number }>>;
 }
 
+export interface WorkspaceVerbundRestoreTarget {
+  readonly databaseId: string;
+  readonly storageSchemaVersion: number;
+  readonly nativeDatabaseVersion: number;
+  readonly verbundSavedAt: string | null;
+  readonly documents: readonly {
+    readonly localId: LocalId;
+    readonly savedAt: string;
+    readonly draftSavedAt: string | null;
+    readonly trailSequence: number | null;
+    readonly baselineSequence: number | null;
+  }[];
+}
+
+export interface WorkspaceVerbundRestorePreview {
+  readonly kind: 'verbund';
+  readonly backup: WorkspaceVerbundBackup;
+  readonly target: WorkspaceVerbundRestoreTarget;
+  readonly verbundId: VerbundId;
+  readonly name: string;
+  readonly existingVerbund: WorkspaceVerbund | null;
+  readonly counts: Readonly<Record<Exclude<keyof WorkspaceVerbundBackup, 'format' | 'storageSchemaVersion'>, { readonly file: number; readonly target: number }>>;
+}
+
 export type WorkspaceResult<T> =
   | { readonly ok: true; readonly value: T }
   | { readonly ok: false; readonly diagnostic: OscalDiagnostic };
