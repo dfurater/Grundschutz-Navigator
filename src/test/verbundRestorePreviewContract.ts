@@ -46,6 +46,27 @@ export function verbundRestorePreviewContract() {
     expect(value(await store.exportVerbundBackup(selected.verbundId))).toBe(file);
   });
 
+  it('previews and replaces a target without aggregating document sources', async () => {
+    value(await store.addDocument(selected.verbundId, imported));
+    const originalStore = IDBObjectStore.prototype.getAll;
+    const originalIndex = IDBIndex.prototype.getAll;
+    const storeRead = vi.spyOn(IDBObjectStore.prototype, 'getAll').mockImplementation(function (this: IDBObjectStore, ...args: Parameters<IDBObjectStore['getAll']>) {
+      if (this.name === 'documents') throw new Error('Aggregated target document sources');
+      return originalStore.apply(this, args);
+    });
+    const indexRead = vi.spyOn(IDBIndex.prototype, 'getAll').mockImplementation(function (this: IDBIndex, ...args: Parameters<IDBIndex['getAll']>) {
+      if (this.objectStore.name === 'documents') throw new Error('Aggregated target document sources');
+      return originalIndex.apply(this, args);
+    });
+    try {
+      const preview = value(await store.previewRestoreVerbundBackup(bytes(file)));
+      expect(preview.target.documents).toHaveLength(2);
+      expect(preview.counts.documents).toEqual({ file: 1, target: 2 });
+      value(await store.restoreVerbundBackup(preview));
+    } finally { storeRead.mockRestore(); indexRead.mockRestore(); }
+    expect(value(await store.listDocuments(selected.verbundId))).toHaveLength(1);
+  });
+
   it.each(['save', 'draft', 'binding', 'checkpoint', 'decision', 'add', 'delete', 'rename', 'delete-verbund'] as const)('rejects a target %s before writing', async change => {
     const preview = value(await store.previewRestoreVerbundBackup(bytes(file)));
     const other = await open();

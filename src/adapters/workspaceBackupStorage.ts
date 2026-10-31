@@ -186,12 +186,15 @@ export async function readVerbundRestorePreviewSnapshot(db: Dexie, backup: Works
   if (meta?.storageSchemaVersion !== STORAGE_SCHEMA_VERSION || typeof meta.databaseId !== 'string') reject('WORKSPACE_SCHEMA_INVALID');
   const verbundId = backup.verbuende[0].verbundId;
   const documents = db.table<WorkspaceEnvelope, LocalId>('documents');
-  const incoming = await documents.bulkGet(backup.documents.map(row => row.localId));
-  if (incoming.some(row => row && row.verbundId !== verbundId)) reject('WORKSPACE_BACKUP_CONFLICT');
+  for (const row of backup.documents) {
+    const existing = await documents.get(row.localId);
+    if (existing && existing.verbundId !== verbundId) reject('WORKSPACE_BACKUP_CONFLICT');
+  }
   const existingVerbund = await db.table<WorkspaceVerbund>('verbuende').get(verbundId) ?? null;
-  const members = await documents.where('verbundId').equals(verbundId).sortBy('localId');
-  const ids = members.map(row => row.localId);
-  const memberIds = new Set(ids);
+  const members: Pick<WorkspaceEnvelope, 'localId' | 'savedAt'>[] = [];
+  await documents.where('verbundId').equals(verbundId).each(row => { members.push({ localId: row.localId, savedAt: row.savedAt }); });
+  members.sort((a, b) => a.localId < b.localId ? -1 : 1);
+  const memberIds = new Set(members.map(row => row.localId));
   const targetDocuments: WorkspaceVerbundRestoreTarget['documents'][number][] = [];
   let draftCount = 0;
   let trailCount = 0;
