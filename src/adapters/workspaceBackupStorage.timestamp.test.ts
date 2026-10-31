@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { restoreWorkspaceBackup } from '@/test/restoreWorkspaceBackup';
+import { restoreWorkspaceBackup, restoreVerbundBackup } from '@/test/restoreWorkspaceBackup';
 import 'fake-indexeddb/auto';
 import Dexie from 'dexie';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
@@ -28,7 +28,7 @@ it('keeps every stamp within four-digit years and every exported bundle restorab
   const parsed = JSON.parse(value(await store.exportVerbundBackup(verbund.verbundId)));
   const restoreAt = (savedAt: string) => {
     parsed.documents[0].savedAt = savedAt;
-    return store.restoreVerbundBackup(bytes(JSON.stringify(parsed)), 'replace-verbund');
+    return restoreVerbundBackup(store, bytes(JSON.stringify(parsed)));
   };
   const before = value(await store.exportBackup());
   expect(await restoreAt('9999-12-31T23:59:59.999Z')).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_BACKUP_INVALID' } });

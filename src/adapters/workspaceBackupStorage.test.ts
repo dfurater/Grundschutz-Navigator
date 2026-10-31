@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { restoreWorkspaceBackup } from '@/test/restoreWorkspaceBackup';
+import { restoreWorkspaceBackup, restoreVerbundBackup } from '@/test/restoreWorkspaceBackup';
 import 'fake-indexeddb/auto';
 import Dexie, { type IndexableTypePart } from 'dexie';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
@@ -69,12 +69,12 @@ it('exports exactly one verbund and restores it without changing another verbund
   expect(backup).not.toContain('OTHER_');
   value(await store.renameVerbund(a.verbundId, 'Changed'));
   const added = value(await store.addDocument(a.verbundId, imported));
-  value(await store.restoreVerbundBackup(bytes(backup), 'replace-verbund'));
+  value(await restoreVerbundBackup(store, bytes(backup)));
   expect(value(await store.exportVerbundBackup(a.verbundId))).toBe(backup);
   expect(value(await store.getDocument(added.localId))).toBeUndefined();
   expect(value(await store.getDocument(other.localId))).toEqual(other);
   value(await store.deleteVerbund(a.verbundId));
-  value(await store.restoreVerbundBackup(bytes(backup), 'replace-verbund'));
+  value(await restoreVerbundBackup(store, bytes(backup)));
   expect(value(await store.exportVerbundBackup(a.verbundId))).toBe(backup);
 });
 
@@ -83,7 +83,7 @@ it('rejects foreign localId collisions atomically', async () => {
   const oldId = selected.documents[0].localId;
   const text = JSON.stringify(selected).replaceAll(oldId, other.localId);
   const before = value(await store.exportBackup());
-  expect(await store.restoreVerbundBackup(bytes(text), 'replace-verbund')).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_BACKUP_CONFLICT' } });
+  expect(await restoreVerbundBackup(store, bytes(text))).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_BACKUP_CONFLICT' } });
   expect(value(await store.exportBackup())).toBe(before);
 });
 
@@ -94,7 +94,7 @@ it('restores an empty verbund without admitting foreign drafts or retaining stal
   expect(parsed.drafts).toHaveLength(0);
   expect(parsed.bindings).toHaveLength(0);
   parsed.verbuende[0].verbundId = a.verbundId;
-  value(await store.restoreVerbundBackup(bytes(JSON.stringify(parsed)), 'replace-verbund'));
+  value(await restoreVerbundBackup(store, bytes(JSON.stringify(parsed))));
   expect(value(await store.listDocuments(a.verbundId))).toHaveLength(0);
   expect(value(await store.getDraft(one.localId))).toBeUndefined();
   expect(value(await store.listBindings())).toHaveLength(0);
@@ -107,11 +107,11 @@ it('rejects crossed formats, invalid sources, newer schemas and oversized bytes 
   expect(await restoreWorkspaceBackup(store, bytes(selected))).toMatchObject({ ok: false });
   const invalid = JSON.parse(selected); invalid.documents[0].source = { catalog: {} };
   for (const input of [bytes(total), bytes(JSON.stringify(invalid)), bytes(selected.replace('"storageSchemaVersion":3', '"storageSchemaVersion":4')), new Uint8Array(WORKSPACE_BACKUP_MAX_BYTES + 1)]) {
-    expect(await store.restoreVerbundBackup(input, 'replace-verbund')).toMatchObject({ ok: false });
+    expect(await restoreVerbundBackup(store, input)).toMatchObject({ ok: false });
     expect(value(await store.exportBackup())).toBe(total);
   }
   expect(await store.exportVerbundBackup('missing' as typeof a.verbundId)).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_VERBUND_NOT_FOUND' } });
-  expect(await store.restoreVerbundBackup(bytes(selected), '' as 'replace-verbund')).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_CONFIRMATION_REQUIRED' } });
+  expect(await store.restoreVerbundBackup(undefined as never)).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_CONFIRMATION_REQUIRED' } });
 });
 
 it('keeps each verbund restorable when the aggregate workspace exceeds the byte cap', async () => {
@@ -123,7 +123,7 @@ it('keeps each verbund restorable when the aggregate workspace exceeds the byte 
   expect(await store.exportBackup()).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_BACKUP_LIMIT_EXCEEDED' } });
   for (const verbund of [a, b]) {
     const backup = value(await store.exportVerbundBackup(verbund.verbundId));
-    value(await store.restoreVerbundBackup(bytes(backup), 'replace-verbund'));
+    value(await restoreVerbundBackup(store, bytes(backup)));
     expect(value(await store.exportVerbundBackup(verbund.verbundId))).toBe(backup);
   }
 }, 30_000);
@@ -143,7 +143,7 @@ it.each(['workspace', 'verbund'] as const)('never reissues a comparison value lo
   // Jede Zeile des Bündels zählt: die Verbundzeile trägt hier den höchsten Wert.
   for (const row of parsed.verbuende) row.savedAt = later;
   const backup = bytes(JSON.stringify(parsed));
-  const restore = () => scope === 'workspace' ? restoreWorkspaceBackup(store, backup) : store.restoreVerbundBackup(backup, 'replace-verbund');
+  const restore = () => scope === 'workspace' ? restoreWorkspaceBackup(store, backup) : restoreVerbundBackup(store, backup);
   value(await restore());
   // Fehlschlag, wenn der Dateiwert des Bündels nach der Wiederherstellung noch als Vergleichswert passt.
   expect(await store.saveDocument(one.localId, future, future, imported)).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_SAVE_CONFLICT' } });
@@ -167,7 +167,7 @@ it.each(['workspace', 'verbund'] as const)('rejects a pre-restore comparison val
   // Inhalt mit identischem Stempel erzeugen (p2Stamp == p1.savedAt).
   const future = new Date(Date.now() + 3_600_000).toISOString();
   const exportBundle = (verbundId: VerbundId) => scope === 'workspace' ? store.exportBackup() : store.exportVerbundBackup(verbundId);
-  const restoreBundle = (text: string) => scope === 'workspace' ? restoreWorkspaceBackup(store, bytes(text)) : store.restoreVerbundBackup(bytes(text), 'replace-verbund');
+  const restoreBundle = (text: string) => scope === 'workspace' ? restoreWorkspaceBackup(store, bytes(text)) : restoreVerbundBackup(store, bytes(text));
 
   // Ausgangsbündel: ein Verbund mit zwei Dokumenten und einem Entwurf, alle Zeilenstempel über die Uhr gehoben.
   await nextProfile();
@@ -224,7 +224,7 @@ it.each(['workspace', 'verbund'] as const)('rejects a pre-restore comparison val
 
 it.each(['workspace', 'verbund'] as const)('validates the file stamp of restored rows and never exports it (%s)', async scope => {
   const exportBundle = () => scope === 'workspace' ? store.exportBackup() : store.exportVerbundBackup(a.verbundId);
-  const restore = (text: string) => scope === 'workspace' ? restoreWorkspaceBackup(store, bytes(text)) : store.restoreVerbundBackup(bytes(text), 'replace-verbund');
+  const restore = (text: string) => scope === 'workspace' ? restoreWorkspaceBackup(store, bytes(text)) : restoreVerbundBackup(store, bytes(text));
   const parsed = JSON.parse(value(await exportBundle()));
   const documentRow = parsed.documents.find((row: { localId: string }) => row.localId === one.localId);
   const draftRow = parsed.drafts.find((row: { localId: string }) => row.localId === one.localId);

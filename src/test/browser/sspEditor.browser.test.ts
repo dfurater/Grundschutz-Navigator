@@ -1,3 +1,4 @@
+import { restoreVerbundBackup } from '@/test/restoreWorkspaceBackup';
 import { createElement } from 'react';
 import { flushSync } from 'react-dom';
 import { createRoot, type Root } from 'react-dom/client';
@@ -318,7 +319,7 @@ test('ein aus dem Backup wiederhergestellter Entwurf öffnet mit unveränderter 
   await readStore((store) => store.autosaveDraft(ssp.localId, ssp.savedAt, null, draft));
   const backup = await readStore((store) => store.exportVerbundBackup(seeded.verbundId));
   await readStore((store) => store.deleteDocument(ssp.localId));
-  await readStore((store) => store.restoreVerbundBackup(new TextEncoder().encode(backup), 'replace-verbund'));
+  await readStore((store) => restoreVerbundBackup(store, new TextEncoder().encode(backup)));
 
   const { shell } = await renderAt(buildWorkspaceDocumentUrl(seeded.verbundId, ssp.localId));
   await editorReady(shell);
