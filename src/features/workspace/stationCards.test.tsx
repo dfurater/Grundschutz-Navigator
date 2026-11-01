@@ -72,5 +72,6 @@ describe('StationCards', () => {
     expect(profile).not.toHaveTextContent('aufgenommen');
     expect(poam).toHaveTextContent('1 Maßnahme · Umsetzung nicht erklärt');
     expect(poam).not.toHaveTextContent(/überschritten|Fristlage unbekannt/);
+    expect(poam).toHaveTextContent('Fristlage berechnet aus Frist und Systemzeit am');
   });
 });

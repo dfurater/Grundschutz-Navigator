@@ -116,16 +116,24 @@ function taskCandidates(task: ApTask, unreadable: ReadonlySet<string>): (Known |
   const start = instant(range?.start);
   const inverted = end !== undefined && 'ms' in end && start !== undefined && start > end.ms;
   return [
+    // Ein vom Reader als Ganzes verworfenes `timing` kann einen Termin getragen haben.
+    task.timing === null && unreadable.has(base) ? { reason: 'ungültiges Datum', path: base } : undefined,
     candidate(onDate?.date, `${base}/on-date/date`, 'ungültiges Datum', present(onDate, `${base}/on-date`)),
     inverted ? { reason: 'ungültiges Intervall', path: `${base}/within-date-range`, value: JSON.stringify(range) } : end,
     atFrequency ? { reason: 'Wiederholung ohne absoluten Termin', path: `${base}/at-frequency`, value: JSON.stringify(atFrequency) } : undefined,
   ];
 }
 
-/** `now >= Termin`; `Date.parse` kappt unter der Millisekunde, ein Rest > 0 liegt noch nach `now`. */
+/** Sekundenbruchteil unter der Millisekunde, den `Date.parse` kappt; vergleichbar als Dezimalbruch. */
+function subMillisecond(entry: Known): number {
+  return Number(`0.${/\.\d{3}(\d+)/.exec(entry.value)?.[1] ?? '0'}`);
+}
+
+const earlier = (a: Known, b: Known) => a.ms < b.ms || (a.ms === b.ms && subMillisecond(a) < subMillisecond(b));
+
+/** `now >= Termin`; ein Rest unter der Millisekunde liegt noch nach `now`. */
 function reached(entry: Known, now: number): boolean {
-  if (entry.ms !== now) return entry.ms < now;
-  return !/[1-9]/.test(/\.\d{3}(\d+)/.exec(entry.value)?.[1] ?? '');
+  return entry.ms < now || (entry.ms === now && subMillisecond(entry) === 0);
 }
 
 /**
@@ -149,7 +157,7 @@ export function assessDeadline(
     ...entries.filter((entry): entry is Gap => 'reason' in entry),
   ];
   if (known.length === 0 && gaps.length === 0) gaps.push(...risks.map((risk): Gap => ({ reason: 'keine Frist', path: `${risk.path}/deadline` })));
-  const earliest = known.reduce<Known | undefined>((best, entry) => (best === undefined || entry.ms < best.ms ? entry : best), undefined);
+  const earliest = known.reduce<Known | undefined>((best, entry) => (best === undefined || earlier(entry, best) ? entry : best), undefined);
   let state: DeadlineState = 'Fristlage unbekannt';
   if (earliest !== undefined && reached(earliest, now.getTime())) state = 'überschritten';
   else if (earliest !== undefined && gaps.length === 0) state = 'noch nicht fällig';

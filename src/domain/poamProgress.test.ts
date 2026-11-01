@@ -143,6 +143,15 @@ describe('derivePoamProgress', () => {
         uuid: '00000000-0000-4000-8000-000000000307', type: 'action', title: 'Künftig', timing: { 'on-date': { date: '2026-12-24T00:00:00Z' } },
       }];
     });
+    expect(rowsOf(withTiming({ 'on-date': 42 }))[0]).toMatchObject({
+      deadlineState: 'Fristlage unbekannt', deadlineGaps: [{ reason: 'ungültiges Datum', path: `${task}/on-date/date` }],
+    });
+    expect(rowsOf(withTiming({ 'within-date-range': 42 }))[0]).toMatchObject({
+      deadlineState: 'Fristlage unbekannt', deadlineGaps: [{ reason: 'ungültiges Intervall', path: `${task}/within-date-range/end` }],
+    });
+    expect(rowsOf(withTiming('2026-11-01T00:00:00Z'))[0]).toMatchObject({
+      deadlineState: 'Fristlage unbekannt', deadlineGaps: [{ reason: 'ungültiges Datum', path: task }],
+    });
     expect(rowsOf(wrongType)[0]).toMatchObject({
       deadline: '2026-12-24T00:00:00Z', deadlineState: 'Fristlage unbekannt',
       deadlineGaps: [{ reason: 'ungültiges Datum', path: '/plan-of-action-and-milestones/risks/0/deadline' }],
@@ -153,6 +162,15 @@ describe('derivePoamProgress', () => {
     const at = (deadline: string) => rowsOf(withBody((body) => { risk(body).deadline = deadline; }), new Date('2026-12-01T00:00:00.000Z'))[0].deadlineState;
     expect(at('2026-12-01T00:00:00.0001Z')).toBe('noch nicht fällig');
     expect(at('2026-12-01T00:00:00.0000Z')).toBe('überschritten');
+    const sameMillisecond = withBody((body) => {
+      risk(body).deadline = '2026-12-01T00:00:00.0001Z';
+      risk(body).remediations[0].tasks = [{
+        uuid: '00000000-0000-4000-8000-000000000308', type: 'milestone', title: 'Gleiche Millisekunde', timing: { 'on-date': { date: '2026-12-01T00:00:00.0000Z' } },
+      }];
+    });
+    expect(rowsOf(sameMillisecond, new Date('2026-12-01T00:00:00.000Z'))[0]).toMatchObject({
+      deadline: '2026-12-01T00:00:00.0000Z', deadlineState: 'überschritten',
+    });
   });
 
   it('führt Frist, Risikostatus und Lifecycle mit Quellpfad', () => {
