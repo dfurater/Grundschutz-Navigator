@@ -9,7 +9,7 @@ import { WORKSPACE_BACKUP_MAX_BYTES } from '@/domain/class2ImportLimits.mjs';
 import { useBackupExport } from '@/features/workspace/WorkspaceNotices';
 import {
   Actions, BUTTON, ClarifyRow, Facts, Mark, Message, PreviewBody, REJECTION_TEXT, Section, doneText, fileInfo, fileSize, formatDate, plural,
-  scopeOf, type BackupState, type FileInfo,
+  inputKey, scopeOf, type BackupState, type FileInfo,
 } from '@/features/workspace/RestoreSheetParts';
 
 /** Ergebnis einer Wiederherstellung für die Statusmeldung der Übersicht. */
@@ -126,12 +126,11 @@ export function RestoreSheet({ file: initialFile, rowDrafts, onCancel, onDone }:
     await readPreview(run, false);
   };
 
-  const discard = (entry: RestoreInput) => (entry.kind === 'rename' && entry.row ? rowDrafts.delete(entry.verbundId) : discardRestoreInput(entry));
 
   const saveRename = async (entry: Extract<RestoreInput, { kind: 'rename' }>) => {
     const name = entry.draft.trim();
     const result = await renameVerbund(entry.verbundId, name);
-    if (result.ok) discard(entry);
+    if (result.ok) discardRestoreInput(entry, rowDrafts);
     await afterClarify(result.ok ? undefined : entry);
   };
 
@@ -240,13 +239,13 @@ export function RestoreSheet({ file: initialFile, rowDrafts, onCancel, onDone }:
             <ul className="divide-y divide-[var(--color-border-subtle)] border-t border-[var(--color-border-subtle)]">
               {phase.inputs.map((entry) => (
                 <ClarifyRow
-                  key={entry.kind === 'rename' ? `rename-${entry.row ? 'row-' : ''}${entry.verbundId}` : `import-${entry.localId}`}
+                  key={inputKey(entry)}
                   entry={entry}
                   verbundName={entry.kind === 'orphan' ? '' : verbuende?.find((candidate) => candidate.verbundId === entry.verbundId)?.name ?? ''}
                   failed={entry.kind === 'rename' && phase.failed?.kind === 'rename' && phase.failed.verbundId === entry.verbundId && phase.failed.row === entry.row}
                   writable={writable}
                   onSave={saveRename}
-                  onDiscard={() => { discard(entry); void afterClarify(); }}
+                  onDiscard={() => { discardRestoreInput(entry, rowDrafts); void afterClarify(); }}
                   onOpen={(imported) => void navigate(buildWorkspaceDocumentUrl(imported.verbundId, imported.localId))}
                 />
               ))}

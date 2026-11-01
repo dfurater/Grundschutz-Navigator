@@ -1,5 +1,5 @@
 // Gemeinsamer Sicherungs- und Restoreablauf der Übersicht (GSPP-677).
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { AppShell } from '@/app/AppShell';
 import { buildWorkspaceIndexUrl } from '@/app/routes';
@@ -238,6 +238,19 @@ describe('Sicherung wiederherstellen', () => {
     fireEvent.click(sheet.getByRole('button', { name: 'Abbrechen' }));
     expect(await screen.findByRole('button', { name: 'Umbenennen' })).toBeInTheDocument();
     expect(screen.queryByLabelText('Neuer Name')).not.toBeInTheDocument();
+  });
+
+  it('lässt eine während des Speicherns weitergetippte Zeilenumbenennung offen', async () => {
+    let finish: (result: { ok: true; value: WorkspaceVerbund }) => void = () => undefined;
+    renderWith(fakePort({ previewRestore: () => ok(verbundPreview()), renameVerbund: () => new Promise((resolve) => { finish = resolve; }) }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Umbenennen' }));
+    fireEvent.change(screen.getByLabelText('Neuer Name'), { target: { value: 'Erster' } });
+    const sheet = await choose();
+    fireEvent.click(await sheet.findByRole('button', { name: 'Speichern' }));
+    fireEvent.click(sheet.getByRole('button', { name: 'Abbrechen' }));
+    fireEvent.change(await screen.findByLabelText('Neuer Name'), { target: { value: 'Zweiter' } });
+    await act(async () => { finish({ ok: true, value: { ...VERBUND, name: 'Erster' } }); });
+    expect(await screen.findByLabelText('Neuer Name')).toHaveValue('Zweiter');
   });
 
   it('setzt nach erfolgreichem Restore das Umbenennen-Formular des Zielverbunds zurück, andere bleiben offen', async () => {

@@ -42,6 +42,12 @@ export function fileInfo(preview: RestorePreview): FileInfo {
   return { kind: preview.kind, savedAt, version: preview.backup.storageSchemaVersion };
 }
 
+/** Stabiler Schlüssel einer Klärungszeile; Zeilen- und Sitzungsumbenennung desselben Verbunds bleiben getrennt. */
+export function inputKey(entry: RestoreInput): string {
+  if (entry.kind !== 'rename') return `import-${entry.localId}`;
+  return entry.row ? `rename-row-${entry.verbundId}` : `rename-${entry.verbundId}`;
+}
+
 export function scopeOf(preview: RestorePreview): RestoreScope {
   const documents = preview.backup.documents.map(({ localId, verbundId, rootType }) => ({ localId, verbundId, rootType }));
   return preview.kind === 'workspace' ? { kind: 'workspace', documents } : { kind: 'verbund', verbundId: preview.verbundId, documents };

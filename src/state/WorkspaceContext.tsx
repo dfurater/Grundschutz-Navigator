@@ -60,7 +60,7 @@ export interface WorkspaceContextValue {
   /** Ersetzt den Zielbereich mit genau dieser Vorschau und verwirft danach die ersetzten Sitzungseingaben. */
   readonly restoreBackup: (preview: RestorePreview) => Promise<WorkspaceResult<void>>;
   readonly pendingRestoreInputs: (scope: RestoreScope, rowDrafts?: ReadonlyMap<string, string>) => Promise<WorkspaceResult<readonly RestoreInput[]>>;
-  readonly discardRestoreInput: (input: RestoreInput) => void;
+  readonly discardRestoreInput: (input: RestoreInput, rowDrafts?: Map<string, string>) => void;
   readonly registerAutosave: (flush: AutosaveFlush) => () => void;
   /** Speichert alle registrierten Entwürfe; `false`, wenn einer nicht gespeichert werden konnte. */
   readonly flushAutosaves: () => Promise<boolean>;
@@ -345,9 +345,14 @@ export function WorkspaceProvider({ open = openWorkspaceStore, children }: Reado
       if (!listed.ok) return listed;
       return { ok: true, value: collectRestoreInputs({ scope, renameDrafts, rowDrafts, importTargets, verbuende: verbuende ?? [], documents: listed.value }) };
     },
-    discardRestoreInput: (input) => {
-      if (input.kind === 'rename') renameDrafts.delete(input.verbundId);
-      else importTargets.delete(input.localId);
+    discardRestoreInput: (input, rowDrafts) => {
+      if (input.kind !== 'rename') {
+        importTargets.delete(input.localId);
+        return;
+      }
+      // Eine während des Speicherns weitergetippte Umbenennung bleibt offen.
+      const drafts = input.row ? rowDrafts : renameDrafts;
+      if (drafts?.get(input.verbundId) === input.draft) drafts.delete(input.verbundId);
     },
     registerAutosave,
     flushAutosaves,
