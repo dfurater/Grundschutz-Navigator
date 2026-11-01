@@ -72,6 +72,19 @@ describe.each([{ width: 1440, touch: false }, { width: 390, touch: true }])('Sic
     await assertNoAxeViolations(host!, `Ergebnis ${width}`);
   });
 
+  test('bricht einen langen zulässigen Verbundnamen in Ersetzungssatz und Bestätigung um', async () => {
+    const name = `Informationsverbund${'x'.repeat(140)}`;
+    const { verbundId } = await readStore(store => store.createVerbund(name));
+    const file = await readStore(store => store.exportVerbundBackup(verbundId));
+    await renderOverview(width, touch);
+    upload(file);
+    await expect.poll(() => button(`„${name}“ ersetzen`), { timeout: 15000 }).toBeTruthy();
+    const confirm = button(`„${name}“ ersetzen`)!;
+    const replacement = [...host!.querySelectorAll('p')].find(entry => entry.textContent?.startsWith(`Ersetzt „${name}“`))!;
+    for (const element of [confirm, replacement]) expect(element.scrollWidth).toBeLessThanOrEqual(element.clientWidth);
+    expect(noHorizontalOverflow()).toBe(true);
+  });
+
   test('lehnt eine fremde Datei ab und überschreibt nach einer Konkurrenzänderung nichts', async () => {
     await seedWorkspace();
     const whole = await readStore(store => store.exportBackup());

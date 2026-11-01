@@ -217,13 +217,53 @@ describe('Sicherung wiederherstellen', () => {
     expect(sheet.getByText('neu.json')).toBeInTheDocument();
   });
 
-  it('erhält eine in der Übersicht begonnene Umbenennung über das Prüfblatt', async () => {
+  it('klärt eine in der Übersicht begonnene Umbenennung und erhält sie bei Abbruch', async () => {
     renderWith(fakePort({ previewRestore: () => ok(verbundPreview()) }));
     fireEvent.click(await screen.findByRole('button', { name: 'Umbenennen' }));
     fireEvent.change(screen.getByLabelText('Neuer Name'), { target: { value: 'Halb getippt' } });
     const sheet = await choose();
-    fireEvent.click(await sheet.findByRole('button', { name: 'Abbrechen' }));
+    expect(await sheet.findByText(/„Lesbarer Verbund“ → „Halb getippt“/)).toBeInTheDocument();
+    expect(workspace.renameDrafts.size).toBe(0);
+    fireEvent.click(sheet.getByRole('button', { name: 'Abbrechen' }));
     expect(await screen.findByLabelText('Neuer Name')).toHaveValue('Halb getippt');
+  });
+
+  it('schließt die Zeilenumbenennung, wenn die Klärung sie verwirft', async () => {
+    renderWith(fakePort({ previewRestore: () => ok(verbundPreview()) }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Umbenennen' }));
+    fireEvent.change(screen.getByLabelText('Neuer Name'), { target: { value: 'Verworfen' } });
+    const sheet = await choose();
+    fireEvent.click(await sheet.findByRole('button', { name: 'Verwerfen' }));
+    await sheet.findByRole('button', { name: `„${VERBUND.name}“ ersetzen` });
+    fireEvent.click(sheet.getByRole('button', { name: 'Abbrechen' }));
+    expect(await screen.findByRole('button', { name: 'Umbenennen' })).toBeInTheDocument();
+    expect(screen.queryByLabelText('Neuer Name')).not.toBeInTheDocument();
+  });
+
+  it('setzt nach erfolgreichem Restore das Umbenennen-Formular des Zielverbunds zurück, andere bleiben offen', async () => {
+    renderWith(fakePort({ listVerbuende: () => ok([VERBUND, OTHER]), previewRestore: () => ok(verbundPreview()), restoreVerbundBackup: () => ok(undefined) }));
+    const rowOf = async (name: string) => (await screen.findByRole('link', { name })).closest('li')!;
+    fireEvent.click(within(await rowOf(VERBUND.name)).getByRole('button', { name: 'Umbenennen' }));
+    const other = await rowOf(OTHER.name);
+    fireEvent.click(within(other).getByRole('button', { name: 'Umbenennen' }));
+    fireEvent.change(within(other).getByLabelText('Neuer Name'), { target: { value: 'Anderer Entwurf' } });
+    const sheet = await choose();
+    fireEvent.click(await sheet.findByRole('button', { name: `„${VERBUND.name}“ ersetzen` }));
+    await within(main()).findByRole('heading', { level: 1, name: 'Informationsverbünde' });
+    expect(screen.getAllByLabelText('Neuer Name').map((input) => (input as HTMLInputElement).value)).toEqual(['Anderer Entwurf']);
+  });
+
+  it('klärt beim Gesamt-Restore ein Importziel, dessen Dokument weder Speicher noch Sicherung kennt', async () => {
+    const orphan = '5d4c3b2a-1f0e-4d9c-8b7a-6f5e4d3c2b1a' as LocalId;
+    renderWith(fakePort({ previewRestore: () => ok(workspacePreview) }));
+    await screen.findByRole('link', { name: VERBUND.name });
+    workspace.documents.importTargets(orphan).set('/profile/imports/0/href', { href: '#x', target: { kind: 'class-1', artifactKey: 'gspp' } });
+    const sheet = await choose();
+    expect(await sheet.findByText(/Dokument nicht mehr vorhanden · 1 Verweis/)).toBeInTheDocument();
+    expect(sheet.queryByRole('button', { name: 'Zum Dokument' })).not.toBeInTheDocument();
+    fireEvent.click(sheet.getByRole('button', { name: 'Verwerfen' }));
+    expect(await sheet.findByRole('button', { name: 'Gesamten Bestand ersetzen' })).toBeInTheDocument();
+    expect(workspace.documents.importTargets(orphan).size).toBe(0);
   });
 
   it('kehrt bei Abbrechen zum Einstieg zurück', async () => {

@@ -59,7 +59,7 @@ export interface WorkspaceContextValue {
   readonly previewRestore: (bytes: Uint8Array) => Promise<WorkspaceResult<RestorePreview>>;
   /** Ersetzt den Zielbereich mit genau dieser Vorschau und verwirft danach die ersetzten Sitzungseingaben. */
   readonly restoreBackup: (preview: RestorePreview) => Promise<WorkspaceResult<void>>;
-  readonly pendingRestoreInputs: (scope: RestoreScope) => Promise<WorkspaceResult<readonly RestoreInput[]>>;
+  readonly pendingRestoreInputs: (scope: RestoreScope, rowDrafts?: ReadonlyMap<string, string>) => Promise<WorkspaceResult<readonly RestoreInput[]>>;
   readonly discardRestoreInput: (input: RestoreInput) => void;
   readonly registerAutosave: (flush: AutosaveFlush) => () => void;
   /** Speichert alle registrierten Entwürfe; `false`, wenn einer nicht gespeichert werden konnte. */
@@ -340,10 +340,10 @@ export function WorkspaceProvider({ open = openWorkspaceStore, children }: Reado
       setRevision((value) => value + 1);
       return result;
     },
-    pendingRestoreInputs: async (scope) => {
+    pendingRestoreInputs: async (scope, rowDrafts) => {
       const listed = port ? await port.listDocuments().catch(storageFailed) : storageFailed();
       if (!listed.ok) return listed;
-      return { ok: true, value: collectRestoreInputs({ scope, renameDrafts, importTargets, verbuende: verbuende ?? [], documents: listed.value }) };
+      return { ok: true, value: collectRestoreInputs({ scope, renameDrafts, rowDrafts, importTargets, verbuende: verbuende ?? [], documents: listed.value }) };
     },
     discardRestoreInput: (input) => {
       if (input.kind === 'rename') renameDrafts.delete(input.verbundId);

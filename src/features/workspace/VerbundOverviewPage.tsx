@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type ChangeEvent } from 'react';
+import { useEffect, useId, useReducer, useRef, useState, type ChangeEvent } from 'react';
 import { Link } from 'react-router';
 import { PageTitle } from '@/app/PageTitle';
 import { PAGE_TITLES } from '@/app/pageTitles';
@@ -64,9 +64,12 @@ export function NameForm({ label, submitLabel, initial = '', disabled, onSubmit,
   );
 }
 
-function VerbundRow({ verbund, writable, restored, exporting, onExport, onDelete }: Readonly<{
+function VerbundRow({ verbund, writable, rowDrafts, onRowDraft, restored, exporting, onExport, onDelete }: Readonly<{
   verbund: WorkspaceVerbund;
   writable: boolean;
+  /** Offene Zeilenumbenennungen der Seite; ein Eintrag hält das Formular dieser Zeile offen. */
+  rowDrafts: Map<string, string>;
+  onRowDraft: (verbundId: string, draft: string | null) => void;
   /** Zuletzt wiederhergestellt; hinterlegt, bis die Seite verlassen wird. */
   restored: boolean;
   exporting: boolean;
@@ -74,25 +77,26 @@ function VerbundRow({ verbund, writable, restored, exporting, onExport, onDelete
   onDelete: (verbund: WorkspaceVerbund) => void;
 }>) {
   const { renameVerbund, renameDrafts } = useWorkspace();
-  const [renaming, setRenaming] = useState(false);
-  if (renaming) {
+  const draft = rowDrafts.get(verbund.verbundId);
+  if (draft !== undefined) {
     return (
       <li className="px-4 py-3">
         <NameForm
           label="Neuer Name"
           submitLabel="Speichern"
-          initial={verbund.name}
+          initial={draft}
           disabled={!writable}
+          onChange={(name) => rowDrafts.set(verbund.verbundId, name)}
           onSubmit={async (name) => {
             // Der neue Name ersetzt nur den Entwurf, der beim Speichern offen war; ein danach getippter bleibt.
-            const draft = renameDrafts.get(verbund.verbundId);
+            const sessionDraft = renameDrafts.get(verbund.verbundId);
             const result = await renameVerbund(verbund.verbundId, name);
             if (!result.ok) return false;
-            if (renameDrafts.get(verbund.verbundId) === draft) renameDrafts.delete(verbund.verbundId);
-            setRenaming(false);
+            if (renameDrafts.get(verbund.verbundId) === sessionDraft) renameDrafts.delete(verbund.verbundId);
+            onRowDraft(verbund.verbundId, null);
             return true;
           }}
-          onCancel={() => setRenaming(false)}
+          onCancel={() => onRowDraft(verbund.verbundId, null)}
         />
       </li>
     );
@@ -106,7 +110,7 @@ function VerbundRow({ verbund, writable, restored, exporting, onExport, onDelete
         <span className="min-w-0 break-words">{verbund.name}</span>
       </Link>
       <div className="flex gap-1">
-        <Button variant="ghost" size="sm" className={ROW_BUTTON} disabled={!writable} onClick={() => setRenaming(true)}>Umbenennen</Button>
+        <Button variant="ghost" size="sm" className={ROW_BUTTON} disabled={!writable} onClick={() => onRowDraft(verbund.verbundId, verbund.name)}>Umbenennen</Button>
         <Button variant="ghost" size="sm" className={ROW_BUTTON} disabled={exporting} aria-label={`${verbund.name} sichern`} onClick={() => onExport(verbund)}>Sichern</Button>
         <button
           type="button"
@@ -135,6 +139,14 @@ export function VerbundOverviewPage() {
   // Das Prüfblatt ist Ansichtszustand dieser Seite: keine Route, kein Seitentitel mit Organisationsdaten.
   const [restoreFile, setRestoreFile] = useState<File | null>(null);
   const [restored, setRestored] = useState<RestoreDone | null>(null);
+  // Zeilenentwürfe stehen auf Seitenebene, damit das Prüfblatt sie klären und nach Erfolg zurücksetzen kann.
+  const [rowDrafts] = useState(() => new Map<string, string>());
+  const [, rerender] = useReducer((value: number) => value + 1, 0);
+  const setRowDraft = (verbundId: string, draft: string | null) => {
+    if (draft === null) rowDrafts.delete(verbundId);
+    else rowDrafts.set(verbundId, draft);
+    rerender();
+  };
   // Fokus nach dem Prüfblatt: Überschrift nach Erfolg, Einstieg nach Abbruch.
   const focusTarget = useRef<'heading' | 'restore' | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -163,8 +175,14 @@ export function VerbundOverviewPage() {
       {restoreFile && (
         <RestoreSheet
           file={restoreFile}
+          rowDrafts={rowDrafts}
           onCancel={() => { focusTarget.current = 'restore'; setRestoreFile(null); }}
-          onDone={(done) => { focusTarget.current = 'heading'; setRestored(done); setRestoreFile(null); }}
+          onDone={(done) => {
+            // Der Restore ersetzt den Zielbereich; dessen offene Zeilenformulare gelten nicht mehr.
+            if (done.verbundId) rowDrafts.delete(done.verbundId);
+            else rowDrafts.clear();
+            focusTarget.current = 'heading'; setRestored(done); setRestoreFile(null);
+          }}
         />
       )}
       {/* Die Übersicht bleibt eingehängt, damit offene Formulareingaben das Prüfblatt überstehen. */}
@@ -226,6 +244,8 @@ export function VerbundOverviewPage() {
                   key={verbund.verbundId}
                   verbund={verbund}
                   writable={writable}
+                  rowDrafts={rowDrafts}
+                  onRowDraft={setRowDraft}
                   restored={restored?.verbundId === verbund.verbundId}
                   exporting={exporting}
                   onExport={(entry) => void exportVerbund(entry.verbundId)}

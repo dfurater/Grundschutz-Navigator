@@ -16,17 +16,11 @@ import {
 export interface RestoreDone { readonly text: string; readonly verbundId?: string }
 
 type Phase =
-  | { readonly step: 'checking' }
-  | { readonly step: 'flush-failed' }
+  | { readonly step: 'checking' | 'flush-failed' | 'reading' | 'collision' | 'stale' | 'read-failed' }
   | { readonly step: 'rejected'; readonly code: string }
   | { readonly step: 'clarify'; readonly inputs: readonly RestoreInput[]; readonly failed?: RestoreInput }
-  | { readonly step: 'reading' }
-  | { readonly step: 'preview'; readonly preview: RestorePreview }
-  | { readonly step: 'running'; readonly preview: RestorePreview }
-  | { readonly step: 'collision' }
-  | { readonly step: 'stale' }
-  | { readonly step: 'write-failed'; readonly preview: RestorePreview; readonly quota: boolean }
-  | { readonly step: 'read-failed' };
+  | { readonly step: 'preview' | 'running'; readonly preview: RestorePreview }
+  | { readonly step: 'write-failed'; readonly preview: RestorePreview; readonly quota: boolean };
 
 const WORKER_FAILURE = 'WORKSPACE_BACKUP_WORKER_FAILURE';
 const STALE_CODES = new Set(['WORKSPACE_SAVE_CONFLICT', 'WORKSPACE_CONFIRMATION_REQUIRED']);
@@ -35,8 +29,10 @@ const STALE_CODES = new Set(['WORKSPACE_SAVE_CONFLICT', 'WORKSPACE_CONFIRMATION_
  * Prüfblatt „Sicherung wiederherstellen“: Datei prüfen, offene Eingaben des Zielbereichs klären,
  * Vorschau lesen und genau diese Vorschau bestätigen. Ansichtszustand der Übersicht ohne eigene Route.
  */
-export function RestoreSheet({ file: initialFile, onCancel, onDone }: Readonly<{
+export function RestoreSheet({ file: initialFile, rowDrafts, onCancel, onDone }: Readonly<{
   file: File;
+  /** Offene Umbenennungen der Übersichtszeilen; die Klärung schließt eine Zeile, indem sie ihren Eintrag löscht. */
+  rowDrafts: Map<string, string>;
   onCancel: () => void;
   onDone: (done: RestoreDone) => void;
 }>) {
@@ -75,7 +71,7 @@ export function RestoreSheet({ file: initialFile, onCancel, onDone }: Readonly<{
     setInfo(fileInfo(preview));
     scope.current = scopeOf(preview);
     if (clarify) {
-      const inputs = await pendingRestoreInputs(scope.current);
+      const inputs = await pendingRestoreInputs(scope.current, rowDrafts);
       if (run !== generation.current) return;
       if (!inputs.ok) { setPhase({ step: 'read-failed' }); return; }
       if (inputs.value.length > 0) { setPhase({ step: 'clarify', inputs: inputs.value }); return; }
@@ -122,7 +118,7 @@ export function RestoreSheet({ file: initialFile, onCancel, onDone }: Readonly<{
     const run = generation.current;
     const target = scope.current;
     if (!target) return;
-    const inputs = await pendingRestoreInputs(target);
+    const inputs = await pendingRestoreInputs(target, rowDrafts);
     if (run !== generation.current) return;
     if (!inputs.ok) { setPhase({ step: 'read-failed' }); return; }
     if (inputs.value.length > 0) { setPhase({ step: 'clarify', inputs: inputs.value, failed }); return; }
@@ -130,10 +126,12 @@ export function RestoreSheet({ file: initialFile, onCancel, onDone }: Readonly<{
     await readPreview(run, false);
   };
 
+  const discard = (entry: RestoreInput) => (entry.kind === 'rename' && entry.row ? rowDrafts.delete(entry.verbundId) : discardRestoreInput(entry));
+
   const saveRename = async (entry: Extract<RestoreInput, { kind: 'rename' }>) => {
     const name = entry.draft.trim();
     const result = await renameVerbund(entry.verbundId, name);
-    if (result.ok) discardRestoreInput(entry);
+    if (result.ok) discard(entry);
     await afterClarify(result.ok ? undefined : entry);
   };
 
@@ -142,7 +140,7 @@ export function RestoreSheet({ file: initialFile, onCancel, onDone }: Readonly<{
     running.current = true;
     const run = generation.current;
     // Eine nach der Vorschau entstandene Eingabe im Zielbereich verwirft die Vorschau.
-    const inputs = await pendingRestoreInputs(scopeOf(preview));
+    const inputs = await pendingRestoreInputs(scopeOf(preview), rowDrafts);
     if (run !== generation.current) { running.current = false; return; }
     if (!inputs.ok || inputs.value.length > 0) {
       running.current = false;
@@ -242,13 +240,13 @@ export function RestoreSheet({ file: initialFile, onCancel, onDone }: Readonly<{
             <ul className="divide-y divide-[var(--color-border-subtle)] border-t border-[var(--color-border-subtle)]">
               {phase.inputs.map((entry) => (
                 <ClarifyRow
-                  key={entry.kind === 'rename' ? `rename-${entry.verbundId}` : `import-${entry.localId}`}
+                  key={entry.kind === 'rename' ? `rename-${entry.row ? 'row-' : ''}${entry.verbundId}` : `import-${entry.localId}`}
                   entry={entry}
-                  verbundName={verbuende?.find((candidate) => candidate.verbundId === entry.verbundId)?.name ?? ''}
-                  failed={phase.failed !== undefined && phase.failed.kind === entry.kind && phase.failed.verbundId === entry.verbundId}
+                  verbundName={entry.kind === 'orphan' ? '' : verbuende?.find((candidate) => candidate.verbundId === entry.verbundId)?.name ?? ''}
+                  failed={entry.kind === 'rename' && phase.failed?.kind === 'rename' && phase.failed.verbundId === entry.verbundId && phase.failed.row === entry.row}
                   writable={writable}
                   onSave={saveRename}
-                  onDiscard={() => { discardRestoreInput(entry); void afterClarify(); }}
+                  onDiscard={() => { discard(entry); void afterClarify(); }}
                   onOpen={(imported) => void navigate(buildWorkspaceDocumentUrl(imported.verbundId, imported.localId))}
                 />
               ))}

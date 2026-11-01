@@ -170,15 +170,16 @@ export function ClarifyRow({ entry, verbundName, failed, writable, onSave, onDis
   onOpen: (entry: Extract<RestoreInput, { kind: 'import' }>) => void;
 }>) {
   const [saving, setSaving] = useState(false);
-  const label = entry.kind === 'rename'
-    ? <><span className="font-semibold">Umbenennung</span> · „{entry.name}“ → „{entry.draft}“</>
-    : <><span className="font-semibold">Importzuordnung</span> · {ROOT_TYPE_LABELS[entry.rootType]} in „{verbundName}“ · {plural(entry.count, 'Verweis', 'Verweise')}</>;
+  let label: ReactNode;
+  if (entry.kind === 'rename') label = <><span className="font-semibold">Umbenennung</span> · „{entry.name}“ → „{entry.draft}“</>;
+  else if (entry.kind === 'import') label = <><span className="font-semibold">Importzuordnung</span> · {ROOT_TYPE_LABELS[entry.rootType]} in „{verbundName}“ · {plural(entry.count, 'Verweis', 'Verweise')}</>;
+  else label = <><span className="font-semibold">Importzuordnung</span> · Dokument nicht mehr vorhanden · {plural(entry.count, 'Verweis', 'Verweise')}</>;
   return (
     <li className="space-y-2 py-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="min-w-0 break-words text-sm text-[var(--color-text-primary)]">{label}</p>
         <div className="flex gap-1">
-          {entry.kind === 'rename' ? (
+          {entry.kind === 'rename' && (
             <Button
               variant="secondary"
               size="sm"
@@ -188,7 +189,8 @@ export function ClarifyRow({ entry, verbundName, failed, writable, onSave, onDis
             >
               Speichern
             </Button>
-          ) : (
+          )}
+          {entry.kind === 'import' && (
             <Button variant="secondary" size="sm" className={BUTTON} onClick={() => onOpen(entry)}>Zum Dokument</Button>
           )}
           <Button variant="ghost" size="sm" className={BUTTON} disabled={saving} onClick={onDiscard}>Verwerfen</Button>
@@ -232,7 +234,7 @@ export function PreviewBody({ preview, verbundCount, phase, quota, writable, bac
     <>
       <Facts rows={facts} />
       <PreviewTable preview={preview} />
-      <p className="text-sm font-semibold text-[var(--color-text-primary)]">{replacementText(preview)}</p>
+      <p className="wrap-anywhere text-sm font-semibold text-[var(--color-text-primary)]">{replacementText(preview)}</p>
       {running && <Message tone="status" title="Wiederherstellung läuft…">Alle Aktionen sind bis zum Abschluss gesperrt.</Message>}
       {phase === 'write-failed' && (
         <Message tone="alert" title={quota ? 'Speicher voll' : 'Speicher nicht verfügbar'}>Die Wiederherstellung wurde nicht gespeichert. Der bisherige Bestand ist unverändert.</Message>
@@ -248,7 +250,7 @@ export function PreviewBody({ preview, verbundCount, phase, quota, writable, bac
         {/* Auch die Wiederholung nennt den Umfang im zugänglichen Namen. */}
         <Button
           variant={replaces ? 'danger' : 'primary'}
-          className={BUTTON}
+          className={`${BUTTON} max-w-full wrap-anywhere`}
           disabled={running || !writable}
           aria-label={phase === 'write-failed' ? `Erneut versuchen: ${confirmLabel}` : undefined}
           onClick={onConfirm}

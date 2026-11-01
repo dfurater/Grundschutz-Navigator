@@ -19,3 +19,22 @@ it('erfasst ein offenes Importziel eines anderswo gelöschten Dokuments, das die
   // Der unveränderte Name ist keine offene Eingabe; der andere Verbund gehört nicht zum Zielbereich.
   expect(inputs).toEqual([{ kind: 'import', verbundId: target.verbundId, localId: removed, rootType: 'profile', count: 1 }]);
 });
+
+it('erfasst offene Zeilenumbenennungen getrennt von den Sitzungsentwürfen', () => {
+  const inputs = collectRestoreInputs({
+    scope: { kind: 'verbund', verbundId: target.verbundId, documents: [] },
+    renameDrafts: new Map(),
+    rowDrafts: new Map([[target.verbundId, 'Neu'], [other.verbundId, 'Bleibt']]),
+    importTargets: new Map(),
+    verbuende: [target, other],
+    documents: [],
+  });
+  expect(inputs).toEqual([{ kind: 'rename', verbundId: target.verbundId, name: 'Ziel', draft: 'Neu', row: true }]);
+});
+
+it('führt beim Gesamt-Restore Importziele ohne bekanntes Dokument als verwaiste Eingabe, beim Verbund-Restore nicht', () => {
+  const pending = new Map([['/profile/imports/0/href', {}]]);
+  const base = { renameDrafts: new Map(), importTargets: new Map([[removed, pending]]), verbuende: [target], documents: [] };
+  expect(collectRestoreInputs({ ...base, scope: { kind: 'workspace', documents: [] } })).toEqual([{ kind: 'orphan', localId: removed, count: 1 }]);
+  expect(collectRestoreInputs({ ...base, scope: { kind: 'verbund', verbundId: target.verbundId, documents: [] } })).toEqual([]);
+});
