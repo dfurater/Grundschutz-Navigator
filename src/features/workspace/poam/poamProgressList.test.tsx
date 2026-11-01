@@ -1,5 +1,5 @@
 import 'fake-indexeddb/auto';
-import { fireEvent, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WorkspaceStore } from '@/adapters/workspaceStore';
 import { StorageFailure, failure } from '@/adapters/workspaceStorageFailure';
@@ -12,7 +12,7 @@ vi.mock('@/adapters/oscalImportGate', async () => (await import('@/test/workspac
 
 let seeded: SeededWorkspace;
 beforeEach(async () => { seeded = await seedWorkspace(); });
-afterEach(async () => { vi.restoreAllMocks(); await resetWorkspace(); });
+afterEach(async () => { vi.useRealTimers(); vi.restoreAllMocks(); await resetWorkspace(); });
 
 // JSON-Kopie: Die Fixture teilt Teilobjekte, der Klasse-2-Objektgraph verlangt einen Baum.
 function addPoam(source: unknown) {
@@ -22,7 +22,7 @@ function addPoam(source: unknown) {
 }
 
 describe('Umsetzungsfortschritt in der Station POA&M', () => {
-  it('listet offene und abgeschlossene Maßnahmen lesend und ohne Klasse-2-Werte in URL oder Log', async () => {
+  it('listet Maßnahmen mit und ohne erklärte Umsetzung lesend und ohne Klasse-2-Werte in URL oder Log', async () => {
     const open = makeFullPoam();
     const openBody = open['plan-of-action-and-milestones'];
     openBody['poam-items'][0].title = `Offen ${SENTINEL}`;
@@ -41,17 +41,19 @@ describe('Umsetzungsfortschritt in der Station POA&M', () => {
     const logs = ['log', 'info', 'warn', 'error', 'debug'].map(level => vi.spyOn(console, level as 'log'));
 
     const { router } = renderWorkspaceArea(buildStationUrl(seeded.verbundId, 'poam'));
-    const openSection = await within(main()).findByRole('region', { name: /Offene Maßnahmen/ });
-    const doneSection = within(main()).getByRole('region', { name: /Abgeschlossene Maßnahmen/ });
+    const openSection = await within(main()).findByRole('region', { name: /Umsetzung nicht erklärt/ });
+    const doneSection = within(main()).getByRole('region', { name: /^Umsetzung erklärt/ });
     expect(openSection).toHaveTextContent(`Offen ${SENTINEL}`);
     expect(openSection).toHaveTextContent('2026-12-01T00:00:00Z');
     expect(openSection).toHaveTextContent('ac-1_obj');
     expect(openSection).toHaveTextContent('Geplant');
-    expect(within(openSection).getByText('Maßnahme').closest('li')).toHaveTextContent('ohne Frist');
+    expect(within(openSection).getByText('Maßnahme').closest('li')).toHaveTextContent('Fristlage unbekannt');
+    expect(within(openSection).getByText('Maßnahme').closest('li')).toHaveTextContent('keine Frist');
     expect(doneSection).toHaveTextContent('Erledigt');
-    expect(doneSection).toHaveTextContent('Abgeschlossen');
+    expect(doneSection).toHaveTextContent('Umsetzung erklärt');
     expect(doneSection).toHaveTextContent('risk.status open');
-    expect(main()).toHaveTextContent('Fristzustand berechnet aus Frist und Systemzeit');
+    expect(main()).toHaveTextContent('Fristlage berechnet aus Frist und Systemzeit');
+    expect(main()).not.toHaveTextContent(/eingehalten|Abgeschlossen/);
 
     fireEvent.change(within(main()).getByLabelText('Sortierung'), { target: { value: 'stand' } });
     await waitFor(() => expect(within(main()).getByLabelText('Sortierung')).toHaveValue('stand'));
@@ -59,6 +61,36 @@ describe('Umsetzungsfortschritt in der Station POA&M', () => {
     expect(JSON.stringify(router.state.location)).not.toContain('stand');
     for (const spy of writes) expect(spy).not.toHaveBeenCalled();
     for (const spy of logs) expect(JSON.stringify(spy.mock.calls)).not.toContain(SENTINEL);
+  });
+
+  it('führt ein importiertes POA&M von künftiger über überschrittene Frist zur erklärten Umsetzung ohne Wirksamkeitsbeleg', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const source = makeFullPoam();
+    const added = await addPoam(source);
+    const rowAt = async (now: string) => {
+      vi.setSystemTime(new Date(now));
+      renderWorkspaceArea(buildStationUrl(seeded.verbundId, 'poam'));
+      return (await within(main()).findByText('Maßnahme')).closest('li') as HTMLElement;
+    };
+
+    expect(await rowAt('2026-11-30T23:59:59Z')).toHaveTextContent('noch nicht fällig');
+    cleanup();
+    const overdue = await rowAt('2026-12-01T00:00:00Z');
+    expect(within(overdue).getByText('überschritten')).toBeInTheDocument();
+    fireEvent.click(within(overdue).getByText('Quellen'));
+    expect(within(overdue).getByText('/plan-of-action-and-milestones/risks/0/deadline')).toBeVisible();
+    cleanup();
+
+    (source['plan-of-action-and-milestones'].risks[0].remediations[0] as Record<string, unknown>).lifecycle = 'completed';
+    await readStore(store => store.saveDocument(added.localId, added.savedAt, null, {
+      source: JSON.parse(JSON.stringify(source)), context: { trustClass: 'class-2-local-user' }, rootType: 'plan-of-action-and-milestones', oscalVersion: '1.2.2',
+    }));
+    const declared = await rowAt('2026-12-02T00:00:00Z');
+    expect(within(main()).getByRole('region', { name: /^Umsetzung erklärt/ })).toContainElement(declared);
+    expect(declared).toHaveTextContent('Einhaltung nicht belegt');
+    expect(declared).not.toHaveTextContent('überschritten');
+    expect(declared).toHaveTextContent('Wirksamkeit nicht belegt');
+    expect(declared).toHaveTextContent('risk.status open');
   });
 
   it('meldet einen Ladefehler als Alert ohne Klasse-2-Werte in der Konsole', async () => {
@@ -82,7 +114,7 @@ describe('Umsetzungsfortschritt in der Station POA&M', () => {
 
   it('zeigt ohne POA&M leere Bereiche statt eines Fehlers', async () => {
     renderWorkspaceArea(buildStationUrl(seeded.verbundId, 'poam'));
-    const openSection = await within(main()).findByRole('region', { name: /Offene Maßnahmen/ });
+    const openSection = await within(main()).findByRole('region', { name: /Umsetzung nicht erklärt/ });
     expect(openSection).toHaveTextContent('Keine.');
     expect(within(main()).queryByRole('alert')).toBeNull();
   });

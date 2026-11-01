@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parsePoamDocument, validatePoamSchema } from '@/adapters/oscalPoamDocument';
-import { derivePoamProgress, readRoleTitles, sortPoamProgress, type PoamProgressRow } from '@/domain/poamProgress';
+import { assessDeadline, derivePoamProgress, readRoleTitles, sortPoamProgress, type PoamProgressRow } from '@/domain/poamProgress';
 import { makeFullPoam, makeMinimalPoam } from '@/test/fixtures/poams';
 
 const context = { trustClass: 'class-2-local-user' } as const;
@@ -24,7 +24,8 @@ describe('derivePoamProgress', () => {
       title: 'Maßnahme',
       requirementIds: ['ac-1_obj'],
       deadline: '2026-12-01T00:00:00Z',
-      deadlineState: 'eingehalten',
+      deadlineState: 'noch nicht fällig',
+      deadlineGaps: [],
       riskStatuses: ['open'],
       lifecycles: [{ value: 'planned', documented: true }],
       completed: false,
@@ -50,15 +51,36 @@ describe('derivePoamProgress', () => {
     });
   });
 
-  it('vergleicht Fristen zeitpunktbasiert über verschiedene Offsets', () => {
+  it('vergleicht Fristen zeitpunktbasiert über verschiedene Offsets; genau am Termin gilt überschritten', () => {
     const state = (deadline: string) => rowsOf(withBody((body) => { risk(body).deadline = deadline; }))[0].deadlineState;
-    expect(state('2026-10-22T02:00:00+02:00')).toBe('eingehalten');
-    expect(state('2026-10-21T23:59:00-01:00')).toBe('eingehalten');
+    expect(state('2026-10-22T02:00:00+02:00')).toBe('überschritten');
+    expect(state('2026-10-21T23:00:00-01:00')).toBe('überschritten');
+    expect(state('2026-10-21T23:59:00-01:00')).toBe('noch nicht fällig');
     expect(state('2026-10-22T01:00:00+02:00')).toBe('überschritten');
   });
 
-  it('führt ein Item ohne lesbare Frist als „ohne Frist“, nie als eingehalten', () => {
-    expect(rowsOf(makeMinimalPoam())[0]).toMatchObject({ deadlineState: 'ohne Frist', deadline: undefined, completed: false });
+  describe.each([
+    ['on-date', (date: string) => ({ 'on-date': { date } })],
+    ['within-date-range/end', (date: string) => ({ 'within-date-range': { start: '2026-01-01T00:00:00Z', end: date } })],
+  ])('Termingrenze bei %s', (_, timing) => {
+    const at = (date: string, dangling: boolean) => rowsOf(withBody((body) => {
+      delete risk(body).deadline;
+      risk(body).remediations[0].tasks = [{ uuid: '00000000-0000-4000-8000-000000000304', type: 'milestone', title: 'Termin', timing: timing(date) }];
+      if (dangling) body['poam-items'][0]['related-risks'].push({ 'risk-uuid': '00000000-0000-4000-8000-0000000003fd' });
+    }))[0].deadlineState;
+    it.each([false, true])('eine Sekunde vor, am und nach dem Termin (zusätzlicher unaufgelöster Verweis: %s)', (dangling) => {
+      expect(at('2026-10-22T02:00:01+02:00', dangling)).toBe(dangling ? 'Fristlage unbekannt' : 'noch nicht fällig');
+      expect(at('2026-10-22T02:00:00+02:00', dangling)).toBe('überschritten');
+      expect(at('2026-10-21T23:59:59Z', dangling)).toBe('überschritten');
+    });
+  });
+
+  it('führt fehlende und unlesbare Fristen als „Fristlage unbekannt“ mit Grund und Quellpfad, nie als noch nicht fällig', () => {
+    const riskPath = '/plan-of-action-and-milestones/risks/0';
+    expect(rowsOf(makeMinimalPoam())[0]).toMatchObject({
+      deadlineState: 'Fristlage unbekannt', deadline: undefined, completed: false,
+      deadlineGaps: [{ reason: 'keine Frist', path: '/plan-of-action-and-milestones/poam-items/0/related-risks' }],
+    });
     const frequencyOnly = withBody((body) => {
       delete risk(body).deadline;
       risk(body).remediations[0].tasks = [{
@@ -66,15 +88,103 @@ describe('derivePoamProgress', () => {
         timing: { 'at-frequency': { period: 1, unit: 'months' } },
       }];
     });
-    expect(rowsOf(frequencyOnly)[0].deadlineState).toBe('ohne Frist');
-    expect(rowsOf(withBody((body) => { risk(body).deadline = '2026-01-01T00:00:00'; }))[0].deadlineState).toBe('ohne Frist');
+    expect(rowsOf(frequencyOnly)[0]).toMatchObject({
+      deadlineState: 'Fristlage unbekannt',
+      deadlineGaps: [{
+        reason: 'Wiederholung ohne absoluten Termin', path: `${riskPath}/remediations/0/tasks/0/timing/at-frequency`, value: '{"period":1,"unit":"months"}',
+      }],
+    });
+    expect(rowsOf(withBody((body) => { risk(body).deadline = '2026-01-01T00:00:00'; }))[0]).toMatchObject({
+      deadlineState: 'Fristlage unbekannt',
+      deadlineGaps: [{ reason: 'ungültiges Datum', path: `${riskPath}/deadline`, value: '2026-01-01T00:00:00' }],
+    });
+    const noDeadline = withBody((body) => { delete risk(body).deadline; });
+    expect(rowsOf(noDeadline)[0].deadlineGaps).toEqual([{ reason: 'keine Frist', path: `${riskPath}/deadline` }]);
     const dangling = withBody((body) => { body['poam-items'][0]['related-risks'] = [{ 'risk-uuid': '00000000-0000-4000-8000-0000000003ff' }]; });
-    expect(rowsOf(dangling)[0]).toMatchObject({ deadlineState: 'ohne Frist', riskStatuses: [] });
+    expect(rowsOf(dangling)[0]).toMatchObject({
+      deadlineState: 'Fristlage unbekannt', riskStatuses: [],
+      deadlineGaps: [{
+        reason: 'Risikobezug nicht auflösbar', value: '00000000-0000-4000-8000-0000000003ff',
+        path: '/plan-of-action-and-milestones/poam-items/0/related-risks/0/risk-uuid',
+      }],
+    });
   });
 
-  it('schließt nur über lifecycle = completed ab und lässt risk.status unverändert', () => {
+  it('wertet ein umgekehrtes Intervall als ungültig, auch wenn eine andere Frist lesbar ist', () => {
+    const source = withBody((body) => {
+      risk(body).remediations[0].tasks = [{
+        uuid: '00000000-0000-4000-8000-000000000305', type: 'action', title: 'Umgekehrt',
+        timing: { 'within-date-range': { start: '2026-11-02T00:00:00Z', end: '2026-11-01T00:00:00Z' } },
+      }];
+    });
+    expect(rowsOf(source)[0]).toMatchObject({
+      deadline: '2026-12-01T00:00:00Z', deadlineState: 'Fristlage unbekannt',
+      deadlineGaps: [{
+        reason: 'ungültiges Intervall', path: '/plan-of-action-and-milestones/risks/0/remediations/0/tasks/0/timing/within-date-range',
+        value: '{"start":"2026-11-02T00:00:00Z","end":"2026-11-01T00:00:00Z"}',
+      }],
+    });
+  });
+
+  it('wertet fehlende Pflichttermine und vom Reader übergangene Fristen neben einer lesbaren künftigen Frist als Lücke', () => {
+    const task = '/plan-of-action-and-milestones/risks/0/remediations/0/tasks/0/timing';
+    const withTiming = (timing: unknown) => withBody((body) => {
+      risk(body).remediations[0].tasks = [{ uuid: '00000000-0000-4000-8000-000000000306', type: 'action', title: 'Lücke', timing }];
+    });
+    expect(rowsOf(withTiming({ 'on-date': {} }))[0]).toMatchObject({
+      deadline: '2026-12-01T00:00:00Z', deadlineState: 'Fristlage unbekannt', deadlineGaps: [{ reason: 'ungültiges Datum', path: `${task}/on-date/date` }],
+    });
+    expect(rowsOf(withTiming({ 'within-date-range': { start: '2026-11-01T00:00:00Z' } }))[0]).toMatchObject({
+      deadlineState: 'Fristlage unbekannt', deadlineGaps: [{ reason: 'ungültiges Intervall', path: `${task}/within-date-range/end` }],
+    });
+    const wrongType = withBody((body) => {
+      risk(body).deadline = 42;
+      risk(body).remediations[0].tasks = [{
+        uuid: '00000000-0000-4000-8000-000000000307', type: 'action', title: 'Künftig', timing: { 'on-date': { date: '2026-12-24T00:00:00Z' } },
+      }];
+    });
+    expect(rowsOf(withTiming({ 'on-date': 42 }))[0]).toMatchObject({
+      deadlineState: 'Fristlage unbekannt', deadlineGaps: [{ reason: 'ungültiges Datum', path: `${task}/on-date/date` }],
+    });
+    expect(rowsOf(withTiming({ 'within-date-range': 42 }))[0]).toMatchObject({
+      deadlineState: 'Fristlage unbekannt', deadlineGaps: [{ reason: 'ungültiges Intervall', path: `${task}/within-date-range/end` }],
+    });
+    expect(rowsOf(withTiming('2026-11-01T00:00:00Z'))[0]).toMatchObject({
+      deadlineState: 'Fristlage unbekannt', deadlineGaps: [{ reason: 'ungültiges Datum', path: task }],
+    });
+    expect(rowsOf(wrongType)[0]).toMatchObject({
+      deadline: '2026-12-24T00:00:00Z', deadlineState: 'Fristlage unbekannt',
+      deadlineGaps: [{ reason: 'ungültiges Datum', path: '/plan-of-action-and-milestones/risks/0/deadline' }],
+    });
+  });
+
+  it('wertet einen Rest unter der Millisekunde als noch nicht erreichten Termin', () => {
+    const at = (deadline: string) => rowsOf(withBody((body) => { risk(body).deadline = deadline; }), new Date('2026-12-01T00:00:00.000Z'))[0].deadlineState;
+    expect(at('2026-12-01T00:00:00.0001Z')).toBe('noch nicht fällig');
+    expect(at('2026-12-01T00:00:00.0000Z')).toBe('überschritten');
+    const sameMillisecond = withBody((body) => {
+      risk(body).deadline = '2026-12-01T00:00:00.0001Z';
+      risk(body).remediations[0].tasks = [{
+        uuid: '00000000-0000-4000-8000-000000000308', type: 'milestone', title: 'Gleiche Millisekunde', timing: { 'on-date': { date: '2026-12-01T00:00:00.0000Z' } },
+      }];
+    });
+    expect(rowsOf(sameMillisecond, new Date('2026-12-01T00:00:00.000Z'))[0]).toMatchObject({
+      deadline: '2026-12-01T00:00:00.0000Z', deadlineState: 'überschritten',
+    });
+  });
+
+  it('führt Frist, Risikostatus und Lifecycle mit Quellpfad', () => {
+    expect(rowsOf(makeFullPoam())[0].sources).toEqual([
+      { label: 'Frist (früheste)', path: '/plan-of-action-and-milestones/risks/0/deadline', value: '2026-12-01T00:00:00Z' },
+      { label: 'Lifecycle', path: '/plan-of-action-and-milestones/risks/0/remediations/0/lifecycle', value: 'planned' },
+      { label: 'Risikostatus', path: '/plan-of-action-and-milestones/risks/0/status', value: 'open' },
+    ]);
+  });
+
+  it('erklärt Umsetzung nur über lifecycle = completed, lässt risk.status unverändert und behält die Fristlage', () => {
     const done = withBody((body) => { risk(body).remediations[0].lifecycle = 'completed'; });
     expect(rowsOf(done)[0]).toMatchObject({ completed: true, riskStatuses: ['open'] });
+    expect(rowsOf(done, new Date('2027-01-01T00:00:00Z'))[0]).toMatchObject({ completed: true, deadlineState: 'überschritten' });
     const closedRisk = withBody((body) => { risk(body).status = 'closed'; });
     expect(rowsOf(closedRisk)[0]).toMatchObject({ completed: false, riskStatuses: ['closed'] });
   });
@@ -92,24 +202,27 @@ describe('derivePoamProgress', () => {
       body.risks.push(withoutUuid as never, { ...structuredClone(original), deadline: '2026-02-01T00:00:00Z' } as never);
     });
     // Die Doppelung macht den Verweis mehrdeutig; das Risiko ohne UUID ist nie ein Ziel.
-    expect(rowsOf(source)[0]).toMatchObject({ unresolvedRisks: 1, completed: false, deadlineState: 'ohne Frist', deadline: undefined });
+    expect(rowsOf(source)[0]).toMatchObject({ unresolvedRisks: 1, completed: false, deadlineState: 'Fristlage unbekannt', deadline: undefined });
   });
 
   it('wertet ein unmögliches Kalenderdatum nicht als Frist', () => {
-    expect(rowsOf(withBody((body) => { risk(body).deadline = '2026-02-30T10:00:00Z'; }))[0]).toMatchObject({ deadlineState: 'ohne Frist', deadline: undefined });
+    expect(rowsOf(withBody((body) => { risk(body).deadline = '2026-02-30T10:00:00Z'; }))[0]).toMatchObject({
+      deadlineState: 'Fristlage unbekannt', deadline: undefined, deadlineGaps: [{ reason: 'ungültiges Datum', value: '2026-02-30T10:00:00Z' }],
+    });
   });
 
-  it('belegt bei nicht auflösbarem Risikoverweis weder Abschluss noch eingehaltene Frist', () => {
+  it('belegt bei nicht auflösbarem Risikoverweis keinen Abschluss; eine bekannte überschrittene Frist bleibt überschritten', () => {
     const withDangling = (deadline: string) => withBody((body) => {
       risk(body).deadline = deadline;
       risk(body).remediations[0].lifecycle = 'completed';
       body['poam-items'][0]['related-risks'].push({ 'risk-uuid': '00000000-0000-4000-8000-0000000003fe' });
     });
     expect(rowsOf(withDangling('2026-12-01T00:00:00Z'))[0]).toMatchObject({
-      unresolvedRisks: 1, completed: false, deadlineState: 'ohne Frist', deadline: '2026-12-01T00:00:00Z',
+      unresolvedRisks: 1, completed: false, deadlineState: 'Fristlage unbekannt', deadline: '2026-12-01T00:00:00Z',
     });
     expect(rowsOf(withDangling('2026-10-01T00:00:00Z'))[0]).toMatchObject({
       unresolvedRisks: 1, completed: false, deadlineState: 'überschritten', deadline: '2026-10-01T00:00:00Z',
+      deadlineGaps: [{ reason: 'Risikobezug nicht auflösbar' }],
     });
   });
 
@@ -120,9 +233,23 @@ describe('derivePoamProgress', () => {
   });
 });
 
+describe('assessDeadline', () => {
+  it('bewertet ein einzelnes Risiko mit denselben Eingaben wie die Zeile', () => {
+    const view = parsePoamDocument(makeFullPoam(), context).view;
+    const at = (now: string) => assessDeadline(view.risks, [], new Date(now));
+    expect(at('2026-11-30T23:59:59Z')).toEqual({
+      deadline: { value: '2026-12-01T00:00:00Z', path: '/plan-of-action-and-milestones/risks/0/deadline' }, state: 'noch nicht fällig', gaps: [],
+    });
+    expect(at('2026-12-01T00:00:00Z').state).toBe('überschritten');
+    expect(assessDeadline([], [{ path: '/x/risk-uuid' }], NOW)).toEqual({
+      deadline: undefined, state: 'Fristlage unbekannt', gaps: [{ path: '/x/risk-uuid', reason: 'Risikobezug nicht auflösbar' }],
+    });
+  });
+});
+
 describe('sortPoamProgress', () => {
   const row = (key: string, extra: Partial<PoamProgressRow>): PoamProgressRow => ({
-    key, requirementIds: [], deadlineState: 'ohne Frist', responsible: [], riskStatuses: [], lifecycles: [], unresolvedRisks: 0, completed: false, ...extra,
+    key, requirementIds: [], deadlineState: 'Fristlage unbekannt', deadlineGaps: [], sources: [], responsible: [], riskStatuses: [], lifecycles: [], unresolvedRisks: 0, completed: false, ...extra,
   });
   const rows = [
     row('a', { title: 'A' }),

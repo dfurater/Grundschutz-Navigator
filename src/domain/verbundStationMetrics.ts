@@ -24,8 +24,8 @@ export type DocumentMetric =
   | { readonly kind: 'ssp'; readonly documented: number; readonly baseline: number }
   /** Findings mit `target.status.state` `satisfied` oder `not-satisfied`; `unknown` zählt Findings ohne einen dieser Werte. */
   | { readonly kind: 'assessment-results'; readonly assessed: number; readonly notSatisfied: number; readonly unknown: number }
-  /** Nicht abgeschlossene `poam-items` und davon die mit überschrittener Frist. */
-  | { readonly kind: 'poam'; readonly open: number; readonly overdue: number };
+  /** `poam-items` ohne erklärte Umsetzung, davon die mit überschrittener und die mit unbekannter Fristlage. */
+  | { readonly kind: 'poam'; readonly open: number; readonly overdue: number; readonly unknownDeadline: number };
 
 export interface StationMetrics {
   /** Controls des gebundenen BSI-Katalogs, nur bei genau einem gebundenen Katalog. */
@@ -33,7 +33,7 @@ export interface StationMetrics {
   /** `catalogKey` desselben Katalogs, damit Zahl und Ziel der Catalog-Karte übereinstimmen. */
   readonly catalogKey?: CatalogKey;
   readonly documents: ReadonlyMap<LocalId, DocumentMetric>;
-  /** Bezugszeitpunkt der Fristableitung (ISO 8601); die Karte nennt ihn neben „überfällig“. */
+  /** Bezugszeitpunkt der Fristableitung (ISO 8601); die Karte nennt ihn neben „überschritten“. */
   readonly computedAt: string;
 }
 
@@ -71,14 +71,15 @@ function assessmentMetric(source: unknown): DocumentMetric | undefined {
 }
 
 function poamMetric(member: WorkspaceEnvelope, now: Date): DocumentMetric | undefined {
-  // Der Parser übergeht unlesbare `poam-items`; „0 offene Maßnahmen“ setzt eine lesbare Liste voraus.
+  // Der Parser übergeht unlesbare `poam-items`; „0 Maßnahmen · Umsetzung nicht erklärt“ setzt eine lesbare Liste voraus.
   const body = isJsonObject(member.source) ? member.source['plan-of-action-and-milestones'] : undefined;
   const items = readArray(isJsonObject(body) ? body['poam-items'] : undefined);
   if (items.length === 0 || !items.every(isJsonObject)) return undefined;
   try {
     const rows = derivePoamProgress(parsePoamDocument(member.source, { trustClass: member.trustClass }).view, now)
       .filter((row) => !row.completed);
-    return { kind: 'poam', open: rows.length, overdue: rows.filter((row) => row.deadlineState === 'überschritten').length };
+    const count = (state: string) => rows.filter((row) => row.deadlineState === state).length;
+    return { kind: 'poam', open: rows.length, overdue: count('überschritten'), unknownDeadline: count('Fristlage unbekannt') };
   } catch {
     // Ein Entwurf ohne lesbaren Root hat keine Maßnahmenzahl.
     return undefined;

@@ -16,13 +16,14 @@ interface ProgressRow extends PoamProgressRow {
 
 const MARK_BASE = 'inline-flex items-center rounded border px-2 py-0.5 text-xs font-medium leading-4';
 const MARK = `${MARK_BASE} whitespace-nowrap`;
+const UNKNOWN_TONE = 'border-[var(--color-border-strong)] bg-transparent text-[var(--color-text-secondary)]';
 const STATE_TONE: Readonly<Record<DeadlineState, string>> = {
-  eingehalten: 'border-[var(--color-border-default)] bg-[var(--color-surface-subtle)] text-[var(--color-text-secondary)]',
+  'noch nicht fällig': 'border-[var(--color-border-default)] bg-[var(--color-surface-subtle)] text-[var(--color-text-secondary)]',
   überschritten: 'border-[var(--color-border-strong)] bg-[var(--color-surface-subtle)] font-semibold text-[var(--color-danger-text)]',
-  'ohne Frist': 'border-[var(--color-border-strong)] bg-transparent text-[var(--color-text-secondary)]',
+  'Fristlage unbekannt': UNKNOWN_TONE,
 };
 const LIFECYCLE_LABELS: Readonly<Record<string, string>> = {
-  recommendation: 'Empfehlung', planned: 'Geplant', completed: 'Abgeschlossen',
+  recommendation: 'Empfehlung', planned: 'Geplant', completed: 'Umsetzung erklärt',
 };
 const SORTS: readonly { readonly value: PoamProgressSort; readonly label: string }[] = [
   { value: 'frist', label: 'Frist' }, { value: 'verantwortlich', label: 'Verantwortlich' }, { value: 'stand', label: 'Stand' },
@@ -31,6 +32,14 @@ const SELECT = `min-h-touch rounded-md bg-transparent py-1 pr-1 text-sm font-sem
 const COMPUTED_AT = new Intl.DateTimeFormat('de-DE', { dateStyle: 'medium', timeStyle: 'short' });
 
 function Stand({ row }: Readonly<{ row: ProgressRow }>) {
+  if (row.completed) {
+    return (
+      <span className="flex flex-wrap gap-1">
+        <span className={`${MARK} border-[var(--color-border-strong)] bg-[var(--color-surface-subtle)] text-[var(--color-text-primary)]`}>Umsetzung erklärt</span>
+        <span className={`${MARK} border-dashed ${UNKNOWN_TONE}`}>Wirksamkeit nicht belegt</span>
+      </span>
+    );
+  }
   if (row.lifecycles.length === 0) return <span className="text-xs text-[var(--color-text-muted)]">ohne Maßnahme</span>;
   return (
     <span className="flex flex-wrap gap-1">
@@ -43,13 +52,52 @@ function Stand({ row }: Readonly<{ row: ProgressRow }>) {
   );
 }
 
+/** Erklärte Umsetzung belegt keine Einhaltung eines abgelaufenen Termins; sie zählt auch nicht als überschritten. */
+function DeadlineMark({ row }: Readonly<{ row: ProgressRow }>) {
+  if (row.completed && row.deadlineState === 'überschritten') {
+    return <span data-deadline-state="Einhaltung nicht belegt" className={`${MARK} ${UNKNOWN_TONE}`}>Einhaltung nicht belegt</span>;
+  }
+  return <span data-deadline-state={row.deadlineState} className={`${MARK} ${STATE_TONE[row.deadlineState]}`}>{row.deadlineState}</span>;
+}
+
+function Gaps({ row }: Readonly<{ row: ProgressRow }>) {
+  if (row.deadlineGaps.length === 0) return null;
+  return (
+    <span className="basis-full break-words text-xs text-[var(--color-text-secondary)]">
+      {row.deadlineState === 'überschritten' && 'Grundlage unvollständig: '}
+      {row.deadlineGaps.map((gap, index) => (
+        <span key={gap.path}>
+          {index > 0 && ' · '}{gap.reason}{gap.value !== undefined && <> <span className="break-all font-mono">{gap.value || '—'}</span></>}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+function Sources({ row }: Readonly<{ row: ProgressRow }>) {
+  if (row.sources.length === 0) return null;
+  return (
+    <details className="basis-full">
+      <summary className={`inline-flex min-h-touch cursor-pointer items-center rounded px-1 text-xs font-medium text-[var(--color-text-primary)] hover:bg-[var(--color-surface-subtle)] desktop:min-h-0 ${FOCUS_RING}`}>Quellen</summary>
+      <dl className="mt-1.5 divide-y divide-[var(--color-border-subtle)] rounded-md border border-[var(--color-border-default)] bg-[var(--color-surface-subtle)] text-xs">
+        {row.sources.map((source) => (
+          <div key={`${source.label}${source.path}`} className="grid gap-x-3 gap-y-0.5 px-2.5 py-1.5 desktop:grid-cols-[12rem_minmax(0,1fr)_auto]">
+            <dt className="text-[var(--color-text-secondary)]">{source.label}</dt>
+            <dd className="break-all font-mono text-[var(--color-text-secondary)]">{source.path}</dd>
+            <dd className="break-all font-mono text-[var(--color-text-primary)]">{source.value || '—'}</dd>
+          </div>
+        ))}
+      </dl>
+    </details>
+  );
+}
+
 function Row({ verbundId, row }: Readonly<{ verbundId: string; row: ProgressRow }>) {
   return (
     <li className="flex flex-wrap items-start gap-x-4 gap-y-1 px-4 py-2.5">
       <span className="flex w-60 shrink-0 flex-wrap items-center gap-1.5">
         <span className="font-mono text-xs tabular-nums text-[var(--color-text-primary)]">{row.deadline ?? '—'}</span>
-        {!row.completed && <span data-deadline-state={row.deadlineState} className={`${MARK} ${STATE_TONE[row.deadlineState]}`}>{row.deadlineState}</span>}
-        {row.unresolvedRisks > 0 && <span className="basis-full text-xs tabular-nums text-[var(--color-text-secondary)]">{row.unresolvedRisks === 1 ? '1 Risikoverweis' : `${row.unresolvedRisks} Risikoverweise`} nicht auflösbar</span>}
+        <DeadlineMark row={row} />
       </span>
       <span className="min-w-0 flex-1 basis-56 space-y-0.5">
         <Link to={buildWorkspaceDocumentUrl(verbundId, row.localId)} className={`flex min-h-touch items-center rounded text-sm text-[var(--color-text-primary)] hover:underline desktop:min-h-0 ${FOCUS_RING}`}>
@@ -65,6 +113,8 @@ function Row({ verbundId, row }: Readonly<{ verbundId: string; row: ProgressRow 
         <Stand row={row} />
         {row.riskStatuses.length > 0 && <span className="block font-mono text-xs text-[var(--color-text-muted)]">risk.status {row.riskStatuses.join(', ')}</span>}
       </span>
+      <Gaps row={row} />
+      <Sources row={row} />
     </li>
   );
 }
@@ -120,10 +170,10 @@ export function PoamProgressList({ verbundId, documents: members }: Readonly<{ v
         </span>
       </div>
       <p className="px-4 pt-1 text-xs text-[var(--color-text-secondary)]">
-        Frist wie im Dokument, mit dessen Zeitzonenangabe. Fristzustand berechnet aus Frist und Systemzeit am <time dateTime={result.at.toISOString()}>{COMPUTED_AT.format(result.at)}</time>.
+        Frist wie im Dokument, mit dessen Zeitzonenangabe. Fristlage berechnet aus Frist und Systemzeit am <time dateTime={result.at.toISOString()}>{COMPUTED_AT.format(result.at)}</time>.
       </p>
-      <Section title="Offene Maßnahmen" verbundId={verbundId} rows={sorted.filter((row) => !row.completed)} />
-      <Section title="Abgeschlossene Maßnahmen" verbundId={verbundId} rows={sorted.filter((row) => row.completed)} />
+      <Section title="Umsetzung nicht erklärt" verbundId={verbundId} rows={sorted.filter((row) => !row.completed)} />
+      <Section title="Umsetzung erklärt" verbundId={verbundId} rows={sorted.filter((row) => row.completed)} />
     </div>
   );
 }
