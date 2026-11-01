@@ -57,7 +57,7 @@ function metricText(metric: DocumentMetric | number | undefined): string | undef
       `${count.format(metric.notSatisfied)} nicht erfüllt`,
       ...(metric.unknown > 0 ? [`${count.format(metric.unknown)} ohne auswertbaren Status`] : []),
     ].join(' · ');
-    case 'poam': return `${count.format(metric.open)} offene ${metric.open === 1 ? 'Maßnahme' : 'Maßnahmen'}`;
+    case 'poam': return `${count.format(metric.open)} ${metric.open === 1 ? 'Maßnahme' : 'Maßnahmen'} · Umsetzung nicht erklärt`;
     default: return undefined;
   }
 }
@@ -215,7 +215,7 @@ export function StationCards({ view, catalogHref, now }: Readonly<{
           <>
             {overdue > 0 && (
               <p className={META}>
-                <span className={`${MARK} border-[var(--color-danger-border)] bg-[var(--color-danger-surface)] text-[var(--color-danger-text)]`}>{count.format(overdue)} überfällig</span>
+                <span className={`${MARK} border-[var(--color-danger-border)] bg-[var(--color-danger-surface)] text-[var(--color-danger-text)]`}>{count.format(overdue)} überschritten</span>
                 {' '}· berechnet aus Frist und Systemzeit am{' '}
                 <time dateTime={view.metricsComputedAt}>{COMPUTED_AT.format(new Date(view.metricsComputedAt))}</time>
               </p>

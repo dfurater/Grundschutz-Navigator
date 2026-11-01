@@ -79,13 +79,17 @@ describe('deriveStationMetrics', () => {
       .toEqual({ kind: 'assessment-results', assessed: 0, notSatisfied: 0, unknown: 0 });
   });
 
-  it('zählt offene und überfällige Maßnahmen über die Fristableitung; ein unlesbarer Entwurf hat keine Zahl', () => {
+  it('zählt Maßnahmen ohne erklärte Umsetzung und davon überschrittene ab dem Termin; ein unlesbarer Entwurf hat keine Zahl', () => {
     const members = [member('poam', 'plan-of-action-and-milestones', {})];
     members[0] = { ...members[0], source: makeFullPoam() };
     const broken = member('kaputt', 'plan-of-action-and-milestones', 'kein Objekt');
     const graph = { edges: [], resolutions: [] };
     expect(deriveStationMetrics(members, graph, [], NOW).documents.get('poam' as LocalId)).toEqual({ kind: 'poam', open: 1, overdue: 0 });
-    expect(deriveStationMetrics(members, graph, [], new Date('2027-01-01T00:00:00Z')).documents.get('poam' as LocalId)).toEqual({ kind: 'poam', open: 1, overdue: 1 });
+    expect(deriveStationMetrics(members, graph, [], new Date('2026-12-01T00:00:00Z')).documents.get('poam' as LocalId)).toEqual({ kind: 'poam', open: 1, overdue: 1 });
+    const declared = makeFullPoam();
+    (declared['plan-of-action-and-milestones'].risks[0].remediations[0] as Record<string, unknown>).lifecycle = 'completed';
+    expect(deriveStationMetrics([{ ...members[0], source: declared }], graph, [], new Date('2027-01-01T00:00:00Z')).documents.get('poam' as LocalId))
+      .toEqual({ kind: 'poam', open: 0, overdue: 0 });
     expect(deriveStationMetrics([broken], graph, [], NOW).documents.size).toBe(0);
   });
 });

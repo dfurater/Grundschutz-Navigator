@@ -56,8 +56,8 @@ describe('StationCards', () => {
     expect(within(profile).getByRole('link')).toHaveAccessibleName('Anforderungspaket bearbeiten, Profile, Gültig, 12 von 40 aufgenommen');
     expect(ssp).toHaveTextContent('7 von 12 dokumentiert');
     expect(assessment).toHaveTextContent('5 geprüft · 2 nicht erfüllt · 1 ohne auswertbaren Status');
-    expect(poam).toHaveTextContent('3 offene Maßnahmen');
-    expect(poam).toHaveTextContent('1 überfällig · berechnet aus Frist und Systemzeit');
+    expect(poam).toHaveTextContent('3 Maßnahmen · Umsetzung nicht erklärt');
+    expect(poam).toHaveTextContent('1 überschritten · berechnet aus Frist und Systemzeit');
     // Gültige Prüfergebnisse: kein Reihenfolge-Hinweis.
     expect(poam).not.toHaveTextContent('keine erzwungene Reihenfolge');
   });
@@ -70,7 +70,7 @@ describe('StationCards', () => {
     ]);
     expect(profile).toHaveTextContent('2 Dokumente');
     expect(profile).not.toHaveTextContent('aufgenommen');
-    expect(poam).toHaveTextContent('1 offene Maßnahme');
-    expect(poam).not.toHaveTextContent('überfällig');
+    expect(poam).toHaveTextContent('1 Maßnahme · Umsetzung nicht erklärt');
+    expect(poam).not.toHaveTextContent('überschritten');
   });
 });

@@ -24,7 +24,7 @@ export type DocumentMetric =
   | { readonly kind: 'ssp'; readonly documented: number; readonly baseline: number }
   /** Findings mit `target.status.state` `satisfied` oder `not-satisfied`; `unknown` zählt Findings ohne einen dieser Werte. */
   | { readonly kind: 'assessment-results'; readonly assessed: number; readonly notSatisfied: number; readonly unknown: number }
-  /** Nicht abgeschlossene `poam-items` und davon die mit überschrittener Frist. */
+  /** `poam-items` ohne erklärte Umsetzung und davon die mit überschrittener Frist. */
   | { readonly kind: 'poam'; readonly open: number; readonly overdue: number };
 
 export interface StationMetrics {
@@ -33,7 +33,7 @@ export interface StationMetrics {
   /** `catalogKey` desselben Katalogs, damit Zahl und Ziel der Catalog-Karte übereinstimmen. */
   readonly catalogKey?: CatalogKey;
   readonly documents: ReadonlyMap<LocalId, DocumentMetric>;
-  /** Bezugszeitpunkt der Fristableitung (ISO 8601); die Karte nennt ihn neben „überfällig“. */
+  /** Bezugszeitpunkt der Fristableitung (ISO 8601); die Karte nennt ihn neben „überschritten“. */
   readonly computedAt: string;
 }
 
@@ -71,7 +71,7 @@ function assessmentMetric(source: unknown): DocumentMetric | undefined {
 }
 
 function poamMetric(member: WorkspaceEnvelope, now: Date): DocumentMetric | undefined {
-  // Der Parser übergeht unlesbare `poam-items`; „0 offene Maßnahmen“ setzt eine lesbare Liste voraus.
+  // Der Parser übergeht unlesbare `poam-items`; „0 Maßnahmen · Umsetzung nicht erklärt“ setzt eine lesbare Liste voraus.
   const body = isJsonObject(member.source) ? member.source['plan-of-action-and-milestones'] : undefined;
   const items = readArray(isJsonObject(body) ? body['poam-items'] : undefined);
   if (items.length === 0 || !items.every(isJsonObject)) return undefined;
