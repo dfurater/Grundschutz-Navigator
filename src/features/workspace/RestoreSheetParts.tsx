@@ -25,6 +25,14 @@ export const formatDate = (value: string) => DATE_TIME.format(new Date(value));
 export const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
 export const BUTTON = 'min-h-touch desktop:min-h-0';
 
+/** Feste Meldung je allowlistetem Ablehnungscode der Dateiprüfung. */
+export const REJECTION_TEXT: Readonly<Record<string, string>> = {
+  WORKSPACE_BACKUP_INVALID: 'Die Datei ist keine Sicherung, die diese Version wiederherstellen kann.',
+  WORKSPACE_BACKUP_INPUT_REJECTED: 'Die Datei ist kein lesbares JSON oder größer als zulässig.',
+  WORKSPACE_BACKUP_RESOURCE_REJECTED: 'Die Datei überschreitet die Verarbeitungsgrenzen.',
+  WORKSPACE_BACKUP_DOCUMENT_REJECTED: 'Ein enthaltenes Dokument besteht die Dokumentprüfung nicht.',
+};
+
 export function fileSize(bytes: number): string {
   return bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / 1024 / 1024).toLocaleString('de-DE', { maximumFractionDigits: 1 })} MB`;
 }

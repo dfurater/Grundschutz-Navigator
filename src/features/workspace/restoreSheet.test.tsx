@@ -174,6 +174,20 @@ describe('Sicherung wiederherstellen', () => {
     expect(downloads).toEqual([]);
   });
 
+  it('verwirft das Ergebnis einer Vorabsicherung nach einem Dateiwechsel', async () => {
+    let finish: (value: Awaited<ReturnType<WorkspacePort['exportVerbundBackup']>>) => void = () => undefined;
+    const exportVerbundBackup = () => new Promise<Awaited<ReturnType<WorkspacePort['exportVerbundBackup']>>>((resolve) => { finish = resolve; });
+    renderWith(fakePort({ previewRestore: () => ok(verbundPreview()), exportVerbundBackup }));
+    const sheet = await choose();
+    fireEvent.click(await sheet.findByRole('button', { name: `Vorher sichern: ${VERBUND.name}` }));
+    fireEvent.change(screen.getAllByLabelText('Sicherungsdatei')[0], { target: { files: [new File(['{}'], 'neu.json', { type: 'application/json' })] } });
+    expect(await sheet.findByText('neu.json')).toBeInTheDocument();
+    await sheet.findByRole('button', { name: `„${VERBUND.name}“ ersetzen` });
+    finish({ ok: true, value: '{}' });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(sheet.queryByText('Download gestartet')).not.toBeInTheDocument();
+  });
+
   it('liest eine Datei über der Bündelgrenze nicht ein', async () => {
     const previewRestore = vi.fn(() => ok(verbundPreview()));
     const file = new File(['{}'], 'riesig.json', { type: 'application/json' });

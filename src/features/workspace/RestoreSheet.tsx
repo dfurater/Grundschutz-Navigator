@@ -8,8 +8,8 @@ import { OriginLabel } from '@/features/workspace/DocumentMarks';
 import { WORKSPACE_BACKUP_MAX_BYTES } from '@/domain/class2ImportLimits.mjs';
 import { useBackupExport } from '@/features/workspace/WorkspaceNotices';
 import {
-  Actions, BUTTON, ClarifyRow, Facts, Mark, Message, PreviewBody, Section, doneText, fileInfo, fileSize, formatDate, plural, scopeOf,
-  type BackupState, type FileInfo,
+  Actions, BUTTON, ClarifyRow, Facts, Mark, Message, PreviewBody, REJECTION_TEXT, Section, doneText, fileInfo, fileSize, formatDate, plural,
+  scopeOf, type BackupState, type FileInfo,
 } from '@/features/workspace/RestoreSheetParts';
 
 /** Ergebnis einer Wiederherstellung für die Statusmeldung der Übersicht. */
@@ -28,12 +28,6 @@ type Phase =
   | { readonly step: 'write-failed'; readonly preview: RestorePreview; readonly quota: boolean }
   | { readonly step: 'read-failed' };
 
-const REJECTION_TEXT: Readonly<Record<string, string>> = {
-  WORKSPACE_BACKUP_INVALID: 'Die Datei ist keine Sicherung, die diese Version wiederherstellen kann.',
-  WORKSPACE_BACKUP_INPUT_REJECTED: 'Die Datei ist kein lesbares JSON oder größer als zulässig.',
-  WORKSPACE_BACKUP_RESOURCE_REJECTED: 'Die Datei überschreitet die Verarbeitungsgrenzen.',
-  WORKSPACE_BACKUP_DOCUMENT_REJECTED: 'Ein enthaltenes Dokument besteht die Dokumentprüfung nicht.',
-};
 const WORKER_FAILURE = 'WORKSPACE_BACKUP_WORKER_FAILURE';
 const STALE_CODES = new Set(['WORKSPACE_SAVE_CONFLICT', 'WORKSPACE_CONFIRMATION_REQUIRED']);
 
@@ -166,6 +160,14 @@ export function RestoreSheet({ file: initialFile, onCancel, onDone }: Readonly<{
     else setPhase({ step: 'write-failed', preview, quota: code === 'WORKSPACE_QUOTA_EXCEEDED' });
   };
 
+  /** „Vorher sichern“: Das Ergebnis gehört nur zu dieser Prüfung; nach einem Dateiwechsel wird es verworfen. */
+  const backupFirst = (preview: RestorePreview) => {
+    const run = generation.current;
+    setBackup('running');
+    void (preview.kind === 'workspace' ? exportBackup() : exportVerbund(preview.verbundId))
+      .then((started) => { if (run === generation.current) setBackup(started ? 'started' : 'failed'); });
+  };
+
   const chooseFile = (event: ChangeEvent<HTMLInputElement>) => {
     const next = event.target.files?.[0];
     event.target.value = '';
@@ -175,9 +177,7 @@ export function RestoreSheet({ file: initialFile, onCancel, onDone }: Readonly<{
   };
 
   const rejected = phase.step === 'rejected';
-  const otherFile = (
-    <Button variant="secondary" className={BUTTON} disabled={phase.step === 'running'} onClick={() => input.current?.click()}>Andere Datei…</Button>
-  );
+  const otherFile = <Button variant="secondary" className={BUTTON} disabled={phase.step === 'running'} onClick={() => input.current?.click()}>Andere Datei…</Button>;
   const cancel = <Button variant="secondary" className={BUTTON} disabled={phase.step === 'running'} onClick={onCancel}>Abbrechen</Button>;
   const shown = phase.step === 'preview' || phase.step === 'running' || phase.step === 'write-failed' ? phase : null;
   const clarifying = phase.step === 'clarify';
@@ -288,11 +288,7 @@ export function RestoreSheet({ file: initialFile, onCancel, onDone }: Readonly<{
                 writable={writable}
                 backup={backup}
                 cancel={cancel}
-                onBackup={() => {
-                  setBackup('running');
-                  const exported = shown.preview.kind === 'workspace' ? exportBackup() : exportVerbund(shown.preview.verbundId);
-                  void exported.then((started) => setBackup(started ? 'started' : 'failed'));
-                }}
+                onBackup={() => backupFirst(shown.preview)}
                 onConfirm={() => void confirm(shown.preview)}
               />
             )}
