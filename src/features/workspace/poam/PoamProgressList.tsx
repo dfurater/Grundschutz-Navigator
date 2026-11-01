@@ -78,7 +78,7 @@ function Sources({ row }: Readonly<{ row: ProgressRow }>) {
   if (row.sources.length === 0) return null;
   return (
     <details className="basis-full">
-      <summary className={`inline-flex min-h-touch cursor-pointer items-center rounded text-xs font-medium text-[var(--color-primary-main)] desktop:min-h-0 ${FOCUS_RING}`}>Quellen</summary>
+      <summary className={`inline-flex min-h-touch cursor-pointer items-center rounded px-1 text-xs font-medium text-[var(--color-text-primary)] hover:bg-[var(--color-surface-subtle)] desktop:min-h-0 ${FOCUS_RING}`}>Quellen</summary>
       <dl className="mt-1.5 divide-y divide-[var(--color-border-subtle)] rounded-md border border-[var(--color-border-default)] bg-[var(--color-surface-subtle)] text-xs">
         {row.sources.map((source) => (
           <div key={`${source.label}${source.path}`} className="grid gap-x-3 gap-y-0.5 px-2.5 py-1.5 desktop:grid-cols-[12rem_minmax(0,1fr)_auto]">

@@ -50,14 +50,14 @@ describe('StationCards', () => {
       doc('p', 'profile', { kind: 'profile', included: 12, available: 40 }),
       doc('s', 'system-security-plan', { kind: 'ssp', documented: 7, baseline: 12 }),
       doc('r', 'assessment-results', { kind: 'assessment-results', assessed: 5, notSatisfied: 2, unknown: 1 }),
-      doc('m', 'plan-of-action-and-milestones', { kind: 'poam', open: 3, overdue: 1 }),
+      doc('m', 'plan-of-action-and-milestones', { kind: 'poam', open: 3, overdue: 1, unknownDeadline: 2 }),
     ]);
     expect(catalog).toHaveTextContent('1.234 Anforderungen');
     expect(within(profile).getByRole('link')).toHaveAccessibleName('Anforderungspaket bearbeiten, Profile, Gültig, 12 von 40 aufgenommen');
     expect(ssp).toHaveTextContent('7 von 12 dokumentiert');
     expect(assessment).toHaveTextContent('5 geprüft · 2 nicht erfüllt · 1 ohne auswertbaren Status');
     expect(poam).toHaveTextContent('3 Maßnahmen · Umsetzung nicht erklärt');
-    expect(poam).toHaveTextContent('1 überschritten · berechnet aus Frist und Systemzeit');
+    expect(poam).toHaveTextContent('1 überschritten 2 Fristlage unbekannt · berechnet aus Frist und Systemzeit');
     // Gültige Prüfergebnisse: kein Reihenfolge-Hinweis.
     expect(poam).not.toHaveTextContent('keine erzwungene Reihenfolge');
   });
@@ -66,11 +66,11 @@ describe('StationCards', () => {
     const [, profile, , , poam] = cards([
       doc('p1', 'profile', { kind: 'profile', included: 1, available: 2 }),
       doc('p2', 'profile'),
-      doc('m', 'plan-of-action-and-milestones', { kind: 'poam', open: 1, overdue: 0 }),
+      doc('m', 'plan-of-action-and-milestones', { kind: 'poam', open: 1, overdue: 0, unknownDeadline: 0 }),
     ]);
     expect(profile).toHaveTextContent('2 Dokumente');
     expect(profile).not.toHaveTextContent('aufgenommen');
     expect(poam).toHaveTextContent('1 Maßnahme · Umsetzung nicht erklärt');
-    expect(poam).not.toHaveTextContent('überschritten');
+    expect(poam).not.toHaveTextContent(/überschritten|Fristlage unbekannt/);
   });
 });

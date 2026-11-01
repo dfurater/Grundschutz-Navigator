@@ -24,8 +24,8 @@ export type DocumentMetric =
   | { readonly kind: 'ssp'; readonly documented: number; readonly baseline: number }
   /** Findings mit `target.status.state` `satisfied` oder `not-satisfied`; `unknown` zählt Findings ohne einen dieser Werte. */
   | { readonly kind: 'assessment-results'; readonly assessed: number; readonly notSatisfied: number; readonly unknown: number }
-  /** `poam-items` ohne erklärte Umsetzung und davon die mit überschrittener Frist. */
-  | { readonly kind: 'poam'; readonly open: number; readonly overdue: number };
+  /** `poam-items` ohne erklärte Umsetzung, davon die mit überschrittener und die mit unbekannter Fristlage. */
+  | { readonly kind: 'poam'; readonly open: number; readonly overdue: number; readonly unknownDeadline: number };
 
 export interface StationMetrics {
   /** Controls des gebundenen BSI-Katalogs, nur bei genau einem gebundenen Katalog. */
@@ -78,7 +78,8 @@ function poamMetric(member: WorkspaceEnvelope, now: Date): DocumentMetric | unde
   try {
     const rows = derivePoamProgress(parsePoamDocument(member.source, { trustClass: member.trustClass }).view, now)
       .filter((row) => !row.completed);
-    return { kind: 'poam', open: rows.length, overdue: rows.filter((row) => row.deadlineState === 'überschritten').length };
+    const count = (state: string) => rows.filter((row) => row.deadlineState === state).length;
+    return { kind: 'poam', open: rows.length, overdue: count('überschritten'), unknownDeadline: count('Fristlage unbekannt') };
   } catch {
     // Ein Entwurf ohne lesbaren Root hat keine Maßnahmenzahl.
     return undefined;

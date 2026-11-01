@@ -90,7 +90,9 @@ describe('derivePoamProgress', () => {
     });
     expect(rowsOf(frequencyOnly)[0]).toMatchObject({
       deadlineState: 'Fristlage unbekannt',
-      deadlineGaps: [{ reason: 'Wiederholung ohne absoluten Termin', path: `${riskPath}/remediations/0/tasks/0/timing/at-frequency` }],
+      deadlineGaps: [{
+        reason: 'Wiederholung ohne absoluten Termin', path: `${riskPath}/remediations/0/tasks/0/timing/at-frequency`, value: '{"period":1,"unit":"months"}',
+      }],
     });
     expect(rowsOf(withBody((body) => { risk(body).deadline = '2026-01-01T00:00:00'; }))[0]).toMatchObject({
       deadlineState: 'Fristlage unbekannt',
@@ -117,8 +119,40 @@ describe('derivePoamProgress', () => {
     });
     expect(rowsOf(source)[0]).toMatchObject({
       deadline: '2026-12-01T00:00:00Z', deadlineState: 'Fristlage unbekannt',
-      deadlineGaps: [{ reason: 'ungültiges Intervall', value: '2026-11-02T00:00:00Z – 2026-11-01T00:00:00Z' }],
+      deadlineGaps: [{
+        reason: 'ungültiges Intervall', path: '/plan-of-action-and-milestones/risks/0/remediations/0/tasks/0/timing/within-date-range',
+        value: '{"start":"2026-11-02T00:00:00Z","end":"2026-11-01T00:00:00Z"}',
+      }],
     });
+  });
+
+  it('wertet fehlende Pflichttermine und vom Reader übergangene Fristen neben einer lesbaren künftigen Frist als Lücke', () => {
+    const task = '/plan-of-action-and-milestones/risks/0/remediations/0/tasks/0/timing';
+    const withTiming = (timing: unknown) => withBody((body) => {
+      risk(body).remediations[0].tasks = [{ uuid: '00000000-0000-4000-8000-000000000306', type: 'action', title: 'Lücke', timing }];
+    });
+    expect(rowsOf(withTiming({ 'on-date': {} }))[0]).toMatchObject({
+      deadline: '2026-12-01T00:00:00Z', deadlineState: 'Fristlage unbekannt', deadlineGaps: [{ reason: 'ungültiges Datum', path: `${task}/on-date/date` }],
+    });
+    expect(rowsOf(withTiming({ 'within-date-range': { start: '2026-11-01T00:00:00Z' } }))[0]).toMatchObject({
+      deadlineState: 'Fristlage unbekannt', deadlineGaps: [{ reason: 'ungültiges Intervall', path: `${task}/within-date-range/end` }],
+    });
+    const wrongType = withBody((body) => {
+      risk(body).deadline = 42;
+      risk(body).remediations[0].tasks = [{
+        uuid: '00000000-0000-4000-8000-000000000307', type: 'action', title: 'Künftig', timing: { 'on-date': { date: '2026-12-24T00:00:00Z' } },
+      }];
+    });
+    expect(rowsOf(wrongType)[0]).toMatchObject({
+      deadline: '2026-12-24T00:00:00Z', deadlineState: 'Fristlage unbekannt',
+      deadlineGaps: [{ reason: 'ungültiges Datum', path: '/plan-of-action-and-milestones/risks/0/deadline' }],
+    });
+  });
+
+  it('wertet einen Rest unter der Millisekunde als noch nicht erreichten Termin', () => {
+    const at = (deadline: string) => rowsOf(withBody((body) => { risk(body).deadline = deadline; }), new Date('2026-12-01T00:00:00.000Z'))[0].deadlineState;
+    expect(at('2026-12-01T00:00:00.0001Z')).toBe('noch nicht fällig');
+    expect(at('2026-12-01T00:00:00.0000Z')).toBe('überschritten');
   });
 
   it('führt Frist, Risikostatus und Lifecycle mit Quellpfad', () => {

@@ -76,6 +76,7 @@ interface ProgressContext {
   readonly findings: ReadonlyMap<string, Poam['findings'][number]>;
   readonly now: Date;
   readonly roleTitles: ReadonlyMap<string, string>;
+  readonly unreadable: ReadonlySet<string>;
 }
 
 function flattenTasks(tasks: readonly ApTask[]): ApTask[] {
@@ -99,25 +100,32 @@ export function readRoleTitles(source: unknown): ReadonlyMap<string, string> {
 type Gap = DeadlineAssessment['gaps'][number];
 interface Known { readonly value: string; readonly path: string; readonly ms: number }
 
-/** Ein Zeitpunktkandidat; ein vorhandener, aber ungültiger Wert wird zur Lücke. */
-function candidate(value: string | undefined, path: string, reason: DeadlineGapReason): Known | Gap | undefined {
-  if (value === undefined) return undefined;
+/** Ein Zeitpunktkandidat; ein ungültiger oder als Pflichtwert fehlender Wert wird zur Lücke. */
+function candidate(value: string | undefined, path: string, reason: DeadlineGapReason, required: boolean): Known | Gap | undefined {
+  if (value === undefined) return required ? { reason, path } : undefined;
   const ms = instant(value);
   return ms === undefined ? { reason, path, value } : { value, path, ms };
 }
 
-function taskCandidates(task: ApTask): (Known | Gap | undefined)[] {
+function taskCandidates(task: ApTask, unreadable: ReadonlySet<string>): (Known | Gap | undefined)[] {
   const base = `${task.path}/timing`;
   const { onDate, withinDateRange: range, atFrequency } = task.timing ?? {};
-  // Fehlt der Pflichtwert eines vorhandenen Timing-Objekts, ist das eine Lücke, kein fehlender Kandidat.
-  const end = range ? candidate(range.end ?? '', `${base}/within-date-range/end`, 'ungültiges Intervall') : undefined;
+  // Ein vorhandenes oder vom Reader als unlesbar gemeldetes Timing-Objekt verlangt seinen Termin.
+  const present = (value: object | null | undefined, path: string) => (value !== null && value !== undefined) || unreadable.has(path);
+  const end = candidate(range?.end, `${base}/within-date-range/end`, 'ungültiges Intervall', present(range, `${base}/within-date-range`));
   const start = instant(range?.start);
   const inverted = end !== undefined && 'ms' in end && start !== undefined && start > end.ms;
   return [
-    onDate ? candidate(onDate.date ?? '', `${base}/on-date/date`, 'ungültiges Datum') : undefined,
-    inverted ? { reason: 'ungültiges Intervall', path: `${base}/within-date-range`, value: `${range?.start} – ${range?.end}` } : end,
-    atFrequency ? { reason: 'Wiederholung ohne absoluten Termin', path: `${base}/at-frequency` } : undefined,
+    candidate(onDate?.date, `${base}/on-date/date`, 'ungültiges Datum', present(onDate, `${base}/on-date`)),
+    inverted ? { reason: 'ungültiges Intervall', path: `${base}/within-date-range`, value: JSON.stringify(range) } : end,
+    atFrequency ? { reason: 'Wiederholung ohne absoluten Termin', path: `${base}/at-frequency`, value: JSON.stringify(atFrequency) } : undefined,
   ];
+}
+
+/** `now >= Termin`; `Date.parse` kappt unter der Millisekunde, ein Rest > 0 liegt noch nach `now`. */
+function reached(entry: Known, now: number): boolean {
+  if (entry.ms !== now) return entry.ms < now;
+  return !/[1-9]/.test(/\.\d{3}(\d+)/.exec(entry.value)?.[1] ?? '');
 }
 
 /**
@@ -127,11 +135,13 @@ function taskCandidates(task: ApTask): (Known | Gap | undefined)[] {
  */
 export function assessDeadline(
   risks: readonly PoamRisk[], unresolvedRisks: readonly DeadlineSource[], now: Date,
+  /** Quellpfade, die der Reader mit falschem Typ übergangen hat (`*_STRUCTURE_UNEXPECTED`). */
+  unreadable: ReadonlySet<string> = new Set(),
 ): DeadlineAssessment {
   const tasks = flattenTasks(risks.flatMap((risk) => risk.remediations.flatMap((response) => response.tasks)));
   const entries = [
-    ...risks.map((risk) => candidate(risk.deadline, `${risk.path}/deadline`, 'ungültiges Datum')),
-    ...tasks.flatMap(taskCandidates),
+    ...risks.map((risk) => candidate(risk.deadline, `${risk.path}/deadline`, 'ungültiges Datum', unreadable.has(`${risk.path}/deadline`))),
+    ...tasks.flatMap((task) => taskCandidates(task, unreadable)),
   ].filter((entry) => entry !== undefined);
   const known = entries.filter((entry): entry is Known => 'ms' in entry);
   const gaps: Gap[] = [
@@ -140,14 +150,13 @@ export function assessDeadline(
   ];
   if (known.length === 0 && gaps.length === 0) gaps.push(...risks.map((risk): Gap => ({ reason: 'keine Frist', path: `${risk.path}/deadline` })));
   const earliest = known.reduce<Known | undefined>((best, entry) => (best === undefined || entry.ms < best.ms ? entry : best), undefined);
-  const nowMs = now.getTime();
   let state: DeadlineState = 'Fristlage unbekannt';
-  if (earliest !== undefined && earliest.ms <= nowMs) state = 'überschritten';
+  if (earliest !== undefined && reached(earliest, now.getTime())) state = 'überschritten';
   else if (earliest !== undefined && gaps.length === 0) state = 'noch nicht fällig';
   return { deadline: earliest && { value: earliest.value, path: earliest.path }, state, gaps };
 }
 
-function progressRow(item: PoamItem, { risks: riskIndex, findings, now, roleTitles }: ProgressContext): PoamProgressRow {
+function progressRow(item: PoamItem, { risks: riskIndex, findings, now, roleTitles, unreadable }: ProgressContext): PoamProgressRow {
   const risks: PoamRisk[] = [];
   const unresolved: DeadlineSource[] = [];
   for (const related of item.relatedRisks) {
@@ -157,7 +166,7 @@ function progressRow(item: PoamItem, { risks: riskIndex, findings, now, roleTitl
   }
   const responses = risks.flatMap((risk) => risk.remediations);
   const tasks = flattenTasks(responses.flatMap((response) => response.tasks));
-  const assessment = assessDeadline(risks, unresolved, now);
+  const assessment = assessDeadline(risks, unresolved, now, unreadable);
   const gaps = assessment.gaps.length === 0 && item.relatedRisks.length === 0
     ? [{ reason: 'keine Frist' as const, path: `${item.key}/related-risks` }]
     : assessment.gaps;
@@ -198,7 +207,8 @@ function progressRow(item: PoamItem, { risks: riskIndex, findings, now, roleTitl
 export function derivePoamProgress(
   poam: Poam, now: Date, roleTitles: ReadonlyMap<string, string> = new Map(),
 ): PoamProgressRow[] {
-  const context = { risks: indexByUuid(poam.risks), findings: indexByUuid(poam.findings), now, roleTitles };
+  const unreadable = new Set(poam.diagnostics.filter((diagnostic) => diagnostic.code.endsWith('_STRUCTURE_UNEXPECTED')).map((diagnostic) => diagnostic.path));
+  const context = { risks: indexByUuid(poam.risks), findings: indexByUuid(poam.findings), now, roleTitles, unreadable };
   return poam.poamItems.map((item) => progressRow(item, context));
 }
 

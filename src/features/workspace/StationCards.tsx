@@ -173,7 +173,7 @@ export function StationCards({ view, catalogHref, now }: Readonly<{
   const resultsIncomplete = results.length === 0 || stationValidity(results) === 'Entwurf';
   const catalogFigure = view.catalogControls === undefined ? undefined : `${count.format(view.catalogControls)} Anforderungen`;
   const poamMetric = metricOf(stationDocuments(documents, 'poam'), 'plan-of-action-and-milestones');
-  const overdue = typeof poamMetric === 'object' && poamMetric.kind === 'poam' ? poamMetric.overdue : 0;
+  const { overdue = 0, unknownDeadline = 0 } = typeof poamMetric === 'object' && poamMetric.kind === 'poam' ? poamMetric : {};
 
   return (
     <ul className="grid gap-4 md:grid-cols-2 desktop:grid-cols-5">
@@ -213,9 +213,11 @@ export function StationCards({ view, catalogHref, now }: Readonly<{
         now={now}
         extra={(
           <>
-            {overdue > 0 && (
+            {(overdue > 0 || unknownDeadline > 0) && (
               <p className={META}>
-                <span className={`${MARK} border-[var(--color-danger-border)] bg-[var(--color-danger-surface)] text-[var(--color-danger-text)]`}>{count.format(overdue)} überschritten</span>
+                {overdue > 0 && <span className={`${MARK} border-[var(--color-danger-border)] bg-[var(--color-danger-surface)] text-[var(--color-danger-text)]`}>{count.format(overdue)} überschritten</span>}
+                {overdue > 0 && unknownDeadline > 0 && ' '}
+                {unknownDeadline > 0 && <span className={`${MARK} border-[var(--color-border-strong)] text-[var(--color-text-secondary)]`}>{count.format(unknownDeadline)} Fristlage unbekannt</span>}
                 {' '}· berechnet aus Frist und Systemzeit am{' '}
                 <time dateTime={view.metricsComputedAt}>{COMPUTED_AT.format(new Date(view.metricsComputedAt))}</time>
               </p>
