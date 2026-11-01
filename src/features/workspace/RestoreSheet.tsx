@@ -208,7 +208,7 @@ export function RestoreSheet({ file: initialFile, onCancel, onDone }: Readonly<{
               {otherFile}
             </div>
           </div>
-          {phase.step === 'checking' && <p role="status" className="text-sm text-[var(--color-text-secondary)]">Wird geprüft…</p>}
+          {phase.step === 'checking' && <output className="block text-sm text-[var(--color-text-secondary)]">Wird geprüft…</output>}
           {phase.step === 'flush-failed' && (
             <>
               <Message tone="alert" title="Nicht gespeichert">Ein offener Entwurf konnte nicht gespeichert werden. Die Eingabe bleibt offen; die Datei wurde nicht geprüft.</Message>
@@ -260,7 +260,7 @@ export function RestoreSheet({ file: initialFile, onCancel, onDone }: Readonly<{
         {!rejected && phase.step !== 'checking' && phase.step !== 'flush-failed' && (
           <Section number={previewNumber} title="Vorschau">
             {clarifying && <p className="text-sm text-[var(--color-text-secondary)]">Wartet auf {plural(phase.inputs.length, 'offene Eingabe', 'offene Eingaben')}</p>}
-            {phase.step === 'reading' && <p role="status" className="text-sm text-[var(--color-text-secondary)]">Vorschau wird gelesen…</p>}
+            {phase.step === 'reading' && <output className="block text-sm text-[var(--color-text-secondary)]">Vorschau wird gelesen…</output>}
             {phase.step === 'collision' && (
               <>
                 <Message tone="alert" title="Kollision">Dokumente der Datei gehören zu einem anderen Verbund in diesem Browser. Nichts wird überschrieben.</Message>

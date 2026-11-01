@@ -71,7 +71,7 @@ describe('Sicherung wiederherstellen', () => {
     expect(sheet.getByText(`Ersetzt „${VERBUND.name}“ mit 4 Dokumenten und 2 gespeicherten Entwürfen.`)).toBeInTheDocument();
 
     fireEvent.click(sheet.getByRole('button', { name: `Vorher sichern: ${VERBUND.name}` }));
-    expect(await sheet.findByText('Download gestartet')).toHaveAttribute('role', 'status');
+    expect((await sheet.findByText('Download gestartet')).tagName).toBe('OUTPUT');
     expect(downloads).toEqual([`informationsverbund-sicherung-${TODAY}.json`]);
 
     const confirm = sheet.getByRole('button', { name: `„${VERBUND.name}“ ersetzen` });
@@ -80,7 +80,7 @@ describe('Sicherung wiederherstellen', () => {
     const heading = await within(main()).findByRole('heading', { level: 1, name: 'Informationsverbünde' });
     expect(restoreVerbundBackup).toHaveBeenCalledExactlyOnceWith(preview);
     await waitFor(() => expect(heading).toHaveFocus());
-    expect(screen.getByText('Wiederhergestellt').closest('[role="status"]')).toHaveTextContent(`„${VERBUND.name}“ · 5 Dokumente · 3 Entwürfe`);
+    expect(screen.getAllByRole('status').some((entry) => entry.textContent?.startsWith(`Wiederhergestellt: „${VERBUND.name}“ · 5 Dokumente · 3 Entwürfe`))).toBe(true);
     expect(screen.getByRole('link', { name: VERBUND.name }).closest('li')).toHaveAttribute('data-restored', 'true');
     expect(screen.getByRole('link', { name: OTHER.name }).closest('li')).not.toHaveAttribute('data-restored');
   });

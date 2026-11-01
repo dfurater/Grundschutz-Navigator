@@ -73,7 +73,8 @@ export function replacementText(preview: RestorePreview): string {
       : `Legt „${preview.name}“ neu an. Kein vorhandener Bestand wird ersetzt.`;
   }
   if (!replacesTarget(preview)) return 'Der lokale Bestand ist leer. Nichts wird ersetzt.';
-  return `Ersetzt ${preview.counts.verbuende.target === 1 ? 'den einen Informationsverbund' : `alle ${preview.counts.verbuende.target} Informationsverbünde`} mit ${documents} und ${drafts}.`;
+  const verbuende = preview.counts.verbuende.target === 1 ? 'den einen Informationsverbund' : `alle ${preview.counts.verbuende.target} Informationsverbünde`;
+  return `Ersetzt ${verbuende} mit ${documents} und ${drafts}.`;
 }
 
 export function Section({ number, title, children }: Readonly<{ number: number; title: string; children: ReactNode }>) {
@@ -236,7 +237,8 @@ export function PreviewBody({ preview, verbundCount, phase, quota, writable, bac
       {phase === 'write-failed' && (
         <Message tone="alert" title={quota ? 'Speicher voll' : 'Speicher nicht verfügbar'}>Die Wiederherstellung wurde nicht gespeichert. Der bisherige Bestand ist unverändert.</Message>
       )}
-      {backup === 'started' && <p role="status" className="text-right text-xs text-[var(--color-text-secondary)]">Download gestartet</p>}
+      {/* S6819: <output> trägt die implizite Rolle "status". */}
+      {backup === 'started' && <output className="block text-right text-xs text-[var(--color-text-secondary)]">Download gestartet</output>}
       {backup === 'failed' && <Message tone="alert" title="Sicherung nicht erstellt">Es wurde keine Datei heruntergeladen. Der Bestand ist unverändert.</Message>}
       <Actions>
         {cancel}

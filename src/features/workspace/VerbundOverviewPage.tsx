@@ -181,14 +181,15 @@ export function VerbundOverviewPage() {
 
         <WorkspaceNotices />
 
-        <div role="status">
-          {restored && (
-            <div className="rounded-md border border-[var(--color-border-strong)] bg-[var(--color-surface-base)] p-4">
-              <p className="text-sm font-semibold text-[var(--color-text-primary)]">Wiederhergestellt</p>
-              <p className="mt-1 break-words text-sm text-[var(--color-text-secondary)]">{restored.text}</p>
-            </div>
-          )}
-        </div>
+        {/* S6819: <output> trägt die implizite Rolle "status". Sie steht vorab und außerhalb des Layoutflusses,
+            damit die Ergebnismeldung angesagt wird, ohne dass die leere Fläche einen Abstand erzeugt. */}
+        <output className="sr-only">{restored ? `Wiederhergestellt: ${restored.text}` : ''}</output>
+        {restored && (
+          <div aria-hidden="true" className="rounded-md border border-[var(--color-border-strong)] bg-[var(--color-surface-base)] p-4">
+            <p className="text-sm font-semibold text-[var(--color-text-primary)]">Wiederhergestellt</p>
+            <p className="mt-1 break-words text-sm text-[var(--color-text-secondary)]">{restored.text}</p>
+          </div>
+        )}
 
         <section aria-labelledby="verbund-anlegen" className="rounded-md border border-[var(--color-border-default)] bg-[var(--color-surface-base)] p-4">
           <h2 id="verbund-anlegen" className="text-base font-semibold leading-snug">Informationsverbund anlegen</h2>
