@@ -149,7 +149,12 @@ export function DatenschutzPage() {
         <p className="catalog-prose-text text-sm text-slate-700 leading-relaxed">
           Im Bereich Informationsverbünde können Sie einen Informationsverbund
           mit allen zugehörigen Dokumenten vollständig löschen und eine
-          Sicherungsdatei aller gespeicherten Daten exportieren. An der Station
+          Sicherungsdatei aller gespeicherten Daten oder eines einzelnen
+          Informationsverbunds exportieren. Eine solche Sicherungsdatei können
+          Sie wiederherstellen: Die Anwendung prüft sie ausschließlich in Ihrem
+          Browser, zeigt vorher den betroffenen Umfang und ersetzt die dort
+          gespeicherten Daten einschließlich der Entwürfe erst nach Ihrer
+          Bestätigung. An der Station
           Profile legen Sie Profile an oder nehmen eine Profil-Datei auf; die
           Datei wird ausschließlich in Ihrem Browser geprüft und nicht
           hochgeladen. Änderungen an einem Profil sichert die Anwendung

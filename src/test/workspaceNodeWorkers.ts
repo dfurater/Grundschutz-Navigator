@@ -5,8 +5,8 @@ export async function inProcessImportGate() {
 }
 
 export async function inProcessBackupParser() {
-  const { processWorkspaceBackupBytes, processVerbundBackupBytes } = await import('@/adapters/workspaceBackupProcessing');
-  return { parseWorkspaceBackup: processWorkspaceBackupBytes, parseVerbundBackup: processVerbundBackupBytes };
+  const { processWorkspaceBackupBytes, processVerbundBackupBytes, processAnyBackupBytes } = await import('@/adapters/workspaceBackupProcessing');
+  return { parseWorkspaceBackup: processWorkspaceBackupBytes, parseVerbundBackup: processVerbundBackupBytes, parseAnyBackup: processAnyBackupBytes };
 }
 
 /** Hash und Diff ohne eigenen Worker; die Frist- und Ausfallpfade deckt `reviewTrailWork.test.ts` ab. */

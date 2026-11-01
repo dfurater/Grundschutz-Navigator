@@ -16,6 +16,7 @@ import type { CatalogKey } from '@/domain/sourceRegistry';
 export type WorkspacePort = Pick<WorkspaceStore,
   | 'schemaStatus' | 'listVerbuende' | 'listDocuments' | 'getDocument' | 'getDraft' | 'listBindings'
   | 'createVerbund' | 'renameVerbund' | 'deleteVerbund' | 'exportBackup' | 'estimate' | 'close'
+  | 'exportVerbundBackup' | 'previewRestore' | 'restoreBackup' | 'restoreVerbundBackup'
   | 'addDocument' | 'saveDocument' | 'autosaveDraft' | 'setBinding' | 'removeBinding' | 'deleteDocument'
   | 'listReviewTrail' | 'appendCheckpoint' | 'appendDecision'>;
 

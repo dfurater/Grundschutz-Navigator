@@ -102,6 +102,8 @@ describe.skipIf(!inject('visualRegression')).each(VIEWPORTS)('Ansicht $name', ({
     await seedWorkspace();
     const shell = await renderAt(buildWorkspaceIndexUrl(), width, height);
     await expect.poll(() => shell.querySelector('main')?.textContent).toContain('2 Informationsverbünde');
+    // Mobil ist die Übersicht höher als der Viewport; wie bei der Verbund-Übersicht wächst er auf die Dokumenthöhe.
+    await page.viewport(width, Math.max(height, document.documentElement.scrollHeight));
     await expectScreen(`informationsverbuende-${name}`);
   });
 

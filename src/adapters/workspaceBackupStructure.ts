@@ -299,3 +299,10 @@ export function validWorkspaceBackupStructure(value: unknown): value is Workspac
 export function validVerbundBackupStructure(value: unknown): value is WorkspaceVerbundBackup {
   return validBackupStructure(value, 'gspp-workspace-verbund');
 }
+/** Wählt den geschlossenen Validator nach `format`; jede andere Art ist keine wiederherstellbare Sicherung. */
+export function adoptAnyBackup(value: unknown): WorkspaceBackup | WorkspaceVerbundBackup | null {
+  const format = record(value) ? value.format : undefined;
+  if (format === 'gspp-workspace') return validWorkspaceBackupStructure(value) ? value : null;
+  if (format === 'gspp-workspace-verbund') return validVerbundBackupStructure(value) ? value : null;
+  return null;
+}

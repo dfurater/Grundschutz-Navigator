@@ -1,8 +1,9 @@
 import { afterEach, expect, it, vi } from 'vitest';
 const workspace = vi.hoisted(() => vi.fn());
 const verbund = vi.hoisted(() => vi.fn());
-vi.mock('@/adapters/workspaceBackupProcessing', () => ({ processWorkspaceBackupBytes: workspace, processVerbundBackupBytes: verbund }));
-afterEach(() => { vi.unstubAllGlobals(); vi.resetModules(); workspace.mockReset(); verbund.mockReset(); });
+const any = vi.hoisted(() => vi.fn());
+vi.mock('@/adapters/workspaceBackupProcessing', () => ({ processWorkspaceBackupBytes: workspace, processVerbundBackupBytes: verbund, processAnyBackupBytes: any }));
+afterEach(() => { vi.unstubAllGlobals(); vi.resetModules(); workspace.mockReset(); verbund.mockReset(); any.mockReset(); });
 
 async function setup(value: unknown, origin = '', scope = 'workspace') {
   let receive: (event: { data: unknown; origin: string }) => void = () => { };
@@ -11,15 +12,16 @@ async function setup(value: unknown, origin = '', scope = 'workspace') {
   vi.stubGlobal('postMessage', postMessage);
   workspace.mockResolvedValue({ ok: true, value });
   verbund.mockResolvedValue({ ok: true, value });
+  any.mockResolvedValue({ ok: true, value });
   await import('@/workers/workspaceBackup.worker');
   const send = (data: unknown, messageOrigin = origin) => receive({ data, origin: messageOrigin });
   send({ scope, buffer: new ArrayBuffer(0) });
   return { send, receive, postMessage };
 }
-it.each([['', 'workspace'], [globalThis.location.origin, 'verbund']])('streams a validated bundle from origin "%s" (%s) one acknowledged fragment at a time', async (origin, scope) => {
+it.each([['', 'workspace'], [globalThis.location.origin, 'verbund'], ['', 'any']])('streams a validated bundle from origin "%s" (%s) one acknowledged fragment at a time', async (origin, scope) => {
   const { send, postMessage } = await setup(Array.from({ length: 600 }, () => null), origin, scope);
   await vi.waitFor(() => expect(postMessage).toHaveBeenCalledTimes(2));
-  expect((scope === 'verbund' ? verbund : workspace)).toHaveBeenCalledOnce();
+  expect({ workspace, verbund, any }[scope]).toHaveBeenCalledOnce();
   expect(postMessage.mock.calls[0][0]).toEqual({ type: 'start' });
   expect(postMessage.mock.calls[1][0]).toMatchObject({ type: 'chunk', sequence: 0 });
   // Fehlschlag, wenn der Worker ein weiteres Fragment ohne Quittung sendet.

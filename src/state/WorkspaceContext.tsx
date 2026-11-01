@@ -7,6 +7,9 @@ import type { CatalogDelivery } from '@/domain/workspaceCatalogPin';
 import { catalogDelivery, verifiedCatalogArtifacts } from '@/state/workspaceCatalogSession';
 import type { WorkspaceClass1Artifact } from '@/domain/workspaceGraphModel';
 import type { LocalId, VerbundId, WorkspaceResult, WorkspaceVerbund } from '@/domain/workspaceModel';
+import {
+  collectRestoreInputs, discardReplacedInputs, type RestoreInput, type RestorePreview, type RestoreScope,
+} from '@/state/workspaceRestore';
 import { CatalogContext } from '@/state/CatalogContext';
 import {
   noticeForDiagnostic, quotaNearlyExhausted, withNotice, withoutNotice, type WorkspaceNotice,
@@ -51,6 +54,13 @@ export interface WorkspaceContextValue {
   readonly renameVerbund: (verbundId: VerbundId, name: string) => Promise<WorkspaceResult<WorkspaceVerbund>>;
   readonly deleteVerbund: (verbundId: VerbundId) => Promise<WorkspaceResult<void>>;
   readonly exportBackup: () => Promise<WorkspaceResult<string>>;
+  readonly exportVerbundBackup: (verbundId: VerbundId) => Promise<WorkspaceResult<string>>;
+  /** Prüft eine Sicherungsdatei und liest die an diesen Speicher gebundene Vorschau; schreibt nichts. */
+  readonly previewRestore: (bytes: Uint8Array) => Promise<WorkspaceResult<RestorePreview>>;
+  /** Ersetzt den Zielbereich mit genau dieser Vorschau und verwirft danach die ersetzten Sitzungseingaben. */
+  readonly restoreBackup: (preview: RestorePreview) => Promise<WorkspaceResult<void>>;
+  readonly pendingRestoreInputs: (scope: RestoreScope, rowDrafts?: ReadonlyMap<string, string>) => Promise<WorkspaceResult<readonly RestoreInput[]>>;
+  readonly discardRestoreInput: (input: RestoreInput, rowDrafts?: Map<string, string>) => void;
   readonly registerAutosave: (flush: AutosaveFlush) => () => void;
   /** Speichert alle registrierten Entwürfe; `false`, wenn einer nicht gespeichert werden konnte. */
   readonly flushAutosaves: () => Promise<boolean>;
@@ -82,6 +92,11 @@ export const WorkspaceContext = createContext<WorkspaceContextValue>({
   renameVerbund: unavailable,
   deleteVerbund: unavailable,
   exportBackup: unavailable,
+  exportVerbundBackup: unavailable,
+  previewRestore: unavailable,
+  restoreBackup: unavailable,
+  pendingRestoreInputs: unavailable,
+  discardRestoreInput: () => undefined,
   renameDrafts: new Map(),
   registerAutosave: () => () => undefined,
   flushAutosaves: () => Promise.resolve(true),
@@ -304,12 +319,47 @@ export function WorkspaceProvider({ open = openWorkspaceStore, children }: Reado
       if (!result.ok) report(result.diagnostic);
       return result;
     },
+    exportVerbundBackup: (verbundId) => quiet((store) => store.exportVerbundBackup(verbundId)),
+    previewRestore: async (bytes) => {
+      if (!port) return storageFailed();
+      const result = await port.previewRestore(bytes).catch(storageFailed);
+      // Die Ansicht zeigt jeden Fehler selbst; nur die Schreibsperre ist ein Zustand des Bereichs.
+      if (!result.ok && result.diagnostic.code === 'WORKSPACE_SCHEMA_NEWER') report(result.diagnostic);
+      return result;
+    },
+    restoreBackup: async (preview) => {
+      if (!port) return storageFailed();
+      const result = await (preview.kind === 'workspace' ? port.restoreBackup(preview) : port.restoreVerbundBackup(preview)).catch(storageFailed);
+      if (!result.ok) {
+        if (result.diagnostic.code === 'WORKSPACE_SCHEMA_NEWER') report(result.diagnostic);
+        return result;
+      }
+      discardReplacedInputs(preview, importTargets, renameDrafts);
+      setLoaded((current) => preview.kind === 'workspace' || current?.verbundId === preview.verbundId ? null : current);
+      invalidateAnalysis();
+      setRevision((value) => value + 1);
+      return result;
+    },
+    pendingRestoreInputs: async (scope, rowDrafts) => {
+      const listed = port ? await port.listDocuments().catch(storageFailed) : storageFailed();
+      if (!listed.ok) return listed;
+      return { ok: true, value: collectRestoreInputs({ scope, renameDrafts, rowDrafts, importTargets, verbuende: verbuende ?? [], documents: listed.value }) };
+    },
+    discardRestoreInput: (input, rowDrafts) => {
+      if (input.kind !== 'rename') {
+        importTargets.delete(input.localId);
+        return;
+      }
+      // Eine während des Speicherns weitergetippte Umbenennung bleibt offen.
+      const drafts = input.row ? rowDrafts : renameDrafts;
+      if (drafts?.get(input.verbundId) === input.draft) drafts.delete(input.verbundId);
+    },
     registerAutosave,
     flushAutosaves,
     documents,
     analysisRevision,
     renameDrafts,
-  }), [status, verbuende, writable, delivery, notices, verbund, activate, checkSchema, write, port, report, registerAutosave, flushAutosaves, documents, importTargets, invalidateAnalysis, analysisRevision, renameDrafts]);
+  }), [status, verbuende, writable, delivery, notices, verbund, activate, checkSchema, write, quiet, port, report, registerAutosave, flushAutosaves, documents, importTargets, invalidateAnalysis, analysisRevision, renameDrafts]);
 
   return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>;
 }

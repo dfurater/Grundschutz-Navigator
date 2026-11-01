@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { LocalId, VerbundId, WorkspaceBackup } from '@/domain/workspaceModel';
 import { makeSchemaValidOscalDocument } from '@/test/fixtures/oscalSchemaFixtures';
 import {
+  adoptAnyBackup,
   createWorkspaceStructureValidator,
   validVerbundBackupStructure,
   validWorkspaceBackupStructure,
@@ -77,6 +78,17 @@ const rejected: readonly (readonly [string, Mutation])[] = [
 describe('workspace backup structure v3', () => {
   it('akzeptiert Trail, Entscheidungen und Vergleichsbasis in Dokumentreihenfolge', () => {
     expect(validWorkspaceBackupStructure(bundle())).toBe(true);
+  });
+
+  it('wählt den Validator nach format und lehnt jede andere Art ab', () => {
+    const whole = bundle();
+    const single: Record<string, unknown> = { ...whole, format: 'gspp-workspace-verbund' };
+    delete single.workspaceMeta;
+    expect(adoptAnyBackup(whole)).toBe(whole);
+    expect(adoptAnyBackup(single)).toBe(single);
+    // Eine Verbundsicherung mit Metadaten ist weder die eine noch die andere Art.
+    expect(adoptAnyBackup({ ...whole, format: 'gspp-workspace-verbund' })).toBeNull();
+    for (const value of [{ ...whole, format: 'gspp-other' }, { ...whole, storageSchemaVersion: 4 }, null, []]) expect(adoptAnyBackup(value)).toBeNull();
   });
 
   it.each(rejected)('weist %s ab', (_name, mutate) => {
