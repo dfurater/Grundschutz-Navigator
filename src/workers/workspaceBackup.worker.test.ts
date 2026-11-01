@@ -59,6 +59,8 @@ it.each([null, { scope: 'other', buffer: new ArrayBuffer(0) }, { scope: 'workspa
   receive({ data: request, origin: '' });
   expect(postMessage).toHaveBeenCalledExactlyOnceWith({ type: 'failure' });
   expect(workspace).not.toHaveBeenCalled();
+  expect(verbund).not.toHaveBeenCalled();
+  expect(any).not.toHaveBeenCalled();
 });
 it.each([{ type: 'ack', sequence: 1 }, { type: 'ack', sequence: 0, extra: true }, { scope: 'workspace', buffer: new ArrayBuffer(0) }])('ends the stream on a bad acknowledgement or second request %#', async frame => {
   const { send, postMessage } = await setup({});
