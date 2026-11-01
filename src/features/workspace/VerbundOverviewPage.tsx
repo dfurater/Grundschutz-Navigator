@@ -157,23 +157,18 @@ export function VerbundOverviewPage() {
     setRestoreFile(file);
   };
 
-  if (restoreFile) {
-    return (
-      <>
-        <PageTitle title={PAGE_TITLES.workspace} />
+  return (
+    <>
+      <PageTitle title={PAGE_TITLES.workspace} />
+      {restoreFile && (
         <RestoreSheet
           file={restoreFile}
           onCancel={() => { focusTarget.current = 'restore'; setRestoreFile(null); }}
           onDone={(done) => { focusTarget.current = 'heading'; setRestored(done); setRestoreFile(null); }}
         />
-      </>
-    );
-  }
-
-  return (
-    <>
-      <PageTitle title={PAGE_TITLES.workspace} />
-      <div className="mx-auto w-full max-w-3xl space-y-4 px-4 py-6 sm:px-6">
+      )}
+      {/* Die Übersicht bleibt eingehängt, damit offene Formulareingaben das Prüfblatt überstehen. */}
+      <div hidden={restoreFile !== null} className="mx-auto w-full max-w-3xl space-y-4 px-4 py-6 sm:px-6">
         <header className="space-y-2">
           <h1 ref={heading} tabIndex={-1} className="type-page-title focus:outline-none">Informationsverbünde</h1>
           <div className="flex flex-wrap items-center gap-2">
@@ -208,10 +203,10 @@ export function VerbundOverviewPage() {
         </section>
 
         <section aria-labelledby="verbund-liste" className="rounded-md border border-[var(--color-border-default)] bg-[var(--color-surface-base)]">
-          <div className="flex min-h-panel-head flex-wrap items-center justify-between gap-2 border-b border-[var(--color-border-subtle)] px-4 py-2">
+          <div className="flex min-h-panel-head flex-wrap items-center justify-between gap-2 border-b border-[var(--color-border-subtle)] px-4 py-2 md:py-0">
             <h2 id="verbund-liste" className="basis-full text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)] md:basis-auto">Bestand</h2>
-            <div className="flex flex-wrap gap-2">
-              <Button variant="secondary" size="sm" className={ROW_BUTTON} onClick={exportBackup} disabled={status !== 'ready' || exporting}>
+            <div className="flex w-full flex-col gap-2 md:w-auto md:flex-row">
+              <Button variant="secondary" size="sm" className={ROW_BUTTON} onClick={() => void exportBackup()} disabled={status !== 'ready' || exporting}>
                 Sicherung exportieren
               </Button>
               <input ref={fileInput} aria-label="Sicherungsdatei" type="file" accept="application/json,.json" className="hidden" tabIndex={-1} onChange={chooseFile} />
@@ -232,7 +227,7 @@ export function VerbundOverviewPage() {
                   writable={writable}
                   restored={restored?.verbundId === verbund.verbundId}
                   exporting={exporting}
-                  onExport={(entry) => exportVerbund(entry.verbundId)}
+                  onExport={(entry) => void exportVerbund(entry.verbundId)}
                   onDelete={setPendingDelete}
                 />
               ))}

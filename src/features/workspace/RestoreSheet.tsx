@@ -5,10 +5,11 @@ import { Button } from '@/components/Button';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import type { RestoreInput, RestorePreview, RestoreScope } from '@/state/workspaceRestore';
 import { OriginLabel } from '@/features/workspace/DocumentMarks';
+import { WORKSPACE_BACKUP_MAX_BYTES } from '@/domain/class2ImportLimits.mjs';
 import { useBackupExport } from '@/features/workspace/WorkspaceNotices';
 import {
   Actions, BUTTON, ClarifyRow, Facts, Mark, Message, PreviewBody, Section, doneText, fileInfo, fileSize, formatDate, plural, scopeOf,
-  type FileInfo,
+  type BackupState, type FileInfo,
 } from '@/features/workspace/RestoreSheetParts';
 
 /** Ergebnis einer Wiederherstellung für die Statusmeldung der Übersicht. */
@@ -60,7 +61,7 @@ export function RestoreSheet({ file: initialFile, onCancel, onDone }: Readonly<{
   const [file, setFile] = useState(initialFile);
   const [info, setInfo] = useState<FileInfo>();
   const [phase, setPhase] = useState<Phase>({ step: 'checking' });
-  const [downloaded, setDownloaded] = useState(false);
+  const [backup, setBackup] = useState<BackupState>('idle');
   useEffect(() => { heading.current?.focus(); }, []);
 
   /** Liest die Vorschau zu den aktuellen Bytes; offene Eingaben im Zielbereich halten sie zurück. */
@@ -95,17 +96,21 @@ export function RestoreSheet({ file: initialFile, onCancel, onDone }: Readonly<{
       if (run === generation.current) setPhase({ step: 'flush-failed' });
       return;
     }
-    try { bytes.current = new Uint8Array(await next.arrayBuffer()); }
-    catch {
-      if (run === generation.current) setPhase({ step: 'rejected', code: 'WORKSPACE_BACKUP_INPUT_REJECTED' });
-      return;
+    // Eine zu große Datei wird nicht erst in den Arbeitsspeicher gelesen.
+    let read: Uint8Array | null = null;
+    if (next.size <= WORKSPACE_BACKUP_MAX_BYTES) {
+      try { read = new Uint8Array(await next.arrayBuffer()); } catch { read = null; }
     }
-    if (run === generation.current) await readPreview(run, true);
+    // Ein älterer Lauf darf die Bytes einer inzwischen gewählten Datei nicht ersetzen.
+    if (run !== generation.current) return;
+    if (!read) { setPhase({ step: 'rejected', code: 'WORKSPACE_BACKUP_INPUT_REJECTED' }); return; }
+    bytes.current = read;
+    await readPreview(run, true);
   };
 
   const check = (next: File) => {
     setInfo(undefined);
-    setDownloaded(false);
+    setBackup('idle');
     setPhase({ step: 'checking' });
     void process(next, ++generation.current);
   };
@@ -281,11 +286,12 @@ export function RestoreSheet({ file: initialFile, onCancel, onDone }: Readonly<{
                 phase={shown.step}
                 quota={shown.step === 'write-failed' && shown.quota}
                 writable={writable}
-                downloaded={downloaded}
+                backup={backup}
                 cancel={cancel}
                 onBackup={() => {
-                  if (shown.preview.kind === 'workspace') exportBackup(); else exportVerbund(shown.preview.verbundId);
-                  setDownloaded(true);
+                  setBackup('running');
+                  const exported = shown.preview.kind === 'workspace' ? exportBackup() : exportVerbund(shown.preview.verbundId);
+                  void exported.then((started) => setBackup(started ? 'started' : 'failed'));
                 }}
                 onConfirm={() => void confirm(shown.preview)}
               />

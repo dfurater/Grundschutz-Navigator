@@ -49,10 +49,10 @@ function renderWith(port: WorkspacePort) {
   });
 }
 
-async function choose(name = 'sicherung.json') {
+async function choose(file: File = new File(['{}'], 'sicherung.json', { type: 'application/json' })) {
   const entry = await screen.findByRole('button', { name: 'Sicherung wiederherstellen…' });
   await waitFor(() => expect(entry).toBeEnabled());
-  fireEvent.change(screen.getByLabelText('Sicherungsdatei'), { target: { files: [new File(['{}'], name, { type: 'application/json' })] } });
+  fireEvent.change(screen.getAllByLabelText('Sicherungsdatei')[0], { target: { files: [file] } });
   return within(main());
 }
 
@@ -113,7 +113,7 @@ describe('Sicherung wiederherstellen', () => {
     const sheet = await choose();
     const message = (await sheet.findByText(title)).closest('[role="alert"]');
     expect(message).toHaveTextContent(text);
-    expect(sheet.queryByRole('button', { name: /ersetzen|wiederherstellen$/ })).not.toBeInTheDocument();
+    expect(sheet.queryByRole('button', { name: /(?:ersetzen|wiederherstellen)$/ })).not.toBeInTheDocument();
   });
 
   it('klärt nur Eingaben des Zielverbunds und liest die Vorschau danach neu', async () => {
@@ -160,8 +160,56 @@ describe('Sicherung wiederherstellen', () => {
     const sheet = await choose();
     fireEvent.click(await sheet.findByRole('button', { name: `„${VERBUND.name}“ ersetzen` }));
     expect((await sheet.findByText('Speicher voll')).closest('[role="alert"]')).toHaveTextContent('Der bisherige Bestand ist unverändert.');
-    fireEvent.click(sheet.getByRole('button', { name: 'Erneut versuchen' }));
+    fireEvent.click(sheet.getByRole('button', { name: `Erneut versuchen: „${VERBUND.name}“ ersetzen` }));
     await waitFor(() => expect(restoreVerbundBackup).toHaveBeenCalledTimes(2));
+  });
+
+  it('meldet eine gescheiterte Vorabsicherung, statt einen Download anzuzeigen', async () => {
+    downloads.length = 0;
+    renderWith(fakePort({ previewRestore: () => ok(verbundPreview()), exportVerbundBackup: () => fail('WORKSPACE_BACKUP_LIMIT_EXCEEDED') }));
+    const sheet = await choose();
+    fireEvent.click(await sheet.findByRole('button', { name: `Vorher sichern: ${VERBUND.name}` }));
+    expect((await sheet.findByText('Sicherung nicht erstellt')).closest('[role="alert"]')).toHaveTextContent('Es wurde keine Datei heruntergeladen.');
+    expect(sheet.queryByText('Download gestartet')).not.toBeInTheDocument();
+    expect(downloads).toEqual([]);
+  });
+
+  it('liest eine Datei über der Bündelgrenze nicht ein', async () => {
+    const previewRestore = vi.fn(() => ok(verbundPreview()));
+    const file = new File(['{}'], 'riesig.json', { type: 'application/json' });
+    Object.defineProperty(file, 'size', { value: 33_554_433 });
+    const read = vi.spyOn(file, 'arrayBuffer');
+    renderWith(fakePort({ previewRestore }));
+    const sheet = await choose(file);
+    expect((await sheet.findByText('Datei abgelehnt')).closest('[role="alert"]')).toHaveTextContent('größer als zulässig');
+    expect(read).not.toHaveBeenCalled();
+    expect(previewRestore).not.toHaveBeenCalled();
+  });
+
+  it('prüft nach einem Dateiwechsel die neue Datei, auch wenn die alte später fertig gelesen ist', async () => {
+    let finishOld: (bytes: ArrayBuffer) => void = () => undefined;
+    const old = new File(['{"alt":1}'], 'alt.json', { type: 'application/json' });
+    vi.spyOn(old, 'arrayBuffer').mockReturnValue(new Promise((resolve) => { finishOld = resolve; }));
+    const read: string[] = [];
+    const previewRestore = vi.fn((bytes: Uint8Array) => { read.push(new TextDecoder().decode(bytes)); return ok(verbundPreview()); });
+    renderWith(fakePort({ previewRestore }));
+    const sheet = await choose(old);
+    await sheet.findByText('Wird geprüft…');
+    fireEvent.change(screen.getAllByLabelText('Sicherungsdatei')[0], { target: { files: [new File(['{"neu":1}'], 'neu.json', { type: 'application/json' })] } });
+    expect(await sheet.findByRole('button', { name: `„${VERBUND.name}“ ersetzen` })).toBeInTheDocument();
+    finishOld(new TextEncoder().encode('{"alt":1}').buffer);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(read).toEqual(['{"neu":1}']);
+    expect(sheet.getByText('neu.json')).toBeInTheDocument();
+  });
+
+  it('erhält eine in der Übersicht begonnene Umbenennung über das Prüfblatt', async () => {
+    renderWith(fakePort({ previewRestore: () => ok(verbundPreview()) }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Umbenennen' }));
+    fireEvent.change(screen.getByLabelText('Neuer Name'), { target: { value: 'Halb getippt' } });
+    const sheet = await choose();
+    fireEvent.click(await sheet.findByRole('button', { name: 'Abbrechen' }));
+    expect(await screen.findByLabelText('Neuer Name')).toHaveValue('Halb getippt');
   });
 
   it('kehrt bei Abbrechen zum Einstieg zurück', async () => {

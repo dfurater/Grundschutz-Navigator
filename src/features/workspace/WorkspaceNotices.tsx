@@ -49,17 +49,18 @@ function backupFilename(prefix: string): string {
  */
 export function useBackupExport(): {
   readonly exporting: boolean;
-  readonly exportBackup: () => void;
-  readonly exportVerbund: (verbundId: VerbundId) => void;
+  /** `true`, sobald die Datei als Download übergeben ist; ein Fehlschlag meldet der Bereich als Speichermeldung. */
+  readonly exportBackup: () => Promise<boolean>;
+  readonly exportVerbund: (verbundId: VerbundId) => Promise<boolean>;
 } {
   const workspace = useWorkspace();
   const [exporting, setExporting] = useState(false);
-  const download = (result: Promise<WorkspaceResult<string>>, prefix: string) => {
+  const download = async (result: Promise<WorkspaceResult<string>>, prefix: string): Promise<boolean> => {
     setExporting(true);
-    void result.then((exported) => {
-      setExporting(false);
-      if (exported.ok) downloadBlob(new Blob([exported.value], { type: 'application/json' }), backupFilename(prefix));
-    });
+    const exported = await result;
+    setExporting(false);
+    if (exported.ok) downloadBlob(new Blob([exported.value], { type: 'application/json' }), backupFilename(prefix));
+    return exported.ok;
   };
   return {
     exporting,
@@ -89,7 +90,7 @@ export function WorkspaceNotices() {
               <p className="mt-1 text-sm leading-relaxed text-[var(--color-text-secondary)]">{text}</p>
             </div>
             {action === 'export' ? (
-              <Button variant="secondary" className="min-h-touch shrink-0 desktop:min-h-0" onClick={exportBackup} disabled={exporting || (status !== 'ready' && notice !== 'migration-failed')}>
+              <Button variant="secondary" className="min-h-touch shrink-0 desktop:min-h-0" onClick={() => void exportBackup()} disabled={exporting || (status !== 'ready' && notice !== 'migration-failed')}>
                 Sicherung exportieren
               </Button>
             ) : (

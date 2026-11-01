@@ -35,9 +35,8 @@ export function fileInfo(preview: RestorePreview): FileInfo {
 }
 
 export function scopeOf(preview: RestorePreview): RestoreScope {
-  if (preview.kind === 'workspace') return { kind: 'workspace' };
-  const localIds = [...preview.target.documents, ...preview.backup.documents].map((entry) => entry.localId);
-  return { kind: 'verbund', verbundId: preview.verbundId, localIds };
+  const documents = preview.backup.documents.map(({ localId, verbundId, rootType }) => ({ localId, verbundId, rootType }));
+  return preview.kind === 'workspace' ? { kind: 'workspace', documents } : { kind: 'verbund', verbundId: preview.verbundId, documents };
 }
 
 /** Ein bestehender Zielbereich wird ersetzt; ein fehlender Verbund wird nur angelegt. */
@@ -72,7 +71,7 @@ export function replacementText(preview: RestorePreview): string {
 export function Section({ number, title, children }: Readonly<{ number: number; title: string; children: ReactNode }>) {
   return (
     <section className="space-y-3 px-4 py-4 sm:px-6">
-      <h2 className="flex items-baseline gap-2 text-base font-semibold leading-snug">
+      <h2 className="flex items-baseline gap-2 text-base font-semibold leading-snug tabular-nums">
         <span aria-hidden="true" className="tabular-nums text-[var(--color-text-muted)]">{number}</span>
         {title}
       </h2>
@@ -87,7 +86,7 @@ export function Facts({ rows }: Readonly<{ rows: readonly (readonly [string, str
       {rows.map(([term, value]) => (
         <div key={term} className="md:contents">
           <dt className="text-[var(--color-text-secondary)]">{term}</dt>
-          <dd className="min-w-0 break-words text-[var(--color-text-primary)]">{value}</dd>
+          <dd className="min-w-0 break-words tabular-nums text-[var(--color-text-primary)]">{value}</dd>
         </div>
       ))}
     </dl>
@@ -191,13 +190,16 @@ export function ClarifyRow({ entry, verbundName, failed, writable, onSave, onDis
   );
 }
 
-export function PreviewBody({ preview, verbundCount, phase, quota, writable, downloaded, cancel, onBackup, onConfirm }: Readonly<{
+/** Stand von „Vorher sichern“; erst eine übergebene Datei zählt als gestarteter Download. */
+export type BackupState = 'idle' | 'running' | 'started' | 'failed';
+
+export function PreviewBody({ preview, verbundCount, phase, quota, writable, backup, cancel, onBackup, onConfirm }: Readonly<{
   preview: RestorePreview;
   verbundCount: number;
   phase: 'preview' | 'running' | 'write-failed';
   quota: boolean;
   writable: boolean;
-  downloaded: boolean;
+  backup: BackupState;
   cancel: ReactNode;
   onBackup: () => void;
   onConfirm: () => void;
@@ -226,13 +228,21 @@ export function PreviewBody({ preview, verbundCount, phase, quota, writable, dow
       {phase === 'write-failed' && (
         <Message tone="alert" title={quota ? 'Speicher voll' : 'Speicher nicht verfügbar'}>Die Wiederherstellung wurde nicht gespeichert. Der bisherige Bestand ist unverändert.</Message>
       )}
-      {downloaded && <p role="status" className="text-right text-xs text-[var(--color-text-secondary)]">Download gestartet</p>}
+      {backup === 'started' && <p role="status" className="text-right text-xs text-[var(--color-text-secondary)]">Download gestartet</p>}
+      {backup === 'failed' && <Message tone="alert" title="Sicherung nicht erstellt">Es wurde keine Datei heruntergeladen. Der Bestand ist unverändert.</Message>}
       <Actions>
         {cancel}
         {replaces && (
-          <Button variant="secondary" className={BUTTON} disabled={running} aria-label={`Vorher sichern: ${target}`} onClick={onBackup}>Vorher sichern</Button>
+          <Button variant="secondary" className={BUTTON} disabled={running || backup === 'running'} aria-label={`Vorher sichern: ${target}`} onClick={onBackup}>Vorher sichern</Button>
         )}
-        <Button variant={replaces ? 'danger' : 'primary'} className={BUTTON} disabled={running || !writable} onClick={onConfirm}>
+        {/* Auch die Wiederholung nennt den Umfang im zugänglichen Namen. */}
+        <Button
+          variant={replaces ? 'danger' : 'primary'}
+          className={BUTTON}
+          disabled={running || !writable}
+          aria-label={phase === 'write-failed' ? `Erneut versuchen: ${confirmLabel}` : undefined}
+          onClick={onConfirm}
+        >
           {phase === 'write-failed' ? 'Erneut versuchen' : confirmLabel}
         </Button>
       </Actions>
