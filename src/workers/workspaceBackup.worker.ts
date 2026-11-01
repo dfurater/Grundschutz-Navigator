@@ -7,6 +7,15 @@ let stream: ReturnType<typeof encodeOscalSource> | undefined;
 let sequence = 0;
 let awaitingAck = false;
 
+function selectProcessor(scope: unknown) {
+  switch (scope) {
+    case 'workspace': return processWorkspaceBackupBytes;
+    case 'verbund': return processVerbundBackupBytes;
+    case 'any': return processAnyBackupBytes;
+    default: return undefined;
+  }
+}
+
 function fail(): void {
   failed = true;
   stream = undefined;
@@ -39,9 +48,10 @@ globalThis.addEventListener('message', (event: MessageEvent) => {
   }
   if (started || !request || typeof request !== 'object' || Object.keys(request).length !== 2
     || !('buffer' in request) || !(request.buffer instanceof ArrayBuffer)
-    || !('scope' in request) || !['workspace', 'verbund', 'any'].includes(request.scope as string)) return fail();
+    || !('scope' in request)) return fail();
+  const process = selectProcessor(request.scope);
+  if (!process) return fail();
   started = true;
-  const process = { workspace: processWorkspaceBackupBytes, verbund: processVerbundBackupBytes, any: processAnyBackupBytes }[request.scope as 'workspace' | 'verbund' | 'any'];
   void process(new Uint8Array(request.buffer)).then(result => {
     if (failed) return;
     if (!result.ok) {
