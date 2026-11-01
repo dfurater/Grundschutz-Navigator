@@ -1,4 +1,4 @@
-import { processWorkspaceBackupBytes, processVerbundBackupBytes } from '@/adapters/workspaceBackupProcessing';
+import { processWorkspaceBackupBytes, processVerbundBackupBytes, processAnyBackupBytes } from '@/adapters/workspaceBackupProcessing';
 import { encodeOscalSource } from '@/domain/oscalImportTransport';
 
 let started = false;
@@ -39,9 +39,9 @@ globalThis.addEventListener('message', (event: MessageEvent) => {
   }
   if (started || !request || typeof request !== 'object' || Object.keys(request).length !== 2
     || !('buffer' in request) || !(request.buffer instanceof ArrayBuffer)
-    || !('scope' in request) || !['workspace', 'verbund'].includes(request.scope as string)) return fail();
+    || !('scope' in request) || !['workspace', 'verbund', 'any'].includes(request.scope as string)) return fail();
   started = true;
-  const process = request.scope === 'verbund' ? processVerbundBackupBytes : processWorkspaceBackupBytes;
+  const process = { workspace: processWorkspaceBackupBytes, verbund: processVerbundBackupBytes, any: processAnyBackupBytes }[request.scope as 'workspace' | 'verbund' | 'any'];
   void process(new Uint8Array(request.buffer)).then(result => {
     if (failed) return;
     if (!result.ok) {

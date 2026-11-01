@@ -7,11 +7,12 @@ import {
   type DocumentState, type LocalId, type VerbundId, type WorkspaceBinding,
   type WorkspaceDraft, type WorkspaceEnvelope, type WorkspaceMeta, type WorkspaceDocumentSummary,
   type WorkspaceResult, type WorkspaceVerbund, type WorkspaceRestorePreview, type WorkspaceVerbundRestorePreview,
+  type WorkspaceBackup, type WorkspaceVerbundBackup,
   type ReviewBaseline, type ReviewCheckpoint, type ReviewDecision, type ReviewDecisionKind, type ReviewTrailRow,
   type ReviewTrailView, type DocumentSnapshot,
 } from '@/domain/workspaceModel';
 import { snapshotDocument, assertAdmissible, assertState, pointerValue } from '@/adapters/workspaceDocumentAdmission';
-import { parseWorkspaceBackup, parseVerbundBackup } from '@/adapters/workspaceBackup';
+import { parseAnyBackup, parseWorkspaceBackup, parseVerbundBackup } from '@/adapters/workspaceBackup';
 import { CLASS_2_IMPORT_LIMITS } from '@/domain/oscalImportContract';
 import { serializeWorkspaceJson } from '@/domain/workspaceJson';
 import { exportNewerWorkspaceBackup } from '@/adapters/workspaceRecoveryStorage';
@@ -565,17 +566,27 @@ export class WorkspaceStore {
 
   async previewRestoreBackup(bytes: Uint8Array): Promise<WorkspaceResult<WorkspaceRestorePreview>> {
     const parsed = await parseWorkspaceBackup(bytes);
+    return parsed.ok ? this.readRestorePreview(parsed.value) : parsed;
+  }
+
+  /** Eine Datei, beide Arten: `format` des im Worker geprüften Bündels wählt den Vorschaupfad. */
+  async previewRestore(bytes: Uint8Array): Promise<WorkspaceResult<WorkspaceRestorePreview | WorkspaceVerbundRestorePreview>> {
+    const parsed = await parseAnyBackup(bytes);
     if (!parsed.ok) return parsed;
+    return parsed.value.format === 'gspp-workspace' ? this.readRestorePreview(parsed.value) : this.readVerbundRestorePreview(parsed.value);
+  }
+
+  private readRestorePreview(backup: WorkspaceBackup): Promise<WorkspaceResult<WorkspaceRestorePreview>> {
     return this.read(Object.keys(WORKSPACE_SCHEMA), async () => {
       if (this.newerSchema || this.db.backendDB().version > STORAGE_SCHEMA_VERSION * 10) reject('WORKSPACE_SCHEMA_NEWER');
       const meta = await this.meta.get('workspace');
       if (meta?.storageSchemaVersion !== STORAGE_SCHEMA_VERSION || typeof meta.databaseId !== 'string') reject('WORKSPACE_SCHEMA_INVALID');
       const counts = {} as Record<keyof typeof WORKSPACE_SCHEMA, { file: number; target: number }>;
       for (const name of Object.keys(WORKSPACE_SCHEMA) as (keyof typeof WORKSPACE_SCHEMA)[]) {
-        counts[name] = { file: parsed.value[name].length, target: await this.db.table(name).count() };
+        counts[name] = { file: backup[name].length, target: await this.db.table(name).count() };
       }
       const preview: WorkspaceRestorePreview = {
-        kind: 'workspace', backup: parsed.value,
+        kind: 'workspace', backup,
         target: { databaseId: meta.databaseId, storageSchemaVersion: meta.storageSchemaVersion, savedAt: meta.savedAt }, counts,
       };
       this.bindRestorePreview(preview);
@@ -605,10 +616,13 @@ export class WorkspaceStore {
 
   async previewRestoreVerbundBackup(bytes: Uint8Array): Promise<WorkspaceResult<WorkspaceVerbundRestorePreview>> {
     const parsed = await parseVerbundBackup(bytes);
-    if (!parsed.ok) return parsed;
+    return parsed.ok ? this.readVerbundRestorePreview(parsed.value) : parsed;
+  }
+
+  private readVerbundRestorePreview(backup: WorkspaceVerbundBackup): Promise<WorkspaceResult<WorkspaceVerbundRestorePreview>> {
     return this.read(Object.keys(WORKSPACE_SCHEMA), async () => {
       if (this.newerSchema) reject('WORKSPACE_SCHEMA_NEWER');
-      const preview = await readVerbundRestorePreviewSnapshot(this.db, parsed.value);
+      const preview = await readVerbundRestorePreviewSnapshot(this.db, backup);
       this.bindRestorePreview(preview);
       return preview;
     });

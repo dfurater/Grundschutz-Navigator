@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { useEffect, useId, useRef, useState, type ChangeEvent } from 'react';
 import { Link } from 'react-router';
 import { PageTitle } from '@/app/PageTitle';
 import { PAGE_TITLES } from '@/app/pageTitles';
@@ -10,6 +10,7 @@ import type { WorkspaceContextValue } from '@/state/WorkspaceContext';
 import { isVerbundName, type WorkspaceVerbund } from '@/domain/workspaceModel';
 import { FOCUS_RING, OriginLabel } from '@/features/workspace/DocumentMarks';
 import { WorkspaceNotices, useBackupExport } from '@/features/workspace/WorkspaceNotices';
+import { RestoreSheet, type RestoreDone } from '@/features/workspace/RestoreSheet';
 
 const INPUT = `min-h-touch w-full rounded-md border border-[var(--color-border-strong)] bg-[var(--color-surface-base)] px-3 py-2 text-base text-[var(--color-text-primary)] shadow-sm placeholder:text-[var(--color-text-muted)] focus-visible:border-[var(--color-focus-ring)] sm:text-sm desktop:min-h-0 ${FOCUS_RING}`;
 const ROW_BUTTON = 'min-h-touch desktop:min-h-0';
@@ -63,9 +64,13 @@ export function NameForm({ label, submitLabel, initial = '', disabled, onSubmit,
   );
 }
 
-function VerbundRow({ verbund, writable, onDelete }: Readonly<{
+function VerbundRow({ verbund, writable, restored, exporting, onExport, onDelete }: Readonly<{
   verbund: WorkspaceVerbund;
   writable: boolean;
+  /** Zuletzt wiederhergestellt; hinterlegt, bis die Seite verlassen wird. */
+  restored: boolean;
+  exporting: boolean;
+  onExport: (verbund: WorkspaceVerbund) => void;
   onDelete: (verbund: WorkspaceVerbund) => void;
 }>) {
   const { renameVerbund, renameDrafts } = useWorkspace();
@@ -93,15 +98,16 @@ function VerbundRow({ verbund, writable, onDelete }: Readonly<{
     );
   }
   return (
-    <li className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2">
+    <li data-restored={restored || undefined} className={`flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2 ${restored ? 'bg-[var(--color-surface-subtle)]' : ''}`}>
       <Link
         to={buildVerbundUrl(verbund.verbundId)}
-        className={`flex min-h-touch min-w-0 flex-1 items-center rounded text-sm font-semibold text-[var(--color-text-primary)] hover:underline desktop:min-h-8 ${FOCUS_RING}`}
+        className={`flex min-h-touch min-w-0 flex-1 basis-48 items-center rounded text-sm font-semibold text-[var(--color-text-primary)] hover:underline desktop:min-h-8 ${FOCUS_RING}`}
       >
         <span className="min-w-0 break-words">{verbund.name}</span>
       </Link>
       <div className="flex gap-1">
         <Button variant="ghost" size="sm" className={ROW_BUTTON} disabled={!writable} onClick={() => setRenaming(true)}>Umbenennen</Button>
+        <Button variant="ghost" size="sm" className={ROW_BUTTON} disabled={exporting} aria-label={`${verbund.name} sichern`} onClick={() => onExport(verbund)}>Sichern</Button>
         <button
           type="button"
           disabled={!writable}
@@ -121,20 +127,55 @@ function inventoryLabel(status: WorkspaceContextValue['status'], verbuende: read
   return `${verbuende.length} ${verbuende.length === 1 ? 'Informationsverbund' : 'Informationsverbünde'}`;
 }
 
-/** Übersicht des Bereichs: Verbünde anlegen, umbenennen und mit Bestätigung löschen. */
+/** Übersicht des Bereichs: Verbünde anlegen, umbenennen, sichern, wiederherstellen und mit Bestätigung löschen. */
 export function VerbundOverviewPage() {
   const { status, verbuende, writable, createVerbund, deleteVerbund } = useWorkspace();
-  const { exporting, exportBackup } = useBackupExport();
+  const { exporting, exportBackup, exportVerbund } = useBackupExport();
   const [pendingDelete, setPendingDelete] = useState<WorkspaceVerbund | null>(null);
+  // Das Prüfblatt ist Ansichtszustand dieser Seite: keine Route, kein Seitentitel mit Organisationsdaten.
+  const [restoreFile, setRestoreFile] = useState<File | null>(null);
+  const [restored, setRestored] = useState<RestoreDone | null>(null);
+  // Fokus nach dem Prüfblatt: Überschrift nach Erfolg, Einstieg nach Abbruch.
+  const focusTarget = useRef<'heading' | 'restore' | null>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const restoreButton = useRef<HTMLButtonElement>(null);
+  const heading = useRef<HTMLHeadingElement>(null);
   const ready = status === 'ready' && verbuende !== null;
   const count = verbuende?.length ?? 0;
+
+  useEffect(() => {
+    if (restoreFile || !focusTarget.current) return;
+    (focusTarget.current === 'heading' ? heading : restoreButton).current?.focus();
+    focusTarget.current = null;
+  }, [restoreFile]);
+
+  const chooseFile = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file || !writable) return;
+    setRestored(null);
+    setRestoreFile(file);
+  };
+
+  if (restoreFile) {
+    return (
+      <>
+        <PageTitle title={PAGE_TITLES.workspace} />
+        <RestoreSheet
+          file={restoreFile}
+          onCancel={() => { focusTarget.current = 'restore'; setRestoreFile(null); }}
+          onDone={(done) => { focusTarget.current = 'heading'; setRestored(done); setRestoreFile(null); }}
+        />
+      </>
+    );
+  }
 
   return (
     <>
       <PageTitle title={PAGE_TITLES.workspace} />
       <div className="mx-auto w-full max-w-3xl space-y-4 px-4 py-6 sm:px-6">
         <header className="space-y-2">
-          <h1 className="type-page-title">Informationsverbünde</h1>
+          <h1 ref={heading} tabIndex={-1} className="type-page-title focus:outline-none">Informationsverbünde</h1>
           <div className="flex flex-wrap items-center gap-2">
             <OriginLabel />
             <span aria-live="polite" className="text-xs font-medium tabular-nums text-[var(--color-text-secondary)]">
@@ -144,6 +185,15 @@ export function VerbundOverviewPage() {
         </header>
 
         <WorkspaceNotices />
+
+        <div role="status">
+          {restored && (
+            <div className="rounded-md border border-[var(--color-border-strong)] bg-[var(--color-surface-base)] p-4">
+              <p className="text-sm font-semibold text-[var(--color-text-primary)]">Wiederhergestellt</p>
+              <p className="mt-1 break-words text-sm text-[var(--color-text-secondary)]">{restored.text}</p>
+            </div>
+          )}
+        </div>
 
         <section aria-labelledby="verbund-anlegen" className="rounded-md border border-[var(--color-border-default)] bg-[var(--color-surface-base)] p-4">
           <h2 id="verbund-anlegen" className="text-base font-semibold leading-snug">Informationsverbund anlegen</h2>
@@ -158,11 +208,17 @@ export function VerbundOverviewPage() {
         </section>
 
         <section aria-labelledby="verbund-liste" className="rounded-md border border-[var(--color-border-default)] bg-[var(--color-surface-base)]">
-          <div className="flex min-h-panel-head items-center justify-between gap-2 border-b border-[var(--color-border-subtle)] px-4">
-            <h2 id="verbund-liste" className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">Bestand</h2>
-            <Button variant="secondary" size="sm" className={ROW_BUTTON} onClick={exportBackup} disabled={status !== 'ready' || exporting}>
-              Sicherung exportieren
-            </Button>
+          <div className="flex min-h-panel-head flex-wrap items-center justify-between gap-2 border-b border-[var(--color-border-subtle)] px-4 py-2">
+            <h2 id="verbund-liste" className="basis-full text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)] md:basis-auto">Bestand</h2>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="secondary" size="sm" className={ROW_BUTTON} onClick={exportBackup} disabled={status !== 'ready' || exporting}>
+                Sicherung exportieren
+              </Button>
+              <input ref={fileInput} aria-label="Sicherungsdatei" type="file" accept="application/json,.json" className="hidden" tabIndex={-1} onChange={chooseFile} />
+              <Button ref={restoreButton} variant="secondary" size="sm" className={ROW_BUTTON} onClick={() => fileInput.current?.click()} disabled={!ready || !writable}>
+                Sicherung wiederherstellen…
+              </Button>
+            </div>
           </div>
           {ready && count === 0 && (
             <p className="px-4 py-3 text-sm text-[var(--color-text-secondary)]">Noch kein Informationsverbund angelegt.</p>
@@ -170,7 +226,15 @@ export function VerbundOverviewPage() {
           {ready && count > 0 && (
             <ul className="divide-y divide-[var(--color-border-subtle)]">
               {verbuende.map((verbund) => (
-                <VerbundRow key={verbund.verbundId} verbund={verbund} writable={writable} onDelete={setPendingDelete} />
+                <VerbundRow
+                  key={verbund.verbundId}
+                  verbund={verbund}
+                  writable={writable}
+                  restored={restored?.verbundId === verbund.verbundId}
+                  exporting={exporting}
+                  onExport={(entry) => exportVerbund(entry.verbundId)}
+                  onDelete={setPendingDelete}
+                />
               ))}
             </ul>
           )}

@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, ComponentType, ReactNode } from 'react';
+import type { ButtonHTMLAttributes, ComponentType, ReactNode, Ref } from 'react';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
 export type ButtonSize = 'sm' | 'md' | 'lg';
@@ -8,6 +8,7 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   readonly size?: ButtonSize;
   readonly icon?: ComponentType<{ className?: string }>;
   readonly children?: ReactNode;
+  readonly ref?: Ref<HTMLButtonElement>;
 }
 
 const baseStyle =

@@ -3,7 +3,7 @@ import { processClass2OscalBytes } from '@/domain/oscalClass2Import';
 import { parseWorkspaceBackupInput } from '@/domain/oscalImportProcessing';
 import { enforceWorkspaceBackupGraphInvariants } from '@/domain/oscalObjectGraph';
 import { bindsEnvelopeSource, withinSourceLimits } from '@/adapters/workspaceDraftSource';
-import { validWorkspaceBackupStructure, validVerbundBackupStructure } from '@/adapters/workspaceBackupStructure';
+import { adoptAnyBackup, validWorkspaceBackupStructure, validVerbundBackupStructure } from '@/adapters/workspaceBackupStructure';
 import { rejectWorkspaceBackup } from '@/adapters/workspaceBackupContract';
 import { documentSnapshot, sameStand } from '@/domain/reviewTrail';
 import { type WorkspaceBackup, type WorkspaceVerbundBackup, type WorkspaceResult } from '@/domain/workspaceModel';
@@ -62,4 +62,8 @@ export function processWorkspaceBackupBytes(bytes: Uint8Array): Promise<Workspac
 }
 export function processVerbundBackupBytes(bytes: Uint8Array): Promise<WorkspaceResult<WorkspaceVerbundBackup>> {
   return processBackupBytes(bytes, value => validVerbundBackupStructure(value) ? value : null);
+}
+/** Die Art kommt aus `format` des begrenzt geparsten Objekts; danach prüft der geschlossene Validator dieser Art. */
+export function processAnyBackupBytes(bytes: Uint8Array): Promise<WorkspaceResult<WorkspaceBackup | WorkspaceVerbundBackup>> {
+  return processBackupBytes(bytes, adoptAnyBackup);
 }

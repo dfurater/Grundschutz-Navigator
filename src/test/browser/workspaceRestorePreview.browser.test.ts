@@ -35,6 +35,25 @@ it('binds an immutable read-only preview to its issuing store and validated file
   } finally { other.close(); }
 });
 
+it('detects the backup kind from the validated format of one file', async () => {
+  const whole = value(await store.previewRestore(bytes(value(await store.exportBackup()))));
+  expect(whole).toMatchObject({ kind: 'workspace', counts: { verbuende: { file: 1, target: 1 } } });
+  const single = value(await store.previewRestore(bytes(value(await store.exportVerbundBackup(verbund.verbundId)))));
+  expect(single).toMatchObject({ kind: 'verbund', verbundId: verbund.verbundId, name: 'Preview' });
+  // Die Art bindet an die Vorschau: jede Bestätigung nimmt nur ihre eigene Art an.
+  expect(await store.restoreVerbundBackup(whole as never)).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_CONFIRMATION_REQUIRED' } });
+  value(await store.restoreVerbundBackup(single as never));
+});
+
+it.each([
+  ['an unknown format', (file: Record<string, unknown>) => ({ ...file, format: 'gspp-other' })],
+  ['a newer storage version', (file: Record<string, unknown>) => ({ ...file, storageSchemaVersion: 99 })],
+  ['an OSCAL document', () => ({ catalog: { uuid: crypto.randomUUID() } })],
+])('rejects %s with the allowlisted invalid code before reading the target', async (_, change) => {
+  const file = JSON.parse(value(await store.exportBackup()));
+  expect(await store.previewRestore(bytes(JSON.stringify(change(file))))).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_BACKUP_INVALID' } });
+});
+
 it.each(['rename', 'create', 'delete'] as const)('rejects a persisted %s after preview without clearing data', async change => {
   const preview = value(await store.previewRestoreBackup(bytes(value(await store.exportBackup()))));
   const other = value(await WorkspaceStore.open());

@@ -1,4 +1,4 @@
-import { validWorkspaceBackupStructure, validVerbundBackupStructure } from '@/adapters/workspaceBackupStructure';
+import { adoptAnyBackup, validWorkspaceBackupStructure, validVerbundBackupStructure } from '@/adapters/workspaceBackupStructure';
 import { CLASS_2_IMPORT_LIMITS, WORKSPACE_BACKUP_FRAME_DEPTH, WORKSPACE_BACKUP_MAX_BYTES } from '@/domain/class2ImportLimits.mjs';
 import { OscalSourceDecoder, type TransportLimits } from '@/domain/oscalImportTransport';
 import { rejectWorkspaceBackup, WORKSPACE_BACKUP_DIAGNOSTIC_CODES, WORKSPACE_BACKUP_WORKER_TIMEOUT_MS } from '@/adapters/workspaceBackupContract';
@@ -57,7 +57,7 @@ function receiveFrame<T>(data: unknown, receiver: Receiver, adopt: (value: unkno
  * A dedicated worker owns backup decoding and JSON validation. It returns the validated bundle in acknowledged fragments,
  * so the main thread rebuilds it one bounded message at a time.
  */
-function parseBackup<T extends WorkspaceBackup | WorkspaceVerbundBackup>(bytes: Uint8Array, scope: 'workspace' | 'verbund', adopt: (value: unknown) => T | null): Promise<WorkspaceResult<T>> {
+function parseBackup<T extends WorkspaceBackup | WorkspaceVerbundBackup>(bytes: Uint8Array, scope: 'workspace' | 'verbund' | 'any', adopt: (value: unknown) => T | null): Promise<WorkspaceResult<T>> {
   if (bytes.byteLength > WORKSPACE_BACKUP_MAX_BYTES) return Promise.resolve(rejectWorkspaceBackup('WORKSPACE_BACKUP_INPUT_REJECTED'));
   return new Promise(resolve => {
     let worker: Worker;
@@ -99,4 +99,8 @@ export function parseWorkspaceBackup(bytes: Uint8Array): Promise<WorkspaceResult
 }
 export function parseVerbundBackup(bytes: Uint8Array): Promise<WorkspaceResult<WorkspaceVerbundBackup>> {
   return parseBackup(bytes, 'verbund', value => validVerbundBackupStructure(value) ? value : null);
+}
+/** Gesamt- oder Verbundsicherung; die Art bestimmt allein `format` des im Worker geprüften Bündels. */
+export function parseAnyBackup(bytes: Uint8Array): Promise<WorkspaceResult<WorkspaceBackup | WorkspaceVerbundBackup>> {
+  return parseBackup(bytes, 'any', adoptAnyBackup);
 }
