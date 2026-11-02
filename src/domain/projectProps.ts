@@ -129,6 +129,46 @@ function registryEntry(entry: ProjectPropRegistryEntry): Readonly<ProjectPropReg
   });
 }
 
+const PROCESS_PROPS_INTRODUCED_BY = Object.freeze({
+  identifier: 'GSPP-679',
+  url: 'https://linear.app/grundschutz-plus-plus/issue/GSPP-679',
+} as const);
+const PROCESS_PROTECTION_DOCUMENTATION = Object.freeze([
+  '`normal`, `hoch`',
+  'Nichtleere `remarks` sind Pflicht; fehlend bleibt das Schutzziel unbekannt, kein Default',
+] as const);
+const CANONICAL_INTEGER_VALUE_SPACE = 'Kanonische Ganzzahl `1` bis `9007199254740991`';
+const PROCESS_ACTION_VALIDATION = 'Nur an Aktionen des Systems `…/ns/oscal/process-cia-actions`';
+
+/**
+ * Prozessnamen: `carrier` und `group` erlauben höchstens einen Wert je Träger
+ * beziehungsweise je Gruppe, `many` beliebig viele. Gruppierte Namen verlangen
+ * `group`, alle anderen verbieten sie.
+ */
+function processEntry(
+  name: ProjectPropName,
+  carrier: ProjectPropCarrier,
+  occurrence: 'carrier' | 'group' | 'many',
+  meaning: string,
+  valueContract: ProjectPropRegistryEntry['valueContract'],
+  [valueSpace, validation]: readonly [string, string],
+): Readonly<ProjectPropRegistryEntry> {
+  return registryEntry({
+    name,
+    carriers: [carrier],
+    cardinality: {
+      minimum: 0,
+      maximum: occurrence === 'many' ? null : 1,
+      scope: occurrence === 'group' ? 'group' : 'carrier',
+    },
+    meaning,
+    valueContract,
+    canonicalization: 'identity',
+    group: occurrence === 'group' ? 'required' : 'forbidden',
+    documentation: { valueSpace, validation, introducedBy: PROCESS_PROPS_INTRODUCED_BY },
+  });
+}
+
 export const PROJECT_PROP_REGISTRY = Object.freeze({
   'implementation-priority': registryEntry({
     name: 'implementation-priority',
@@ -265,216 +305,36 @@ export const PROJECT_PROP_REGISTRY = Object.freeze({
       },
     },
   }),
-  'process-id': registryEntry({
-    name: 'process-id',
-    carriers: ['business-process'],
-    cardinality: { minimum: 0, maximum: 1, scope: 'carrier' },
-    meaning: 'Fachliche Kennung eines Geschäftsprozesses',
-    valueContract: 'process-text',
-    canonicalization: 'identity',
-    group: 'forbidden',
-    documentation: {
-      valueSpace: 'Nichtleerer Klasse-2-Text',
-      validation: 'Mindestens ein Nicht-Leerzeichen; im SSP über alle Geschäftsprozesse nach NFC, Trim und case-insensitiv eindeutig',
-      introducedBy: { identifier: 'GSPP-679', url: 'https://linear.app/grundschutz-plus-plus/issue/GSPP-679' },
-    },
-  }),
-  'process-application-uuid': registryEntry({
-    name: 'process-application-uuid',
-    carriers: ['business-process'],
-    cardinality: { minimum: 0, maximum: null, scope: 'carrier' },
-    meaning: 'Wesentliche Anwendung eines Geschäftsprozesses',
-    valueContract: 'uuid',
-    canonicalization: 'identity',
-    group: 'forbidden',
-    documentation: {
-      valueSpace: 'OSCAL-UUID einer anderen SSP-Komponente',
-      validation: 'Je Träger case-insensitiv eindeutig; nicht zusammen mit `process-applications-none`',
-      introducedBy: { identifier: 'GSPP-679', url: 'https://linear.app/grundschutz-plus-plus/issue/GSPP-679' },
-    },
-  }),
-  'process-applications-none': registryEntry({
-    name: 'process-applications-none',
-    carriers: ['business-process'],
-    cardinality: { minimum: 0, maximum: 1, scope: 'carrier' },
-    meaning: 'Begründeter Nullfall wesentlicher Anwendungen',
-    valueContract: 'confirmed-none',
-    canonicalization: 'identity',
-    group: 'forbidden',
-    documentation: {
-      valueSpace: '`true`',
-      validation: 'Nichtleere `remarks` sind Pflicht; nicht zusammen mit `process-application-uuid`',
-      introducedBy: { identifier: 'GSPP-679', url: 'https://linear.app/grundschutz-plus-plus/issue/GSPP-679' },
-    },
-  }),
-  'process-protection-confidentiality': registryEntry({
-    name: 'process-protection-confidentiality',
-    carriers: ['business-process'],
-    cardinality: { minimum: 0, maximum: 1, scope: 'carrier' },
-    meaning: 'Schutzbedarf eines Geschäftsprozesses für Vertraulichkeit',
-    valueContract: 'protection-need-level',
-    canonicalization: 'identity',
-    group: 'forbidden',
-    documentation: {
-      valueSpace: '`normal`, `hoch`',
-      validation: 'Nichtleere `remarks` sind Pflicht; fehlend bleibt das Schutzziel unbekannt, kein Default',
-      introducedBy: { identifier: 'GSPP-679', url: 'https://linear.app/grundschutz-plus-plus/issue/GSPP-679' },
-    },
-  }),
-  'process-protection-integrity': registryEntry({
-    name: 'process-protection-integrity',
-    carriers: ['business-process'],
-    cardinality: { minimum: 0, maximum: 1, scope: 'carrier' },
-    meaning: 'Schutzbedarf eines Geschäftsprozesses für Integrität',
-    valueContract: 'protection-need-level',
-    canonicalization: 'identity',
-    group: 'forbidden',
-    documentation: {
-      valueSpace: '`normal`, `hoch`',
-      validation: 'Nichtleere `remarks` sind Pflicht; fehlend bleibt das Schutzziel unbekannt, kein Default',
-      introducedBy: { identifier: 'GSPP-679', url: 'https://linear.app/grundschutz-plus-plus/issue/GSPP-679' },
-    },
-  }),
-  'process-protection-availability': registryEntry({
-    name: 'process-protection-availability',
-    carriers: ['business-process'],
-    cardinality: { minimum: 0, maximum: 1, scope: 'carrier' },
-    meaning: 'Schutzbedarf eines Geschäftsprozesses für Verfügbarkeit',
-    valueContract: 'protection-need-level',
-    canonicalization: 'identity',
-    group: 'forbidden',
-    documentation: {
-      valueSpace: '`normal`, `hoch`',
-      validation: 'Nichtleere `remarks` sind Pflicht; fehlend bleibt das Schutzziel unbekannt, kein Default',
-      introducedBy: { identifier: 'GSPP-679', url: 'https://linear.app/grundschutz-plus-plus/issue/GSPP-679' },
-    },
-  }),
-  'process-protection-category': registryEntry({
-    name: 'process-protection-category',
-    carriers: ['business-process'],
-    cardinality: { minimum: 0, maximum: 1, scope: 'group' },
-    meaning: 'Verwendete eigene Schutzbedarfskategorie je Schutzziel',
-    valueContract: 'process-category-use',
-    canonicalization: 'identity',
-    group: 'required',
-    documentation: {
-      valueSpace: '`group`-Kennung einer eigenen Kategorie',
-      validation: '`group` ist `confidentiality`, `integrity` oder `availability`; Wert ist NCName-konform',
-      introducedBy: { identifier: 'GSPP-679', url: 'https://linear.app/grundschutz-plus-plus/issue/GSPP-679' },
-    },
-  }),
-  'process-priority': registryEntry({
-    name: 'process-priority',
-    carriers: ['business-process'],
-    cardinality: { minimum: 0, maximum: 1, scope: 'carrier' },
-    meaning: 'Priorität eines Geschäftsprozesses in der Reihenfolge des Scopes',
-    valueContract: 'canonical-integer',
-    canonicalization: 'identity',
-    group: 'forbidden',
-    documentation: {
-      valueSpace: 'Kanonische Ganzzahl `1` bis `9007199254740991`',
-      validation: 'Nur ASCII-Ziffern ohne führende Null; nicht aus CIA-Werten erzeugt',
-      introducedBy: { identifier: 'GSPP-679', url: 'https://linear.app/grundschutz-plus-plus/issue/GSPP-679' },
-    },
-  }),
-  'process-category-label': registryEntry({
-    name: 'process-category-label',
-    carriers: ['metadata'],
-    cardinality: { minimum: 0, maximum: 1, scope: 'group' },
-    meaning: 'Anzeigename einer eigenen Schutzbedarfskategorie',
-    valueContract: 'process-text',
-    canonicalization: 'identity',
-    group: 'required',
-    documentation: {
-      valueSpace: 'Nichtleerer Klasse-2-Text',
-      validation: '`group` ist die Kategoriekennung; Namen sind über alle Gruppen nach NFC, Trim und case-insensitiv eindeutig',
-      introducedBy: { identifier: 'GSPP-679', url: 'https://linear.app/grundschutz-plus-plus/issue/GSPP-679' },
-    },
-  }),
-  'process-category-definition': registryEntry({
-    name: 'process-category-definition',
-    carriers: ['metadata'],
-    cardinality: { minimum: 0, maximum: 1, scope: 'group' },
-    meaning: 'Definition einer eigenen Schutzbedarfskategorie',
-    valueContract: 'process-text',
-    canonicalization: 'identity',
-    group: 'required',
-    documentation: {
-      valueSpace: 'Nichtleerer Klasse-2-Text',
-      validation: '`group` ist die Kategoriekennung; mindestens ein Nicht-Leerzeichen',
-      introducedBy: { identifier: 'GSPP-679', url: 'https://linear.app/grundschutz-plus-plus/issue/GSPP-679' },
-    },
-  }),
-  'process-category-mapping': registryEntry({
-    name: 'process-category-mapping',
-    carriers: ['metadata'],
-    cardinality: { minimum: 0, maximum: 1, scope: 'group' },
-    meaning: 'Abbildung einer eigenen Kategorie auf die GS++-Kategorien',
-    valueContract: 'protection-need-level',
-    canonicalization: 'identity',
-    group: 'required',
-    documentation: {
-      valueSpace: '`normal`, `hoch`',
-      validation: '`group` ist die Kategoriekennung; nichtleere `remarks` sind Pflicht',
-      introducedBy: { identifier: 'GSPP-679', url: 'https://linear.app/grundschutz-plus-plus/issue/GSPP-679' },
-    },
-  }),
-  'process-cia-process-uuid': registryEntry({
-    name: 'process-cia-process-uuid',
-    carriers: ['metadata-action'],
-    cardinality: { minimum: 0, maximum: 1, scope: 'carrier' },
-    meaning: 'Geschäftsprozess einer Prozessentscheidung',
-    valueContract: 'uuid',
-    canonicalization: 'identity',
-    group: 'forbidden',
-    documentation: {
-      valueSpace: 'OSCAL-UUID eines Geschäftsprozesses',
-      validation: 'Nur an Aktionen des Systems `…/ns/oscal/process-cia-actions`',
-      introducedBy: { identifier: 'GSPP-679', url: 'https://linear.app/grundschutz-plus-plus/issue/GSPP-679' },
-    },
-  }),
-  'process-cia-sequence': registryEntry({
-    name: 'process-cia-sequence',
-    carriers: ['metadata-action'],
-    cardinality: { minimum: 0, maximum: 1, scope: 'carrier' },
-    meaning: 'Reihenfolge einer Prozessentscheidung je Prozess',
-    valueContract: 'canonical-integer',
-    canonicalization: 'identity',
-    group: 'forbidden',
-    documentation: {
-      valueSpace: 'Kanonische Ganzzahl `1` bis `9007199254740991`',
-      validation: 'Nur an Aktionen des Systems `…/ns/oscal/process-cia-actions`; nur ASCII-Ziffern ohne führende Null',
-      introducedBy: { identifier: 'GSPP-679', url: 'https://linear.app/grundschutz-plus-plus/issue/GSPP-679' },
-    },
-  }),
-  'process-cia-content-hash': registryEntry({
-    name: 'process-cia-content-hash',
-    carriers: ['metadata-action'],
-    cardinality: { minimum: 0, maximum: 1, scope: 'carrier' },
-    meaning: 'Gebundener Bewertungsstand einer Prozessfreigabe',
-    valueContract: 'process-cia-hash',
-    canonicalization: 'identity',
-    group: 'forbidden',
-    documentation: {
-      valueSpace: '`process-cia/3:sha-256:` und 64 kleingeschriebene Hex-Zeichen',
-      validation: 'Nur an Aktionen des Systems `…/ns/oscal/process-cia-actions`; nicht zusammen mit `process-cia-withdraws`',
-      introducedBy: { identifier: 'GSPP-679', url: 'https://linear.app/grundschutz-plus-plus/issue/GSPP-679' },
-    },
-  }),
-  'process-cia-withdraws': registryEntry({
-    name: 'process-cia-withdraws',
-    carriers: ['metadata-action'],
-    cardinality: { minimum: 0, maximum: 1, scope: 'carrier' },
-    meaning: 'Zurückgenommene Prozessfreigabe',
-    valueContract: 'uuid',
-    canonicalization: 'identity',
-    group: 'forbidden',
-    documentation: {
-      valueSpace: 'OSCAL-UUID einer Prozessfreigabe',
-      validation: 'Nur an Aktionen des Systems `…/ns/oscal/process-cia-actions`; nicht zusammen mit `process-cia-content-hash`',
-      introducedBy: { identifier: 'GSPP-679', url: 'https://linear.app/grundschutz-plus-plus/issue/GSPP-679' },
-    },
-  }),
+  'process-id': processEntry('process-id', 'business-process', 'carrier', 'Fachliche Kennung eines Geschäftsprozesses', 'process-text',
+    ['Nichtleerer Klasse-2-Text', 'Mindestens ein Nicht-Leerzeichen; im SSP über alle Geschäftsprozesse nach NFC, Trim und case-insensitiv eindeutig']),
+  'process-application-uuid': processEntry('process-application-uuid', 'business-process', 'many', 'Wesentliche Anwendung eines Geschäftsprozesses', 'uuid',
+    ['OSCAL-UUID einer anderen SSP-Komponente', 'Je Träger case-insensitiv eindeutig; nicht zusammen mit `process-applications-none`']),
+  'process-applications-none': processEntry('process-applications-none', 'business-process', 'carrier', 'Begründeter Nullfall wesentlicher Anwendungen', 'confirmed-none',
+    ['`true`', 'Nichtleere `remarks` sind Pflicht; nicht zusammen mit `process-application-uuid`']),
+  'process-protection-confidentiality': processEntry('process-protection-confidentiality', 'business-process', 'carrier',
+    'Schutzbedarf eines Geschäftsprozesses für Vertraulichkeit', 'protection-need-level', PROCESS_PROTECTION_DOCUMENTATION),
+  'process-protection-integrity': processEntry('process-protection-integrity', 'business-process', 'carrier',
+    'Schutzbedarf eines Geschäftsprozesses für Integrität', 'protection-need-level', PROCESS_PROTECTION_DOCUMENTATION),
+  'process-protection-availability': processEntry('process-protection-availability', 'business-process', 'carrier',
+    'Schutzbedarf eines Geschäftsprozesses für Verfügbarkeit', 'protection-need-level', PROCESS_PROTECTION_DOCUMENTATION),
+  'process-protection-category': processEntry('process-protection-category', 'business-process', 'group', 'Verwendete eigene Schutzbedarfskategorie je Schutzziel', 'process-category-use',
+    ['`group`-Kennung einer eigenen Kategorie', '`group` ist `confidentiality`, `integrity` oder `availability`; Wert ist NCName-konform']),
+  'process-priority': processEntry('process-priority', 'business-process', 'carrier', 'Priorität eines Geschäftsprozesses in der Reihenfolge des Scopes', 'canonical-integer',
+    [CANONICAL_INTEGER_VALUE_SPACE, 'Nur ASCII-Ziffern ohne führende Null; nicht aus CIA-Werten erzeugt']),
+  'process-category-label': processEntry('process-category-label', 'metadata', 'group', 'Anzeigename einer eigenen Schutzbedarfskategorie', 'process-text',
+    ['Nichtleerer Klasse-2-Text', '`group` ist die Kategoriekennung; Namen sind über alle Gruppen nach NFC, Trim und case-insensitiv eindeutig']),
+  'process-category-definition': processEntry('process-category-definition', 'metadata', 'group', 'Definition einer eigenen Schutzbedarfskategorie', 'process-text',
+    ['Nichtleerer Klasse-2-Text', '`group` ist die Kategoriekennung; mindestens ein Nicht-Leerzeichen']),
+  'process-category-mapping': processEntry('process-category-mapping', 'metadata', 'group', 'Abbildung einer eigenen Kategorie auf die GS++-Kategorien', 'protection-need-level',
+    ['`normal`, `hoch`', '`group` ist die Kategoriekennung; nichtleere `remarks` sind Pflicht']),
+  'process-cia-process-uuid': processEntry('process-cia-process-uuid', 'metadata-action', 'carrier', 'Geschäftsprozess einer Prozessentscheidung', 'uuid',
+    ['OSCAL-UUID eines Geschäftsprozesses', PROCESS_ACTION_VALIDATION]),
+  'process-cia-sequence': processEntry('process-cia-sequence', 'metadata-action', 'carrier', 'Reihenfolge einer Prozessentscheidung je Prozess', 'canonical-integer',
+    [CANONICAL_INTEGER_VALUE_SPACE, `${PROCESS_ACTION_VALIDATION}; nur ASCII-Ziffern ohne führende Null`]),
+  'process-cia-content-hash': processEntry('process-cia-content-hash', 'metadata-action', 'carrier', 'Gebundener Bewertungsstand einer Prozessfreigabe', 'process-cia-hash',
+    ['`process-cia/3:sha-256:` und 64 kleingeschriebene Hex-Zeichen', `${PROCESS_ACTION_VALIDATION}; nicht zusammen mit \`process-cia-withdraws\``]),
+  'process-cia-withdraws': processEntry('process-cia-withdraws', 'metadata-action', 'carrier', 'Zurückgenommene Prozessfreigabe', 'uuid',
+    ['OSCAL-UUID einer Prozessfreigabe', `${PROCESS_ACTION_VALIDATION}; nicht zusammen mit \`process-cia-content-hash\``]),
 } satisfies Record<ProjectPropName, Readonly<ProjectPropRegistryEntry>>);
 
 const UNICODE_LETTER = /^\p{L}$/u;
@@ -772,6 +632,7 @@ function validateCatalogCommitValue(
 }
 
 const MAX_CANONICAL_INTEGER = BigInt(Number.MAX_SAFE_INTEGER);
+const MAX_CANONICAL_INTEGER_LENGTH = String(Number.MAX_SAFE_INTEGER).length;
 const PROTECTION_OBJECTIVE_GROUPS = Object.freeze(['confidentiality', 'integrity', 'availability']);
 const PROCESS_CIA_HASH_PATTERN = /^process-cia\/3:sha-256:[0-9a-f]{64}$/;
 
@@ -780,10 +641,27 @@ function hasText(value: string | undefined): boolean {
 }
 
 function isCanonicalPositiveInteger(value: string): boolean {
-  return isCanonicalEffortInteger(value)
+  // Die Längengrenze kommt zuerst, damit überlange Importwerte nicht vollständig gescannt werden.
+  return value.length <= MAX_CANONICAL_INTEGER_LENGTH
+    && isCanonicalEffortInteger(value)
     && value !== '0'
     && BigInt(value) <= MAX_CANONICAL_INTEGER;
 }
+
+type ProcessValueContract = Extract<
+  ProjectPropRegistryEntry['valueContract'],
+  'process-text' | 'uuid' | 'confirmed-none' | 'process-category-use' | 'canonical-integer' | 'process-cia-hash'
+>;
+
+const PROCESS_VALUE_CHECKS: Readonly<Record<ProcessValueContract, (prop: RawOscalProp) => boolean>> = Object.freeze({
+  'process-text': (prop) => hasText(prop.value),
+  uuid: (prop) => isOscalUuid(prop.value),
+  'confirmed-none': () => false,
+  'process-category-use': (prop) =>
+    PROTECTION_OBJECTIVE_GROUPS.includes(prop.group as string) && isOscalToken(prop.value),
+  'canonical-integer': (prop) => isCanonicalPositiveInteger(prop.value),
+  'process-cia-hash': (prop) => PROCESS_CIA_HASH_PATTERN.test(prop.value),
+});
 
 function validateProjectPropValue(
   prop: RawOscalProp,
@@ -815,24 +693,22 @@ function validateProjectPropValue(
       return validateCatalogKeyValue(prop, carrier);
     case 'catalog-commit':
       return validateCatalogCommitValue(prop, carrier);
-    case 'process-text':
-      return hasText(prop.value) ? [] : invalidProjectPropValue(carrier);
-    case 'uuid':
-      return isOscalUuid(prop.value) ? [] : invalidProjectPropValue(carrier);
-    case 'confirmed-none':
-      if (prop.value !== 'true') return invalidProjectPropValue(carrier);
-      return hasText(prop.remarks)
-        ? []
-        : [diagnostic(PROJECT_PROP_DIAGNOSTIC_CODES.REMARKS_REQUIRED, carrier)];
-    case 'process-category-use':
-      return PROTECTION_OBJECTIVE_GROUPS.includes(prop.group as string) && isOscalToken(prop.value)
-        ? []
-        : invalidProjectPropValue(carrier);
-    case 'canonical-integer':
-      return isCanonicalPositiveInteger(prop.value) ? [] : invalidProjectPropValue(carrier);
-    case 'process-cia-hash':
-      return PROCESS_CIA_HASH_PATTERN.test(prop.value) ? [] : invalidProjectPropValue(carrier);
+    default:
+      return validateProcessPropValue(prop, valueContract, carrier);
   }
+}
+
+function validateProcessPropValue(
+  prop: RawOscalProp,
+  valueContract: ProcessValueContract,
+  carrier: ProjectPropCarrier,
+): OscalDiagnostic[] {
+  if (valueContract === 'confirmed-none' && prop.value === 'true') {
+    return hasText(prop.remarks)
+      ? []
+      : [diagnostic(PROJECT_PROP_DIAGNOSTIC_CODES.REMARKS_REQUIRED, carrier)];
+  }
+  return PROCESS_VALUE_CHECKS[valueContract](prop) ? [] : invalidProjectPropValue(carrier);
 }
 
 function validateProjectPropGroupRule(
@@ -1206,12 +1082,8 @@ export function readProjectProps(
     collectProjectProp(prop, carrier, accumulator);
   }
 
-  accumulator.diagnostics.push(...validateProjectPropCardinalities(
-    accumulator.projectProps,
-    carrier,
-  ));
-
   accumulator.diagnostics.push(
+    ...validateProjectPropCardinalities(accumulator.projectProps, carrier),
     ...validateExclusiveProjectProps(accumulator.projectProps, carrier),
   );
   if (carrier === 'metadata') {

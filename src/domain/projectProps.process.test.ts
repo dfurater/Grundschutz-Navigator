@@ -101,7 +101,7 @@ describe('Prozessnamen: Werte', () => {
     ['process-application-uuid', 'kein-uuid', false], ['process-application-uuid', 'aaaaaaaa-0000-1000-8000-000000000003', false],
     ['process-priority', '1', true], ['process-priority', '9007199254740991', true],
     ['process-priority', '0', false], ['process-priority', '9007199254740992', false], ['process-priority', '01', false],
-    ['process-priority', '-1', false], ['process-priority', '1.0', false], ['process-priority', '1e3', false], ['process-priority', '١', false],
+    ['process-priority', '-1', false], ['process-priority', '9'.repeat(1_000_000), false], ['process-priority', '00000000000000001', false], ['process-priority', '1.0', false], ['process-priority', '1e3', false], ['process-priority', '١', false],
   ] as const)('%s = %j ist gültig: %s', (name, value, valid) => {
     expect(readProjectProps([prop(name, value)], 'business-process').writeAllowed).toBe(valid);
   });
