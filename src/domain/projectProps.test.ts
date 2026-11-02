@@ -29,6 +29,21 @@ describe('projectProps registry', () => {
       'protection-need-coverage',
       'assessed-against-catalog-key',
       'assessed-against-catalog-commit',
+      'process-id',
+      'process-application-uuid',
+      'process-applications-none',
+      'process-protection-confidentiality',
+      'process-protection-integrity',
+      'process-protection-availability',
+      'process-protection-category',
+      'process-priority',
+      'process-category-label',
+      'process-category-definition',
+      'process-category-mapping',
+      'process-cia-process-uuid',
+      'process-cia-sequence',
+      'process-cia-content-hash',
+      'process-cia-withdraws',
     ]);
     expect(Object.isFrozen(PROJECT_PROP_NAMES)).toBe(true);
     expect(Object.isFrozen(PROJECT_PROP_REGISTRY)).toBe(true);
