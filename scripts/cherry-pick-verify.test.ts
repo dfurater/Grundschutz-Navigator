@@ -1,6 +1,6 @@
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   CherryPickError,
   formatCherryPickMarker,
@@ -15,6 +15,8 @@ import {
 
 const fixtures = createFixtureRegistry();
 afterEach(fixtures.cleanup);
+// Jeder Fall arbeitet mit echten Repositories und echten Cherry-Picks.
+vi.setConfig({ testTimeout: 30_000 });
 
 async function createScenario() {
   const fixture = await createBranchLineFixture(fixtures);

@@ -1097,7 +1097,8 @@ describe('migrationContractHolds', () => {
   });
 });
 
-describe('Klasse Cherry-Pick', () => {
+// Jeder Fall baut Vorbereitung, Squash und Übernahme in echten Repositories auf.
+describe('Klasse Cherry-Pick', { timeout: 30_000 }, () => {
   /** Cherry-Pick-PR #9 vorbereiten und als Squash nach main mergen. */
   async function mergedCherryPick() {
     const fixture = await createFixture();
@@ -1206,6 +1207,37 @@ describe('Klasse Cherry-Pick', () => {
     await expect(runBackmerge({ cwd: fixture.work, git: fixture.git, github, logger: silentLogger }))
       .rejects.toThrow(/entspricht nicht den markierten Quellen/);
     expect(github.createPullRequest).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['ohne Merge-Commit', () => ({ mergeCommit: null }), /nennt keinen Merge-Commit/],
+    ['ohne abrufbare PR-Spitze', () => ({ number: 77 }), /PR-Spitze ist nicht abrufbar/],
+  ])('bricht für einen Cherry-Pick-PR %s ohne Pull Request ab', async (_name, override, message) => {
+    const { fixture, pullRequest } = await mergedCherryPick();
+    const github = stubFor({ ...pullRequest, ...override() });
+    await expect(runBackmerge({ cwd: fixture.work, git: fixture.git, github, logger: silentLogger }))
+      .rejects.toThrow(message);
+    expect(github.createPullRequest).not.toHaveBeenCalled();
+  });
+
+  it('bricht ab, wenn der gemeldete Merge-Commit nicht auf main liegt', async () => {
+    const { fixture, pullRequest, squashSha } = await mergedCherryPick();
+    const tree = await fixture.run('rev-parse', `${squashSha}^{tree}`);
+    const elsewhere = await fixture.run('commit-tree', tree, '-p', `${squashSha}^`, '-m', 'Seitenlinie');
+    await fixture.run('push', '--quiet', 'origin', `${elsewhere}:refs/heads/seitenlinie`);
+    const github = stubFor({ ...pullRequest, mergeCommit: { oid: elsewhere } });
+    await expect(runBackmerge({ cwd: fixture.work, git: fixture.git, github, logger: silentLogger }))
+      .rejects.toThrow(/liegt nicht auf `origin\/main`/);
+    expect(github.createPullRequest).not.toHaveBeenCalled();
+  });
+
+  it('aktualisiert einen offenen Übernahme-PR statt einen zweiten zu stellen', async () => {
+    const { fixture, pullRequest } = await mergedCherryPick();
+    const github = stubFor(pullRequest, { findOpenPullRequest: vi.fn(async () => 12) });
+    await expect(runBackmerge({ cwd: fixture.work, git: fixture.git, github, logger: silentLogger }))
+      .resolves.toMatchObject({ created: true, klasse: 'Cherry-Pick' });
+    expect(github.createPullRequest).not.toHaveBeenCalled();
+    expect(github.updatePullRequest).toHaveBeenCalledWith(expect.objectContaining({ number: 12 }));
   });
 
   it('stellt den Historien-PR auch beim direkten CLI-Aufruf', async () => {

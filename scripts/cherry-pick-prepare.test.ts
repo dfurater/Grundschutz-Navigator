@@ -26,6 +26,8 @@ import {
 
 const fixtures = createFixtureRegistry();
 afterEach(fixtures.cleanup);
+// Jeder Fall arbeitet mit echten Repositories und echten Cherry-Picks.
+vi.setConfig({ testTimeout: 30_000 });
 
 async function createScenario() {
   const fixture = await createBranchLineFixture(fixtures);

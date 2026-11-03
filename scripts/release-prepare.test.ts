@@ -534,5 +534,5 @@ describe('Release nach Cherry-Pick', () => {
       .toBe(await fixture.run('rev-parse', `${releaseSha}^{tree}`));
     await expect(fixture.run('merge-base', '--is-ancestor', 'origin/main', releaseHead)).resolves.toBe('');
     expect(await fixture.run('show', `${releaseHead}:src/roundTrip.ts`)).toContain('später geändert');
-  });
+  }, 30_000);
 });
