@@ -6,7 +6,7 @@
 # stummgeschaltet. Persona auditor (nicht pedantic): `secrets-outside-env`
 # feuert unter pedantic nie — verifiziert 2026-09-19 per Injektionstest
 # (TEST_SECRET blieb unter pedantic grün, schlägt unter auditor mit
-# Zeilen-Config an). Der Auditor-Delta gegenüber pedantic sind exakt die 7
+# Zeilen-Config an). Der Auditor-Delta gegenüber pedantic sind exakt die 8
 # Stellen unten, keine weiteren Auditor-only-Regeln.
 rules:
   # 10x info über 8 Workflow-Dateien (alle außer sonar.yml, dessen Job einen
@@ -14,6 +14,7 @@ rules:
   anonymous-definition:
     ignore:
       - backmerge-main-to-develop.yml
+      - cherry-pick-prepare.yml
       - ci.yml
       - deploy.yml
       - greptile-review-nudge.yml
@@ -38,11 +39,13 @@ rules:
   dependabot-cooldown:
     ignore:
       - dependabot.yml
-  # 7x medium secrets-outside-env an exakt diesen Zeilen (jeweils die
+  # 8x medium secrets-outside-env an exakt diesen Zeilen (jeweils die
   # begründete Secret-Verwendung; Stand d238d53-Nachfolger, auditor Persona):
-  # backmerge/release-prepare/update-catalog je 1x App-Private-Key;
+  # backmerge/cherry-pick-prepare/release-prepare/update-catalog je 1x
+  # App-Private-Key;
   # sonar.yml 2x und validate.yml 2x SONAR_CI — die zwei in validate.yml
-  # stammen aus GSPP-416, die fünf übrigen aus der Issue-Beschreibung.
+  # stammen aus GSPP-416, cherry-pick-prepare aus GSPP-689, die fünf
+  # übrigen aus der Issue-Beschreibung.
   # Bewusst kein Environment: Ein Environment ohne Branch-Schutzregel
   # verschiebt nur die Angabe, ohne den Zugriff zu verengen (vgl. Issue).
   # Der App-Private-Key ist repo-beschränkt und kurzlebig
@@ -59,7 +62,7 @@ rules:
   # Eine NEUE Secret-Referenz auf einer anderen Zeile feuert unter der
   # Gate-Persona auditor wieder — mit dateiweiten Einträgen blieb sie stumm.
   # Gegenverifiziert 2026-09-19 per Injektionstest (TEST_SECRET in validate.yml:
-  # auditor meldet warning[secrets-outside-env] auf der neuen Zeile, die 7
+  # auditor meldet warning[secrets-outside-env] auf der neuen Zeile, die 8
   # begründeten Stellen bleiben ignoriert). Pflege: Verschiebt sich eine Zeile,
   # wird der Audit rot (fail-closed) — Zeilennummer nachziehen. Zuletzt in
   # GSPP-426 um +11 (Retention-Kommentar + Versionsquellen-Kommentar in
@@ -74,6 +77,7 @@ rules:
   secrets-outside-env:
     ignore:
       - backmerge-main-to-develop.yml:51:28
+      - cherry-pick-prepare.yml:51:28
       - release-prepare.yml:49:28
       - sonar.yml:61:38
       - sonar.yml:88:28

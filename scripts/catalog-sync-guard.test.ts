@@ -1153,6 +1153,19 @@ function getAllowedTempRoot() {
   return process.env.RUNNER_TEMP ?? tmpdir();
 }
 
+describe('parseNameStatusDiff mit -z', () => {
+  it('liest NUL-getrennte Einträge mit unzitierten Nicht-ASCII-Pfaden', () => {
+    expect(parseNameStatusDiff('M\0docs/Überblick.md\0A\0a b.txt\0')).toEqual([
+      { status: 'M', path: 'docs/Überblick.md' },
+      { status: 'A', path: 'a b.txt' },
+    ]);
+  });
+
+  it('weist einen unvollständigen Eintrag ab', () => {
+    expect(() => parseNameStatusDiff('M\0')).toThrow(/unparseable/);
+  });
+});
+
 describe('getPullRequestDiffEntries', () => {
   it('pinnt die git-Argumentliste auf den Drei-Punkt-Diff gegen die Merge-Basis', async () => {
     const baseSha = 'a'.repeat(40);
@@ -1163,7 +1176,7 @@ describe('getPullRequestDiffEntries', () => {
       .resolves.toEqual([{ status: 'M', path: 'upstream-manifest.json' }]);
     expect(execFile).toHaveBeenCalledWith(
       'git',
-      ['diff', '--name-status', '--no-renames', `${baseSha}...${headSha}`, '--'],
+      ['diff', '--name-status', '-z', '--no-renames', `${baseSha}...${headSha}`, '--'],
       { encoding: 'utf8', maxBuffer: 1024 * 1024 },
     );
   });

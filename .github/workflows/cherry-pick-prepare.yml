@@ -1,0 +1,74 @@
+name: Prepare cherry-pick PR
+
+# Bringt auf `develop` gemergte Commits per Cherry-Pick als Pull Request nach
+# `main`. Der Lauf mergt nicht und deployt nicht; der Squash-Merge bleibt die
+# Entscheidung des Projektowners.
+#
+# Ausschließlich manuell: Jeder Merge auf `main` deployt automatisch auf Pages.
+
+on:
+  workflow_dispatch:
+    inputs:
+      develop_shas:
+        description: >-
+          Ein oder mehrere develop-Commits als 40-stellige Kleinbuchstaben-SHAs
+          in develop-Reihenfolge, getrennt durch Leerzeichen oder Kommas.
+        required: true
+        type: string
+      issue:
+        description: Linear-Issue, dem der Cherry-Pick dient (z. B. GSPP-448).
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cherry-pick-prepare
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: develop
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup Node.js and install dependencies
+        uses: $/.github/actions/setup-node-env
+
+      - name: Create repository-scoped GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.CATALOG_SYNC_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CATALOG_SYNC_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      - name: Configure git identity for the app
+        env:
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          gh auth setup-git
+          BOT_ID="$(gh api "users/${APP_SLUG}[bot]" --jq '.id')"
+          git config user.name "${APP_SLUG}[bot]"
+          git config user.email "${BOT_ID}+${APP_SLUG}[bot]@users.noreply.github.com"
+
+      - name: Cherry-pick and verify the branch
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          CHERRY_PICK_SHAS: ${{ inputs.develop_shas }}
+          CHERRY_PICK_ISSUE: ${{ inputs.issue }}
+        run: node scripts/cherry-pick-prepare.mjs
