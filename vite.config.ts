@@ -16,7 +16,7 @@ import { writeChecksumsManifestFile } from './scripts/deployChecksums.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const GITHUB_PAGES_BASE = '/Grundschutz-Navigator/';
+const DEFAULT_DEPLOYMENT_BASE = '/';
 const DIST_DIR = resolve(__dirname, 'dist');
 
 /*
@@ -149,7 +149,7 @@ export function spaFallbackPlugin(
   };
 }
 
-const CANONICAL_ORIGIN = 'https://dfurater.github.io';
+const CANONICAL_ORIGIN = 'https://gspp-navigator.furater.com';
 
 /*
  * Der XML-Namespace des Sitemap-Protokolls ist als Identifier byte-exakt
@@ -170,7 +170,7 @@ const SITEMAP_NAMESPACE = 'http://www.sitemaps.org/schemas/sitemap/0.9'; // NOSO
  * String-Concat in `buildSitemapXml()` zu einer nicht erreichbaren URL.
  */
 export function resolveDeploymentBase(): string {
-  const base = process.env.BUILD_BASE ?? GITHUB_PAGES_BASE;
+  const base = process.env.BUILD_BASE ?? DEFAULT_DEPLOYMENT_BASE;
   return base.endsWith('/') ? base : `${base}/`;
 }
 

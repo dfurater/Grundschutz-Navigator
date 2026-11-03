@@ -16,7 +16,7 @@ import { STATIC_CONTENT_TITLES, listSeoRouteMetadata, loadPublicSeoCatalogs, wri
 const { JSDOM } = createRequire(import.meta.url)('jsdom') as {
   JSDOM: new (html: string) => { window: { document: Document; DOMParser: typeof DOMParser; close(): void } };
 };
-const BASE_URL = 'https://dfurater.github.io/Grundschutz-Navigator/';
+const BASE_URL = 'https://gspp-navigator.furater.com/';
 const HTML = '<!doctype html><html><head><meta property="og:title" content="Grundschutz++ Navigator" /><meta property="og:url" content="' + BASE_URL + '" /><meta property="og:description" content="Keep this" /><meta property="og:image" content="/og-image.png" /><meta http-equiv="Content-Security-Policy" content="default-src &apos;self&apos;" /><title data-page-title-fallback>Grundschutz++ Navigator</title></head><body><script type="module" src="/assets/app.js"></script></body></html>';
 const directories: string[] = [];
 afterEach(() => {
@@ -231,10 +231,10 @@ describe('writeSeoRouteEntries', () => {
   });
 
   it.each([
-    'http://dfurater.github.io/Grundschutz-Navigator/',
-    'https://dfurater.github.io/Grundschutz-Navigator/?q=1',
-    'https://dfurater.github.io/Grundschutz-Navigator/#x',
-    'https://dfurater.github.io/Grundschutz-Navigator',
+    'http://gspp-navigator.furater.com/',
+    'https://gspp-navigator.furater.com/?q=1',
+    'https://gspp-navigator.furater.com/#x',
+    'https://gspp-navigator.furater.com/preview',
   ])('rejects the non-canonical base URL %s before writing any output', baseUrl => {
     const directory = tempDir();
     expect(() => writeSeoRouteEntries(directory, [{ path: '/suche', title: 'Suche' }], baseUrl)).toThrow(/Invalid canonical SEO base URL/);
@@ -309,7 +309,7 @@ describe('writeSeoRouteEntries: modulePreload', () => {
 
   it('fügt genau einen modulepreload mit der Deployment-Basis vor </head> ein', () => {
     const directory = tempDir();
-    writeSeoRouteEntries(directory, [entry], 'https://dfurater.github.io/preview/');
+    writeSeoRouteEntries(directory, [entry], 'https://gspp-navigator.furater.com/preview/');
 
     const html = readFileSync(join(directory, 'suche/index.html'), 'utf8');
     expect(html.match(/rel="modulepreload"/g)).toHaveLength(1);

@@ -18,7 +18,7 @@ Bei der Anwendung handelt es sich um eine **Client-Side Single-Page Application 
 | Scrollleisten | OverlayScrollbars (MIT) |
 | Lokaler Dokumentenspeicher | Dexie 4.4.7 (exakter Produktionspin), IndexedDB `gspp-workspace` |
 | Testing | Vitest + @testing-library/react + jsdom + Chromium-Browser-Lane; jsdom parst im Build zusätzlich die gebaute HTML-Auslieferung für den Titelvertrag |
-| Deployment | GitHub Pages (via GitHub Actions) |
+| Deployment | GitHub Pages (via GitHub Actions) unter `https://gspp-navigator.furater.com/` |
 
 ## Gemeinsame technische Helfer
 
@@ -788,7 +788,7 @@ Die Vokabular-Membership wird aus **allen** ausgelieferten Katalogen abgeleitet 
 
 ## Routing
 
-Die Anwendung verwendet den Data-Router von React Router (`createBrowserRouter`, `RouterProvider` aus `react-router/dom`) mit pfadbasierten URLs. Die Routentabelle steht in `src/app/appRoutes.tsx`: `AppShell` ist die Layoutroute, ihr `<Outlet />` in `<main>` zeigt die Seite (siehe Route- und Chunk-Vertrag). Das `basename` wird aus `import.meta.env.BASE_URL` abgeleitet (`src/main.tsx`), sodass die App auch unter dem GitHub-Pages-Unterpfad `/Grundschutz-Navigator/` funktioniert.
+Die Anwendung verwendet den Data-Router von React Router (`createBrowserRouter`, `RouterProvider` aus `react-router/dom`) mit pfadbasierten URLs. Die Routentabelle steht in `src/app/appRoutes.tsx`: `AppShell` ist die Layoutroute, ihr `<Outlet />` in `<main>` zeigt die Seite (siehe Route- und Chunk-Vertrag). Das `basename` wird aus `import.meta.env.BASE_URL` abgeleitet (`src/main.tsx`), sodass die App unter der per `BUILD_BASE` gesetzten Deployment-Basis funktioniert; der Production-Build liegt am Domain-Root `/`.
 
 Das Vite-Plugin `github-pages-spa-fallback` (`vite.config.ts`) erzeugt beim Build statische HTTP-200-Einstiege unter `dist/<route>/index.html`. Es gilt nur für den Build (`apply: 'build'`), weil Vite `closeBundle` auch beim Schließen von Dev-Server und Vitest aufruft. Die festen Inhaltsrouten (`/suche`, `/vokabular`, `/about`, `/datenschutz`, `/impressum`, `/lizenzen`) stammen aus der gemeinsamen Titeltabelle `STATIC_CONTENT_TITLES` in `scripts/seoRouteEntries.ts`; Katalogeinstiege und deren adressierbare Praktiken, Themen und Kontrollen stammen ausschließlich aus den von `listSupportedCatalogs()` ausgelieferten öffentlichen Katalogen. Der Helfer prüft die Katalogbytes gegen ihre Integritätsmetadaten, verarbeitet sie mit `parseCatalog()` und verwendet dieselben URL-Builder wie die App. Die Node-Brücke (`scripts/oscal-domain-bridge.mjs`) löst beim Laden dieser TypeScript-Module den Projektalias auf, bevor Vite selbst seine Konfiguration geladen hat.
 
@@ -798,7 +798,7 @@ Query und Fragment erzeugen keine zusätzlichen Dateien und erscheinen nicht in 
 
 ### Sitemap
 
-Beim Build entsteht deterministisch eine UTF-8-kodierte `dist/sitemap.xml` mit XML-Deklaration und dem Namespace `http://www.sitemaps.org/schemas/sitemap/0.9`. Sie enthält genau einmal die absolute kanonische URL der Startseite, der sechs festen Inhaltsrouten und jedes von `listSupportedCatalogs()` gelieferten Katalogeinstiegs — die feste Einstiegs-Positivliste aus `listCanonicalEntryRoutes()`. Die zusätzlichen Gruppen- und Kontroll-HTML-Einstiege erweitern diesen Sitemapvertrag nicht. Origin (`https://dfurater.github.io`) und Basispfad (`/Grundschutz-Navigator/`) sind die Production-Defaults des Buildvertrags; XML-Sonderzeichen werden escaped. Geschrieben werden ausschließlich die Pflichtfelder `urlset`, `url` und `loc`. Die manuelle Einreichung in der Search Console liegt beim Projekt-Owner und ist kein Teil des Builds.
+Beim Build entsteht deterministisch eine UTF-8-kodierte `dist/sitemap.xml` mit XML-Deklaration und dem Namespace `http://www.sitemaps.org/schemas/sitemap/0.9`. Sie enthält genau einmal die absolute kanonische URL der Startseite, der sechs festen Inhaltsrouten und jedes von `listSupportedCatalogs()` gelieferten Katalogeinstiegs — die feste Einstiegs-Positivliste aus `listCanonicalEntryRoutes()`. Die zusätzlichen Gruppen- und Kontroll-HTML-Einstiege erweitern diesen Sitemapvertrag nicht. Origin (`https://gspp-navigator.furater.com`) und Basispfad (`/`) sind die Production-Defaults des Buildvertrags; XML-Sonderzeichen werden escaped. Geschrieben werden ausschließlich die Pflichtfelder `urlset`, `url` und `loc`. Die manuelle Einreichung in der Search Console liegt beim Projekt-Owner und ist kein Teil des Builds.
 
 | Route | Komponente | Beschreibung |
 |-------|------------|--------------|
@@ -1142,7 +1142,7 @@ Konfiguriert in `tsconfig.app.json` (`compilerOptions.paths`) und `vite.config.t
 | `VITE_IMPRESSUM_STRASSE` | App (Build) | Impressum: Straße |
 | `VITE_IMPRESSUM_PLZ_ORT` | App (Build) | Impressum: PLZ und Ort |
 | `VITE_IMPRESSUM_EMAIL` | App (Build) | Impressum: E-Mail |
-| `BUILD_BASE` | Build | Überschreibt die GitHub-Pages-Base (`vite.config.ts`) |
+| `BUILD_BASE` | Build | Überschreibt die Deployment-Basis `/` (`vite.config.ts`) |
 | `BSI_SNAPSHOT_SHA` | fetch-catalog | Vollständige Commit-SHA für einen festgelegten BSI-Datenstand; ausschließlich der Catalog-Sync fordert mit `latest` ausdrücklich den neuesten Stand an. `latest` ist außerhalb dieser Lane unzulässig. |
 | `GH_TOKEN` / `GITHUB_TOKEN` | fetch-catalog | Token für die GitHub-API (optional lokal, gesetzt in CI) |
 | `CATALOG_SYNC_APP_CLIENT_ID` | Catalog-Sync | Repository-Variable mit der Client-ID der dedizierten GitHub App |

@@ -14,7 +14,7 @@ Hilfreich sind:
 
 ## Unterstützte Version
 
-Unterstützt wird nur der aktuelle Stand von `main`, also die Version, die unter [dfurater.github.io/Grundschutz-Navigator](https://dfurater.github.io/Grundschutz-Navigator/) ausgeliefert wird. Ältere Stände erhalten keine Korrekturen.
+Unterstützt wird nur der aktuelle Stand von `main`, also die Version, die unter [gspp-navigator.furater.com](https://gspp-navigator.furater.com/) ausgeliefert wird. Ältere Stände erhalten keine Korrekturen.
 
 ## Geltungsbereich
 
