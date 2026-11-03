@@ -483,7 +483,8 @@ describe('trailingSlashRedirect (Vorschau wie GitHub Pages)', () => {
     writeStaticRouteEntries(distDir, []);
     const handler = trailingSlashRedirect(distDir, '/');
 
-    for (const url of ['/', '/suche/', '/assets/app.js', '/gibt-es-nicht', '/../etc', '/%E0%A4%A']) {
+    const offsiteViaTraversal = `//attacker.example/%2e%2e${encodeURI(distDir)}`;
+    for (const url of ['/', '/suche/', '/assets/app.js', '/gibt-es-nicht', '/../etc', '/%E0%A4%A', offsiteViaTraversal, '//suche', '/%2Fsuche', '/\\suche', '/%5Csuche', '/./suche']) {
       expect(call(handler, url).passed, url).toBe(true);
     }
     expect(call(handler, '/suche', 'POST').passed).toBe(true);

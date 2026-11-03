@@ -164,13 +164,18 @@ export function trailingSlashRedirect(outDir: string, base: string) {
   ): void => {
     const [path, query] = (req.url ?? '').split(/\?(.*)/s, 2);
     if ((req.method !== 'GET' && req.method !== 'HEAD') || !path.startsWith(base) || path.endsWith('/')) return next();
-    let relativePath: string;
+    let segments: string[];
     try {
-      relativePath = decodeURIComponent(path.slice(base.length));
+      segments = decodeURIComponent(path.slice(base.length)).split('/');
     } catch {
       return next();
     }
-    const target = resolve(root, relativePath, 'index.html');
+    // Leere, Punkt- und Backslash-Segmente abweisen: Ein Pfad wie `//host/…` oder
+    // `/\host` würde sonst als protokollrelative Location auf einen fremden Host zeigen.
+    if (segments.some((segment) => !segment || segment === '.' || segment === '..' || segment.includes('\\'))) {
+      return next();
+    }
+    const target = resolve(root, ...segments, 'index.html');
     if (!target.startsWith(root + sep) || !existsSync(target)) return next();
     res.statusCode = 301;
     res.setHeader('Location', `${path}/${query ? `?${query}` : ''}`);
