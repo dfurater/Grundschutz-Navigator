@@ -1233,7 +1233,7 @@ Bei fehlender oder abweichender vom Preflight geprüfter Policy, einem API-Fehle
 
 ### Inhalts-Übernahme und Release-Vorbereitung
 
-Drei Linien mit drei getrennten Aufgaben: Die Produktionslane (`update-catalog.yml`) stellt den Manifest-PR nach `main`. Die Übernahme-Lane (`.github/workflows/backmerge-main-to-develop.yml` → `scripts/backmerge-main-to-develop.mjs`) bringt den Inhalt nach `develop`. Die Release-Lane (`.github/workflows/release-prepare.yml` → `scripts/release-prepare.mjs`) erzeugt den Freigabe-PR. Die Cherry-Pick-Lane (`.github/workflows/cherry-pick-prepare.yml` → `scripts/cherry-pick-prepare.mjs`) bringt einzelne `develop`-Commits ohne Release nach `main`. Keine dieser Lanes mergt oder löscht Branches.
+Vier Linien mit vier getrennten Aufgaben: Die Produktionslane (`update-catalog.yml`) stellt den Manifest-PR nach `main`. Die Übernahme-Lane (`.github/workflows/backmerge-main-to-develop.yml` → `scripts/backmerge-main-to-develop.mjs`) bringt den Inhalt nach `develop`. Die Release-Lane (`.github/workflows/release-prepare.yml` → `scripts/release-prepare.mjs`) erzeugt den Freigabe-PR. Die Cherry-Pick-Lane (`.github/workflows/cherry-pick-prepare.yml` → `scripts/cherry-pick-prepare.mjs`) bringt einzelne `develop`-Commits ohne Release nach `main`. Keine dieser Lanes mergt oder löscht Branches.
 
 Die Übernahme überträgt die **Änderung**, nicht den Zustand. Jede Klasse hat deshalb ihre eigene Bezugsgröße:
 
