@@ -178,7 +178,7 @@ export function trailingSlashRedirect(outDir: string, base: string) {
     const target = resolve(root, ...segments, 'index.html');
     if (!target.startsWith(root + sep) || !existsSync(target)) return next();
     res.statusCode = 301;
-    res.setHeader('Location', `${path}/${query ? `?${query}` : ''}`);
+    res.setHeader('Location', query ? `${path}/?${query}` : `${path}/`);
     res.end();
   };
 }
