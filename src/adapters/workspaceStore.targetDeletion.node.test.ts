@@ -2,6 +2,7 @@
 import 'fake-indexeddb/auto';
 import { expect, it, vi } from 'vitest';
 import { makeFullSsp } from '@/test/fixtures/systemSecurityPlans';
+import { makeProcessCiaSsp } from '@/test/fixtures/processCia';
 import { removeSspItem } from '@/domain/sspAuthoring';
 import { targetDeletionUses } from '@/domain/sspTargetDeletion';
 import { open, value } from '@/test/browser/workspaceStoreFixtures';
@@ -43,4 +44,20 @@ it('prüft nach der Vorprüfung hinzugekommene Bindungen in der Save-Transaktion
   expect(await store.saveDocument(ssp.localId, current.savedAt, draft.savedAt, input(next) as never, undefined, 'draft')).toMatchObject({ ok: false, diagnostic: { code: 'SSP_TARGET_DELETE_BLOCKED' } });
   expect(value(await store.getDocument(ssp.localId))!.source).toEqual(original);
   expect(value(await store.getDraft(ssp.localId))!.source).toEqual(next);
+});
+
+it('verwirft das Entfernen eines Prozesses mit Prozessentscheidung und erhält Quelle, Entwurf, Bindungen und Prüfspur', async () => {
+  const store = await open();
+  const v = value(await store.createVerbund('Synthetisch'));
+  const original = makeProcessCiaSsp('1.2.2');
+  const ssp = value(await store.addDocument(v.verbundId, input(original) as never, 'draft'));
+  const next = removeSspItem(original, ['system-implementation', 'components'], 0);
+  const draft = value(await store.autosaveDraft(ssp.localId, ssp.savedAt, null, next));
+  const bindings = value(await store.listBindings());
+  const trail = await store['reviewTrail'].toArray();
+  expect(await store.saveDocument(ssp.localId, ssp.savedAt, draft.savedAt, input(next) as never, undefined, 'draft')).toMatchObject({ ok: false, diagnostic: { code: 'SSP_TARGET_DELETE_BLOCKED' } });
+  expect(value(await store.getDocument(ssp.localId))!.source).toEqual(original);
+  expect(value(await store.getDraft(ssp.localId))!.source).toEqual(next);
+  expect(value(await store.listBindings())).toEqual(bindings);
+  expect(await store['reviewTrail'].toArray()).toEqual(trail);
 });

@@ -4,6 +4,10 @@ import { readSspValue } from '@/domain/sspAuthoring';
 import { isJsonObject, pointerString, readArray, readString } from '@/domain/jsonGuards';
 import { TARGET_LISTS } from '@/domain/sspTargetObjects';
 import { localFragmentUuid } from '@/domain/referenceResolution';
+import { PROJECT_PROPS_NAMESPACE } from '@/domain/projectProps';
+
+// Fehlplatzierte Projektproperties zählen ebenfalls: der Löschschutz sperrt lieber zu viel als zu wenig.
+const REFERENCE_PROPS = ['process-application-uuid', 'process-cia-process-uuid'];
 
 function localUses(source: unknown, uuid: string | undefined): string[] {
   if (uuid === undefined) return [];
@@ -11,6 +15,7 @@ function localUses(source: unknown, uuid: string | undefined): string[] {
   const walk = (node: unknown, path: string): void => {
     if (Array.isArray(node)) { node.forEach((item, index) => walk(item, `${path}/${index}`)); return; }
     if (!isJsonObject(node)) return;
+    if (node.ns === PROJECT_PROPS_NAMESPACE && REFERENCE_PROPS.includes(node.name as string) && typeof node.value === 'string' && node.value.toLowerCase() === uuid) found.push(`${path}/value`);
     for (const [key, value] of Object.entries(node)) {
       // Eigene Identitäten, Freitext und fremde Properties beweisen keinen Bezug.
       if ((['component-uuid', 'inventory-item-uuid', 'information-type-uuid', 'subject-uuid'].includes(key) && typeof value === 'string' && value.toLowerCase() === uuid)

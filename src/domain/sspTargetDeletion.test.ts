@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { targetDeletionUses, sspDeletionBlocked } from '@/domain/sspTargetDeletion';
 import { addSspItem, removeSspItem, setSspValue } from '@/domain/sspAuthoring';
 import { makeFullSsp, withSspBody } from '@/test/fixtures/systemSecurityPlans';
+import { makeProcessCiaSsp } from '@/test/fixtures/processCia';
 import type { LocalId, WorkspaceBinding, WorkspaceEnvelope } from '@/domain/workspaceModel';
 
 const localId = 'ssp' as LocalId;
@@ -47,6 +48,19 @@ describe('Zielobjekt-Löschschutz', () => {
     expect(targetDeletionUses(source, target, localId, members, bindings)).toHaveLength(2);
     expect(targetDeletionUses(source, target, localId, members, [])).toEqual([]);
     expect(targetDeletionUses(source, target, localId, [], bindings)).toContain('Verwendung nicht vollständig prüfbar');
+  });
+  it('sperrt Prozesse mit Prozessentscheidung und referenzierte Anwendungen über Projektproperties', () => {
+    const source = makeProcessCiaSsp('1.2.2');
+    const components = (source['system-security-plan'] as { 'system-implementation': { components: { props?: { ns: string }[] }[] } })['system-implementation'].components;
+    expect(targetDeletionUses(source, path, localId, [], [])).toEqual(['/system-security-plan/metadata/actions/0/props/0/value']);
+    expect(sspDeletionBlocked(source, removeSspItem(source, list, 0), localId, [], [])).toBe(true);
+    expect(targetDeletionUses(source, [...list, 1], localId, [], [])).toEqual(['/system-security-plan/system-implementation/components/0/props/1/value']);
+    expect(sspDeletionBlocked(source, removeSspItem(source, list, 1), localId, [], [])).toBe(true);
+    components[0].props![1].ns = 'https://example.org/ns/fremd';
+    expect(targetDeletionUses(source, [...list, 1], localId, [], [])).toEqual([]);
+    expect(sspDeletionBlocked(source, removeSspItem(source, list, 1), localId, [], [])).toBe(false);
+    const withoutAction = withSspBody(source, body => { delete (body.metadata as { actions?: unknown }).actions; });
+    expect(sspDeletionBlocked(withoutAction, removeSspItem(withoutAction, list, 0), localId, [], [])).toBe(false);
   });
   it('behandelt uuidlose Informationsarten ohne Identitätsnachrüstung', () => {
     const source = withSspBody(makeFullSsp(), body => { delete body['system-characteristics']['system-information']!['information-types']![0].uuid; });
