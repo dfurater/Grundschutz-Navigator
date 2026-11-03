@@ -17,7 +17,7 @@ const { JSDOM } = createRequire(import.meta.url)('jsdom') as {
   JSDOM: new (html: string) => { window: { document: Document; DOMParser: typeof DOMParser; close(): void } };
 };
 const BASE_URL = 'https://gspp-navigator.furater.com/';
-const HTML = '<!doctype html><html><head><meta property="og:title" content="Grundschutz++ Navigator" /><meta property="og:url" content="' + BASE_URL + '" /><meta property="og:description" content="Keep this" /><meta property="og:image" content="/og-image.png" /><meta http-equiv="Content-Security-Policy" content="default-src &apos;self&apos;" /><title data-page-title-fallback>Grundschutz++ Navigator</title></head><body><script type="module" src="/assets/app.js"></script></body></html>';
+const HTML = '<!doctype html><html><head><meta property="og:title" content="Grundschutz++ Navigator" /><meta property="og:url" content="' + BASE_URL + '" /><meta property="og:description" content="Keep this" /><meta property="og:image" content="' + BASE_URL + 'og-image.png" /><meta name="twitter:image" content="' + BASE_URL + 'og-image.png" /><meta http-equiv="Content-Security-Policy" content="default-src &apos;self&apos;" /><title data-page-title-fallback>Grundschutz++ Navigator</title></head><body><script type="module" src="/assets/app.js"></script></body></html>';
 const directories: string[] = [];
 afterEach(() => {
   for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true });
@@ -314,6 +314,15 @@ describe('writeSeoRouteEntries: modulePreload', () => {
     const html = readFileSync(join(directory, 'suche/index.html'), 'utf8');
     expect(html.match(/rel="modulepreload"/g)).toHaveLength(1);
     expect(html).toContain('<link rel="modulepreload" href="/preview/assets/SearchPage-abc_1.js" />\n  </head>');
+  });
+
+  it('bindet og:image und twitter:image an die Deployment-Basis', () => {
+    const directory = tempDir();
+    writeSeoRouteEntries(directory, [entry], 'https://gspp-navigator.furater.com/preview/');
+
+    const html = readFileSync(join(directory, 'suche/index.html'), 'utf8');
+    expect(html).toContain('<meta property="og:image" content="https://gspp-navigator.furater.com/preview/og-image.png" />');
+    expect(html).toContain('<meta name="twitter:image" content="https://gspp-navigator.furater.com/preview/og-image.png" />');
   });
 
   it('lässt Einstiege ohne modulePreload unverändert gegenüber der bisherigen Ausgabe', () => {

@@ -17,6 +17,7 @@ import {
   buildSitemapXml,
   resolveDeploymentBase,
   spaFallbackPlugin,
+  trailingSlashRedirect,
   writeSpaFallbackFile,
   writeSitemapFile,
   writeStaticRouteEntries,
@@ -56,7 +57,7 @@ afterAll(() => {
 const tempDirs: string[] = [];
 
 const INDEX_HTML =
-  '<!doctype html><html><head><title>Grundschutz++ Navigator</title><meta name="description" content="BSI-Anwenderkatalog durchsuchen, filtern und exportieren." /><meta property="og:title" content="Grundschutz++ Navigator" /><meta property="og:url" content="https://gspp-navigator.furater.com/" /><meta property="og:image:alt" content="Grundschutz++ Navigator. BSI-Anwenderkatalog, OSCAL 1.1.3." /></head><body><script type="module" src="/assets/app.js"></script></body></html>';
+  '<!doctype html><html><head><title>Grundschutz++ Navigator</title><meta name="description" content="BSI-Anwenderkatalog durchsuchen, filtern und exportieren." /><meta property="og:title" content="Grundschutz++ Navigator" /><meta property="og:url" content="https://gspp-navigator.furater.com/" /><meta property="og:image" content="https://gspp-navigator.furater.com/og-image.png" /><meta name="twitter:image" content="https://gspp-navigator.furater.com/og-image.png" /><meta property="og:image:alt" content="Grundschutz++ Navigator. BSI-Anwenderkatalog, OSCAL 1.1.3." /></head><body><script type="module" src="/assets/app.js"></script></body></html>';
 
 const CONTENT_ROUTES = [
   '/suche',
@@ -336,6 +337,7 @@ describe('writeStaticRouteEntries', () => {
       const fallback = readFileSync(join(distDir, '404.html'), 'utf8');
       expect(fallback).toContain(`property="og:title" content="${HOME_OG_TITLE}"`);
       expect(fallback).toContain('property="og:url" content="https://gspp-navigator.furater.com/preview/"');
+      expect(fallback).toContain('name="twitter:image" content="https://gspp-navigator.furater.com/preview/og-image.png"');
       expect(fallback).toBe(readFileSync(join(distDir, 'index.html'), 'utf8'));
       expect(readFileSync(join(distDir, 'suche/index.html'), 'utf8')).toContain('content="https://gspp-navigator.furater.com/preview/suche"');
       expect(existsSync(join(distDir, 'katalog/unknown/index.html'))).toBe(false);
@@ -454,5 +456,36 @@ describe('spaFallbackPlugin closeBundle', () => {
 
     expect(() => spaFallbackPlugin({ outDir: distDir, catalogs: [], modulePreloads: MODULE_PRELOADS }).closeBundle()).toThrow(/description enthält U\+2014/);
     expect(existsSync(join(distDir, 'SHA256SUMS'))).toBe(false);
+  });
+});
+
+describe('trailingSlashRedirect (Vorschau wie GitHub Pages)', () => {
+  function call(handler: ReturnType<typeof trailingSlashRedirect>, url: string, method = 'GET') {
+    const headers: Record<string, string> = {};
+    const res = { statusCode: 200, setHeader: (name: string, value: string) => { headers[name] = value; }, end: () => {} };
+    let passed = false;
+    handler({ method, url }, res, () => { passed = true; });
+    return { passed, status: res.statusCode, location: headers.Location };
+  }
+
+  it('leitet einen Routenpfad ohne Slash mit 301 auf die vorhandene Routendatei weiter, auch unter abweichender Basis', () => {
+    const distDir = createTempDistDir();
+    writeFileSync(join(distDir, 'index.html'), INDEX_HTML);
+    writeStaticRouteEntries(distDir, []);
+
+    expect(call(trailingSlashRedirect(distDir, '/'), '/suche?x=1')).toEqual({ passed: false, status: 301, location: '/suche/?x=1' });
+    expect(call(trailingSlashRedirect(distDir, '/preview/'), '/preview/suche')).toEqual({ passed: false, status: 301, location: '/preview/suche/' });
+  });
+
+  it('reicht alles ohne passende Routendatei unverändert weiter', () => {
+    const distDir = createTempDistDir();
+    writeFileSync(join(distDir, 'index.html'), INDEX_HTML);
+    writeStaticRouteEntries(distDir, []);
+    const handler = trailingSlashRedirect(distDir, '/');
+
+    for (const url of ['/', '/suche/', '/assets/app.js', '/gibt-es-nicht', '/../etc', '/%E0%A4%A']) {
+      expect(call(handler, url).passed, url).toBe(true);
+    }
+    expect(call(handler, '/suche', 'POST').passed).toBe(true);
   });
 });

@@ -2,7 +2,7 @@ import { configDefaults, defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { fileURLToPath } from 'node:url';
-import { dirname, resolve } from 'node:path';
+import { dirname, resolve, sep } from 'node:path';
 import { copyFileSync, existsSync, writeFileSync } from 'node:fs';
 import type { Catalog } from './src/domain/models.ts';
 import {
@@ -149,6 +149,47 @@ export function spaFallbackPlugin(
   };
 }
 
+/**
+ * GitHub Pages beantwortet einen Verzeichnispfad ohne abschließenden Slash mit
+ * 301 auf die Slash-Variante und liefert dort `index.html` aus. `vite preview`
+ * gäbe stattdessen den SPA-Fallback mit den Startseiten-Metadaten zurück; die
+ * Middleware bildet die Pages-Weiterleitung für jede vorhandene Routendatei nach.
+ */
+export function trailingSlashRedirect(outDir: string, base: string) {
+  const root = resolve(outDir);
+  return (
+    req: { method?: string; url?: string },
+    res: { statusCode: number; setHeader(name: string, value: string): void; end(): void },
+    next: () => void,
+  ): void => {
+    const [path, query] = (req.url ?? '').split(/\?(.*)/s, 2);
+    if ((req.method !== 'GET' && req.method !== 'HEAD') || !path.startsWith(base) || path.endsWith('/')) return next();
+    let relativePath: string;
+    try {
+      relativePath = decodeURIComponent(path.slice(base.length));
+    } catch {
+      return next();
+    }
+    const target = resolve(root, relativePath, 'index.html');
+    if (!target.startsWith(root + sep) || !existsSync(target)) return next();
+    res.statusCode = 301;
+    res.setHeader('Location', `${path}/${query ? `?${query}` : ''}`);
+    res.end();
+  };
+}
+
+function githubPagesPreviewPlugin() {
+  return {
+    name: 'github-pages-preview-redirect',
+    configurePreviewServer(server: {
+      config: { base: string };
+      middlewares: { use(handler: ReturnType<typeof trailingSlashRedirect>): void };
+    }) {
+      server.middlewares.use(trailingSlashRedirect(DIST_DIR, server.config.base));
+    },
+  };
+}
+
 const CANONICAL_ORIGIN = 'https://gspp-navigator.furater.com';
 
 /*
@@ -220,9 +261,10 @@ export function writeSitemapFile(outDir: string): void {
   writeFileSync(resolve(outDir, 'sitemap.xml'), buildSitemapXml());
 }
 
-export default defineConfig(({ command }) => ({
-  base: command === 'build' ? resolveDeploymentBase() : '/',
-  plugins: [react(), tailwindcss(), catalogFreshnessPlugin(), spaFallbackPlugin()],
+export default defineConfig(({ command, isPreview }) => ({
+  // Die Vorschau bedient `dist/` unter derselben Basis, mit der es gebaut wurde.
+  base: command === 'build' || isPreview ? resolveDeploymentBase() : '/',
+  plugins: [react(), tailwindcss(), catalogFreshnessPlugin(), spaFallbackPlugin(), githubPagesPreviewPlugin()],
   resolve: {
     alias: {
       '@': resolve(__dirname, './src'),
