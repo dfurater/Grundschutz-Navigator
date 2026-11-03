@@ -546,7 +546,8 @@ scripts/                          # Build-, CI- und Wartungsskripte
 ├── check-deploy-idempotency.mjs      # Redundanten Fallback-Deploy desselben Commits verhindern
 ├── check-seo-titles.d.mts            # Typen der Titelvertragsprüfung
 ├── check-seo-titles.mjs              # Titelvertrag der gebauten HTML-Auslieferung
-├── cherry-pick-prepare.mjs           # Cherry-Pick-PR develop → main und seine Prüfung
+├── cherry-pick-prepare.mjs           # Cherry-Pick-PR develop → main und Guard-CLI
+├── cherry-pick-verify.mjs            # Prüfung der Cherry-Pick-Lane für Guard, Vorbereitung und Übernahme
 ├── ci-scope.mjs                      # Scope-Entscheider für Step-Skips im Job validate
 ├── companion-artifacts.mjs           # Entdeckung, Schlüssel und Lifecycle der Begleitartefakte
 ├── contentHashes.d.mts             # Typen der SHA-256- und Git-Blob-Helfer

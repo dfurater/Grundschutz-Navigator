@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
-import { chmod, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { chmod, mkdir, writeFile } from 'node:fs/promises';
+import { join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -10,7 +10,6 @@ import {
   checkCompletedImportAncestry,
   classifyBackmerge,
   collectManifestBlobsOnSource,
-  formatCherryPickMarker,
   formatSourceMarker,
   manifestOriginatesFromSource,
   migrationContractHolds,
@@ -34,6 +33,7 @@ import {
   squashMergeOnMain,
 } from './branchLineFixtures.js';
 import { runCherryPickPrepare } from './cherry-pick-prepare.mjs';
+import { formatCherryPickMarker } from './cherry-pick-verify.mjs';
 
 const execFileAsync = promisify(execFile);
 const REGISTRY_PATH = 'src/domain/sourceRegistry.mjs';
@@ -1206,6 +1206,30 @@ describe('Klasse Cherry-Pick', () => {
     await expect(runBackmerge({ cwd: fixture.work, git: fixture.git, github, logger: silentLogger }))
       .rejects.toThrow(/entspricht nicht den markierten Quellen/);
     expect(github.createPullRequest).not.toHaveBeenCalled();
+  });
+
+  it('stellt den Historien-PR auch beim direkten CLI-Aufruf', async () => {
+    const { fixture, pullRequest } = await mergedCherryPick();
+    // `gh` als Stub: gemergte Cherry-Picks aus einer Datei, sonst leer.
+    const bin = join(fixture.root, 'bin');
+    await mkdir(bin);
+    await writeFile(join(fixture.root, 'cherry-picks.json'), JSON.stringify([pullRequest]), 'utf8');
+    await writeFile(join(bin, 'gh'), [
+      '#!/bin/sh',
+      'case "$*" in',
+      `  *"--state merged"*"--base main"*) cat "${join(fixture.root, 'cherry-picks.json')}" ;;`,
+      '  *"--state merged"*) echo "[]" ;;',
+      '  *"pr create"*) echo "https://example.invalid/pull/2" ;;',
+      'esac',
+    ].join('\n'), 'utf8');
+    await chmod(join(bin, 'gh'), 0o755);
+
+    const { stdout } = await execFileAsync(process.execPath, [resolve('scripts/backmerge-main-to-develop.mjs')], {
+      cwd: fixture.work,
+      env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, GITHUB_REPOSITORY: '' },
+      timeout: 60_000,
+    });
+    expect(stdout).toContain('Cherry-Pick-Pull-Request erstellt');
   });
 
   it.each(['hotfix.txt', 'Überblick.md'])('verwirft keinen noch nicht übernommenen main-Inhalt (%s) vor dem Squash', async (hotfixPath) => {

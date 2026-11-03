@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { formatCherryPickMarker, parseCherryPickMarkers } from './backmerge-main-to-develop.mjs';
+import { formatCherryPickMarker, parseCherryPickMarkers } from './cherry-pick-verify.mjs';
 import {
   CherryPickError,
   cherryPickBranchName,

@@ -65,6 +65,11 @@ import {
   parseNameStatusDiff,
   verifySnapshotProgress,
 } from './catalog-sync-guard.mjs';
+import {
+  CHERRY_PICK_BRANCH_PREFIX,
+  parseCherryPickMarkers,
+  verifyCherryPickHead,
+} from './cherry-pick-verify.mjs';
 
 /** Quellregister-Pfad — Unterscheidungsmerkmal zwischen M1 und M2. */
 export const REGISTRY_PATH = 'src/domain/sourceRegistry.mjs';
@@ -89,28 +94,6 @@ const SHA_PATTERN = /^[0-9a-f]{40}$/;
  * etwa über GitHubs „Update branch" — genau diesen Elternteil überschreibt.
  */
 const SOURCE_MARKER_PATTERN = /<!--\s*backmerge-source:\s*([0-9a-f]{40})\s*-->/g;
-
-/** Namensraum der Cherry-Pick-PRs nach `main` (`scripts/cherry-pick-prepare.mjs`). */
-export const CHERRY_PICK_BRANCH_PREFIX = 'cherry-pick/';
-
-/**
- * Je übernommenem `develop`-Commit eine Marke, in `develop`-Reihenfolge. Guard
- * und Übernahme-Lauf lesen die Quellen aus dem Body, nicht aus den
- * Commit-Nachrichten: `-x` schreibt die Quelle nur bei konfliktfreien Picks.
- */
-const CHERRY_PICK_MARKER_PATTERN = /<!--\s*cherry-pick-source:\s*([0-9a-f]{40})\s*-->/g;
-
-export function formatCherryPickMarker(sha) {
-  if (!SHA_PATTERN.test(sha)) {
-    throw new BackmergeError(`Die Cherry-Pick-Marke verlangt einen 40-stelligen Kleinbuchstaben-SHA: ${sha}`);
-  }
-  return `<!-- cherry-pick-source: ${sha} -->`;
-}
-
-export function parseCherryPickMarkers(body) {
-  if (typeof body !== 'string') return [];
-  return [...body.matchAll(CHERRY_PICK_MARKER_PATTERN)].map((match) => match[1]);
-}
 
 const CONTRACT_START = '<!-- documentation-contract:start -->';
 const CONTRACT_END = '<!-- documentation-contract:end -->';
@@ -863,8 +846,6 @@ async function findCherryPickDefect(git, { pullRequest, squashSha }) {
 
   // Die Guard-Prüfung noch einmal gegen die PR-Spitze: Ein PR, der ohne sie
   // gemergt wurde, trüge sonst Inhalt nach `main`, den `-s ours` verwirft.
-  // Dynamischer Import, weil cherry-pick-prepare.mjs dieses Modul importiert.
-  const { verifyCherryPickHead } = await import('./cherry-pick-prepare.mjs');
   try {
     await verifyCherryPickHead(git, {
       sources: markers,
