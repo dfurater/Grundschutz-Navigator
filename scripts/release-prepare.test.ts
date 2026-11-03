@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { validateDocumentationContract } from './pr-documentation-contract.mjs';
 import { getChangedFiles } from './git-changed-files.mjs';
 import { REQUIRED_CHECKS } from './catalog-sync-policy.mjs';
@@ -23,8 +23,12 @@ import {
   createFixtureRegistry,
   createGitHubStub,
   seedBothLines,
+  seedCherryPickScenario,
   silentLogger,
+  squashMergeOnMain,
 } from './branchLineFixtures.js';
+import { BACKMERGE_BRANCH, runBackmerge } from './backmerge-main-to-develop.mjs';
+import { runCherryPickPrepare } from './cherry-pick-prepare.mjs';
 
 const fixtures = createFixtureRegistry();
 afterEach(fixtures.cleanup);
@@ -387,7 +391,7 @@ describe('Verankerung der Baumprüfung im Pflichtcheck', () => {
       .map(([, body]) => body);
 
     expect(ownerBody).toMatch(
-      /if: startsWith\(github\.head_ref, 'release\/'\)\n\s+run: git fetch --no-tags origin develop/,
+      /if: startsWith\(github\.head_ref, 'release\/'\) \|\| startsWith\(github\.head_ref, 'cherry-pick\/'\)\n\s+run: git fetch --no-tags origin develop/,
     );
   });
 });
@@ -494,4 +498,41 @@ describe('verifyReleasePullRequest', () => {
       git: fixture.git,
     })).rejects.toThrow(/liegt nicht auf/);
   });
+});
+
+describe('Release nach Cherry-Pick', () => {
+  it('liefert nach Cherry-Pick-PR und Übernahme-Merge den develop-Baum auf origin/main als Vorfahr', async () => {
+    const fixture = await createBranchLineFixture(fixtures);
+    const { source } = await seedCherryPickScenario(fixture);
+
+    const prepareStub = createGitHubStub();
+    const { branch, headSha } = await runCherryPickPrepare({
+      cwd: fixture.work, git: fixture.git, github: prepareStub, sourceInput: source, issue: 'GSPP-448',
+      logger: silentLogger,
+    });
+    const [[call]] = prepareStub.createPullRequest.mock.calls as [[{ body: string }]];
+    const squashSha = await squashMergeOnMain(fixture, { headSha, number: 9 });
+
+    await runBackmerge({
+      cwd: fixture.work, git: fixture.git, logger: silentLogger,
+      github: createGitHubStub({
+        listMergedCherryPickPullRequests: vi.fn(async () => [
+          { number: 9, body: call.body, headRefName: branch, mergeCommit: { oid: squashSha } },
+        ]),
+      }),
+    });
+    await fixture.run('switch', '--quiet', '--force-create', 'develop', 'origin/develop');
+    await fixture.run('merge', '--quiet', '--no-ff', '-m', 'Merge #10', `origin/${BACKMERGE_BRANCH}`);
+    await fixture.run('push', '--quiet', 'origin', 'develop');
+    const releaseSha = await fixture.run('rev-parse', 'HEAD');
+
+    const result = await runReleasePrepare({
+      cwd: fixture.work, git: fixture.git, github: createGitHubStub(), releaseRef: releaseSha, logger: silentLogger,
+    });
+    const releaseHead = `origin/${result.releaseBranch}`;
+    expect(await fixture.run('rev-parse', `${releaseHead}^{tree}`))
+      .toBe(await fixture.run('rev-parse', `${releaseSha}^{tree}`));
+    await expect(fixture.run('merge-base', '--is-ancestor', 'origin/main', releaseHead)).resolves.toBe('');
+    expect(await fixture.run('show', `${releaseHead}:src/roundTrip.ts`)).toContain('später geändert');
+  }, 30_000);
 });

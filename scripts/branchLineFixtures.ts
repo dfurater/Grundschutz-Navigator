@@ -124,10 +124,13 @@ export async function commitOnLine(
   return sha;
 }
 
-/** Die vier Aufrufe, die beide Lanes gegen GitHub absetzen. */
+/** Die Aufrufe, die die Lanes gegen GitHub absetzen. */
 export function createGitHubStub(overrides: Record<string, unknown> = {}) {
   return {
     listMergedPullRequests: vi.fn(async () => [] as { number: number; body: string }[]),
+    listMergedCherryPickPullRequests: vi.fn(async () => [] as {
+      number: number; body: string; headRefName: string; mergeCommit: { oid: string } | null;
+    }[]),
     findOpenPullRequest: vi.fn(async () => null as number | null),
     createPullRequest: vi.fn(async () => 'https://example.invalid/pull/1'),
     updatePullRequest: vi.fn(async ({ number }: { number: number }) => number),
@@ -137,3 +140,49 @@ export function createGitHubStub(overrides: Record<string, unknown> = {}) {
 
 /** Hält die Testausgabe frei von den Fortschrittsmeldungen der Läufe. */
 export const silentLogger = { log: () => {}, error: () => {} };
+
+/** Pfad und Ausgangsinhalt des Cherry-Pick-Szenarios. */
+export const CHERRY_PICK_PATH = 'src/roundTrip.ts';
+const CHERRY_PICK_BASE = 'eins\nzwei\ndrei\nvier\nfünf\n';
+
+/**
+ * Muster von `8149eb6`: Die Quelle ändert auf `develop` eine Zeile, ein
+ * späterer `develop`-Commit ändert dieselbe Zeile erneut. Die Quelle pickt
+ * konfliktfrei auf `main`; ein Inhalts-Merge des Picks nach `develop`
+ * kollidiert.
+ */
+export async function seedCherryPickScenario(fixture: BranchLineFixture) {
+  await mkdir(join(fixture.work, 'src'), { recursive: true });
+  await writeFile(join(fixture.work, CHERRY_PICK_PATH), CHERRY_PICK_BASE, 'utf8');
+  await seedBothLines(fixture);
+  const source = await commitOnLine(fixture, 'develop', {
+    path: CHERRY_PICK_PATH,
+    contents: 'eins\nzwei\nDREI\nvier\nfünf\n',
+    message: 'feat: Quelle des Cherry-Picks',
+  });
+  const later = await commitOnLine(fixture, 'develop', {
+    path: CHERRY_PICK_PATH,
+    contents: 'eins\nzwei\nDREI, später geändert\nvier\nfünf\n',
+    message: 'feat: spätere Änderung derselben Zeile',
+  });
+  return { source, later };
+}
+
+/**
+ * Simuliert GitHubs Squash-Merge eines PRs nach `main`: ein Commit mit dem
+ * Baum des Heads auf `origin/main`, dazu die PR-Spitze `refs/pull/<n>/head`.
+ */
+export async function squashMergeOnMain(
+  fixture: BranchLineFixture,
+  { headSha, number }: { headSha: string; number: number },
+) {
+  await fixture.run('fetch', '--quiet', 'origin');
+  const tree = await fixture.run('rev-parse', `${headSha}^{tree}`);
+  const squashSha = await fixture.run('commit-tree', tree, '-p', 'origin/main', '-m', `Squash #${number}`);
+  await fixture.run('push', '--quiet', 'origin', `${squashSha}:refs/heads/main`);
+  await fixture.run('fetch', '--quiet', 'origin');
+  await fixture.run('switch', '--quiet', '--detach', squashSha);
+  await fixture.run('branch', '--force', 'main', squashSha);
+  await execFileAsync('git', ['-C', fixture.origin, 'update-ref', `refs/pull/${number}/head`, headSha]);
+  return squashSha;
+}

@@ -406,6 +406,8 @@ scripts/                          # Build-, CI- und Wartungsskripte
 ├── check-deploy-idempotency.mjs      # Redundanten Fallback-Deploy desselben Commits verhindern
 ├── check-seo-titles.d.mts            # Typen der Titelvertragsprüfung
 ├── check-seo-titles.mjs              # Titelvertrag der gebauten HTML-Auslieferung
+├── cherry-pick-prepare.mjs           # Cherry-Pick-PR develop → main und Guard-CLI
+├── cherry-pick-verify.mjs            # Prüfung der Cherry-Pick-Lane für Guard, Vorbereitung und Übernahme
 ├── ci-scope.mjs                      # Scope-Entscheider für Step-Skips im Job validate
 ├── companion-artifacts.mjs           # Entdeckung, Schlüssel und Lifecycle der Begleitartefakte
 ├── contentHashes.d.mts             # Typen der SHA-256- und Git-Blob-Helfer
@@ -454,6 +456,7 @@ scripts/                          # Build-, CI- und Wartungsskripte
 │   └── setup-node-env/                   # Node aus .nvmrc plus npm ci --ignore-scripts
 ├── workflows/                        # GitHub-Actions-Workflows
 │   ├── backmerge-main-to-develop.yml     # Übernahme-PR main → develop
+│   ├── cherry-pick-prepare.yml           # Cherry-Pick-PR develop → main
 │   ├── ci.yml                            # PR-Metadatenverträge (documentation-contract, catalog-sync-guard)
 │   ├── deploy.yml                        # GitHub Pages Deployment
 │   ├── greptile-review-nudge.yml         # Greptile-Auslösung bei übersprungenem PR
@@ -998,13 +1001,14 @@ Bei fehlender oder abweichender vom Preflight geprüfter Policy, einem API-Fehle
 
 ### Inhalts-Übernahme und Release-Vorbereitung
 
-Drei Linien mit drei getrennten Aufgaben: Die Produktionslane (`update-catalog.yml`) stellt den Manifest-PR nach `main`. Die Übernahme-Lane (`.github/workflows/backmerge-main-to-develop.yml` → `scripts/backmerge-main-to-develop.mjs`) bringt den Inhalt nach `develop`. Die Release-Lane (`.github/workflows/release-prepare.yml` → `scripts/release-prepare.mjs`) erzeugt den Freigabe-PR. Weder die Übernahme- noch die Release-Lane mergt oder löscht Branches.
+Vier Linien mit vier getrennten Aufgaben: Die Produktionslane (`update-catalog.yml`) stellt den Manifest-PR nach `main`. Die Übernahme-Lane (`.github/workflows/backmerge-main-to-develop.yml` → `scripts/backmerge-main-to-develop.mjs`) bringt den Inhalt nach `develop`. Die Release-Lane (`.github/workflows/release-prepare.yml` → `scripts/release-prepare.mjs`) erzeugt den Freigabe-PR. Die Cherry-Pick-Lane (`.github/workflows/cherry-pick-prepare.yml` → `scripts/cherry-pick-prepare.mjs`) bringt einzelne `develop`-Commits ohne Release nach `main`. Keine dieser Lanes mergt oder löscht Branches.
 
 Die Übernahme überträgt die **Änderung**, nicht den Zustand. Jede Klasse hat deshalb ihre eigene Bezugsgröße:
 
 | Klasse | Bedingung | Branch | Bezugsgröße | Merge-Methode |
 | --- | --- | --- | --- | --- |
 | Reparatur | Ancestry einer abgeschlossenen M2-/M3-Übernahme fehlt | `chore/backmerge-main-to-develop` | ausschließlich Historie; der Pull Request ändert keine Datei | Merge-Commit |
+| Cherry-Pick | ein gemergter PR mit Base `main` und Branchpräfix `cherry-pick/`, dessen Merge-Commit nicht von `develop` erreichbar ist | `chore/backmerge-main-to-develop` | ausschließlich Historie über `git merge -s ours`; der Pull Request ändert keine Datei | Merge-Commit |
 | M1 | ausschließlich `upstream-manifest.json` bewegt, `snapshotCommitSha` wechselt | `chore/catalog-import-to-develop` | Vorbedingung: develops Manifest ist byte-identisch mit dem an irgendeinem von `origin/main` erreichbaren Commit | Squash zulässig |
 | M2 | `upstream-manifest.json` und `src/domain/sourceRegistry.mjs` gemeinsam bewegt | `chore/backmerge-main-to-develop` | Drei-Wege-Merge gegen `git merge-base origin/main origin/develop`; der Zielzustand muss die lokal prüfbaren Teile der Manifestregel erfüllen (`migrationContractHolds`: kein Pfad unter `scripts/` oder `.github/`, Snapshot gleich oder laut `verifySnapshotProgress` voraus, beide Manifeste v2-gültig, `--validate-manifest` des Guards im Ergebnisstand grün) | Merge-Commit |
 | M3 | Inhalt ohne Manifestpfad | `chore/backmerge-main-to-develop` | Drei-Wege-Merge gegen dieselbe Basis | Merge-Commit |
@@ -1019,6 +1023,15 @@ Die Reparatur ist der **alleinige** Gegenstand ihres Laufs; eine gleichzeitig an
 Der Leerlauftest vergleicht das **Ergebnis** der Übernahme mit dem aktuellen `develop`-Baum. Überlappende Läufe aus `push main` und `push develop` serialisiert eine `concurrency`-Gruppe ohne `cancel-in-progress`.
 
 Die Release-Vorbereitung erzeugt einen kurzlebigen Branch `release/<sha12>` aus aktuellem `origin/main` und mergt den freigegebenen `develop`-SHA hinein. Die Eingabe ist zwingend ein 40-stelliger Kleinbuchstaben-SHA. Zwei Bedingungen gelten vor dem PR: `git merge-base --is-ancestor origin/main <head>`, und der resultierende Baum entspricht exakt dem Baum des freigegebenen `develop`-SHA. Trägt `main` noch Inhalt, den `develop` nicht hat, stoppt die Freigabe. Der PR-Body trägt die Marke `<!-- release-source: <sha> -->`; der Job `catalog-sync-guard` rechnet die Bedingung bei jedem `synchronize`-Ereignis nach (genau eine Marke, markierter Stand auf `origin/develop`, Baum des Heads gleich dem markierten Commit). Die Prüfung greift an Base `main` plus Branchpräfix `release/`.
+
+Die Cherry-Pick-Vorbereitung nimmt ein Issue (`GSPP-123`) und einen oder mehrere 40-stellige Kleinbuchstaben-SHAs von `origin/develop` in `develop`-Reihenfolge entgegen; Merge- und Wurzel-Commits sind als Quelle ausgeschlossen. Sie wendet je Quelle `git cherry-pick -x` auf aktuellem `origin/main` an. Ist ein Pick nicht konfliktfrei, entstehen weder Branch noch PR, und die Meldung nennt den Commit. Sonst pusht sie `cherry-pick/<issue>-<sha12 der ersten Quelle>` und stellt einen PR nach `main` mit der Merge-Methode Squash und je Quelle der Marke `<!-- cherry-pick-source: <sha> -->` in Reihenfolge. Der Job `catalog-sync-guard` prüft an Base `main` plus Branchpräfix `cherry-pick/` bei jedem Head-Ereignis, und die Vorbereitung prüft vor dem Push dasselbe:
+
+- mindestens eine Marke, keine doppelt, jede Quelle auf `origin/develop` und Vorfahr der nächsten,
+- `origin/main` ist Vorfahr des Heads,
+- jeder Merge-Commit in `origin/main..<head>` hat zwei Eltern und trägt den Baum, den `git merge-tree --write-tree` konfliktfrei aus ihnen errechnet,
+- die Nicht-Merge-Commits in `origin/main..<head>` entsprechen den Marken in Anzahl und Reihenfolge, je Paar mit gleichem Patch aus `git diff-tree --patch --binary`, verglichen ohne `index`-Zeilen und ohne Zeilennummern der Hunk-Köpfe. Kontextzeilen und Leerraum zählen mit; ein Pick mit anderem Kontext als seine Quelle besteht nicht.
+
+Ein Cherry-Pick-PR zweigt von `main` ab und führt `ci.yml` und `scripts/cherry-pick-prepare.mjs` in der Fassung von `main` samt gepicktem Inhalt. Nach dem Squash-Merge verbindet die Übernahme-Lane die Historie in der Klasse Cherry-Pick, bevor sie M1 bis M3 klassifiziert. Sie verlangt je PR mindestens eine Marke, den Merge-Commit auf `main`, dessen Baum gleich dem Baum der PR-Spitze, und für die PR-Spitze gegen den ersten Elternteil des Merge-Commits dieselben Bedingungen wie der Guard. Weil `-s ours` alles verwirft, was `main` bis zum Squash trägt, müssen die vor dem Squash von `main` bewegten Pfade auf `develop` byte-gleich vorliegen; sonst entsteht kein PR. Mehrere offene Cherry-Picks verbindet ein PR in `main`-Reihenfolge. Nach seinem Merge ist der Squash-Commit Vorfahr von `develop`, und die Release-Vorbereitung erzeugt wieder einen Head mit `develop`-Baum und `origin/main` als Vorfahr.
 
 ## Versionierte Review-Policy
 

@@ -100,8 +100,11 @@ jobs:
       # Workflow-Fassung nicht, der geforderte Check bliebe dort also
       # unbeantwortet und der Auto-Merge stünde still. Ein Release-PR trägt
       # dagegen den Baum von `develop` und damit diese Fassung im Head.
-      - name: Fetch develop for the release provenance check
-        if: startsWith(github.head_ref, 'release/')
+      # Dieselbe Begründung trägt die Cherry-Pick-Prüfung: Ein Cherry-Pick-PR
+      # zweigt von `main` ab und führt deshalb erst dann diese Fassung, wenn sie
+      # auf `main` liegt — durch ein Release oder als gepickter Inhalt im PR selbst.
+      - name: Fetch develop for the release and cherry-pick provenance checks
+        if: startsWith(github.head_ref, 'release/') || startsWith(github.head_ref, 'cherry-pick/')
         run: git fetch --no-tags origin develop:refs/remotes/origin/develop
 
       - name: Verify the release PR against its approval marker
@@ -111,3 +114,11 @@ jobs:
           PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: node scripts/release-prepare.mjs --verify-pull-request
+
+      - name: Verify the cherry-pick PR against its source markers
+        env:
+          PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node scripts/cherry-pick-prepare.mjs --verify-pull-request
