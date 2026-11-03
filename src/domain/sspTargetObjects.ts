@@ -1,6 +1,6 @@
 import type { RawOscalProp, VocabularyNamespaceData } from '@/domain/models';
 import { isJsonObject, readArray, readString, type JsonObject } from '@/domain/jsonGuards';
-import { createCatalogReferenceProjectProps, createProjectProp, readProjectProps, PROJECT_PROPS_NAMESPACE as ns, type ProjectPropCarrier } from '@/domain/projectProps';
+import { actionProjectPropCarrier, componentProjectPropCarrier, createCatalogReferenceProjectProps, createProjectProp, readProjectProps, validateBusinessProcessProjectProps, PROJECT_PROPS_NAMESPACE as ns, type ProjectPropCarrier } from '@/domain/projectProps';
 import { readSspValue, sspBody, SspPatchError, type SspPath } from '@/domain/sspAuthoring';
 import { readCatalogPins } from '@/domain/workspaceCatalogPin';
 import { closeTargetCategories, type CategoryClosure } from '@/domain/targetObjectCategories';
@@ -15,7 +15,7 @@ export const TARGET_LISTS = [
 
 export function sspTargets(source: unknown) {
   return TARGET_LISTS.flatMap(({ path, carrier }) => readArray(readSspValue(source, path)).flatMap((item, index) =>
-    isJsonObject(item) ? [{ item, path: [...path, index] as SspPath, carrier }] : []));
+    isJsonObject(item) ? [{ item, path: [...path, index] as SspPath, carrier: carrier === 'system-component' ? componentProjectPropCarrier(item) : carrier }] : []));
 }
 
 export function targetProps(item: unknown, name: string): readonly RawOscalProp[] {
@@ -115,6 +115,10 @@ function misplacedProjectProps(source: unknown): TargetFailure | undefined {
   const carriers = new Map<string, ProjectPropCarrier>([['/system-security-plan/metadata', 'metadata']]);
   for (const target of sspTargets(source)) carriers.set(`/system-security-plan/${target.path.join('/')}`, target.carrier);
   readArray(readSspValue(source, ['control-implementation', 'implemented-requirements'])).forEach((_, index) => carriers.set(`/system-security-plan/control-implementation/implemented-requirements/${index}`, 'implemented-requirement'));
+  readArray(readSspValue(source, ['metadata', 'actions'])).forEach((action, index) => {
+    const carrier = actionProjectPropCarrier(action);
+    if (carrier) carriers.set(`/system-security-plan/metadata/actions/${index}`, carrier);
+  });
   return walkCarriers(source, '', carriers);
 }
 
@@ -139,14 +143,16 @@ export function validateSspTargets(source: unknown, context?: TargetCategoryCont
   if (!metadataRead.writeAllowed) return metadataRead.diagnostics[0];
   const coverage = targetProps(metadata, 'protection-need-coverage')[0];
   if (checkDerived && coverage && coverage.value !== targetCoverage(source).value) return { code: 'SSP_COVERAGE_MISMATCH', path: '/system-security-plan/metadata/props' };
+  const processReads = [];
   for (const { item, path, carrier } of sspTargets(source)) {
     const pointer = `/system-security-plan/${path.join('/')}/props`;
     const read = readProjectProps(item.props, carrier);
     if (!read.writeAllowed) return { code: read.diagnostics[0].code, path: pointer };
+    if (carrier === 'business-process') processReads.push(read);
     const categories = categoryFailure(source, path, context, checkDerived);
     if (categories) return categories;
   }
-  return undefined;
+  return validateBusinessProcessProjectProps(processReads).diagnostics[0];
 }
 
 export function prepareSspTargets(source: unknown, context?: TargetCategoryContext): { ok: true; source: unknown } | ({ ok: false } & TargetFailure) {

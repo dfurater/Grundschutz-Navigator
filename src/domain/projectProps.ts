@@ -5,6 +5,7 @@ import {
 } from '@/domain/oscalDiagnostics';
 import { isJsonObject } from '@/domain/jsonGuards';
 import { enforceClass2ObjectGraphInvariants } from '@/domain/oscalObjectGraph';
+import { isOscalUuid } from '@/domain/identifierQuery';
 import { isCatalogKey } from '@/domain/sourceRegistry';
 
 // Der Vertrag der projekteigenen Props — Wertebereiche, Träger, Paar- und
@@ -23,6 +24,21 @@ export const PROJECT_PROP_NAMES = Object.freeze([
   'protection-need-coverage',
   'assessed-against-catalog-key',
   'assessed-against-catalog-commit',
+  'process-id',
+  'process-application-uuid',
+  'process-applications-none',
+  'process-protection-confidentiality',
+  'process-protection-integrity',
+  'process-protection-availability',
+  'process-protection-category',
+  'process-priority',
+  'process-category-label',
+  'process-category-definition',
+  'process-category-mapping',
+  'process-cia-process-uuid',
+  'process-cia-sequence',
+  'process-cia-content-hash',
+  'process-cia-withdraws',
 ] as const);
 
 export type ProjectPropName = (typeof PROJECT_PROP_NAMES)[number];
@@ -35,9 +51,32 @@ export const PROJECT_PROP_CARRIERS = Object.freeze([
   'system-component',
   'inventory-item',
   'information-type',
+  'business-process',
+  'metadata-action',
 ] as const);
 
 export type ProjectPropCarrier = (typeof PROJECT_PROP_CARRIERS)[number];
+
+export const BUSINESS_PROCESS_COMPONENT_TYPE = 'business-process' as const;
+
+export const PROCESS_CIA_ACTIONS_SYSTEM =
+  'https://github.com/dfurater/Grundschutz-Navigator/ns/oscal/process-cia-actions' as const;
+
+/** Ein Component mit `type: business-process` trägt zusätzlich die Prozessnamen. */
+export function componentProjectPropCarrier(
+  component: unknown,
+): 'business-process' | 'system-component' {
+  return isJsonObject(component) && component.type === BUSINESS_PROCESS_COMPONENT_TYPE
+    ? 'business-process'
+    : 'system-component';
+}
+
+/** Nur SSP-Aktionen des Prozessaktionssystems sind Träger von Projektproperties. */
+export function actionProjectPropCarrier(action: unknown): 'metadata-action' | null {
+  return isJsonObject(action) && action.system === PROCESS_CIA_ACTIONS_SYSTEM
+    ? 'metadata-action'
+    : null;
+}
 
 export interface ProjectPropDocumentation {
   readonly valueSpace: string;
@@ -65,8 +104,16 @@ export interface ProjectPropRegistryEntry {
     | 'target-category'
     | 'protection-coverage'
     | 'catalog-key'
-    | 'catalog-commit';
+    | 'catalog-commit'
+    | 'process-text'
+    | 'uuid'
+    | 'confirmed-none'
+    | 'process-category-use'
+    | 'canonical-integer'
+    | 'process-cia-hash';
   readonly canonicalization: 'identity' | 'decimal-comma-to-point';
+  /** Fehlt bei älteren Namen; dort bleibt `group` ohne zusätzliche Pflicht. */
+  readonly group?: 'required' | 'forbidden';
   readonly documentation: Readonly<ProjectPropDocumentation>;
 }
 
@@ -79,6 +126,46 @@ function registryEntry(entry: ProjectPropRegistryEntry): Readonly<ProjectPropReg
       ...entry.documentation,
       introducedBy: Object.freeze({ ...entry.documentation.introducedBy }),
     }),
+  });
+}
+
+const PROCESS_PROPS_INTRODUCED_BY = Object.freeze({
+  identifier: 'GSPP-679',
+  url: 'https://linear.app/grundschutz-plus-plus/issue/GSPP-679',
+} as const);
+const PROCESS_PROTECTION_DOCUMENTATION = Object.freeze([
+  '`normal`, `hoch`',
+  'Nichtleere `remarks` sind Pflicht; fehlend bleibt das Schutzziel unbekannt, kein Default',
+] as const);
+const CANONICAL_INTEGER_VALUE_SPACE = 'Kanonische Ganzzahl `1` bis `9007199254740991`';
+const PROCESS_ACTION_VALIDATION = 'Nur an Aktionen des Systems `…/ns/oscal/process-cia-actions`';
+
+/**
+ * Prozessnamen: `carrier` und `group` erlauben höchstens einen Wert je Träger
+ * beziehungsweise je Gruppe, `many` beliebig viele. Gruppierte Namen verlangen
+ * `group`, alle anderen verbieten sie.
+ */
+function processEntry(
+  name: ProjectPropName,
+  carrier: ProjectPropCarrier,
+  occurrence: 'carrier' | 'group' | 'many',
+  meaning: string,
+  valueContract: ProjectPropRegistryEntry['valueContract'],
+  [valueSpace, validation]: readonly [string, string],
+): Readonly<ProjectPropRegistryEntry> {
+  return registryEntry({
+    name,
+    carriers: [carrier],
+    cardinality: {
+      minimum: 0,
+      maximum: occurrence === 'many' ? null : 1,
+      scope: occurrence === 'group' ? 'group' : 'carrier',
+    },
+    meaning,
+    valueContract,
+    canonicalization: 'identity',
+    group: occurrence === 'group' ? 'required' : 'forbidden',
+    documentation: { valueSpace, validation, introducedBy: PROCESS_PROPS_INTRODUCED_BY },
   });
 }
 
@@ -218,6 +305,36 @@ export const PROJECT_PROP_REGISTRY = Object.freeze({
       },
     },
   }),
+  'process-id': processEntry('process-id', 'business-process', 'carrier', 'Fachliche Kennung eines Geschäftsprozesses', 'process-text',
+    ['Nichtleerer Klasse-2-Text', 'Mindestens ein Nicht-Leerzeichen; im SSP über alle Geschäftsprozesse nach NFC, Trim und case-insensitiv eindeutig']),
+  'process-application-uuid': processEntry('process-application-uuid', 'business-process', 'many', 'Wesentliche Anwendung eines Geschäftsprozesses', 'uuid',
+    ['OSCAL-UUID einer anderen SSP-Komponente', 'Je Träger case-insensitiv eindeutig; nicht zusammen mit `process-applications-none`']),
+  'process-applications-none': processEntry('process-applications-none', 'business-process', 'carrier', 'Begründeter Nullfall wesentlicher Anwendungen', 'confirmed-none',
+    ['`true`', 'Nichtleere `remarks` sind Pflicht; nicht zusammen mit `process-application-uuid`']),
+  'process-protection-confidentiality': processEntry('process-protection-confidentiality', 'business-process', 'carrier',
+    'Schutzbedarf eines Geschäftsprozesses für Vertraulichkeit', 'protection-need-level', PROCESS_PROTECTION_DOCUMENTATION),
+  'process-protection-integrity': processEntry('process-protection-integrity', 'business-process', 'carrier',
+    'Schutzbedarf eines Geschäftsprozesses für Integrität', 'protection-need-level', PROCESS_PROTECTION_DOCUMENTATION),
+  'process-protection-availability': processEntry('process-protection-availability', 'business-process', 'carrier',
+    'Schutzbedarf eines Geschäftsprozesses für Verfügbarkeit', 'protection-need-level', PROCESS_PROTECTION_DOCUMENTATION),
+  'process-protection-category': processEntry('process-protection-category', 'business-process', 'group', 'Verwendete eigene Schutzbedarfskategorie je Schutzziel', 'process-category-use',
+    ['`group`-Kennung einer eigenen Kategorie', '`group` ist `confidentiality`, `integrity` oder `availability`; Wert ist NCName-konform']),
+  'process-priority': processEntry('process-priority', 'business-process', 'carrier', 'Priorität eines Geschäftsprozesses in der Reihenfolge des Scopes', 'canonical-integer',
+    [CANONICAL_INTEGER_VALUE_SPACE, 'Nur ASCII-Ziffern ohne führende Null; nicht aus CIA-Werten erzeugt']),
+  'process-category-label': processEntry('process-category-label', 'metadata', 'group', 'Anzeigename einer eigenen Schutzbedarfskategorie', 'process-text',
+    ['Nichtleerer Klasse-2-Text', '`group` ist die Kategoriekennung; Namen sind über alle Gruppen nach NFC, Trim und case-insensitiv eindeutig']),
+  'process-category-definition': processEntry('process-category-definition', 'metadata', 'group', 'Definition einer eigenen Schutzbedarfskategorie', 'process-text',
+    ['Nichtleerer Klasse-2-Text', '`group` ist die Kategoriekennung; mindestens ein Nicht-Leerzeichen']),
+  'process-category-mapping': processEntry('process-category-mapping', 'metadata', 'group', 'Abbildung einer eigenen Kategorie auf die GS++-Kategorien', 'protection-need-level',
+    ['`normal`, `hoch`', '`group` ist die Kategoriekennung; nichtleere `remarks` sind Pflicht']),
+  'process-cia-process-uuid': processEntry('process-cia-process-uuid', 'metadata-action', 'carrier', 'Geschäftsprozess einer Prozessentscheidung', 'uuid',
+    ['OSCAL-UUID eines Geschäftsprozesses', PROCESS_ACTION_VALIDATION]),
+  'process-cia-sequence': processEntry('process-cia-sequence', 'metadata-action', 'carrier', 'Reihenfolge einer Prozessentscheidung je Prozess', 'canonical-integer',
+    [CANONICAL_INTEGER_VALUE_SPACE, `${PROCESS_ACTION_VALIDATION}; nur ASCII-Ziffern ohne führende Null`]),
+  'process-cia-content-hash': processEntry('process-cia-content-hash', 'metadata-action', 'carrier', 'Gebundener Bewertungsstand einer Prozessfreigabe', 'process-cia-hash',
+    ['`process-cia/3:sha-256:` und 64 kleingeschriebene Hex-Zeichen', `${PROCESS_ACTION_VALIDATION}; nicht zusammen mit \`process-cia-withdraws\``]),
+  'process-cia-withdraws': processEntry('process-cia-withdraws', 'metadata-action', 'carrier', 'Zurückgenommene Prozessfreigabe', 'uuid',
+    ['OSCAL-UUID einer Prozessfreigabe', `${PROCESS_ACTION_VALIDATION}; nicht zusammen mit \`process-cia-content-hash\``]),
 } satisfies Record<ProjectPropName, Readonly<ProjectPropRegistryEntry>>);
 
 const UNICODE_LETTER = /^\p{L}$/u;
@@ -327,6 +444,8 @@ const PROJECT_PROP_BOUNDARY_PATHS: Readonly<Record<ProjectPropCarrier, string>> 
   'system-component': '/project-props/system-component',
   'inventory-item': '/project-props/inventory-item',
   'information-type': '/project-props/information-type',
+  'business-process': '/project-props/business-process',
+  'metadata-action': '/project-props/metadata-action',
 });
 const PROJECT_PROP_BOUNDARY_PATH = '/project-props';
 
@@ -340,7 +459,9 @@ export type ProjectPropLocation =
   }>
   | Readonly<{ carrier: 'system-component'; componentIndex: number }>
   | Readonly<{ carrier: 'inventory-item'; inventoryItemIndex: number }>
-  | Readonly<{ carrier: 'information-type'; informationTypeIndex: number }>;
+  | Readonly<{ carrier: 'information-type'; informationTypeIndex: number }>
+  | Readonly<{ carrier: 'business-process'; componentIndex: number }>
+  | Readonly<{ carrier: 'metadata-action'; actionIndex: number }>;
 
 type ProjectPropDiagnosticContext = ProjectPropCarrier | ProjectPropLocation;
 
@@ -362,7 +483,10 @@ function isProjectPropLocation(value: unknown): value is ProjectPropLocation {
     case 'implemented-requirement':
       return isStructuralIndex(candidate.implementedRequirementIndex);
     case 'system-component':
+    case 'business-process':
       return isStructuralIndex(candidate.componentIndex);
+    case 'metadata-action':
+      return isStructuralIndex(candidate.actionIndex);
     case 'inventory-item':
       return isStructuralIndex(candidate.inventoryItemIndex);
     case 'information-type':
@@ -388,7 +512,10 @@ function projectPropPath(context: ProjectPropDiagnosticContext): string {
     case 'implemented-requirement':
       return `/system-security-plan/control-implementation/implemented-requirements/${context.implementedRequirementIndex}/props`;
     case 'system-component':
+    case 'business-process':
       return `/system-security-plan/system-implementation/components/${context.componentIndex}/props`;
+    case 'metadata-action':
+      return `/system-security-plan/metadata/actions/${context.actionIndex}/props`;
     case 'inventory-item':
       return `/system-security-plan/system-implementation/inventory-items/${context.inventoryItemIndex}/props`;
     case 'information-type':
@@ -504,6 +631,38 @@ function validateCatalogCommitValue(
   return diagnostics;
 }
 
+const MAX_CANONICAL_INTEGER = BigInt(Number.MAX_SAFE_INTEGER);
+const MAX_CANONICAL_INTEGER_LENGTH = String(Number.MAX_SAFE_INTEGER).length;
+const PROTECTION_OBJECTIVE_GROUPS = Object.freeze(['confidentiality', 'integrity', 'availability']);
+const PROCESS_CIA_HASH_PATTERN = /^process-cia\/3:sha-256:[0-9a-f]{64}$/;
+
+function hasText(value: string | undefined): boolean {
+  return value !== undefined && value.trim().length > 0;
+}
+
+function isCanonicalPositiveInteger(value: string): boolean {
+  // Die Längengrenze kommt zuerst, damit überlange Importwerte nicht vollständig gescannt werden.
+  return value.length <= MAX_CANONICAL_INTEGER_LENGTH
+    && isCanonicalEffortInteger(value)
+    && value !== '0'
+    && BigInt(value) <= MAX_CANONICAL_INTEGER;
+}
+
+type ProcessValueContract = Extract<
+  ProjectPropRegistryEntry['valueContract'],
+  'process-text' | 'uuid' | 'confirmed-none' | 'process-category-use' | 'canonical-integer' | 'process-cia-hash'
+>;
+
+const PROCESS_VALUE_CHECKS: Readonly<Record<ProcessValueContract, (prop: RawOscalProp) => boolean>> = Object.freeze({
+  'process-text': (prop) => hasText(prop.value),
+  uuid: (prop) => isOscalUuid(prop.value),
+  'confirmed-none': () => false,
+  'process-category-use': (prop) =>
+    PROTECTION_OBJECTIVE_GROUPS.includes(prop.group as string) && isOscalToken(prop.value),
+  'canonical-integer': (prop) => isCanonicalPositiveInteger(prop.value),
+  'process-cia-hash': (prop) => PROCESS_CIA_HASH_PATTERN.test(prop.value),
+});
+
 function validateProjectPropValue(
   prop: RawOscalProp,
   valueContract: ProjectPropRegistryEntry['valueContract'],
@@ -534,15 +693,43 @@ function validateProjectPropValue(
       return validateCatalogKeyValue(prop, carrier);
     case 'catalog-commit':
       return validateCatalogCommitValue(prop, carrier);
+    default:
+      return validateProcessPropValue(prop, valueContract, carrier);
   }
+}
+
+function validateProcessPropValue(
+  prop: RawOscalProp,
+  valueContract: ProcessValueContract,
+  carrier: ProjectPropCarrier,
+): OscalDiagnostic[] {
+  if (valueContract === 'confirmed-none' && prop.value === 'true') {
+    return hasText(prop.remarks)
+      ? []
+      : [diagnostic(PROJECT_PROP_DIAGNOSTIC_CODES.REMARKS_REQUIRED, carrier)];
+  }
+  return PROCESS_VALUE_CHECKS[valueContract](prop) ? [] : invalidProjectPropValue(carrier);
+}
+
+function validateProjectPropGroupRule(
+  prop: RawOscalProp,
+  name: ProjectPropName,
+  carrier: ProjectPropCarrier,
+): OscalDiagnostic[] {
+  const rule = PROJECT_PROP_REGISTRY[name].group;
+  const invalid = (rule === 'required' && prop.group === undefined)
+    || (rule === 'forbidden' && prop.group !== undefined);
+  return invalid ? [diagnostic(PROJECT_PROP_DIAGNOSTIC_CODES.GROUP_INVALID, carrier)] : [];
 }
 
 function validateProjectPropCarrier(
   name: ProjectPropName,
   carrier: ProjectPropCarrier,
 ): OscalDiagnostic[] {
-  const entry = PROJECT_PROP_REGISTRY[name];
-  return entry.carriers.includes(carrier)
+  const { carriers } = PROJECT_PROP_REGISTRY[name];
+  // Ein Geschäftsprozess bleibt ein Component und trägt dessen Namen weiter.
+  return carriers.includes(carrier)
+    || (carrier === 'business-process' && carriers.includes('system-component'))
     ? []
     : [diagnostic(PROJECT_PROP_DIAGNOSTIC_CODES.CARRIER_INVALID, carrier)];
 }
@@ -554,6 +741,7 @@ function validateKnownProjectProp(
 ): OscalDiagnostic[] {
   return [
     ...validateProjectPropCarrier(name, carrier),
+    ...validateProjectPropGroupRule(prop, name, carrier),
     ...validateProjectPropValue(prop, PROJECT_PROP_REGISTRY[name].valueContract, carrier),
   ];
 }
@@ -633,7 +821,7 @@ interface ProjectPropReadAccumulator {
   readonly foreignProps: RawOscalProp[];
   readonly unknownProjectProps: RawOscalProp[];
   readonly diagnostics: OscalDiagnostic[];
-  readonly customTags: Set<string>;
+  readonly uniqueValues: Map<ProjectPropName, Set<string>>;
 }
 
 function hasValidRuntimeValueFields(
@@ -650,22 +838,59 @@ function hasValidRuntimeValueFields(
   return valid;
 }
 
-function collectCustomTag(
+function normalizedText(value: string): string {
+  return value.normalize('NFC').trim().toLowerCase();
+}
+
+/** Vergleichsschlüssel der je Träger eindeutigen Werte; `null` nimmt nicht teil. */
+function uniqueValueKey(prop: RawOscalProp): string | null {
+  switch (prop.name) {
+    case 'custom-tag':
+      return isCanonicalCustomTag(prop.value) ? normalizedText(prop.value) : null;
+    case 'process-application-uuid':
+      return isOscalUuid(prop.value) ? prop.value.toLowerCase() : null;
+    case 'process-category-label':
+      return hasText(prop.value) ? normalizedText(prop.value) : null;
+    default:
+      return null;
+  }
+}
+
+function collectUniqueValue(
   prop: RawOscalProp,
+  name: ProjectPropName,
   accumulator: ProjectPropReadAccumulator,
   carrier: ProjectPropCarrier,
 ): void {
-  if (prop.name !== 'custom-tag' || !isCanonicalCustomTag(prop.value)) {
-    return;
+  const key = uniqueValueKey(prop);
+  if (key === null) return;
+  let values = accumulator.uniqueValues.get(name);
+  if (values === undefined) {
+    values = new Set();
+    accumulator.uniqueValues.set(name, values);
   }
-  const normalizedTag = prop.value.normalize('NFC').toLowerCase();
-  if (accumulator.customTags.has(normalizedTag)) {
+  if (values.has(key)) {
     accumulator.diagnostics.push(
       diagnostic(PROJECT_PROP_DIAGNOSTIC_CODES.DUPLICATE_VALUE, carrier),
     );
   } else {
-    accumulator.customTags.add(normalizedTag);
+    values.add(key);
   }
+}
+
+const EXCLUSIVE_PROJECT_PROP_PAIRS = Object.freeze([
+  ['process-application-uuid', 'process-applications-none'],
+  ['process-cia-content-hash', 'process-cia-withdraws'],
+] as const);
+
+function validateExclusiveProjectProps(
+  props: readonly RawOscalProp[],
+  carrier: ProjectPropCarrier,
+): OscalDiagnostic[] {
+  const names = new Set(props.map((prop) => prop.name));
+  return EXCLUSIVE_PROJECT_PROP_PAIRS
+    .filter(([first, second]) => names.has(first) && names.has(second))
+    .map(() => diagnostic(PROJECT_PROP_DIAGNOSTIC_CODES.VALUE_INVALID, carrier));
 }
 
 function collectProjectProp(
@@ -703,9 +928,10 @@ function collectProjectProp(
   if (!hasValidRuntimeValueFields(prop, carrier, accumulator.diagnostics)) return;
 
   accumulator.diagnostics.push(
+    ...validateProjectPropGroupRule(prop, name, carrier),
     ...validateProjectPropValue(prop, PROJECT_PROP_REGISTRY[name].valueContract, carrier),
   );
-  collectCustomTag(prop, accumulator, carrier);
+  collectUniqueValue(prop, name, accumulator, carrier);
 }
 
 function duplicateCategoryNames(props: readonly RawOscalProp[]): Set<ProjectPropName> {
@@ -849,18 +1075,17 @@ export function readProjectProps(
     foreignProps: [],
     unknownProjectProps: [],
     diagnostics: [],
-    customTags: new Set(),
+    uniqueValues: new Map(),
   };
 
   for (const prop of preservedProps) {
     collectProjectProp(prop, carrier, accumulator);
   }
 
-  accumulator.diagnostics.push(...validateProjectPropCardinalities(
-    accumulator.projectProps,
-    carrier,
-  ));
-
+  accumulator.diagnostics.push(
+    ...validateProjectPropCardinalities(accumulator.projectProps, carrier),
+    ...validateExclusiveProjectProps(accumulator.projectProps, carrier),
+  );
   if (carrier === 'metadata') {
     accumulator.diagnostics.push(...validateCatalogPairs(accumulator.projectProps, carrier));
   }
@@ -1094,6 +1319,38 @@ export function validatePlanningMeasureProjectProps(
     ));
   }
 
+  return Object.freeze({
+    diagnostics: Object.freeze(diagnostics),
+    writeAllowed: diagnostics.length === 0,
+  });
+}
+
+/**
+ * Prüft die SSP-weite Eindeutigkeit fachlicher Prozess-IDs über bereits
+ * gelesene Geschäftsprozess-Träger (NFC, Trim, case-insensitiv).
+ */
+export function validateBusinessProcessProjectProps(
+  processResults: readonly ProjectPropReadResult[],
+): ProjectPropValidationResult {
+  const processIds = new Set<string>();
+  const diagnostics: OscalDiagnostic[] = [];
+  for (const result of processResults) {
+    if (result.carrier !== 'business-process') {
+      diagnostics.push(diagnostic(PROJECT_PROP_DIAGNOSTIC_CODES.CARRIER_INVALID, 'business-process'));
+      continue;
+    }
+    for (const prop of result.projectProps) {
+      if (prop.name !== 'process-id' || typeof prop.value !== 'string' || !hasText(prop.value)) continue;
+      const key = normalizedText(prop.value);
+      if (processIds.has(key)) {
+        diagnostics.push(diagnosticAtPath(
+          PROJECT_PROP_DIAGNOSTIC_CODES.DUPLICATE_VALUE,
+          '/system-security-plan/system-implementation/components',
+        ));
+      }
+      processIds.add(key);
+    }
+  }
   return Object.freeze({
     diagnostics: Object.freeze(diagnostics),
     writeAllowed: diagnostics.length === 0,

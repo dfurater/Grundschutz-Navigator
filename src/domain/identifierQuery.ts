@@ -10,6 +10,10 @@
 const UUID_PATTERN =
   /^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[45][0-9A-Fa-f]{3}-[89ABab][0-9A-Fa-f]{3}-[0-9A-Fa-f]{12}$/;
 
+export function isOscalUuid(value: string): boolean {
+  return UUID_PATTERN.test(value);
+}
+
 /** Segmentlängen einer UUID: 8-4-4-4-12. */
 const UUID_SEGMENT_LENGTHS = [8, 4, 4, 4, 12] as const;
 
