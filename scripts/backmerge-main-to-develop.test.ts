@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
-import { chmod, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { chmod, mkdir, writeFile } from 'node:fs/promises';
+import { join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -28,8 +28,12 @@ import {
   createFixtureRegistry,
   createGitHubStub,
   seedBothLines,
+  seedCherryPickScenario,
   silentLogger,
+  squashMergeOnMain,
 } from './branchLineFixtures.js';
+import { runCherryPickPrepare } from './cherry-pick-prepare.mjs';
+import { formatCherryPickMarker } from './cherry-pick-verify.mjs';
 
 const execFileAsync = promisify(execFile);
 const REGISTRY_PATH = 'src/domain/sourceRegistry.mjs';
@@ -1090,5 +1094,196 @@ describe('migrationContractHolds', () => {
       stubGit('M\tupstream-manifest.json\n', { files: [] }, v2Manifest('b'.repeat(40))),
       refs,
     )).resolves.toEqual({ holds: false, contract: null });
+  });
+});
+
+// Jeder Fall baut Vorbereitung, Squash und Übernahme in echten Repositories auf.
+describe('Klasse Cherry-Pick', { timeout: 30_000 }, () => {
+  /** Cherry-Pick-PR #9 vorbereiten und als Squash nach main mergen. */
+  async function mergedCherryPick() {
+    const fixture = await createFixture();
+    const { source } = await seedCherryPickScenario(fixture);
+    const prepareStub = createGitHubStub();
+    const { branch, headSha } = await runCherryPickPrepare({
+      cwd: fixture.work, git: fixture.git, github: prepareStub, sourceInput: source, issue: 'GSPP-448',
+      logger: silentLogger,
+    });
+    const [[call]] = prepareStub.createPullRequest.mock.calls as [[{ body: string }]];
+    const squashSha = await squashMergeOnMain(fixture, { headSha, number: 9 });
+    const pullRequest = { number: 9, body: call.body, headRefName: branch, mergeCommit: { oid: squashSha } };
+    return { fixture, source, squashSha, pullRequest };
+  }
+
+  const stubFor = (pullRequest: object, overrides: Record<string, unknown> = {}) => createGitHubStub({
+    listMergedCherryPickPullRequests: vi.fn(async () => [pullRequest]),
+    ...overrides,
+  });
+
+  it('stellt einen reinen Historien-PR, obwohl develop dieselbe Zeile später geändert hat, und endet danach idle', async () => {
+    const { fixture, squashSha, pullRequest } = await mergedCherryPick();
+
+    // Ohne die Klasse liefe M3 und sein Drei-Wege-Merge kollidierte.
+    const contentMerge = await fixture.git(['merge-tree', '--write-tree', 'origin/develop', squashSha], { allowFailure: true });
+    expect(contentMerge.code).toBe(1);
+
+    const github = stubFor(pullRequest);
+    const result = await runBackmerge({ cwd: fixture.work, git: fixture.git, github, logger: silentLogger });
+
+    expect(result).toMatchObject({ created: true, klasse: 'Cherry-Pick' });
+    const [[call]] = github.createPullRequest.mock.calls as [[{ head: string; body: string }]];
+    expect(call.head).toBe(BACKMERGE_BRANCH);
+    expect(call.body).toContain('Klasse **Cherry-Pick**');
+    expect(call.body).toContain('**Erforderliche Merge-Methode:** Merge-Commit');
+    expect(parseSourceMarkers(call.body)).toEqual([squashSha]);
+
+    const branchHead = `origin/${BACKMERGE_BRANCH}`;
+    expect(await fixture.run('rev-parse', `${branchHead}^{tree}`))
+      .toBe(await fixture.run('rev-parse', 'origin/develop^{tree}'));
+    expect(await fixture.run('diff', '--name-only', `origin/develop...${branchHead}`)).toBe('');
+    await expect(fixture.run('merge-base', '--is-ancestor', squashSha, branchHead)).resolves.toBe('');
+
+    // Merge als Merge-Commit; der Folgelauf findet nichts mehr zu tun.
+    await fixture.run('switch', '--quiet', '--force-create', 'develop', 'origin/develop');
+    await fixture.run('merge', '--quiet', '--no-ff', '-m', 'Merge #10', branchHead);
+    await fixture.run('push', '--quiet', 'origin', 'develop');
+    const tip = await fixture.run('rev-parse', branchHead);
+    await execFileAsync('git', ['-C', fixture.origin, 'update-ref', 'refs/pull/10/head', tip]);
+
+    const after = stubFor(pullRequest, {
+      listMergedPullRequests: vi.fn(async () => [{ number: 10, body: call.body }]),
+    });
+    await expect(runBackmerge({ cwd: fixture.work, git: fixture.git, github: after, logger: silentLogger }))
+      .resolves.toMatchObject({ created: false, klasse: 'idle' });
+    expect(after.createPullRequest).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['fehlender', () => 'kein Marker', /keine Marke/],
+    ['ungültiger', () => formatCherryPickMarker('e'.repeat(40)), /nicht erreichbar/],
+  ])('bricht bei %s Marke ohne Pull Request ab', async (_name, body, message) => {
+    const { fixture, pullRequest } = await mergedCherryPick();
+    const github = stubFor({ ...pullRequest, body: body() });
+    await expect(runBackmerge({ cwd: fixture.work, git: fixture.git, github, logger: silentLogger }))
+      .rejects.toThrow(message);
+    expect(github.createPullRequest).not.toHaveBeenCalled();
+  });
+
+  it('bricht ab, wenn eine markierte Quelle nicht von develop erreichbar ist', async () => {
+    const { fixture, pullRequest } = await mergedCherryPick();
+    await fixture.run('switch', '--quiet', '--detach', 'origin/main');
+    await writeFile(join(fixture.work, 'fremd.txt'), 'fremd\n', 'utf8');
+    const foreign = await fixture.commit('chore: fremd');
+    const github = stubFor({ ...pullRequest, body: formatCherryPickMarker(foreign) });
+    await expect(runBackmerge({ cwd: fixture.work, git: fixture.git, github, logger: silentLogger }))
+      .rejects.toThrow(/nicht erreichbar/);
+    expect(github.createPullRequest).not.toHaveBeenCalled();
+  });
+
+  it('stellt keinen PR, wenn der Squash-Baum nicht dem Baum der PR-Spitze entspricht', async () => {
+    const { fixture, pullRequest } = await mergedCherryPick();
+    await fixture.run('switch', '--quiet', '--detach', 'origin/main');
+    await writeFile(join(fixture.work, 'zusatz.txt'), 'zusatz\n', 'utf8');
+    const foreignSquash = await fixture.commit('Squash mit fremdem Inhalt');
+    await fixture.run('push', '--quiet', 'origin', `${foreignSquash}:refs/heads/main`);
+
+    const github = stubFor({ ...pullRequest, mergeCommit: { oid: foreignSquash } });
+    await expect(runBackmerge({ cwd: fixture.work, git: fixture.git, github, logger: silentLogger }))
+      .rejects.toThrow(/Baum der PR-Spitze/);
+    expect(github.createPullRequest).not.toHaveBeenCalled();
+  });
+
+  it('stellt keinen PR, wenn die PR-Spitze einen Commit über die Quellen hinaus trägt', async () => {
+    const { fixture, squashSha, pullRequest } = await mergedCherryPick();
+    // Ohne Guard gemergt: Die Spitze trägt einen zusätzlichen Commit.
+    await fixture.run('switch', '--quiet', '--detach', 'refs/remotes/origin/main');
+    await writeFile(join(fixture.work, 'zusatz.txt'), 'zusatz\n', 'utf8');
+    const tip = await fixture.commit('fix: Korrektur direkt im PR');
+    await fixture.run('push', '--quiet', '--force', 'origin', `${tip}:refs/pull/9/head`);
+    const tree = await fixture.run('rev-parse', `${tip}^{tree}`);
+    const squash = await fixture.run('commit-tree', tree, '-p', `${squashSha}^`, '-m', 'Squash #9');
+    await fixture.run('push', '--quiet', '--force', 'origin', `${squash}:refs/heads/main`);
+
+    const github = stubFor({ ...pullRequest, mergeCommit: { oid: squash } });
+    await expect(runBackmerge({ cwd: fixture.work, git: fixture.git, github, logger: silentLogger }))
+      .rejects.toThrow(/entspricht nicht den markierten Quellen/);
+    expect(github.createPullRequest).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['ohne Merge-Commit', () => ({ mergeCommit: null }), /nennt keinen Merge-Commit/],
+    ['ohne abrufbare PR-Spitze', () => ({ number: 77 }), /PR-Spitze ist nicht abrufbar/],
+  ])('bricht für einen Cherry-Pick-PR %s ohne Pull Request ab', async (_name, override, message) => {
+    const { fixture, pullRequest } = await mergedCherryPick();
+    const github = stubFor({ ...pullRequest, ...override() });
+    await expect(runBackmerge({ cwd: fixture.work, git: fixture.git, github, logger: silentLogger }))
+      .rejects.toThrow(message);
+    expect(github.createPullRequest).not.toHaveBeenCalled();
+  });
+
+  it('bricht ab, wenn der gemeldete Merge-Commit nicht auf main liegt', async () => {
+    const { fixture, pullRequest, squashSha } = await mergedCherryPick();
+    const tree = await fixture.run('rev-parse', `${squashSha}^{tree}`);
+    const elsewhere = await fixture.run('commit-tree', tree, '-p', `${squashSha}^`, '-m', 'Seitenlinie');
+    await fixture.run('push', '--quiet', 'origin', `${elsewhere}:refs/heads/seitenlinie`);
+    const github = stubFor({ ...pullRequest, mergeCommit: { oid: elsewhere } });
+    await expect(runBackmerge({ cwd: fixture.work, git: fixture.git, github, logger: silentLogger }))
+      .rejects.toThrow(/liegt nicht auf `origin\/main`/);
+    expect(github.createPullRequest).not.toHaveBeenCalled();
+  });
+
+  it('aktualisiert einen offenen Übernahme-PR statt einen zweiten zu stellen', async () => {
+    const { fixture, pullRequest } = await mergedCherryPick();
+    const github = stubFor(pullRequest, { findOpenPullRequest: vi.fn(async () => 12) });
+    await expect(runBackmerge({ cwd: fixture.work, git: fixture.git, github, logger: silentLogger }))
+      .resolves.toMatchObject({ created: true, klasse: 'Cherry-Pick' });
+    expect(github.createPullRequest).not.toHaveBeenCalled();
+    expect(github.updatePullRequest).toHaveBeenCalledWith(expect.objectContaining({ number: 12 }));
+  });
+
+  it('stellt den Historien-PR auch beim direkten CLI-Aufruf', async () => {
+    const { fixture, pullRequest } = await mergedCherryPick();
+    // `gh` als Stub: gemergte Cherry-Picks aus einer Datei, sonst leer.
+    const bin = join(fixture.root, 'bin');
+    await mkdir(bin);
+    await writeFile(join(fixture.root, 'cherry-picks.json'), JSON.stringify([pullRequest]), 'utf8');
+    await writeFile(join(bin, 'gh'), [
+      '#!/bin/sh',
+      'case "$*" in',
+      `  *"--state merged"*"--base main"*) cat "${join(fixture.root, 'cherry-picks.json')}" ;;`,
+      '  *"--state merged"*) echo "[]" ;;',
+      '  *"pr create"*) echo "https://example.invalid/pull/2" ;;',
+      'esac',
+    ].join('\n'), 'utf8');
+    await chmod(join(bin, 'gh'), 0o755);
+
+    const { stdout } = await execFileAsync(process.execPath, [resolve('scripts/backmerge-main-to-develop.mjs')], {
+      cwd: fixture.work,
+      env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, GITHUB_REPOSITORY: '' },
+      timeout: 60_000,
+    });
+    expect(stdout).toContain('Cherry-Pick-Pull-Request erstellt');
+  });
+
+  it.each(['hotfix.txt', 'Überblick.md'])('verwirft keinen noch nicht übernommenen main-Inhalt (%s) vor dem Squash', async (hotfixPath) => {
+    const fixture = await createFixture();
+    const { source } = await seedCherryPickScenario(fixture);
+    // Ein Hotfix landet auf main und ist noch nicht übernommen.
+    await fixture.run('switch', '--quiet', 'main');
+    await writeFile(join(fixture.work, hotfixPath), 'Hotfix\n', 'utf8');
+    await fixture.commit('fix: Hotfix auf main');
+    await fixture.run('push', '--quiet', 'origin', 'main');
+
+    const prepareStub = createGitHubStub();
+    const { branch, headSha } = await runCherryPickPrepare({
+      cwd: fixture.work, git: fixture.git, github: prepareStub, sourceInput: source, issue: 'GSPP-448',
+      logger: silentLogger,
+    });
+    const [[call]] = prepareStub.createPullRequest.mock.calls as [[{ body: string }]];
+    const squashSha = await squashMergeOnMain(fixture, { headSha, number: 9 });
+
+    const github = stubFor({ number: 9, body: call.body, headRefName: branch, mergeCommit: { oid: squashSha } });
+    await expect(runBackmerge({ cwd: fixture.work, git: fixture.git, github, logger: silentLogger }))
+      .rejects.toThrow(hotfixPath);
+    expect(github.createPullRequest).not.toHaveBeenCalled();
   });
 });
