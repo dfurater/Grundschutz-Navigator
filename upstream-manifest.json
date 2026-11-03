@@ -1,15 +1,15 @@
 {
   "schemaVersion": 2,
   "repository": "https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek",
-  "snapshotCommitSha": "160c177db6c84d3c621fff614559943b1de8c600",
+  "snapshotCommitSha": "c3f37859fdf302394de39e89252eb3e72a45953c",
   "files": [
     {
       "artifactKey": "catalog-gspp",
       "rootType": "catalog",
       "lifecycle": "supported",
       "path": "control_layer/Grundschutz++/Grundschutz++-resolved_catalog.json",
-      "gitBlobSha": "5c19f76f8e204e6e66b81a6e8ed5dec62cd934e8",
-      "contentSha256": "7c3acebd0867724e8fc2e6ce73f942642fcd37e533600e0952699f130a8bca90"
+      "gitBlobSha": "5556ec838d04ac702e98a1c5121671d582ae0349",
+      "contentSha256": "592410c513691c18631402db3982dda6a4530dd6f2960868a6999017d311fa28"
     },
     {
       "artifactKey": "catalog-source-gspp-methodik",
@@ -24,32 +24,32 @@
       "rootType": "profile",
       "lifecycle": "preview",
       "path": "control_layer/Grundschutz++/sources/profiles/Grundschutz++-profile.json",
-      "gitBlobSha": "3f009e0f90dbf7336e58b2938c193518e99f266e",
-      "contentSha256": "617fe086fa17b7c396e7bb86eb4db79789c29360020c1cd2d5a661021eaa8bb3"
+      "gitBlobSha": "2c248e6e10c7b404f98f1ad2de90fa24b8aaa69a",
+      "contentSha256": "c5b9a64a12f9c3c65897a6cf174b6c6b8db2da4d4efc1e4c6d07239a84e39ff9"
     },
     {
       "artifactKey": "control-layer-kernel-bsi-stand-der-technik-kernel-catalog",
       "rootType": "catalog",
       "lifecycle": "preview",
       "path": "control_layer/Kernel/BSI-Stand-der-Technik-Kernel-catalog.json",
-      "gitBlobSha": "c891a4d4fd7443c48322561b4c8ec59b31a58327",
-      "contentSha256": "d6e29ba16314dab55cb6ca304085620622962d588d5bd8cd4925c631bf3bd2b4"
+      "gitBlobSha": "b2c52d31e90c50c688802b935da4b916c9e3defb",
+      "contentSha256": "bdb3ba533146297f09f5059970d4c10c374fc8cc88ada18daf604444c1971489"
     },
     {
       "artifactKey": "catalog-lieferkette",
       "rootType": "catalog",
       "lifecycle": "supported",
       "path": "control_layer/Lieferkettensicherheit/Lieferkettensicherheit-resolved_catalog.json",
-      "gitBlobSha": "ab123eea3327b795a2df05dd89da0a6c8b650288",
-      "contentSha256": "a631685dd9d31bbb2dea50d538c16a4ddce9878b7fef02e3432944f39e7da2f4"
+      "gitBlobSha": "3c4abfb452fde3051c3767137746d33455d45a81",
+      "contentSha256": "83309a2ec997849ed41fb5528e094d02dd0be022cdfb31d4188fb3db0404ba11"
     },
     {
       "artifactKey": "profile-lieferkette",
       "rootType": "profile",
       "lifecycle": "preview",
       "path": "control_layer/Lieferkettensicherheit/sources/profiles/Lieferkettensicherheit-profile.json",
-      "gitBlobSha": "18a94bd3116229d99fcd7b94bb6a66d1189648d2",
-      "contentSha256": "f58b7c12d2652b42197bf85903f12bfac9bfc116676d33b92af42ad548454c01"
+      "gitBlobSha": "4e71fc642b3a4332545dbe8e68b7860c5139c03c",
+      "contentSha256": "d5072365bcfe86d3673a155329b92a6822c9e5dff8939b23af02d6d8af960f91"
     },
     {
       "artifactKey": "mapping-iso27001-annex-a-zu-gspp",
@@ -88,16 +88,16 @@
       "rootType": "catalog",
       "lifecycle": "supported",
       "path": "control_layer/WLAN/WLAN-resolved_catalog.json",
-      "gitBlobSha": "32aaebdfe4db3ac5a821884fff08faf3f237f426",
-      "contentSha256": "2ad0e3692c81e8573281acb06f6909bab7a10deccc173aa4be1cd9156c30ccf4"
+      "gitBlobSha": "9a152db14100ad7e0aa3168268ab5f840fb0cc22",
+      "contentSha256": "7fb81d4a48e490cd8d6dfc0c23dae5aacdb0f9be6cae496b9da756d2e61084bc"
     },
     {
       "artifactKey": "profile-wlan",
       "rootType": "profile",
       "lifecycle": "preview",
       "path": "control_layer/WLAN/sources/profiles/WLAN-profile.json",
-      "gitBlobSha": "0364733106df91ea2c5a634bbcabbeeaaec11476",
-      "contentSha256": "862c789079a6882a0fdae155a5e378c19d8a98a70465ec2403d2422bf1527261"
+      "gitBlobSha": "f68a4c0ad46eb8fd3e6b15545d5b36f7badd5f97",
+      "contentSha256": "9d041ec24fb52e2c182afe32d67a1005b6f1d1b4daa1e5dbc350211d4852eb04"
     },
     {
       "artifactKey": "namespaces-bsi",
@@ -252,5 +252,5 @@
       "contentSha256": "08c7ab6bb442a87eba4e407d272fecd179bc61c47c2419843d7f4cfcd4077235"
     }
   ],
-  "signatureSha256": "3a9fa62892ce339830efa3802e495fe63b3017f2deaa776412402764db0d44d2"
+  "signatureSha256": "2395aed0aeafe1421396522c7e2a243f6f8d32da76f49ea8379b8e04c9658f9b"
 }
