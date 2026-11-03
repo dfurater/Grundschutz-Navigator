@@ -38,7 +38,7 @@ import {
 } from './release-prepare.mjs';
 
 const SHA_PATTERN = /^[0-9a-f]{40}$/;
-const ISSUE_PATTERN = /^[A-Z][A-Z0-9]*-[1-9][0-9]*$/;
+const ISSUE_PATTERN = /^[A-Z][A-Z\d]*-[1-9]\d*$/;
 
 export class CherryPickError extends Error {
   constructor(message) {
@@ -70,12 +70,21 @@ export function cherryPickBranchName(issue, firstSource) {
   return `${CHERRY_PICK_BRANCH_PREFIX}${issue.toLowerCase()}-${firstSource.slice(0, 12)}`;
 }
 
-async function patchIdOf(git, sha) {
-  const { stdout: patch } = await git([
+/**
+ * Der Patch eines Commits ohne `index`-Zeilen und ohne die Zeilennummern und
+ * Funktionskontexte der Hunk-Köpfe. Jedes Zeichen der geänderten und der
+ * Kontextzeilen bleibt erhalten, auch Leerraum — `git patch-id --stable`
+ * verwirft Leerraum innerhalb von Zeilen und ließe `"A B"` statt `"AB"` durch.
+ */
+async function normalizedPatchOf(git, sha) {
+  const { stdout } = await git([
     'diff-tree', '--patch', '--binary', '--no-color', '--no-ext-diff', '--no-textconv', `${sha}^`, sha,
   ]);
-  const { stdout } = await git(['patch-id', '--stable'], { input: patch });
-  return stdout.trim().split(/\s+/)[0] ?? '';
+  return stdout
+    .split('\n')
+    .filter((line) => !line.startsWith('index '))
+    .map((line) => (line.startsWith('@@ ') ? '@@' : line))
+    .join('\n');
 }
 
 async function parentsOf(git, sha) {
@@ -115,9 +124,8 @@ async function verifySources(git, sources) {
  *   Eltern und trägt exakt den Baum, den `git merge-tree --write-tree` ohne
  *   Konflikt aus ihnen errechnet; er bringt also keinen eigenen Inhalt mit.
  * - Die Nicht-Merge-Commits in `origin/main..<head>` entsprechen den Quellen
- *   in Anzahl und Reihenfolge, je Paar mit gleicher `git patch-id --stable`.
- *   Die patch-id schließt Kontextzeilen ein; ein Pick mit anderem Kontext als
- *   die Quelle besteht deshalb nicht.
+ *   in Anzahl und Reihenfolge, je Paar mit gleichem `normalizedPatchOf`. Ein
+ *   Pick mit anderem Kontext als die Quelle besteht deshalb nicht.
  */
 export async function verifyCherryPickHead(git, { sources, headSha, baseRef = RELEASE_SOURCE_REF }) {
   await verifySources(git, sources);
@@ -151,11 +159,11 @@ export async function verifyCherryPickHead(git, { sources, headSha, baseRef = RE
   }
   for (const [index, pick] of picks.entries()) {
     const source = sources[index];
-    const [pickId, sourceId] = [await patchIdOf(git, pick), await patchIdOf(git, source)];
-    if (!SHA_PATTERN.test(pickId) || pickId !== sourceId) {
+    const pickPatch = await normalizedPatchOf(git, pick);
+    if (pickPatch.length === 0 || pickPatch !== await normalizedPatchOf(git, source)) {
       throw new CherryPickError(
-        `Der Commit ${pick} entspricht nicht der Quelle ${source} (patch-id ${pickId || '(leer)'} `
-        + `statt ${sourceId}).`,
+        `Der Commit ${pick} entspricht nicht der Quelle ${source}: Der Patch weicht ab `
+        + '(geänderte Zeilen, Kontextzeilen oder Leerraum).',
       );
     }
   }
@@ -208,9 +216,9 @@ export function buildCherryPickPullRequestBody({ issue, branch, sourceSha, sourc
     '## Validierung',
     '',
     `\`catalog-sync-guard\` prüft bei jedem Head-Ereignis: jede Quelle liegt auf \`${RELEASE_INTEGRATION_REF}\`, `
-    + `\`${RELEASE_SOURCE_REF}\` ist Vorfahr des Heads, jeder Commit über \`${RELEASE_SOURCE_REF}\` hat dieselbe `
-    + '`git patch-id --stable` wie seine Quelle in Markenreihenfolge, und ein „Update branch" ist ein '
-    + 'konfliktfreier Merge ohne eigenen Inhalt.',
+    + `\`${RELEASE_SOURCE_REF}\` ist Vorfahr des Heads, jeder Commit über \`${RELEASE_SOURCE_REF}\` trägt in `
+    + 'Markenreihenfolge denselben Patch wie seine Quelle (ohne Zeilennummern und `index`-Zeilen), und ein '
+    + '„Update branch" ist ein konfliktfreier Merge ohne eigenen Inhalt.',
     '',
     formatDocumentationSection({ changedPaths, noImpactReason: CHERRY_PICK_NO_DOCUMENTATION_IMPACT_REASON }),
     '',
@@ -282,7 +290,7 @@ async function runCli() {
     });
     console.log(
       result.checked
-        ? `Cherry-Pick-Pull-Request geprüft: ${result.sources.length} Quelle(n) mit gleicher patch-id.`
+        ? `Cherry-Pick-Pull-Request geprüft: ${result.sources.length} Quelle(n) mit gleichem Patch.`
         : 'Kein Cherry-Pick-Pull-Request; Prüfung nicht einschlägig.',
     );
     return;

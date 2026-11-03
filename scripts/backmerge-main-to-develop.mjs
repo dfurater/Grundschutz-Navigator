@@ -635,6 +635,7 @@ export async function migrationContractHolds(git, {
   const diffOutput = await gitText(git, [
     'diff',
     '--name-status',
+    '-z',
     '--no-renames',
     integrationRef,
     resultRef,
@@ -844,15 +845,6 @@ async function findCherryPickDefect(git, { pullRequest, squashSha }) {
   if (markers.length === 0) {
     return 'Der PR-Body trägt keine Marke `<!-- cherry-pick-source: <sha> -->`.';
   }
-  if (new Set(markers).size !== markers.length) {
-    return 'Der PR-Body trägt eine Cherry-Pick-Marke mehrfach.';
-  }
-  for (const marker of markers) {
-    const onIntegration = await gitSucceeds(git, ['merge-base', '--is-ancestor', marker, INTEGRATION_REF]);
-    if (!onIntegration) {
-      return `Die markierte Quelle ${marker} ist von \`${INTEGRATION_REF}\` nicht erreichbar.`;
-    }
-  }
   if (!await gitSucceeds(git, ['merge-base', '--is-ancestor', squashSha, SOURCE_REF])) {
     return `Der Merge-Commit ${squashSha} liegt nicht auf \`${SOURCE_REF}\`.`;
   }
@@ -867,6 +859,20 @@ async function findCherryPickDefect(git, { pullRequest, squashSha }) {
   if (squashTree !== tipTree.stdout.trim()) {
     return `Der Baum des Merge-Commits ${squashSha} entspricht nicht dem Baum der PR-Spitze; `
       + 'der PR wurde nicht als Squash seines geprüften Heads gemergt.';
+  }
+
+  // Die Guard-Prüfung noch einmal gegen die PR-Spitze: Ein PR, der ohne sie
+  // gemergt wurde, trüge sonst Inhalt nach `main`, den `-s ours` verwirft.
+  // Dynamischer Import, weil cherry-pick-prepare.mjs dieses Modul importiert.
+  const { verifyCherryPickHead } = await import('./cherry-pick-prepare.mjs');
+  try {
+    await verifyCherryPickHead(git, {
+      sources: markers,
+      headSha: await gitText(git, ['rev-parse', `${prTipRef}^{commit}`]),
+      baseRef: `${squashSha}^1`,
+    });
+  } catch (error) {
+    return `Die PR-Spitze entspricht nicht den markierten Quellen: ${error.message}`;
   }
   return null;
 }
@@ -927,7 +933,7 @@ async function runCherryPickAdoption(git, { github, logger, pending, sourceSha, 
     const before = `${entry.sha}^1`;
     const base = await gitText(git, ['merge-base', before, 'HEAD']);
     const paths = parseNameStatusDiff(
-      await gitText(git, ['diff', '--name-status', '--no-renames', base, before, '--']),
+      await gitText(git, ['diff', '--name-status', '-z', '--no-renames', base, before, '--']),
     ).map((change) => change.path);
     if (paths.length > 0
       && !await sourceChangesAlreadyOnIntegration(git, { paths, sourceRef: before, integrationRef: 'HEAD' })) {
@@ -1031,7 +1037,7 @@ async function resolveAncestryState(git, { github, logger }) {
 async function determineImportPlan(git, { logger, sourceSha, integrationSha }) {
   const mergeBase = await gitText(git, ['merge-base', SOURCE_REF, INTEGRATION_REF]);
   const diffOutput = await gitText(git, [
-    'diff', '--name-status', '--no-renames', mergeBase, SOURCE_REF, '--',
+    'diff', '--name-status', '-z', '--no-renames', mergeBase, SOURCE_REF, '--',
   ]);
   const changedPaths = parseNameStatusDiff(diffOutput).map((entry) => entry.path);
 

@@ -1191,12 +1191,29 @@ describe('Klasse Cherry-Pick', () => {
     expect(github.createPullRequest).not.toHaveBeenCalled();
   });
 
-  it('verwirft keinen noch nicht übernommenen main-Inhalt vor dem Squash', async () => {
+  it('stellt keinen PR, wenn die PR-Spitze einen Commit über die Quellen hinaus trägt', async () => {
+    const { fixture, squashSha, pullRequest } = await mergedCherryPick();
+    // Ohne Guard gemergt: Die Spitze trägt einen zusätzlichen Commit.
+    await fixture.run('switch', '--quiet', '--detach', 'refs/remotes/origin/main');
+    await writeFile(join(fixture.work, 'zusatz.txt'), 'zusatz\n', 'utf8');
+    const tip = await fixture.commit('fix: Korrektur direkt im PR');
+    await fixture.run('push', '--quiet', '--force', 'origin', `${tip}:refs/pull/9/head`);
+    const tree = await fixture.run('rev-parse', `${tip}^{tree}`);
+    const squash = await fixture.run('commit-tree', tree, '-p', `${squashSha}^`, '-m', 'Squash #9');
+    await fixture.run('push', '--quiet', '--force', 'origin', `${squash}:refs/heads/main`);
+
+    const github = stubFor({ ...pullRequest, mergeCommit: { oid: squash } });
+    await expect(runBackmerge({ cwd: fixture.work, git: fixture.git, github, logger: silentLogger }))
+      .rejects.toThrow(/entspricht nicht den markierten Quellen/);
+    expect(github.createPullRequest).not.toHaveBeenCalled();
+  });
+
+  it.each(['hotfix.txt', 'Überblick.md'])('verwirft keinen noch nicht übernommenen main-Inhalt (%s) vor dem Squash', async (hotfixPath) => {
     const fixture = await createFixture();
     const { source } = await seedCherryPickScenario(fixture);
     // Ein Hotfix landet auf main und ist noch nicht übernommen.
     await fixture.run('switch', '--quiet', 'main');
-    await writeFile(join(fixture.work, 'hotfix.txt'), 'Hotfix\n', 'utf8');
+    await writeFile(join(fixture.work, hotfixPath), 'Hotfix\n', 'utf8');
     await fixture.commit('fix: Hotfix auf main');
     await fixture.run('push', '--quiet', 'origin', 'main');
 
@@ -1210,7 +1227,7 @@ describe('Klasse Cherry-Pick', () => {
 
     const github = stubFor({ number: 9, body: call.body, headRefName: branch, mergeCommit: { oid: squashSha } });
     await expect(runBackmerge({ cwd: fixture.work, git: fixture.git, github, logger: silentLogger }))
-      .rejects.toThrow(/hotfix\.txt/);
+      .rejects.toThrow(hotfixPath);
     expect(github.createPullRequest).not.toHaveBeenCalled();
   });
 });

@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { formatCherryPickMarker, parseCherryPickMarkers } from './backmerge-main-to-develop.mjs';
 import {
   CherryPickError,
@@ -120,6 +120,17 @@ describe('runCherryPickPrepare', () => {
     expect(parseCherryPickMarkers(call.body)).toEqual([source, later]);
   });
 
+  it('aktualisiert einen offenen Cherry-Pick-PR statt einen zweiten zu stellen', async () => {
+    const { fixture, source } = await createScenario();
+    const github = createGitHubStub({ findOpenPullRequest: vi.fn(async () => 41) });
+    const result = await runCherryPickPrepare({
+      cwd: fixture.work, git: fixture.git, github, sourceInput: source, issue: 'GSPP-448', logger: silentLogger,
+    });
+    expect(result.pullRequest).toBe(41);
+    expect(github.createPullRequest).not.toHaveBeenCalled();
+    expect(github.updatePullRequest).toHaveBeenCalledWith(expect.objectContaining({ number: 41, base: 'main' }));
+  });
+
   it('lehnt eine Quelle ab, die nicht auf develop liegt', async () => {
     const { fixture } = await createScenario();
     const foreign = await commitOnLine(fixture, 'main', { path: 'fremd.txt', contents: 'x\n', message: 'chore: fremd' });
@@ -165,7 +176,7 @@ describe('verifyCherryPickPullRequest', () => {
     await writeFile(join(fixture.work, CHERRY_PICK_PATH), 'eins\nzwei\nDREI\nvier\nfünf und mehr\n', 'utf8');
     await fixture.run('commit', '--quiet', '--all', '--amend', '--no-edit');
     const headSha = await fixture.run('rev-parse', 'HEAD');
-    await expect(verify(fixture, { headSha, body: markers([source]) })).rejects.toThrow(/patch-id/);
+    await expect(verify(fixture, { headSha, body: markers([source]) })).rejects.toThrow(/Patch weicht ab/);
   });
 
   it('scheitert bei gleicher Änderung mit abweichendem Kontext', async () => {
@@ -175,9 +186,41 @@ describe('verifyCherryPickPullRequest', () => {
       path: CHERRY_PICK_PATH, contents: 'EINS\nzwei\ndrei\nvier\nfünf\n', message: 'fix: Kontextzeile auf main',
     });
     const headSha = await pickOntoMain(fixture, [source]);
-    await expect(verify(fixture, { headSha, body: markers([source]) })).rejects.toThrow(/patch-id/);
+    await expect(verify(fixture, { headSha, body: markers([source]) })).rejects.toThrow(/Patch weicht ab/);
     // Der Vorbereitungslauf stellt in diesem Fall keinen PR.
-    await expect(prepare(fixture, [source])).rejects.toThrow(/patch-id/);
+    await expect(prepare(fixture, [source])).rejects.toThrow(/Patch weicht ab/);
+  });
+
+  it('scheitert an Leerraum innerhalb einer geänderten Zeile', async () => {
+    const fixture = await createBranchLineFixture(fixtures);
+    await seedCherryPickScenario(fixture);
+    const source = await commitOnLine(fixture, 'develop', {
+      path: 'wert.ts', contents: 'export const wert = "A B";\n', message: 'feat: Wert',
+    });
+    await fixture.run('switch', '--quiet', '--detach', 'origin/main');
+    await writeFile(join(fixture.work, 'wert.ts'), 'export const wert = "AB";\n', 'utf8');
+    const headSha = await fixture.commit('feat: Wert ohne Leerzeichen');
+    await expect(verify(fixture, { headSha, body: markers([source]) })).rejects.toThrow(/Patch weicht ab/);
+  });
+
+  it('scheitert an einem Merge-Commit als Quelle', async () => {
+    const { fixture, source } = await createScenario();
+    await fixture.run('switch', '--quiet', 'develop');
+    await fixture.run('switch', '--quiet', '--create', 'seitenzweig', `${source}^`);
+    await writeFile(join(fixture.work, 'seite.txt'), 'seite\n', 'utf8');
+    await fixture.commit('feat: Seitenzweig');
+    await fixture.run('switch', '--quiet', 'develop');
+    await fixture.run('merge', '--quiet', '--no-ff', '-m', 'Merge Seitenzweig', 'seitenzweig');
+    await fixture.run('push', '--quiet', 'origin', 'develop');
+    const mergeSha = await fixture.run('rev-parse', 'HEAD');
+    await expect(prepare(fixture, [mergeSha])).rejects.toThrow(/Merge- oder Wurzel-Commit/);
+  });
+
+  it('scheitert, wenn origin/main kein Vorfahr des Heads ist', async () => {
+    const { fixture, source } = await createScenario();
+    const headSha = await pickOntoMain(fixture, [source]);
+    await commitOnLine(fixture, 'main', { path: 'sync.txt', contents: 'sync\n', message: 'chore(ci): Katalog-Sync' });
+    await expect(verify(fixture, { headSha, body: markers([source]) })).rejects.toThrow(/kein Vorfahr des Heads/);
   });
 
   it('scheitert bei einem zusätzlichen Commit', async () => {
