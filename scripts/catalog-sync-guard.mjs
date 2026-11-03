@@ -179,6 +179,23 @@ export function parseNameStatusDiff(diffOutput) {
     return [];
   }
 
+  // `-z`-Form: Status und Pfad NUL-getrennt, Pfade unzitiert. Ohne `-z`
+  // zitiert Git Pfade mit Nicht-ASCII-Zeichen, und ein zitierter Pfad
+  // bezeichnet keine Datei im Baum.
+  if (diffOutput.includes('\0')) {
+    const fields = diffOutput.split('\0');
+    if (fields.at(-1) === '') fields.pop();
+    const entries = [];
+    for (let index = 0; index < fields.length; index += 2) {
+      const [status, path] = [fields[index], fields[index + 1]];
+      if (!status || !path) {
+        throw new Error('PR diff contains an unparseable path entry');
+      }
+      entries.push({ status, path });
+    }
+    return entries;
+  }
+
   return diffOutput
     .split('\n')
     .filter((line) => line.length > 0)
@@ -228,7 +245,7 @@ export async function getPullRequestDiffEntries({
 
   const { stdout } = await execFile(
     'git',
-    ['diff', '--name-status', '--no-renames', `${baseSha}...${headSha}`, '--'],
+    ['diff', '--name-status', '-z', '--no-renames', `${baseSha}...${headSha}`, '--'],
     { encoding: 'utf8', maxBuffer: 1024 * 1024 },
   );
   return parseNameStatusDiff(stdout);
