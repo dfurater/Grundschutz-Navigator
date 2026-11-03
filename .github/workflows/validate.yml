@@ -263,7 +263,7 @@ jobs:
       # `secrets-outside-env` feuert unter pedantic nie — verifiziert
       # 2026-09-19 per Injektionstest (TEST_SECRET blieb unter pedantic grün,
       # schlägt unter auditor mit Zeilen-Config an). Der Auditor-Delta
-      # gegenüber pedantic sind exakt die 7 Stellen in `.github/zizmor.yml`;
+      # gegenüber pedantic sind exakt die 8 Stellen in `.github/zizmor.yml`;
       # mit den Zeilen-Ignores ist auditor grün und meldet jedes neue Secret.
       # Plain-Output (kein SARIF — SARIF exitt immer 0 und taugt nicht als
       # Blockiergate): Befunde lassen `validate` fehlschlagen, Pflichtcheck.

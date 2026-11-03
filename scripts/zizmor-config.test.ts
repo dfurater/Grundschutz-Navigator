@@ -99,7 +99,7 @@ describe('zizmor secrets-outside-env anchors', () => {
   it('reads the anchors from the configuration', () => {
     // Ohne diese Zusicherung bestünde der Guard, sobald sich das Format der
     // Konfiguration ändert und das Muster nichts mehr trifft.
-    expect(anchors).toHaveLength(7);
+    expect(anchors).toHaveLength(8);
   });
 
   it.each(anchors)('points at a real secret reference in $file:$line:$column', (anchor) => {

@@ -90,6 +90,28 @@ const SHA_PATTERN = /^[0-9a-f]{40}$/;
  */
 const SOURCE_MARKER_PATTERN = /<!--\s*backmerge-source:\s*([0-9a-f]{40})\s*-->/g;
 
+/** Namensraum der Cherry-Pick-PRs nach `main` (`scripts/cherry-pick-prepare.mjs`). */
+export const CHERRY_PICK_BRANCH_PREFIX = 'cherry-pick/';
+
+/**
+ * Je übernommenem `develop`-Commit eine Marke, in `develop`-Reihenfolge. Guard
+ * und Übernahme-Lauf lesen die Quellen aus dem Body, nicht aus den
+ * Commit-Nachrichten: `-x` schreibt die Quelle nur bei konfliktfreien Picks.
+ */
+const CHERRY_PICK_MARKER_PATTERN = /<!--\s*cherry-pick-source:\s*([0-9a-f]{40})\s*-->/g;
+
+export function formatCherryPickMarker(sha) {
+  if (!SHA_PATTERN.test(sha)) {
+    throw new BackmergeError(`Die Cherry-Pick-Marke verlangt einen 40-stelligen Kleinbuchstaben-SHA: ${sha}`);
+  }
+  return `<!-- cherry-pick-source: ${sha} -->`;
+}
+
+export function parseCherryPickMarkers(body) {
+  if (typeof body !== 'string') return [];
+  return [...body.matchAll(CHERRY_PICK_MARKER_PATTERN)].map((match) => match[1]);
+}
+
 const CONTRACT_START = '<!-- documentation-contract:start -->';
 const CONTRACT_END = '<!-- documentation-contract:end -->';
 const FILES_START = '<!-- documentation-files:start -->';
@@ -682,6 +704,20 @@ export function createGitHubClient({ repository, run = runProcess } = {}) {
       ]);
       return JSON.parse(stdout);
     },
+    /** Gemergte PRs nach `main`; `gh pr list --head` kennt keinen Präfixfilter. */
+    async listMergedCherryPickPullRequests() {
+      const { stdout } = await run('gh', [
+        'pr', 'list',
+        ...repositoryArgs,
+        '--state', 'merged',
+        '--base', 'main',
+        '--limit', String(MERGED_PR_LOOKBACK),
+        '--json', 'number,body,headRefName,mergeCommit',
+      ]);
+      return JSON.parse(stdout).filter(
+        (pullRequest) => pullRequest.headRefName.startsWith(CHERRY_PICK_BRANCH_PREFIX),
+      );
+    },
     async findOpenPullRequest(headBranch, base = CATALOG_IMPORT_BASE_REF) {
       const { stdout } = await run('gh', [
         'pr', 'list',
@@ -800,6 +836,147 @@ async function runAncestryRepair(git, { github, logger, missing, sourceSha, inte
     + 'Inhaltsübernahme folgt im Lauf nach diesem Merge.\n'
     + `Zustand ${SOURCE_REF}=${sourceSha}, Zustand ${INTEGRATION_REF}=${integrationSha}.`,
   );
+}
+
+/** Liefert den Grund, warum ein gemergter Cherry-Pick-PR nichts beweist, oder `null`. */
+async function findCherryPickDefect(git, { pullRequest, squashSha }) {
+  const markers = parseCherryPickMarkers(pullRequest.body);
+  if (markers.length === 0) {
+    return 'Der PR-Body trägt keine Marke `<!-- cherry-pick-source: <sha> -->`.';
+  }
+  if (new Set(markers).size !== markers.length) {
+    return 'Der PR-Body trägt eine Cherry-Pick-Marke mehrfach.';
+  }
+  for (const marker of markers) {
+    const onIntegration = await gitSucceeds(git, ['merge-base', '--is-ancestor', marker, INTEGRATION_REF]);
+    if (!onIntegration) {
+      return `Die markierte Quelle ${marker} ist von \`${INTEGRATION_REF}\` nicht erreichbar.`;
+    }
+  }
+  if (!await gitSucceeds(git, ['merge-base', '--is-ancestor', squashSha, SOURCE_REF])) {
+    return `Der Merge-Commit ${squashSha} liegt nicht auf \`${SOURCE_REF}\`.`;
+  }
+
+  const prTipRef = `refs/backmerge-pr/${pullRequest.number}`;
+  const tipTree = await git(['rev-parse', '--verify', '--quiet', `${prTipRef}^{tree}`], { allowFailure: true });
+  if (tipTree.code !== 0) {
+    return `Die PR-Spitze ist nicht abrufbar (${prTipRef}).`;
+  }
+  // Squash heißt: der Baum auf `main` ist der geprüfte Baum des PR-Heads.
+  const squashTree = await gitText(git, ['rev-parse', `${squashSha}^{tree}`]);
+  if (squashTree !== tipTree.stdout.trim()) {
+    return `Der Baum des Merge-Commits ${squashSha} entspricht nicht dem Baum der PR-Spitze; `
+      + 'der PR wurde nicht als Squash seines geprüften Heads gemergt.';
+  }
+  return null;
+}
+
+/**
+ * Gemergte Cherry-Pick-PRs nach `main`, deren Merge-Commit noch nicht von
+ * `develop` erreichbar ist, in `main`-Reihenfolge. Fail-closed: Ein solcher PR
+ * ohne gültige Marke, mit unerreichbarer Quelle oder mit einem Squash-Baum
+ * ungleich seiner Spitze beendet den Lauf ohne Pull Request.
+ */
+export async function resolvePendingCherryPicks(git, { github }) {
+  const merged = await github.listMergedCherryPickPullRequests();
+  const pending = [];
+  for (const pullRequest of merged) {
+    const squashSha = pullRequest.mergeCommit?.oid ?? '';
+    if (!SHA_PATTERN.test(squashSha)) {
+      throw new BackmergeError(`Cherry-Pick-PR #${pullRequest.number} nennt keinen Merge-Commit.`);
+    }
+    if (!await gitSucceeds(git, ['merge-base', '--is-ancestor', squashSha, INTEGRATION_REF])) {
+      pending.push({ pullRequest, number: pullRequest.number, sha: squashSha });
+    }
+  }
+  if (pending.length === 0) return [];
+
+  await fetchPullRequestTips(git, pending.map((entry) => entry.pullRequest));
+  const invalid = [];
+  for (const entry of pending) {
+    const defect = await findCherryPickDefect(git, { pullRequest: entry.pullRequest, squashSha: entry.sha });
+    if (defect) invalid.push(`- Pull Request #${entry.number}: ${defect}`);
+  }
+  if (invalid.length > 0) {
+    throw new BackmergeError(
+      'Mindestens ein gemergter Cherry-Pick-PR ist nicht überprüfbar; es entsteht kein Pull Request:\n'
+      + invalid.join('\n'),
+    );
+  }
+
+  const order = (await gitText(git, ['rev-list', '--reverse', '--topo-order', SOURCE_REF, '--not', INTEGRATION_REF]))
+    .split('\n');
+  return pending
+    .map(({ number, sha }) => ({ number, sha }))
+    .sort((a, b) => order.indexOf(a.sha) - order.indexOf(b.sha));
+}
+
+/**
+ * Verbindet gemergte Cherry-Pick-PRs mit `develop`, ohne Inhalt zu tragen.
+ *
+ * Die Quellen liegen auf `develop` bereits, oft schon mit späteren Änderungen
+ * derselben Zeilen; ein Inhalts-Merge des Squash-Commits kollidierte dann.
+ * `-s ours` behält den `develop`-Baum und verwirft die andere Seite vollständig,
+ * auch alles, was `main` vor dem Squash trug. Deshalb muss jeder von `main` vor
+ * dem Squash bewegte Pfad auf dem Branch schon byte-gleich vorliegen.
+ */
+async function runCherryPickAdoption(git, { github, logger, pending, sourceSha, integrationSha }) {
+  await git(['switch', '--force-create', BACKMERGE_BRANCH, INTEGRATION_REF]);
+
+  for (const entry of pending) {
+    const before = `${entry.sha}^1`;
+    const base = await gitText(git, ['merge-base', before, 'HEAD']);
+    const paths = parseNameStatusDiff(
+      await gitText(git, ['diff', '--name-status', '--no-renames', base, before, '--']),
+    ).map((change) => change.path);
+    if (paths.length > 0
+      && !await sourceChangesAlreadyOnIntegration(git, { paths, sourceRef: before, integrationRef: 'HEAD' })) {
+      throw new BackmergeError(
+        `Vor dem Cherry-Pick-PR #${entry.number} trägt \`${SOURCE_REF}\` Inhalt, den \`${INTEGRATION_REF}\` `
+        + `noch nicht hat (${paths.join(', ')}). Ein \`-s ours\`-Merge verwürfe ihn; es entsteht kein `
+        + 'Pull Request. Dieser Inhalt muss zuerst übernommen werden.',
+      );
+    }
+    await git([
+      'merge', '-s', 'ours', '--no-ff',
+      '-m', `chore(sync): Cherry-Pick #${entry.number} mit develop verbinden`, entry.sha,
+    ]);
+  }
+
+  const resultTree = await gitText(git, ['rev-parse', 'HEAD^{tree}']);
+  const integrationTree = await gitText(git, ['rev-parse', `${INTEGRATION_REF}^{tree}`]);
+  if (resultTree !== integrationTree) {
+    throw new BackmergeError(
+      `Der Cherry-Pick-Merge verändert den \`develop\`-Baum (${resultTree} statt ${integrationTree}). `
+      + 'Es entsteht kein Pull Request.',
+    );
+  }
+
+  await pushBranchWithLease(git, BACKMERGE_BRANCH);
+
+  const title = 'chore(sync): Cherry-Picks auf main mit develop verbinden';
+  const body = buildPullRequestBody({
+    klasse: 'Cherry-Pick',
+    reason:
+      'Gemergte Cherry-Pick-PRs nach `main` tragen ausschließlich Commits, die auf `develop` '
+      + 'bereits liegen. Dieser Pull Request verbindet ihre Historie und ändert keine Datei: '
+      + pending.map((entry) => `#${entry.number}`).join(', ') + '.',
+    sourceSha,
+    changedPaths: [],
+    markerShas: pending.map((entry) => entry.sha),
+    mergeMethod: 'Merge-Commit',
+  });
+
+  const existing = await github.findOpenPullRequest(BACKMERGE_BRANCH);
+  if (existing) {
+    await github.updatePullRequest({ number: existing, title, body });
+    logger.log(`Cherry-Pick-Pull-Request #${existing} aktualisiert.`);
+  } else {
+    const url = await github.createPullRequest({ head: BACKMERGE_BRANCH, title, body });
+    logger.log(`Cherry-Pick-Pull-Request erstellt: ${url}`);
+  }
+  logger.log(`Zustand ${SOURCE_REF}=${sourceSha}, Zustand ${INTEGRATION_REF}=${integrationSha}.`);
+  return { created: true, klasse: 'Cherry-Pick', repairRequired: false };
 }
 
 /**
@@ -991,6 +1168,15 @@ export async function runBackmerge({
   // Merge der Reparatur, den der `push`-Trigger auf `develop` sofort auslöst.
   if (repairRequired) {
     return runAncestryRepair(git, { github, logger, missing, sourceSha, integrationSha });
+  }
+
+  // Vor M1–M3: Die Pfadmenge eines gemergten Cherry-Picks erschiene sonst als
+  // M3, und dessen Drei-Wege-Merge kollidiert mit späteren develop-Änderungen.
+  const pendingCherryPicks = await resolvePendingCherryPicks(git, { github });
+  if (pendingCherryPicks.length > 0) {
+    return runCherryPickAdoption(git, {
+      github, logger, pending: pendingCherryPicks, sourceSha, integrationSha,
+    });
   }
 
   const { klasse, reason, changedPaths } = await determineImportPlan(git, {
