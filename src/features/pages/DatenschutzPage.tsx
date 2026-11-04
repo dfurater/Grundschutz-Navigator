@@ -94,8 +94,8 @@ export function DatenschutzPage() {
           Anwendung nach Art. 6 Abs. 1 lit. f DSGVO.
         </p>
         <p className="catalog-prose-text text-sm text-slate-700 leading-relaxed">
-          GitHub, Inc. hat seinen Sitz in den USA; die Auslieferung erfolgt
-          über Server-Infrastruktur außerhalb der Europäischen Union. GitHub
+          GitHub, Inc. hat seinen Sitz in den USA; die Auslieferung kann auch
+          über Server-Infrastruktur außerhalb der Europäischen Union erfolgen. GitHub
           ist unter dem EU-U.S. Data Privacy Framework zertifiziert. Grundlage
           der Übermittlung ist damit der Angemessenheitsbeschluss der
           Europäischen Kommission vom 10. Juli 2023. Den Zertifizierungseintrag
@@ -111,10 +111,45 @@ export function DatenschutzPage() {
           einsehen.
         </p>
         <p className="catalog-prose-text text-sm text-slate-700 leading-relaxed">
-          Auf die von GitHub erhobenen Verbindungsdaten haben wir keinen
-          Zugriff. Wir führen selbst keine Zugriffsprotokolle und speichern
-          keine Verbindungsdaten. Für deren Speicherdauer gelten die Angaben im
-          GitHub Privacy Statement.
+          Wir führen selbst keine Zugriffsprotokolle. Auf die von GitHub
+          erhobenen Verbindungsdaten haben wir keinen Zugriff; für deren
+          Speicherdauer gelten die Angaben im GitHub Privacy Statement.
+        </p>
+        <p className="catalog-prose-text text-sm text-slate-700 leading-relaxed">
+          Die Namensauflösung der Domain gspp-navigator.furater.com erfolgt über
+          die Nameserver der Cloudflare, Inc., 101 Townsend St., San Francisco,
+          CA 94107, USA. Beim Aufruf der Anwendung fragt ein DNS-Resolver, in
+          der Regel der Ihres Internetanbieters oder ein von Ihnen gewählter
+          öffentlicher Resolver, bei Cloudflare die Adresse der Domain ab.
+          Cloudflare verarbeitet dabei die IP-Adresse dieses Resolvers, den
+          angefragten Namen und den Zeitpunkt. Einige öffentliche Resolver
+          übermitteln zusätzlich einen gekürzten Adressbereich Ihres
+          Internetanschlusses (EDNS Client Subnet). Betreiben Sie einen eigenen
+          Resolver, ist dessen Adresse die Ihres Anschlusses. Der Abruf der
+          Seite selbst läuft nicht über Cloudflare, sondern direkt zu GitHub.
+        </p>
+        <p className="catalog-prose-text text-sm text-slate-700 leading-relaxed">
+          Cloudflare verarbeitet diese Anfragedaten in unserem Auftrag auf
+          Grundlage seines Auftragsverarbeitungsvertrags (Art. 28 DSGVO);
+          daraus abgeleitete Netzwerkdaten, etwa zur Abwehr von Angriffen,
+          verarbeitet Cloudflare in eigener Verantwortung. Rechtsgrundlage ist
+          unser berechtigtes Interesse an einer zuverlässigen Erreichbarkeit
+          der Anwendung nach Art. 6 Abs. 1 lit. f DSGVO. Cloudflare ist unter
+          dem EU-U.S. Data Privacy Framework zertifiziert; Grundlage der
+          Übermittlung ist der Angemessenheitsbeschluss der Europäischen
+          Kommission vom 10. Juli 2023. In der Verwaltungsoberfläche von
+          Cloudflare können wir Auswertungen der DNS-Anfragen der letzten 30
+          Tage einsehen, darunter die IP-Adressen der anfragenden Systeme, in
+          der Regel DNS-Resolver. Weitere Informationen finden Sie in der{' '}
+          <a
+            href="https://www.cloudflare.com/privacypolicy/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="rounded catalog-prose-link focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
+          >
+            Cloudflare-Datenschutzerklärung<span className="sr-only"> (öffnet in neuem Tab)</span>
+          </a>
+          {'.'}
         </p>
       </section>
 
