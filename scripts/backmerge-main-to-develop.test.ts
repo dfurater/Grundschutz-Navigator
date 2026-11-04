@@ -1396,6 +1396,31 @@ describe('Klasse Cherry-Pick', { timeout: 30_000 }, () => {
     await expect(fixture.run('merge-base', '--is-ancestor', squashSha, `origin/${BACKMERGE_BRANCH}`)).resolves.toBe('');
   });
 
+  it('stellt keinen PR, wenn der main-Inhalt vor dem Squash mit develop konfligiert', async () => {
+    const fixture = await createFixture();
+    await writeFile(join(fixture.work, 'shared.txt'), 'eins\nzwei\n', 'utf8');
+    const { source } = await seedCherryPickScenario(fixture);
+    await commitOnLine(fixture, 'main', { path: 'shared.txt', contents: 'EINS auf main\nzwei\n', message: 'fix: Hotfix auf main' });
+    await commitOnLine(fixture, 'develop', { path: 'shared.txt', contents: 'EINS auf develop\nzwei\n', message: 'feat: andere Änderung' });
+
+    const prepareStub = createGitHubStub();
+    const { branch, headSha } = await runCherryPickPrepare({
+      cwd: fixture.work, git: fixture.git, github: prepareStub, sourceInput: source, issue: 'GSPP-448',
+      logger: silentLogger,
+    });
+    const [[call]] = prepareStub.createPullRequest.mock.calls as [[{ body: string }]];
+    const squashSha = await squashMergeOnMain(fixture, { headSha, number: 9 });
+    const developBefore = await fixture.run('rev-parse', 'origin/develop');
+
+    const github = stubFor({ number: 9, body: call.body, headRefName: branch, mergeCommit: { oid: squashSha } });
+    await expect(runBackmerge({ cwd: fixture.work, git: fixture.git, github, logger: silentLogger }))
+      .rejects.toThrow(/Drei-Wege-Merge/);
+    expect(github.createPullRequest).not.toHaveBeenCalled();
+    expect(await fixture.run('ls-remote', '--heads', 'origin', BACKMERGE_BRANCH)).toBe('');
+    await fixture.run('fetch', '--quiet', 'origin');
+    expect(await fixture.run('rev-parse', 'origin/develop')).toBe(developBefore);
+  });
+
   it('verbindet nur die Picks vor einem Squash, dem noch fehlender main-Inhalt vorausgeht', async () => {
     const fixture = await createFixture();
     const { source, later } = await seedCherryPickScenario(fixture);
