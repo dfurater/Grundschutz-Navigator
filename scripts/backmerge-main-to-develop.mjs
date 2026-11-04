@@ -105,6 +105,9 @@ const REASON_END = '<!-- no-documentation-impact:end -->';
 /** Obergrenze der auf Ancestry geprüften abgeschlossenen Übernahmen. */
 const MERGED_PR_LOOKBACK = 20;
 
+/** Commits je GraphQL-Abfrage bei der Suche nach gemergten Cherry-Pick-PRs. */
+const COMMIT_QUERY_BATCH = 50;
+
 export class BackmergeError extends Error {
   constructor(message) {
     super(message);
@@ -690,28 +693,41 @@ export function createGitHubClient({ repository, run = runProcess } = {}) {
     },
     /**
      * Gemergte `cherry-pick/`-PRs nach `main`, deren Merge-Commit einer der
-     * übergebenen Commits ist. Je Commit fragt `GET /repos/{repo}/commits/{sha}/pulls`;
-     * die PR-Liste und `--search head:` sind keine Alternative, weil die Liste nur
-     * die jüngsten PRs aller Arten liefert und die Suche einen Index liest, der
-     * einen soeben gemergten PR noch nicht enthalten kann.
+     * übergebenen Commits ist, über `associatedPullRequests` je Commit in einer
+     * GraphQL-Abfrage pro Block. Die PR-Liste und `--search head:` sind keine
+     * Alternative: Die Liste liefert nur die jüngsten PRs aller Arten, die Suche
+     * liest einen Index, der einen soeben gemergten PR noch nicht enthalten kann.
      */
     async listMergedCherryPickPullRequests(commitShas) {
-      const repositoryPath = repository ?? '{owner}/{repo}';
+      // Ohne Repositorywert setzt `gh` die Platzhalter aus dem Arbeitsverzeichnis ein.
+      const [owner, name] = repository ? repository.split('/') : [];
+      const ownerArgs = owner && name
+        ? ['-f', `owner=${owner}`, '-f', `name=${name}`]
+        : ['-F', 'owner={owner}', '-F', 'name={repo}'];
       const pullRequests = [];
-      for (const sha of commitShas) {
-        const { stdout } = await run('gh', ['api', `repos/${repositoryPath}/commits/${sha}/pulls`]);
-        for (const pullRequest of JSON.parse(stdout)) {
-          if (pullRequest.base?.ref === 'main' &&pullRequest.merged_at
-            && pullRequest.merge_commit_sha === sha
-            && pullRequest.head?.ref?.startsWith(CHERRY_PICK_BRANCH_PREFIX)) {
-            pullRequests.push({
-              number: pullRequest.number,
-              body: pullRequest.body ?? '',
-              headRefName: pullRequest.head.ref,
-              mergeCommit: { oid: sha },
-            });
+      for (let start = 0; start < commitShas.length; start += COMMIT_QUERY_BATCH) {
+        const batch = commitShas.slice(start, start + COMMIT_QUERY_BATCH);
+        const fields = batch.map((sha, index) => `c${index}: object(oid: "${sha}") { ... on Commit {
+          associatedPullRequests(first: 10) { nodes { number body headRefName baseRefName mergedAt mergeCommit { oid } } } } }`);
+        const { stdout } = await run('gh', [
+          'api', 'graphql', ...ownerArgs,
+          '-f', `query=query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) { ${fields.join('\n')} } }`,
+        ]);
+        const commits = JSON.parse(stdout).data?.repository ?? {};
+        batch.forEach((sha, index) => {
+          for (const pullRequest of commits[`c${index}`]?.associatedPullRequests?.nodes ?? []) {
+            if (pullRequest.baseRefName === 'main' && pullRequest.mergedAt
+              && pullRequest.mergeCommit?.oid === sha
+              && pullRequest.headRefName?.startsWith(CHERRY_PICK_BRANCH_PREFIX)) {
+              pullRequests.push({
+                number: pullRequest.number,
+                body: pullRequest.body ?? '',
+                headRefName: pullRequest.headRefName,
+                mergeCommit: { oid: sha },
+              });
+            }
           }
-        }
+        });
       }
       return pullRequests;
     },
