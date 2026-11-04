@@ -648,13 +648,13 @@ export async function migrationContractHolds(git, {
  * Ergebnis der Klasse. Gibt den resultierenden Tree zurück, ohne zu committen —
  * der Leerlauftest entscheidet danach, ob überhaupt ein Commit entsteht.
  */
-async function buildImport(git, { klasse, branch, cwd }) {
+async function buildImport(git, { klasse, branch, cwd, sourceRef = SOURCE_REF }) {
   await git(['switch', '--force-create', branch, INTEGRATION_REF]);
 
   if (klasse === 'M1') {
     // Wholesale, byteweise: Das Manifest ist eine kanonisch erzeugte Datei mit
     // eigener Signatur; ein zeilenweiser Patch hätte hier keine Bedeutung.
-    const { stdout } = await git(['show', `${SOURCE_REF}:${TRACKED_MANIFEST_PATH}`], {
+    const { stdout } = await git(['show', `${sourceRef}:${TRACKED_MANIFEST_PATH}`], {
       encoding: 'buffer',
     });
     await writeFile(join(cwd, TRACKED_MANIFEST_PATH), stdout);
@@ -662,11 +662,11 @@ async function buildImport(git, { klasse, branch, cwd }) {
     return { mergePending: false };
   }
 
-  const merge = await git(['merge', '--no-ff', '--no-commit', SOURCE_REF], { allowFailure: true });
+  const merge = await git(['merge', '--no-ff', '--no-commit', sourceRef], { allowFailure: true });
   if (merge.code !== 0) {
     await git(['merge', '--abort'], { allowFailure: true });
     throw new BackmergeError(
-      `Der Drei-Wege-Merge gegen \`git merge-base ${SOURCE_REF} ${INTEGRATION_REF}\` `
+      `Der Drei-Wege-Merge gegen \`git merge-base ${sourceRef} ${INTEGRATION_REF}\` `
       + `schlägt fehl, weil die Ausgangszustände auseinandergelaufen sind. Es entsteht `
       + `kein Pull Request; nichts wurde überschrieben.\n${merge.stdout}${merge.stderr}`,
     );
@@ -939,10 +939,16 @@ export async function resolvePendingCherryPicks(git, { github }) {
  * `-s ours` behält den `develop`-Baum und verwirft die andere Seite vollständig,
  * auch alles, was `main` vor dem Squash trug. Deshalb muss jeder von `main` vor
  * dem Squash bewegte Pfad auf dem Branch schon byte-gleich vorliegen.
+ *
+ * Trägt `main` vor einem Squash Inhalt, den `develop` noch nicht hat, verbindet
+ * der Lauf nur die Picks davor. Betrifft das schon den ersten, liefert er
+ * `blockedBy` zurück, und der Aufrufer übernimmt zuerst den Stand vor diesem
+ * Squash über M1–M3; der Lauf nach dessen Merge verbindet den Pick.
  */
 async function runCherryPickAdoption(git, { github, logger, pending, sourceSha, integrationSha }) {
   await git(['switch', '--force-create', BACKMERGE_BRANCH, INTEGRATION_REF]);
 
+  const adopted = [];
   for (const entry of pending) {
     const before = `${entry.sha}^1`;
     const base = await gitText(git, ['merge-base', before, 'HEAD']);
@@ -951,16 +957,18 @@ async function runCherryPickAdoption(git, { github, logger, pending, sourceSha, 
     ).map((change) => change.path);
     if (paths.length > 0
       && !await sourceChangesAlreadyOnIntegration(git, { paths, sourceRef: before, integrationRef: 'HEAD' })) {
-      throw new BackmergeError(
+      logger.log(
         `Vor dem Cherry-Pick-PR #${entry.number} trägt \`${SOURCE_REF}\` Inhalt, den \`${INTEGRATION_REF}\` `
-        + `noch nicht hat (${paths.join(', ')}). Ein \`-s ours\`-Merge verwürfe ihn; es entsteht kein `
-        + 'Pull Request. Dieser Inhalt muss zuerst übernommen werden.',
+        + `noch nicht hat (${paths.join(', ')}); ein \`-s ours\`-Merge verwürfe ihn.`,
       );
+      if (adopted.length === 0) return { blockedBy: entry };
+      break;
     }
     await git([
       'merge', '-s', 'ours', '--no-ff',
       '-m', `chore(sync): Cherry-Pick #${entry.number} mit develop verbinden`, entry.sha,
     ]);
+    adopted.push(entry);
   }
 
   const resultTree = await gitText(git, ['rev-parse', 'HEAD^{tree}']);
@@ -980,10 +988,10 @@ async function runCherryPickAdoption(git, { github, logger, pending, sourceSha, 
     reason:
       'Gemergte Cherry-Pick-PRs nach `main` tragen ausschließlich Commits, die auf `develop` '
       + 'bereits liegen. Dieser Pull Request verbindet ihre Historie und ändert keine Datei: '
-      + pending.map((entry) => `#${entry.number}`).join(', ') + '.',
+      + adopted.map((entry) => `#${entry.number}`).join(', ') + '.',
     sourceSha,
     changedPaths: [],
-    markerShas: pending.map((entry) => entry.sha),
+    markerShas: adopted.map((entry) => entry.sha),
     mergeMethod: 'Merge-Commit',
   });
 
@@ -1048,10 +1056,10 @@ async function resolveAncestryState(git, { github, logger }) {
  * das entspricht, und ob die Vorbedingung dieser Klasse hält. Ein Konflikt und
  * eine verletzte M1-Vorbedingung beenden den Lauf hier — ohne Pull Request.
  */
-async function determineImportPlan(git, { logger, sourceSha, integrationSha }) {
-  const mergeBase = await gitText(git, ['merge-base', SOURCE_REF, INTEGRATION_REF]);
+async function determineImportPlan(git, { logger, sourceSha, integrationSha, sourceRef = SOURCE_REF }) {
+  const mergeBase = await gitText(git, ['merge-base', sourceRef, INTEGRATION_REF]);
   const diffOutput = await gitText(git, [
-    'diff', '--name-status', '-z', '--no-renames', mergeBase, SOURCE_REF, '--',
+    'diff', '--name-status', '-z', '--no-renames', mergeBase, sourceRef, '--',
   ]);
   const changedPaths = parseNameStatusDiff(diffOutput).map((entry) => entry.path);
 
@@ -1060,7 +1068,7 @@ async function determineImportPlan(git, { logger, sourceSha, integrationSha }) {
   // Klasse die Pfadmenge entspräche. Das ist der reguläre Zustand nach einem
   // erlaubten M1-Squash, dessen zurückgebliebene Merge-Basis die Pfadmenge
   // weiterführt, während beide Blobs längst identisch sind.
-  if (await sourceChangesAlreadyOnIntegration(git, { paths: changedPaths })) {
+  if (await sourceChangesAlreadyOnIntegration(git, { paths: changedPaths, sourceRef })) {
     const reason =
       `Alle von \`${SOURCE_REF}\` bewegten Pfade liegen auf \`${INTEGRATION_REF}\` bereits `
       + 'byte-identisch vor.';
@@ -1068,7 +1076,7 @@ async function determineImportPlan(git, { logger, sourceSha, integrationSha }) {
     return { klasse: 'idle', reason, changedPaths };
   }
 
-  const sourceManifest = await readManifestAtRef(git, SOURCE_REF);
+  const sourceManifest = await readManifestAtRef(git, sourceRef);
   const integrationManifest = await readManifestAtRef(git, INTEGRATION_REF);
   const sourceSnapshot = sourceManifest?.snapshotCommitSha;
   const snapshotAdvances =
@@ -1085,7 +1093,7 @@ async function determineImportPlan(git, { logger, sourceSha, integrationSha }) {
     );
   }
 
-  if (klasse === 'M1' && !await manifestOriginatesFromSource(git)) {
+  if (klasse === 'M1' && !await manifestOriginatesFromSource(git, { sourceRef })) {
     throw new BackmergeError(
       `Die M1-Vorbedingung ist verletzt: Das Manifest auf \`${INTEGRATION_REF}\` kommt an `
       + `keinem von \`${SOURCE_REF}\` erreichbaren Commit vor. Der Stand stammt damit nicht `
@@ -1193,14 +1201,22 @@ export async function runBackmerge({
   // Vor M1–M3: Die Pfadmenge eines gemergten Cherry-Picks erschiene sonst als
   // M3, und dessen Drei-Wege-Merge kollidiert mit späteren develop-Änderungen.
   const pendingCherryPicks = await resolvePendingCherryPicks(git, { github });
+  // Ohne offenen Pick übernimmt der Lauf `main` selbst, sonst den Stand vor dem ersten blockierten Squash.
+  let importSha = sourceSha;
   if (pendingCherryPicks.length > 0) {
-    return runCherryPickAdoption(git, {
+    const adoption = await runCherryPickAdoption(git, {
       github, logger, pending: pendingCherryPicks, sourceSha, integrationSha,
     });
+    if (!adoption.blockedBy) return adoption;
+    importSha = await gitText(git, ['rev-parse', `${adoption.blockedBy.sha}^1`]);
+    logger.log(
+      `Der Lauf übernimmt zuerst den Stand ${importSha} vor dem Cherry-Pick-PR #${adoption.blockedBy.number}; `
+      + 'der Lauf nach dessen Merge verbindet den Pick.',
+    );
   }
 
   const { klasse, reason, changedPaths } = await determineImportPlan(git, {
-    logger, sourceSha, integrationSha,
+    logger, sourceSha: importSha, integrationSha, sourceRef: importSha,
   });
 
   if (klasse === 'idle') {
@@ -1209,7 +1225,7 @@ export async function runBackmerge({
   }
 
   const branch = selectBranch({ klasse, repairRequired: false });
-  const { mergePending } = await buildImport(git, { klasse, branch, cwd });
+  const { mergePending } = await buildImport(git, { klasse, branch, cwd, sourceRef: importSha });
 
   const resultTree = await gitText(git, ['write-tree']);
   const integrationTree = await gitText(git, ['rev-parse', `${INTEGRATION_REF}^{tree}`]);
@@ -1229,7 +1245,7 @@ export async function runBackmerge({
   await commitImport(git, { klasse, mergePending });
 
   await publishImportPullRequest(git, {
-    github, logger, cwd, branch, klasse, reason, changedPaths, sourceSha, integrationSha,
+    github, logger, cwd, branch, klasse, reason, changedPaths, sourceSha: importSha, integrationSha,
     validateManifests,
   });
 

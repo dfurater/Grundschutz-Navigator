@@ -1337,14 +1337,11 @@ describe('Klasse Cherry-Pick', { timeout: 30_000 }, () => {
     expect(stdout).toContain('Cherry-Pick-Pull-Request erstellt');
   });
 
-  it.each(['hotfix.txt', 'Überblick.md'])('verwirft keinen noch nicht übernommenen main-Inhalt (%s) vor dem Squash', async (hotfixPath) => {
+  it.each(['hotfix.txt', 'Überblick.md'])('übernimmt noch fehlenden main-Inhalt (%s) vor dem Squash zuerst und verbindet den Pick im Lauf danach', async (hotfixPath) => {
     const fixture = await createFixture();
     const { source } = await seedCherryPickScenario(fixture);
     // Ein Hotfix landet auf main und ist noch nicht übernommen.
-    await fixture.run('switch', '--quiet', 'main');
-    await writeFile(join(fixture.work, hotfixPath), 'Hotfix\n', 'utf8');
-    await fixture.commit('fix: Hotfix auf main');
-    await fixture.run('push', '--quiet', 'origin', 'main');
+    const hotfixSha = await commitOnLine(fixture, 'main', { path: hotfixPath, contents: 'Hotfix\n', message: 'fix: Hotfix auf main' });
 
     const prepareStub = createGitHubStub();
     const { branch, headSha } = await runCherryPickPrepare({
@@ -1353,11 +1350,59 @@ describe('Klasse Cherry-Pick', { timeout: 30_000 }, () => {
     });
     const [[call]] = prepareStub.createPullRequest.mock.calls as [[{ body: string }]];
     const squashSha = await squashMergeOnMain(fixture, { headSha, number: 9 });
+    const pick = { number: 9, body: call.body, headRefName: branch, mergeCommit: { oid: squashSha } };
 
-    const github = stubFor({ number: 9, body: call.body, headRefName: branch, mergeCommit: { oid: squashSha } });
+    // Erster Lauf: kein -s ours über den Hotfix, sondern M3 mit dem Stand vor dem Squash als Quelle.
+    const first = stubFor(pick);
+    await expect(runBackmerge({ cwd: fixture.work, git: fixture.git, github: first, logger: silentLogger }))
+      .resolves.toMatchObject({ created: true, klasse: 'M3' });
+    const [[importCall]] = first.createPullRequest.mock.calls as [[{ head: string; body: string }]];
+    expect(importCall.body).toContain(formatSourceMarker(hotfixSha));
+    expect(await fixture.run('show', `origin/${BACKMERGE_BRANCH}:${hotfixPath}`)).toBe('Hotfix');
+    await expect(fixture.run('merge-base', '--is-ancestor', squashSha, `origin/${BACKMERGE_BRANCH}`)).rejects.toThrow();
+
+    // Nach dem Merge der Übernahme verbindet der nächste Lauf den Pick.
+    await fixture.run('switch', '--quiet', '--force-create', 'develop', 'origin/develop');
+    await fixture.run('merge', '--quiet', '--no-ff', '-m', 'Merge Übernahme', `origin/${BACKMERGE_BRANCH}`);
+    await fixture.run('push', '--quiet', 'origin', 'develop');
+    const second = stubFor(pick);
+    await expect(runBackmerge({ cwd: fixture.work, git: fixture.git, github: second, logger: silentLogger }))
+      .resolves.toMatchObject({ created: true, klasse: 'Cherry-Pick' });
+  });
+
+  it('verbindet nur die Picks vor einem Squash, dem noch fehlender main-Inhalt vorausgeht', async () => {
+    const fixture = await createFixture();
+    const { source, later } = await seedCherryPickScenario(fixture);
+    const prepareFirst = createGitHubStub();
+    const first = await runCherryPickPrepare({
+      cwd: fixture.work, git: fixture.git, github: prepareFirst, sourceInput: source, issue: 'GSPP-448',
+      logger: silentLogger,
+    });
+    const [[firstCall]] = prepareFirst.createPullRequest.mock.calls as [[{ body: string }]];
+    const firstSquash = await squashMergeOnMain(fixture, { headSha: first.headSha, number: 9 });
+
+    await commitOnLine(fixture, 'main', { path: 'hotfix.txt', contents: 'Hotfix\n', message: 'fix: Hotfix auf main' });
+    const prepareSecond = createGitHubStub();
+    const second = await runCherryPickPrepare({
+      cwd: fixture.work, git: fixture.git, github: prepareSecond, sourceInput: later, issue: 'GSPP-449',
+      logger: silentLogger,
+    });
+    const [[secondCall]] = prepareSecond.createPullRequest.mock.calls as [[{ body: string }]];
+    const secondSquash = await squashMergeOnMain(fixture, { headSha: second.headSha, number: 10 });
+
+    const github = createGitHubStub({
+      listMergedCherryPickPullRequests: vi.fn(async () => [
+        { number: 9, body: firstCall.body, headRefName: first.branch, mergeCommit: { oid: firstSquash } },
+        { number: 10, body: secondCall.body, headRefName: second.branch, mergeCommit: { oid: secondSquash } },
+      ]),
+    });
     await expect(runBackmerge({ cwd: fixture.work, git: fixture.git, github, logger: silentLogger }))
-      .rejects.toThrow(hotfixPath);
-    expect(github.createPullRequest).not.toHaveBeenCalled();
+      .resolves.toMatchObject({ created: true, klasse: 'Cherry-Pick' });
+    const [[call]] = github.createPullRequest.mock.calls as [[{ body: string }]];
+    expect(call.body).toContain('#9.');
+    expect(call.body).not.toContain('#10');
+    await expect(fixture.run('merge-base', '--is-ancestor', firstSquash, `origin/${BACKMERGE_BRANCH}`)).resolves.toBe('');
+    await expect(fixture.run('merge-base', '--is-ancestor', secondSquash, `origin/${BACKMERGE_BRANCH}`)).rejects.toThrow();
   });
 
   it('verbindet die Historie, wenn develop den vor dem Squash bewegten main-Inhalt schon byte-gleich trägt', async () => {
