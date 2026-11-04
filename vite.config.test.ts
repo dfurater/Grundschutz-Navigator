@@ -17,7 +17,6 @@ import {
   buildSitemapXml,
   resolveDeploymentBase,
   spaFallbackPlugin,
-  trailingSlashRedirect,
   writeSpaFallbackFile,
   writeSitemapFile,
   writeStaticRouteEntries,
@@ -57,7 +56,7 @@ afterAll(() => {
 const tempDirs: string[] = [];
 
 const INDEX_HTML =
-  '<!doctype html><html><head><title>Grundschutz++ Navigator</title><meta name="description" content="BSI-Anwenderkatalog durchsuchen, filtern und exportieren." /><meta property="og:title" content="Grundschutz++ Navigator" /><meta property="og:url" content="https://gspp-navigator.furater.com/" /><meta property="og:image" content="https://gspp-navigator.furater.com/og-image.png" /><meta name="twitter:image" content="https://gspp-navigator.furater.com/og-image.png" /><meta property="og:image:alt" content="Grundschutz++ Navigator. BSI-Anwenderkatalog, OSCAL 1.1.3." /></head><body><script type="module" src="/assets/app.js"></script></body></html>';
+  '<!doctype html><html><head><title>Grundschutz++ Navigator</title><meta name="description" content="BSI-Anwenderkatalog durchsuchen, filtern und exportieren." /><meta property="og:title" content="Grundschutz++ Navigator" /><meta property="og:url" content="https://dfurater.github.io/Grundschutz-Navigator/" /><meta property="og:image:alt" content="Grundschutz++ Navigator. BSI-Anwenderkatalog, OSCAL 1.1.3." /></head><body><script type="module" src="/Grundschutz-Navigator/assets/app.js"></script></body></html>';
 
 const CONTENT_ROUTES = [
   '/suche',
@@ -132,10 +131,10 @@ describe('writeSitemapFile / buildSitemapXml', () => {
   const EXPECTED_SITEMAP = [
     '<?xml version="1.0" encoding="UTF-8"?>',
     '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
-    '  <url><loc>https://gspp-navigator.furater.com/</loc></url>',
+    '  <url><loc>https://dfurater.github.io/Grundschutz-Navigator/</loc></url>',
     ...listCanonicalEntryRoutes().map(
       (route) =>
-        `  <url><loc>https://gspp-navigator.furater.com${route}</loc></url>`,
+        `  <url><loc>https://dfurater.github.io/Grundschutz-Navigator${route}</loc></url>`,
     ),
     '</urlset>',
     '',
@@ -153,9 +152,9 @@ describe('writeSitemapFile / buildSitemapXml', () => {
     const locs = [...xml.matchAll(/<loc>([^<]*)<\/loc>/g)].map((match) => match[1]);
 
     expect(new Set(locs).size).toBe(locs.length);
-    expect(locs).toContain('https://gspp-navigator.furater.com/');
+    expect(locs).toContain('https://dfurater.github.io/Grundschutz-Navigator/');
     for (const route of listCanonicalEntryRoutes()) {
-      expect(locs).toContain(`https://gspp-navigator.furater.com${route}`);
+      expect(locs).toContain(`https://dfurater.github.io/Grundschutz-Navigator${route}`);
     }
     expect(locs).toHaveLength(1 + listCanonicalEntryRoutes().length);
   });
@@ -164,11 +163,11 @@ describe('writeSitemapFile / buildSitemapXml', () => {
     const locs = buildSitemapXml().match(/<loc>[^<]*<\/loc>/g) ?? [];
 
     for (const loc of locs) {
-      expect(loc).not.toMatch(/^<loc>https:\/\/gspp-navigator\.furater\.com\/katalog<\/loc>$/);
+      expect(loc).not.toMatch(/^<loc>https:\/\/dfurater\.github\.io\/Grundschutz-Navigator\/katalog<\/loc>$/);
       expect(loc).not.toContain('/mehr');
       expect(loc).not.toContain('/kontrolle/');
       expect(loc).not.toContain('?');
-      expect(loc).toMatch(/^<loc>https:\/\/gspp-navigator\.furater\.com/);
+      expect(loc).toMatch(/^<loc>https:\/\/dfurater\.github\.io/);
     }
   });
 
@@ -210,7 +209,7 @@ describe('writeSitemapFile / buildSitemapXml', () => {
       (node) => node.textContent ?? '',
     );
     expect(locs).toHaveLength(1 + listCanonicalEntryRoutes().length);
-    expect(locs[0]).toBe('https://gspp-navigator.furater.com/');
+    expect(locs[0]).toBe('https://dfurater.github.io/Grundschutz-Navigator/');
   });
 
   it('derives its base from the resolved deployment base, not from a hardcoded path', () => {
@@ -219,7 +218,7 @@ describe('writeSitemapFile / buildSitemapXml', () => {
     try {
       expect(resolveDeploymentBase()).toBe('/preview/');
       expect(buildSitemapXml()).toContain(
-        '<loc>https://gspp-navigator.furater.com/preview/suche</loc>',
+        '<loc>https://dfurater.github.io/preview/suche</loc>',
       );
     } finally {
       delete process.env.BUILD_BASE;
@@ -232,7 +231,7 @@ describe('writeSitemapFile / buildSitemapXml', () => {
     try {
       expect(resolveDeploymentBase()).toBe('/preview/');
       expect(buildSitemapXml()).toContain(
-        '<loc>https://gspp-navigator.furater.com/preview/suche</loc>',
+        '<loc>https://dfurater.github.io/preview/suche</loc>',
       );
       expect(buildSitemapXml()).not.toContain('previewsuche');
     } finally {
@@ -311,9 +310,9 @@ describe('writeStaticRouteEntries', () => {
     writeStaticRouteEntries(distDir);
     for (const route of listCanonicalEntryRoutes()) {
       const html = readFileSync(join(distDir, route.slice(1), 'index.html'), 'utf8');
-      expect(html).toContain(`<meta property="og:url" content="https://gspp-navigator.furater.com${route}" />`);
+      expect(html).toContain(`<meta property="og:url" content="https://dfurater.github.io/Grundschutz-Navigator${route}" />`);
       expect(html.match(/property="og:title"/g)).toHaveLength(1);
-      expect(html).toContain('<script type="module" src="/assets/app.js"></script>');
+      expect(html).toContain('<script type="module" src="/Grundschutz-Navigator/assets/app.js"></script>');
     }
     expect(readFileSync(join(distDir, 'suche/index.html'), 'utf8')).toContain('content="Suche"');
   });
@@ -336,10 +335,9 @@ describe('writeStaticRouteEntries', () => {
       writeSpaFallbackFile(distDir);
       const fallback = readFileSync(join(distDir, '404.html'), 'utf8');
       expect(fallback).toContain(`property="og:title" content="${HOME_OG_TITLE}"`);
-      expect(fallback).toContain('property="og:url" content="https://gspp-navigator.furater.com/preview/"');
-      expect(fallback).toContain('name="twitter:image" content="https://gspp-navigator.furater.com/preview/og-image.png"');
+      expect(fallback).toContain('property="og:url" content="https://dfurater.github.io/preview/"');
       expect(fallback).toBe(readFileSync(join(distDir, 'index.html'), 'utf8'));
-      expect(readFileSync(join(distDir, 'suche/index.html'), 'utf8')).toContain('content="https://gspp-navigator.furater.com/preview/suche"');
+      expect(readFileSync(join(distDir, 'suche/index.html'), 'utf8')).toContain('content="https://dfurater.github.io/preview/suche"');
       expect(existsSync(join(distDir, 'katalog/unknown/index.html'))).toBe(false);
     } finally {
       delete process.env.BUILD_BASE;
@@ -363,17 +361,17 @@ describe('modulepreload für Lazy-Routen (GSPP-506)', () => {
     for (const route of Object.keys(LAZY_ROUTE_MODULES)) {
       const html = readFileSync(join(distDir, route.slice(1), 'index.html'), 'utf8');
       expect(html.match(/<link rel="modulepreload"/g)).toHaveLength(1);
-      expect(html).toContain(`<link rel="modulepreload" href="/assets/${route.slice(1)}-TEST.js" />`);
+      expect(html).toContain(`<link rel="modulepreload" href="/Grundschutz-Navigator/assets/${route.slice(1)}-TEST.js" />`);
     }
     expect(readFileSync(join(distDir, 'index.html'), 'utf8')).not.toContain('modulepreload');
   });
 
-  it('führt die aufgelöste Deployment-Basis im Pfad, auch bei abweichendem BUILD_BASE', () => {
+  it('führt die aufgelöste Deployment-Basis im Pfad, auch bei BUILD_BASE=/', () => {
     const distDir = createTempDistWithIndex();
-    process.env.BUILD_BASE = '/preview/';
+    process.env.BUILD_BASE = '/';
     try {
       writeStaticRouteEntries(distDir, [], MODULE_PRELOADS);
-      expect(readFileSync(join(distDir, 'suche/index.html'), 'utf8')).toContain('<link rel="modulepreload" href="/preview/assets/suche-TEST.js" />');
+      expect(readFileSync(join(distDir, 'suche/index.html'), 'utf8')).toContain('<link rel="modulepreload" href="/assets/suche-TEST.js" />');
     } finally {
       delete process.env.BUILD_BASE;
     }
@@ -403,8 +401,8 @@ describe('modulepreload für Lazy-Routen (GSPP-506)', () => {
 
     plugin.closeBundle();
 
-    expect(readFileSync(join(distDir, 'about/index.html'), 'utf8')).toContain('href="/assets/Seite-about-HASH.js"');
-    expect(readFileSync(join(distDir, 'suche/index.html'), 'utf8')).toContain('href="/assets/Seite-suche-HASH.js"');
+    expect(readFileSync(join(distDir, 'about/index.html'), 'utf8')).toContain('href="/Grundschutz-Navigator/assets/Seite-about-HASH.js"');
+    expect(readFileSync(join(distDir, 'suche/index.html'), 'utf8')).toContain('href="/Grundschutz-Navigator/assets/Seite-suche-HASH.js"');
   });
 
   it('bricht den Build, wenn für eine zugeordnete Lazy-Route kein Chunk gefunden wird, und schreibt nichts', () => {
@@ -456,37 +454,5 @@ describe('spaFallbackPlugin closeBundle', () => {
 
     expect(() => spaFallbackPlugin({ outDir: distDir, catalogs: [], modulePreloads: MODULE_PRELOADS }).closeBundle()).toThrow(/description enthält U\+2014/);
     expect(existsSync(join(distDir, 'SHA256SUMS'))).toBe(false);
-  });
-});
-
-describe('trailingSlashRedirect (Vorschau wie GitHub Pages)', () => {
-  function call(handler: ReturnType<typeof trailingSlashRedirect>, url: string, method = 'GET') {
-    const headers: Record<string, string> = {};
-    const res = { statusCode: 200, setHeader: (name: string, value: string) => { headers[name] = value; }, end: () => {} };
-    let passed = false;
-    handler({ method, url }, res, () => { passed = true; });
-    return { passed, status: res.statusCode, location: headers.Location };
-  }
-
-  it('leitet einen Routenpfad ohne Slash mit 301 auf die vorhandene Routendatei weiter, auch unter abweichender Basis', () => {
-    const distDir = createTempDistDir();
-    writeFileSync(join(distDir, 'index.html'), INDEX_HTML);
-    writeStaticRouteEntries(distDir, []);
-
-    expect(call(trailingSlashRedirect(distDir, '/'), '/suche?x=1')).toEqual({ passed: false, status: 301, location: '/suche/?x=1' });
-    expect(call(trailingSlashRedirect(distDir, '/preview/'), '/preview/suche')).toEqual({ passed: false, status: 301, location: '/preview/suche/' });
-  });
-
-  it('reicht alles ohne passende Routendatei unverändert weiter', () => {
-    const distDir = createTempDistDir();
-    writeFileSync(join(distDir, 'index.html'), INDEX_HTML);
-    writeStaticRouteEntries(distDir, []);
-    const handler = trailingSlashRedirect(distDir, '/');
-
-    const offsiteViaTraversal = `//attacker.example/%2e%2e${encodeURI(distDir)}`;
-    for (const url of ['/', '/suche/', '/assets/app.js', '/gibt-es-nicht', '/../etc', '/%E0%A4%A', offsiteViaTraversal, '//suche', '/%2Fsuche', '/\\suche', '/%5Csuche', '/./suche']) {
-      expect(call(handler, url).passed, url).toBe(true);
-    }
-    expect(call(handler, '/suche', 'POST').passed).toBe(true);
   });
 });

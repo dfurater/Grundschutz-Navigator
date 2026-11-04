@@ -4,7 +4,7 @@ Der Grundschutz++-Anwenderkatalog des BSI zum Durchsuchen, Filtern und Exportier
 
 Inoffizielles Community-Projekt, kein Angebot des BSI. Keine Rechtsberatung, keine Gewähr. Die offiziellen Daten veröffentlicht das BSI in der [Stand-der-Technik-Bibliothek](https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek).
 
-**Live-Demo:** [gspp-navigator.furater.com](https://gspp-navigator.furater.com/)
+**Live-Demo:** [dfurater.github.io/Grundschutz-Navigator](https://dfurater.github.io/Grundschutz-Navigator/)
 
 <img src="docs/assets/katalog-mit-filtern.png" width="1040" alt="Katalogansicht des Grundschutz++ Navigators: links der Katalog-Explorer mit der Katalogwahl „Anwenderkatalog Grundschutz++“ im Kopf und den Praktiken darunter, die geöffnete Praktik „Berechtigung“ zeigt ihre Themen, in der Mitte die Kontrollen der Praktik „Berechtigung“, rechts die Filterleiste mit ausgewähltem Sicherheitsniveau „normal-SdT“ und den Modalverben MUSS und SOLLTE">
 
@@ -31,7 +31,7 @@ Für IT-Sicherheitsbeauftragte, Berater:innen, Auditor:innen, Studierende und al
 
 ## So funktioniert's
 
-1. Öffne die [Live-Demo](https://gspp-navigator.furater.com/) und wähle links oben im Katalog-Explorer den Katalog. Auf dem Smartphone öffnest du den Katalog-Explorer über das Menü-Symbol oder indem du über die Seite nach rechts wischst; nach links gewischt schließt er sich wieder.
+1. Öffne die [Live-Demo](https://dfurater.github.io/Grundschutz-Navigator/) und wähle links oben im Katalog-Explorer den Katalog. Auf dem Smartphone öffnest du den Katalog-Explorer über das Menü-Symbol oder indem du über die Seite nach rechts wischst; nach links gewischt schließt er sich wieder.
 2. Wähle darunter eine Praktik oder ein Thema, oder suche oben nach einer ID oder einem Stichwort.
 3. Setze die Filter, etwa Sicherheitsniveau „normal-SdT“ und Modalverb „MUSS“. Am Desktop steht die Filterleiste rechts, auf schmalen Bildschirmen öffnet das Filter-Symbol sie. Die Liste zeigt sofort nur noch die passenden Kontrollen.
 4. Die gewählten Filter stehen in der Adresszeile. Kopiere den Link, um die Ansicht zu teilen oder als Lesezeichen zu speichern. Für eine einzelne Kontrolle gibt es in der Detailansicht „Link kopieren“.
@@ -52,12 +52,12 @@ Die App verwendet kein Tracking, keine Analytics und keine Cookies. Filter, Such
 **Jeder Build ist nachvollziehbar.** Jede ausgelieferte Version enthält die Datei `SHA256SUMS`, die für jede Datei der Live-Seite deren SHA-256-Prüfsumme festhält. Für genau dieses Manifest gibt es zwei von GitHub signierte Attestierungen: eine [SLSA](https://slsa.dev/)-Provenance, die belegt, welcher Workflow-Lauf aus welchem Commit gebaut hat, und eine CycloneDX-SBOM der Laufzeitabhängigkeiten. Mit der [GitHub CLI](https://cli.github.com/) und Node.js kannst du jede Datei der Live-Seite selbst prüfen. Lade dazu im geklonten Repository das Manifest, die gewünschte Datei und die Commit-SHA des letzten erfolgreichen Deploys:
 
 ```bash
-curl -sSo SHA256SUMS https://gspp-navigator.furater.com/SHA256SUMS
-curl -sSo GC.html https://gspp-navigator.furater.com/katalog/gspp/GC/index.html
+curl -sSo SHA256SUMS https://dfurater.github.io/Grundschutz-Navigator/SHA256SUMS
+curl -sSo GC.html https://dfurater.github.io/Grundschutz-Navigator/katalog/gspp/GC/index.html
 gh run list --repo dfurater/Grundschutz-Navigator --workflow deploy.yml --branch main --status success --limit 1 --json headSha --jq '.[0].headSha'
 ```
 
-Dann prüft ein einziger Befehl beide Attestierungen des Manifests (Repository, Deploy-Workflow, `main` und genau diesen Commit) und anschließend die Prüfsumme der Datei. `--path` ist der Pfad der Datei auf der Live-Seite ohne `https://gspp-navigator.furater.com/`, zum Beispiel `favicon.svg`, `katalog/gspp/GC/index.html` oder `SHA256SUMS`:
+Dann prüft ein einziger Befehl beide Attestierungen des Manifests (Repository, Deploy-Workflow, `main` und genau diesen Commit) und anschließend die Prüfsumme der Datei. `--path` ist der Pfad der Datei auf der Live-Seite ohne `https://dfurater.github.io/Grundschutz-Navigator/`, zum Beispiel `favicon.svg`, `katalog/gspp/GC/index.html` oder `SHA256SUMS`:
 
 ```bash
 npm run verify:deployment -- --manifest SHA256SUMS --file GC.html --path katalog/gspp/GC/index.html --source-sha <commit-sha>

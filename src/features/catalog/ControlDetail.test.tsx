@@ -1068,11 +1068,11 @@ describe('ControlDetail', () => {
   it('builds absolute control detail links with the configured app base path', () => {
     expect(
       getControlDetailUrl('gspp', { id: 'DET.5.4', altIdentifier: 'stable-det-5-4' }, {
-        origin: 'https://gspp-navigator.furater.com',
-        baseUrl: '/preview/',
+        origin: 'https://dfurater.github.io',
+        baseUrl: '/Grundschutz-Navigator/',
       }),
     ).toBe(
-      'https://gspp-navigator.furater.com/preview/katalog/gspp/kontrolle/stable-det-5-4',
+      'https://dfurater.github.io/Grundschutz-Navigator/katalog/gspp/kontrolle/stable-det-5-4',
     );
 
     expect(
