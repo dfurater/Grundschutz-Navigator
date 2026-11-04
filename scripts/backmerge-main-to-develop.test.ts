@@ -25,6 +25,7 @@ import { buildUpstreamManifest } from './upstream-artifacts.mjs';
 import { ENTRY_CATALOG } from '../src/domain/sourceRegistry.mjs';
 import {
   type BranchLineFixture,
+  commitOnLine,
   createBranchLineFixture,
   createFixtureRegistry,
   createGitHubStub,
@@ -1357,5 +1358,29 @@ describe('Klasse Cherry-Pick', { timeout: 30_000 }, () => {
     await expect(runBackmerge({ cwd: fixture.work, git: fixture.git, github, logger: silentLogger }))
       .rejects.toThrow(hotfixPath);
     expect(github.createPullRequest).not.toHaveBeenCalled();
+  });
+
+  it('verbindet die Historie, wenn develop den vor dem Squash bewegten main-Inhalt schon byte-gleich trägt', async () => {
+    const fixture = await createFixture();
+    const { source } = await seedCherryPickScenario(fixture);
+    // Wie nach einem gesquashten Import: Der Inhalt liegt auf develop, der main-Commit ist kein Vorfahr.
+    await commitOnLine(fixture, 'main', { path: 'hotfix.txt', contents: 'Hotfix\n', message: 'fix: Hotfix auf main' });
+    await commitOnLine(fixture, 'develop', { path: 'hotfix.txt', contents: 'Hotfix\n', message: 'fix: Hotfix übernommen' });
+
+    const prepareStub = createGitHubStub();
+    const { branch, headSha } = await runCherryPickPrepare({
+      cwd: fixture.work, git: fixture.git, github: prepareStub, sourceInput: source, issue: 'GSPP-448',
+      logger: silentLogger,
+    });
+    const [[call]] = prepareStub.createPullRequest.mock.calls as [[{ body: string }]];
+    const squashSha = await squashMergeOnMain(fixture, { headSha, number: 9 });
+
+    const github = stubFor({ number: 9, body: call.body, headRefName: branch, mergeCommit: { oid: squashSha } });
+    await expect(runBackmerge({ cwd: fixture.work, git: fixture.git, github, logger: silentLogger }))
+      .resolves.toMatchObject({ created: true, klasse: 'Cherry-Pick' });
+    await fixture.run('fetch', '--quiet', 'origin');
+    expect(await fixture.run('rev-parse', `origin/${BACKMERGE_BRANCH}^{tree}`))
+      .toBe(await fixture.run('rev-parse', 'origin/develop^{tree}'));
+    await expect(fixture.run('merge-base', '--is-ancestor', squashSha, `origin/${BACKMERGE_BRANCH}`)).resolves.toBe('');
   });
 });
