@@ -33,7 +33,7 @@ export const globalRules = [
     key: 'G2-anwendungskontext',
     scopes: [],
     body:
-      `Die Anwendung läuft vollständig clientseitig auf GitHub Pages unter https://gspp-navigator.furater.com/ am Domain-Root. Öffentliche BSI-Artefakte kommen aus dem Quellregister über den gepinnten Build- und Integritätspfad; public/data/ ist gitignored. Die lokale Arbeitsbereichsinfrastruktur speichert organisationseigene OSCAL-Dokumente und Entwürfe in IndexedDB (gspp-workspace). Diese Inhalte können personenbezogene Daten, Systemdetails, Risiken und Nachweise enthalten und sind unvertraut. Es gibt kein Backend, keine Serverlaufzeit und keine Nutzerkonten. Melde keine Befunde, die einen nicht vorhandenen Server oder eine serverseitige Session voraussetzen; die lokale Datenbank und sensible Nutzerdaten sind ausdrücklich Reviewgegenstand. Klasse-1-Provenienz beruht auf Upstream-Pin, Allowlist, SHA-256 und SLSA-Attestation; diese Aussage gilt nicht für eigene Dokumente. Bewerte bei Ausbauregeln den konkret berührten Datenpfad: Das Fehlen einer optionalen oder noch nicht implementierten Produktfunktion ist für sich kein Befund.`,
+      `Die Anwendung läuft vollständig clientseitig auf GitHub Pages unter /Grundschutz-Navigator/. Öffentliche BSI-Artefakte kommen aus dem Quellregister über den gepinnten Build- und Integritätspfad; public/data/ ist gitignored. Die lokale Arbeitsbereichsinfrastruktur speichert organisationseigene OSCAL-Dokumente und Entwürfe in IndexedDB (gspp-workspace). Diese Inhalte können personenbezogene Daten, Systemdetails, Risiken und Nachweise enthalten und sind unvertraut. Es gibt kein Backend, keine Serverlaufzeit und keine Nutzerkonten. Melde keine Befunde, die einen nicht vorhandenen Server oder eine serverseitige Session voraussetzen; die lokale Datenbank und sensible Nutzerdaten sind ausdrücklich Reviewgegenstand. Klasse-1-Provenienz beruht auf Upstream-Pin, Allowlist, SHA-256 und SLSA-Attestation; diese Aussage gilt nicht für eigene Dokumente. Bewerte bei Ausbauregeln den konkret berührten Datenpfad: Das Fehlen einer optionalen oder noch nicht implementierten Produktfunktion ist für sich kein Befund.`,
   },
   {
     key: 'G3-nicht-melden',
@@ -158,7 +158,7 @@ export const scopedRules = [
     key: 'R10-basispfad',
     scopes: ['src/**', 'index.html'],
     body:
-      `Die App läuft in Produktion am Domain-Root /; BUILD_BASE überschreibt die Deployment-Basis. Asset-, Daten- und Routenpfade werden über import.meta.env.BASE_URL gebildet. Ein absoluter Pfad, der mit / beginnt, umgeht die konfigurierte Basis, bricht jedes Deployment unter einem Unterpfad und ist ein Befund.`,
+      `Die App läuft unter dem GitHub-Pages-Basispfad /Grundschutz-Navigator/. Asset-, Daten- und Routenpfade werden über import.meta.env.BASE_URL gebildet. Ein absoluter Pfad, der mit / beginnt, bricht das Deployment und ist ein Befund.`,
   },
   {
     key: 'R11-tailwind-ohne-postcss',

@@ -73,7 +73,7 @@ function render(element: ReactElement, route: string | null = '/') {
 
 const surfaces: ReadonlyArray<readonly [string, () => ReactElement, string | null, readonly string[]]> = [
   ['Startseite', () => createElement(HomePage), '/', ['Über das Projekt']],
-  ['Datenschutz', () => createElement(DatenschutzPage), '/', ['kontakt@example.com', 'GitHub Privacy Statement', 'Data Privacy Framework', 'Cloudflare-Datenschutzerklärung']],
+  ['Datenschutz', () => createElement(DatenschutzPage), '/', ['kontakt@example.com', 'GitHub Privacy Statement', 'Data Privacy Framework']],
   ['Impressum', () => createElement(ImpressumPage), '/', ['kontakt@example.com']],
   ['Lizenzen', () => createElement(LizenzenPage), '/', ['Stand-der-Technik-Bibliothek', 'dfurater/Grundschutz-Navigator']],
   ['Katalogziel nicht gefunden', () => createElement(CatalogTargetNotFound, { catalog }), '/', ['Zum Katalog']],

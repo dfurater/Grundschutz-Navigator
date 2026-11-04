@@ -120,8 +120,8 @@ describe('DatenschutzPage', () => {
       render(<DatenschutzPage />);
 
       expect(
-        screen.getAllByText(/Art\. 6 Abs\. 1 lit\. f DSGVO/),
-      ).toHaveLength(2);
+        screen.getByText(/Art\. 6 Abs\. 1 lit\. f DSGVO/),
+      ).toBeInTheDocument();
     });
 
     it('weist den Drittlandtransfer samt Übermittlungsgrundlage aus', () => {
@@ -133,37 +133,21 @@ describe('DatenschutzPage', () => {
         screen.getByText(/außerhalb der Europäischen Union/),
       ).toBeInTheDocument();
       expect(
-        screen.getAllByText(/EU-U\.S\. Data Privacy Framework/),
-      ).toHaveLength(2);
+        screen.getByText(/EU-U\.S\. Data Privacy Framework/),
+      ).toBeInTheDocument();
       expect(
         screen.getByRole('link', { name: /Data Privacy Framework/ }),
       ).toHaveAttribute('href', 'https://www.dataprivacyframework.gov');
     });
 
-    it('stellt klar, dass der Betreiber keine eigenen Zugriffsprotokolle führt', () => {
+    it('stellt klar, dass der Betreiber keine eigenen Verbindungsdaten speichert', () => {
       setImpressum({});
 
       render(<DatenschutzPage />);
 
       expect(
-        screen.getByText(/Wir führen selbst keine Zugriffsprotokolle\./),
+        screen.getByText(/keine Zugriffsprotokolle und speichern\s+keine Verbindungsdaten/),
       ).toBeInTheDocument();
-    });
-
-    it('nennt Cloudflare als DNS-Anbieter samt Rolle und Datenschutzerklärung', () => {
-      setImpressum({});
-
-      render(<DatenschutzPage />);
-
-      expect(
-        screen.getByText(/Nameserver der Cloudflare, Inc\./),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByText(/Auftragsverarbeitungsvertrags \(Art\. 28 DSGVO\)/),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByRole('link', { name: /Cloudflare-Datenschutzerklärung/ }),
-      ).toHaveAttribute('href', 'https://www.cloudflare.com/privacypolicy/');
     });
 
     it('zählt die Betroffenenrechte einzeln auf und nennt das Beschwerderecht', () => {
