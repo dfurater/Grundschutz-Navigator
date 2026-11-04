@@ -111,12 +111,16 @@ function escapeAttribute(value: string): string {
     .replaceAll('"', '&quot;').replaceAll("'", '&#39;');
 }
 
-function replaceOgTag(html: string, property: 'og:title' | 'og:url', value: string): string {
+type MetaKey = 'og:title' | 'og:url' | 'og:image' | 'twitter:image';
+
+function replaceOgTag(html: string, property: MetaKey, value: string): string {
+  // Open Graph nutzt `property`, Twitter Cards nutzen `name`.
+  const attribute = property.startsWith('og:') ? 'property' : 'name';
   const tags = (html.match(/<meta\b[^>]*>/gi) ?? []).filter(
-    tag => tag.includes('property="' + property + '"') || tag.includes("property='" + property + "'"),
+    tag => tag.includes(attribute + '="' + property + '"') || tag.includes(attribute + "='" + property + "'"),
   );
   if (tags.length !== 1) throw new Error('Expected exactly one ' + property + ' meta tag');
-  const replacement = '<meta property="' + property + '" content="' + escapeAttribute(value) + '" />';
+  const replacement = '<meta ' + attribute + '="' + property + '" content="' + escapeAttribute(value) + '" />';
   return html.replace(tags[0], () => replacement);
 }
 
@@ -178,11 +182,16 @@ function canonicalBaseUrl(baseUrl: string): URL {
   return base;
 }
 
-/** HTML-Kopf eines Einstiegs: OG-Titel und -URL, bei Lazy-Routen das `modulepreload`. */
+/** Vorschaubild im Ausgabeverzeichnis; seine URL folgt derselben Basis wie `og:url`. */
+const OG_IMAGE_FILE = 'og-image.png';
+
+/** HTML-Kopf eines Einstiegs: OG-Titel, -URL und -Bild, bei Lazy-Routen das `modulepreload`. */
 function renderRouteEntry(template: string, entry: SeoRouteMetadata, base: URL): string {
   if (!entry.title.trim()) throw new Error('SEO title must not be empty');
   const url = new URL(entry.path.slice(1), base).href;
-  const html = replaceOgTag(replaceOgTag(template, 'og:title', entry.title), 'og:url', url);
+  const image = new URL(OG_IMAGE_FILE, base).href;
+  let html = replaceOgTag(replaceOgTag(template, 'og:title', entry.title), 'og:url', url);
+  html = replaceOgTag(replaceOgTag(html, 'og:image', image), 'twitter:image', image);
   if (entry.modulePreload === undefined) return html;
   if (!MODULE_PRELOAD_PATH.test(entry.modulePreload)) throw new Error('Unsafe module preload path');
   // Die Deployment-Basis steckt im kanonischen Basispfad (`resolveDeploymentBase()`).
