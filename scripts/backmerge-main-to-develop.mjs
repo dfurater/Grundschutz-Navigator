@@ -105,13 +105,6 @@ const REASON_END = '<!-- no-documentation-impact:end -->';
 /** Obergrenze der auf Ancestry geprüften abgeschlossenen Übernahmen. */
 const MERGED_PR_LOOKBACK = 20;
 
-/**
- * Obergrenze der gelesenen nach `main` gemergten PRs aller Arten. Die Liste wird
- * erst danach auf `cherry-pick/` gefiltert; ist die Grenze erreicht, bricht der
- * Lauf ab, statt einen älteren offenen Cherry-Pick zu übersehen.
- */
-export const MAIN_PR_LOOKBACK = 1000;
-
 export class BackmergeError extends Error {
   constructor(message) {
     super(message);
@@ -696,27 +689,31 @@ export function createGitHubClient({ repository, run = runProcess } = {}) {
       return JSON.parse(stdout);
     },
     /**
-     * Gemergte PRs nach `main`; `gh pr list --head` kennt keinen Präfixfilter, und
-     * `--search head:` liest den Suchindex, der einen soeben gemergten PR noch nicht kennt.
+     * Gemergte `cherry-pick/`-PRs nach `main`, deren Merge-Commit einer der
+     * übergebenen Commits ist. Je Commit fragt `GET /repos/{repo}/commits/{sha}/pulls`;
+     * die PR-Liste und `--search head:` sind keine Alternative, weil die Liste nur
+     * die jüngsten PRs aller Arten liefert und die Suche einen Index liest, der
+     * einen soeben gemergten PR noch nicht enthalten kann.
      */
-    async listMergedCherryPickPullRequests() {
-      const { stdout } = await run('gh', [
-        'pr', 'list',
-        ...repositoryArgs,
-        '--state', 'merged',
-        '--base', 'main',
-        '--limit', String(MAIN_PR_LOOKBACK),
-        '--json', 'number,body,headRefName,mergeCommit',
-      ]);
-      const merged = JSON.parse(stdout);
-      if (merged.length >= MAIN_PR_LOOKBACK) {
-        throw new BackmergeError(
-          `Nach main sind mindestens ${MAIN_PR_LOOKBACK} PRs gemergt; die Suche nach offenen Cherry-Picks wäre unvollständig.`,
-        );
+    async listMergedCherryPickPullRequests(commitShas) {
+      const repositoryPath = repository ?? '{owner}/{repo}';
+      const pullRequests = [];
+      for (const sha of commitShas) {
+        const { stdout } = await run('gh', ['api', `repos/${repositoryPath}/commits/${sha}/pulls`]);
+        for (const pullRequest of JSON.parse(stdout)) {
+          if (pullRequest.base?.ref === 'main' &&pullRequest.merged_at
+            && pullRequest.merge_commit_sha === sha
+            && pullRequest.head?.ref?.startsWith(CHERRY_PICK_BRANCH_PREFIX)) {
+            pullRequests.push({
+              number: pullRequest.number,
+              body: pullRequest.body ?? '',
+              headRefName: pullRequest.head.ref,
+              mergeCommit: { oid: sha },
+            });
+          }
+        }
       }
-      return merged.filter(
-        (pullRequest) => pullRequest.headRefName.startsWith(CHERRY_PICK_BRANCH_PREFIX),
-      );
+      return pullRequests;
     },
     async findOpenPullRequest(headBranch, base = CATALOG_IMPORT_BASE_REF) {
       const { stdout } = await run('gh', [
@@ -881,7 +878,11 @@ async function findCherryPickDefect(git, { pullRequest, squashSha }) {
  * ungleich seiner Spitze beendet den Lauf ohne Pull Request.
  */
 export async function resolvePendingCherryPicks(git, { github }) {
-  const merged = await github.listMergedCherryPickPullRequests();
+  // Ein Squash-Merge liegt auf der first-parent-Linie von `main`; ein offener Pick ist nicht von `develop` erreichbar.
+  const candidates = (await gitText(git, ['rev-list', '--first-parent', SOURCE_REF, '--not', INTEGRATION_REF]))
+    .split('\n').filter(Boolean);
+  if (candidates.length === 0) return [];
+  const merged = await github.listMergedCherryPickPullRequests(candidates);
   const pending = [];
   for (const pullRequest of merged) {
     const squashSha = pullRequest.mergeCommit?.oid ?? '';

@@ -12,7 +12,6 @@ import {
   collectManifestBlobsOnSource,
   createGitHubClient,
   formatSourceMarker,
-  MAIN_PR_LOOKBACK,
   manifestOriginatesFromSource,
   migrationContractHolds,
   parseSourceMarkers,
@@ -78,26 +77,32 @@ describe('runProcess', () => {
 });
 
 describe('createGitHubClient.listMergedCherryPickPullRequests', () => {
-  const merged = (headRefName: string, number: number) => ({ number, body: '', headRefName, mergeCommit: null });
-
-  it('liest bis zur Obergrenze und behält nur cherry-pick/-PRs, auch hinter vielen anderen', async () => {
-    const pullRequests = [
-      ...Array.from({ length: 25 }, (_, index) => merged(`chore/catalog-sync-${index}`, 100 + index)),
-      merged('cherry-pick/gspp-1-abcdefabcdef', 7),
-    ];
-    const run = vi.fn(async () => ({ stdout: JSON.stringify(pullRequests), stderr: '', code: 0 }));
-
-    await expect(createGitHubClient({ run }).listMergedCherryPickPullRequests())
-      .resolves.toEqual([merged('cherry-pick/gspp-1-abcdefabcdef', 7)]);
-    expect(run).toHaveBeenCalledWith('gh', expect.arrayContaining(['--limit', String(MAIN_PR_LOOKBACK)]));
+  const pick = 'a'.repeat(40);
+  const sync = 'b'.repeat(40);
+  const restPullRequest = (number: number, ref: string, sha: string, overrides: object = {}) => ({
+    number, body: `Body ${number}`, head: { ref }, base: { ref: 'main' }, merge_commit_sha: sha,
+    merged_at: '2026-11-04T00:00:00Z', ...overrides,
   });
+  const responses: Record<string, object[]> = {
+    [pick]: [
+      restPullRequest(9, 'cherry-pick/gspp-1-abcdefabcdef', pick),
+      restPullRequest(8, 'cherry-pick/gspp-2-abcdefabcdef', pick, { merged_at: null }),
+      restPullRequest(7, 'cherry-pick/gspp-3-abcdefabcdef', pick, { base: { ref: 'develop' } }),
+      restPullRequest(6, 'cherry-pick/gspp-4-abcdefabcdef', 'c'.repeat(40)),
+    ],
+    [sync]: [restPullRequest(5, 'chore/catalog-sync-abcdefabcdef', sync)],
+  };
+  const run = vi.fn(async (_file: string, args: string[]) => ({
+    stdout: JSON.stringify(responses[args[1].split('/').at(-2) ?? ''] ?? []), stderr: '', code: 0,
+  }));
 
-  it('bricht ab, wenn die Obergrenze ausgeschöpft ist', async () => {
-    const pullRequests = Array.from({ length: MAIN_PR_LOOKBACK }, (_, index) => merged(`chore/x-${index}`, index));
-    const run = vi.fn(async () => ({ stdout: JSON.stringify(pullRequests), stderr: '', code: 0 }));
-
-    await expect(createGitHubClient({ run }).listMergedCherryPickPullRequests())
-      .rejects.toThrow(BackmergeError);
+  it('fragt je Commit die Commit-API und behält nur gemergte cherry-pick/-PRs nach main mit diesem Merge-Commit', async () => {
+    await expect(createGitHubClient({ repository: 'o/r', run }).listMergedCherryPickPullRequests([pick, sync]))
+      .resolves.toEqual([{
+        number: 9, body: 'Body 9', headRefName: 'cherry-pick/gspp-1-abcdefabcdef', mergeCommit: { oid: pick },
+      }]);
+    expect(run).toHaveBeenCalledWith('gh', ['api', `repos/o/r/commits/${pick}/pulls`]);
+    expect(run).toHaveBeenCalledWith('gh', ['api', `repos/o/r/commits/${sync}/pulls`]);
   });
 });
 
@@ -1156,6 +1161,8 @@ describe('Klasse Cherry-Pick', { timeout: 30_000 }, () => {
     const result = await runBackmerge({ cwd: fixture.work, git: fixture.git, github, logger: silentLogger });
 
     expect(result).toMatchObject({ created: true, klasse: 'Cherry-Pick' });
+    // Kandidaten sind die first-parent-Commits von main, die develop nicht erreicht.
+    expect(github.listMergedCherryPickPullRequests).toHaveBeenCalledWith(expect.arrayContaining([squashSha]));
     const [[call]] = github.createPullRequest.mock.calls as [[{ head: string; body: string }]];
     expect(call.head).toBe(BACKMERGE_BRANCH);
     expect(call.body).toContain('Klasse **Cherry-Pick**');
@@ -1267,15 +1274,19 @@ describe('Klasse Cherry-Pick', { timeout: 30_000 }, () => {
   });
 
   it('stellt den Historien-PR auch beim direkten CLI-Aufruf', async () => {
-    const { fixture, pullRequest } = await mergedCherryPick();
-    // `gh` als Stub: gemergte Cherry-Picks aus einer Datei, sonst leer.
+    const { fixture, squashSha, pullRequest } = await mergedCherryPick();
+    // `gh` als Stub: die Commit-API kennt den Squash-Commit des Cherry-Picks, sonst leer.
     const bin = join(fixture.root, 'bin');
     await mkdir(bin);
-    await writeFile(join(fixture.root, 'cherry-picks.json'), JSON.stringify([pullRequest]), 'utf8');
+    await writeFile(join(fixture.root, 'cherry-picks.json'), JSON.stringify([{
+      number: pullRequest.number, body: pullRequest.body, head: { ref: pullRequest.headRefName },
+      base: { ref: 'main' }, merge_commit_sha: squashSha, merged_at: '2026-11-04T00:00:00Z',
+    }]), 'utf8');
     await writeFile(join(bin, 'gh'), [
       '#!/bin/sh',
       'case "$*" in',
-      `  *"--state merged"*"--base main"*) cat "${join(fixture.root, 'cherry-picks.json')}" ;;`,
+      `  *"commits/${squashSha}/pulls"*) cat "${join(fixture.root, 'cherry-picks.json')}" ;;`,
+      '  *"/pulls"*) echo "[]" ;;',
       '  *"--state merged"*) echo "[]" ;;',
       '  *"pr create"*) echo "https://example.invalid/pull/2" ;;',
       'esac',
