@@ -105,6 +105,13 @@ const REASON_END = '<!-- no-documentation-impact:end -->';
 /** Obergrenze der auf Ancestry geprüften abgeschlossenen Übernahmen. */
 const MERGED_PR_LOOKBACK = 20;
 
+/**
+ * Obergrenze der gelesenen nach `main` gemergten PRs aller Arten. Die Liste wird
+ * erst danach auf `cherry-pick/` gefiltert; ist die Grenze erreicht, bricht der
+ * Lauf ab, statt einen älteren offenen Cherry-Pick zu übersehen.
+ */
+export const MAIN_PR_LOOKBACK = 1000;
+
 export class BackmergeError extends Error {
   constructor(message) {
     super(message);
@@ -688,17 +695,26 @@ export function createGitHubClient({ repository, run = runProcess } = {}) {
       ]);
       return JSON.parse(stdout);
     },
-    /** Gemergte PRs nach `main`; `gh pr list --head` kennt keinen Präfixfilter. */
+    /**
+     * Gemergte PRs nach `main`; `gh pr list --head` kennt keinen Präfixfilter, und
+     * `--search head:` liest den Suchindex, der einen soeben gemergten PR noch nicht kennt.
+     */
     async listMergedCherryPickPullRequests() {
       const { stdout } = await run('gh', [
         'pr', 'list',
         ...repositoryArgs,
         '--state', 'merged',
         '--base', 'main',
-        '--limit', String(MERGED_PR_LOOKBACK),
+        '--limit', String(MAIN_PR_LOOKBACK),
         '--json', 'number,body,headRefName,mergeCommit',
       ]);
-      return JSON.parse(stdout).filter(
+      const merged = JSON.parse(stdout);
+      if (merged.length >= MAIN_PR_LOOKBACK) {
+        throw new BackmergeError(
+          `Nach main sind mindestens ${MAIN_PR_LOOKBACK} PRs gemergt; die Suche nach offenen Cherry-Picks wäre unvollständig.`,
+        );
+      }
+      return merged.filter(
         (pullRequest) => pullRequest.headRefName.startsWith(CHERRY_PICK_BRANCH_PREFIX),
       );
     },

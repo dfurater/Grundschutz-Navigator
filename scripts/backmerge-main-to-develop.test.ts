@@ -10,7 +10,9 @@ import {
   checkCompletedImportAncestry,
   classifyBackmerge,
   collectManifestBlobsOnSource,
+  createGitHubClient,
   formatSourceMarker,
+  MAIN_PR_LOOKBACK,
   manifestOriginatesFromSource,
   migrationContractHolds,
   parseSourceMarkers,
@@ -72,6 +74,30 @@ describe('runProcess', () => {
     await expect(runProcess('git', ['rev-parse', '--verify', 'kein-solches-ref'], {
       allowFailure: true,
     })).resolves.toMatchObject({ code: 128 });
+  });
+});
+
+describe('createGitHubClient.listMergedCherryPickPullRequests', () => {
+  const merged = (headRefName: string, number: number) => ({ number, body: '', headRefName, mergeCommit: null });
+
+  it('liest bis zur Obergrenze und behält nur cherry-pick/-PRs, auch hinter vielen anderen', async () => {
+    const pullRequests = [
+      ...Array.from({ length: 25 }, (_, index) => merged(`chore/catalog-sync-${index}`, 100 + index)),
+      merged('cherry-pick/gspp-1-abcdefabcdef', 7),
+    ];
+    const run = vi.fn(async () => ({ stdout: JSON.stringify(pullRequests), stderr: '', code: 0 }));
+
+    await expect(createGitHubClient({ run }).listMergedCherryPickPullRequests())
+      .resolves.toEqual([merged('cherry-pick/gspp-1-abcdefabcdef', 7)]);
+    expect(run).toHaveBeenCalledWith('gh', expect.arrayContaining(['--limit', String(MAIN_PR_LOOKBACK)]));
+  });
+
+  it('bricht ab, wenn die Obergrenze ausgeschöpft ist', async () => {
+    const pullRequests = Array.from({ length: MAIN_PR_LOOKBACK }, (_, index) => merged(`chore/x-${index}`, index));
+    const run = vi.fn(async () => ({ stdout: JSON.stringify(pullRequests), stderr: '', code: 0 }));
+
+    await expect(createGitHubClient({ run }).listMergedCherryPickPullRequests())
+      .rejects.toThrow(BackmergeError);
   });
 });
 
