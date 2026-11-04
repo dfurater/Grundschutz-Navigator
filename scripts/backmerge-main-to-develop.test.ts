@@ -1370,6 +1370,32 @@ describe('Klasse Cherry-Pick', { timeout: 30_000 }, () => {
       .resolves.toMatchObject({ created: true, klasse: 'Cherry-Pick' });
   });
 
+  it('verbindet den Pick, wenn develop den main-Inhalt vor dem Squash übernommen und dieselbe Datei weiter geändert hat', async () => {
+    const fixture = await createFixture();
+    const lines = ['eins', 'zwei', 'drei', 'vier', 'fünf', 'sechs', 'sieben'];
+    await writeFile(join(fixture.work, 'shared.txt'), `${lines.join('\n')}\n`, 'utf8');
+    const { source } = await seedCherryPickScenario(fixture);
+    const hotfixed = ['EINS', ...lines.slice(1)];
+    await commitOnLine(fixture, 'main', { path: 'shared.txt', contents: `${hotfixed.join('\n')}\n`, message: 'fix: Hotfix auf main' });
+    await commitOnLine(fixture, 'develop', { path: 'shared.txt', contents: `${hotfixed.join('\n')}\n`, message: 'fix: Hotfix übernommen' });
+    await commitOnLine(fixture, 'develop', {
+      path: 'shared.txt', contents: `${[...hotfixed.slice(0, 6), 'SIEBEN'].join('\n')}\n`, message: 'feat: weitere Änderung',
+    });
+
+    const prepareStub = createGitHubStub();
+    const { branch, headSha } = await runCherryPickPrepare({
+      cwd: fixture.work, git: fixture.git, github: prepareStub, sourceInput: source, issue: 'GSPP-448',
+      logger: silentLogger,
+    });
+    const [[call]] = prepareStub.createPullRequest.mock.calls as [[{ body: string }]];
+    const squashSha = await squashMergeOnMain(fixture, { headSha, number: 9 });
+
+    const github = stubFor({ number: 9, body: call.body, headRefName: branch, mergeCommit: { oid: squashSha } });
+    await expect(runBackmerge({ cwd: fixture.work, git: fixture.git, github, logger: silentLogger }))
+      .resolves.toMatchObject({ created: true, klasse: 'Cherry-Pick' });
+    await expect(fixture.run('merge-base', '--is-ancestor', squashSha, `origin/${BACKMERGE_BRANCH}`)).resolves.toBe('');
+  });
+
   it('verbindet nur die Picks vor einem Squash, dem noch fehlender main-Inhalt vorausgeht', async () => {
     const fixture = await createFixture();
     const { source, later } = await seedCherryPickScenario(fixture);

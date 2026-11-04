@@ -951,15 +951,13 @@ async function runCherryPickAdoption(git, { github, logger, pending, sourceSha, 
   const adopted = [];
   for (const entry of pending) {
     const before = `${entry.sha}^1`;
-    const base = await gitText(git, ['merge-base', before, 'HEAD']);
-    const paths = parseNameStatusDiff(
-      await gitText(git, ['diff', '--name-status', '-z', '--no-renames', base, before, '--']),
-    ).map((change) => change.path);
-    if (paths.length > 0
-      && !await sourceChangesAlreadyOnIntegration(git, { paths, sourceRef: before, integrationRef: 'HEAD' })) {
+    // `-s ours` verliert nichts, wenn ein echter Merge des Stands vor dem Squash den Baum nicht änderte.
+    const merged = await git(['merge-tree', '--write-tree', 'HEAD', before], { allowFailure: true });
+    const headTree = await gitText(git, ['rev-parse', 'HEAD^{tree}']);
+    if (merged.code !== 0 || merged.stdout.split('\n')[0] !== headTree) {
       logger.log(
         `Vor dem Cherry-Pick-PR #${entry.number} trägt \`${SOURCE_REF}\` Inhalt, den \`${INTEGRATION_REF}\` `
-        + `noch nicht hat (${paths.join(', ')}); ein \`-s ours\`-Merge verwürfe ihn.`,
+        + 'noch nicht hat; ein `-s ours`-Merge verwürfe ihn.',
       );
       if (adopted.length === 0) return { blockedBy: entry };
       break;
