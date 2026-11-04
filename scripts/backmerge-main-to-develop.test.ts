@@ -10,6 +10,7 @@ import {
   checkCompletedImportAncestry,
   classifyBackmerge,
   collectManifestBlobsOnSource,
+  createGitHubClient,
   formatSourceMarker,
   manifestOriginatesFromSource,
   migrationContractHolds,
@@ -72,6 +73,67 @@ describe('runProcess', () => {
     await expect(runProcess('git', ['rev-parse', '--verify', 'kein-solches-ref'], {
       allowFailure: true,
     })).resolves.toMatchObject({ code: 128 });
+  });
+});
+
+describe('createGitHubClient.listMergedCherryPickPullRequests', () => {
+  const pick = 'a'.repeat(40);
+  const sync = 'b'.repeat(40);
+  const node = (number: number, headRefName: string, sha: string, overrides: object = {}) => ({
+    number, body: `Body ${number}`, headRefName, baseRefName: 'main', mergedAt: '2026-11-04T00:00:00Z',
+    mergeCommit: { oid: sha }, ...overrides,
+  });
+  const nodesBySha: Record<string, object[]> = {
+    [pick]: [
+      node(9, 'cherry-pick/gspp-1-abcdefabcdef', pick),
+      node(8, 'cherry-pick/gspp-2-abcdefabcdef', pick, { mergedAt: null }),
+      node(7, 'cherry-pick/gspp-3-abcdefabcdef', pick, { baseRefName: 'develop' }),
+      node(6, 'cherry-pick/gspp-4-abcdefabcdef', 'c'.repeat(40)),
+      node(4, 'cherry-pick/gspp-5-abcdefabcdef', pick, { body: null }),
+    ],
+    [sync]: [node(5, 'chore/catalog-sync-abcdefabcdef', sync)],
+  };
+  /** Antwortet wie GraphQL: je Alias `c<i>` die PRs des i-ten Commits der Abfrage. */
+  const graphql = () => vi.fn(async (_file: string, args: string[]) => {
+    const query = args.at(-1) ?? '';
+    const shas = [...query.matchAll(/object\(oid: "([0-9a-f]{40})"\)/g)].map((match) => match[1]);
+    const repository = Object.fromEntries(shas.map((sha, index) => [
+      `c${index}`, { associatedPullRequests: { nodes: nodesBySha[sha] ?? [] } },
+    ]));
+    return { stdout: JSON.stringify({ data: { repository } }), stderr: '', code: 0 };
+  });
+
+  it('behält nur gemergte cherry-pick/-PRs nach main mit diesem Merge-Commit und liest einen fehlenden Body als leer', async () => {
+    const run = graphql();
+    await expect(createGitHubClient({ repository: 'o/r', run }).listMergedCherryPickPullRequests([pick, sync]))
+      .resolves.toEqual([
+        { number: 9, body: 'Body 9', headRefName: 'cherry-pick/gspp-1-abcdefabcdef', mergeCommit: { oid: pick } },
+        { number: 4, body: '', headRefName: 'cherry-pick/gspp-5-abcdefabcdef', mergeCommit: { oid: pick } },
+      ]);
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(run).toHaveBeenCalledWith('gh', expect.arrayContaining(['-f', 'owner=o', '-f', 'name=r']));
+  });
+
+  it('setzt ohne Repositorywert die Platzhalter des Arbeitsverzeichnisses ein', async () => {
+    for (const repository of [undefined, '']) {
+      const run = graphql();
+      await createGitHubClient({ repository, run }).listMergedCherryPickPullRequests([pick]);
+      expect(run).toHaveBeenCalledWith('gh', expect.arrayContaining(['-F', 'owner={owner}', '-F', 'name={repo}']));
+    }
+  });
+
+  it('fragt in Blöcken zu 50 Commits und findet einen Pick auch im zweiten Block', async () => {
+    const run = graphql();
+    const filler = Array.from({ length: 50 }, (_, index) => index.toString(16).padStart(40, 'd'));
+    await expect(createGitHubClient({ repository: 'o/r', run }).listMergedCherryPickPullRequests([...filler, pick]))
+      .resolves.toHaveLength(2);
+    expect(run).toHaveBeenCalledTimes(2);
+  });
+
+  it('fragt ohne Kandidaten nicht', async () => {
+    const run = graphql();
+    await expect(createGitHubClient({ run }).listMergedCherryPickPullRequests([])).resolves.toEqual([]);
+    expect(run).not.toHaveBeenCalled();
   });
 });
 
@@ -1130,6 +1192,8 @@ describe('Klasse Cherry-Pick', { timeout: 30_000 }, () => {
     const result = await runBackmerge({ cwd: fixture.work, git: fixture.git, github, logger: silentLogger });
 
     expect(result).toMatchObject({ created: true, klasse: 'Cherry-Pick' });
+    // Kandidaten sind die first-parent-Commits von main, die develop nicht erreicht.
+    expect(github.listMergedCherryPickPullRequests).toHaveBeenCalledWith(expect.arrayContaining([squashSha]));
     const [[call]] = github.createPullRequest.mock.calls as [[{ head: string; body: string }]];
     expect(call.head).toBe(BACKMERGE_BRANCH);
     expect(call.body).toContain('Klasse **Cherry-Pick**');
@@ -1241,15 +1305,23 @@ describe('Klasse Cherry-Pick', { timeout: 30_000 }, () => {
   });
 
   it('stellt den Historien-PR auch beim direkten CLI-Aufruf', async () => {
-    const { fixture, pullRequest } = await mergedCherryPick();
-    // `gh` als Stub: gemergte Cherry-Picks aus einer Datei, sonst leer.
+    const { fixture, squashSha, pullRequest } = await mergedCherryPick();
+    // `gh` als Stub: GraphQL nennt unter jedem Alias den Cherry-Pick; nur der Alias seines Squash-Commits zählt.
     const bin = join(fixture.root, 'bin');
     await mkdir(bin);
-    await writeFile(join(fixture.root, 'cherry-picks.json'), JSON.stringify([pullRequest]), 'utf8');
+    const pickNode = {
+      number: pullRequest.number, body: pullRequest.body, headRefName: pullRequest.headRefName, baseRefName: 'main',
+      mergedAt: '2026-11-04T00:00:00Z', mergeCommit: { oid: squashSha },
+    };
+    await writeFile(join(fixture.root, 'cherry-picks.json'), JSON.stringify({
+      data: { repository: Object.fromEntries(Array.from({ length: 50 }, (_, index) => [
+        `c${index}`, { associatedPullRequests: { nodes: [pickNode] } },
+      ])) },
+    }), 'utf8');
     await writeFile(join(bin, 'gh'), [
       '#!/bin/sh',
       'case "$*" in',
-      `  *"--state merged"*"--base main"*) cat "${join(fixture.root, 'cherry-picks.json')}" ;;`,
+      `  *"api graphql"*) cat "${join(fixture.root, 'cherry-picks.json')}" ;;`,
       '  *"--state merged"*) echo "[]" ;;',
       '  *"pr create"*) echo "https://example.invalid/pull/2" ;;',
       'esac',
