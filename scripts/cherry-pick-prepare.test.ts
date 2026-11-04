@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
@@ -260,6 +260,45 @@ describe('verifyCherryPickPullRequest', () => {
 
     await expect(verify(fixture, { headSha, body: call.body, branch: result.branch }))
       .rejects.toThrow(/kein konfliktfreier Merge/);
+  });
+});
+
+describe('CLI --verify-pull-request', () => {
+  /** Startet das Skript wie der Pflichtcheck: Argument plus PR-Werte aus der Umgebung. */
+  function runVerifyCli(fixture: BranchLineFixture, env: Record<string, string>) {
+    return spawnSync(process.execPath, [resolve('scripts/cherry-pick-prepare.mjs'), '--verify-pull-request'], {
+      cwd: fixture.work, encoding: 'utf8', env: { ...process.env, ...env }, timeout: 60_000,
+    });
+  }
+
+  it('meldet eine bestandene Prüfung mit Exit-Code 0', async () => {
+    const { fixture, source } = await createScenario();
+    const headSha = await pickOntoMain(fixture, [source]);
+    const result = runVerifyCli(fixture, {
+      PR_BASE_REF: 'main', PR_HEAD_REF: 'cherry-pick/gspp-448-abcdefabcdef', PR_HEAD_SHA: headSha,
+      PR_BODY: markers([source]),
+    });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('1 Quelle(n) mit gleichem Patch');
+  });
+
+  it('meldet einen nicht einschlägigen PR mit Exit-Code 0', async () => {
+    const { fixture } = await createScenario();
+    const result = runVerifyCli(fixture, {
+      PR_BASE_REF: 'develop', PR_HEAD_REF: 'claude/x', PR_HEAD_SHA: await fixture.run('rev-parse', 'HEAD'), PR_BODY: '',
+    });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('nicht einschlägig');
+  });
+
+  it('endet bei einem Prüffehler mit Exit-Code 1 und nennt den Grund', async () => {
+    const { fixture, source } = await createScenario();
+    const headSha = await pickOntoMain(fixture, [source]);
+    const result = runVerifyCli(fixture, {
+      PR_BASE_REF: 'main', PR_HEAD_REF: 'cherry-pick/gspp-448-abcdefabcdef', PR_HEAD_SHA: headSha, PR_BODY: 'ohne Marke',
+    });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toMatch(/je Quelle eine Marke/);
   });
 });
 
