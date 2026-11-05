@@ -20,5 +20,5 @@ it('delivers the search OG title and canonical URL in HTML without running JavaS
 
   const html = readFileSync(join(directory, 'suche/index.html'), 'utf8');
   expect(html).toContain('<meta property="og:title" content="Suche" />');
-  expect(html).toContain('<meta property="og:url" content="https://gspp-navigator.furater.com/suche" />');
+  expect(html).toContain('<meta property="og:url" content="https://gspp-navigator.furater.com/suche/" />');
 });

@@ -137,20 +137,20 @@ describe('loadPublicSeoCatalogs', () => {
 });
 
 describe('writeSeoRouteEntries', () => {
-  it('changes only the two OG tags and writes the home index for the 404 fallback', () => {
+  it.each([BASE_URL, BASE_URL + 'preview/'])('changes only the two OG tags and writes all route types under %s', base => {
     const directory = tempDir();
     const entries = listSeoRouteMetadata([catalog()]);
-    writeSeoRouteEntries(directory, entries, BASE_URL);
+    writeSeoRouteEntries(directory, entries, base);
     for (const entry of entries) {
       const file = routeHtmlFile(entry.path);
       const html = readFileSync(join(directory, file), 'utf8');
-      expect(metadata(html)).toEqual({ title: entry.title, url: BASE_URL + entry.path.slice(1) });
+      expect(metadata(html)).toEqual({ title: entry.title, url: base + (entry.path === '/' ? '' : entry.path.slice(1) + '/') });
       const withoutOg = (value: string) => value.replace(/<meta property="og:(title|url)"[^>]*>/g, '');
-      expect(withoutOg(html)).toBe(withoutOg(HTML));
+      expect(withoutOg(html)).toBe(withoutOg(HTML.replaceAll(BASE_URL + 'og-image.png', base + 'og-image.png')));
     }
     expect(existsSync(join(directory, 'katalog/gspp/unknown/index.html'))).toBe(false);
     expect(existsSync(join(directory, 'katalog/unknown/index.html'))).toBe(false);
-    expect(metadata(readFileSync(join(directory, 'index.html'), 'utf8'))).toEqual({ title: HOME_OG_TITLE, url: BASE_URL });
+    expect(metadata(readFileSync(join(directory, 'index.html'), 'utf8'))).toEqual({ title: HOME_OG_TITLE, url: base });
   });
 
   it('writes every public OG title without an em dash', () => {
@@ -211,7 +211,7 @@ describe('writeSeoRouteEntries', () => {
     const directory = tempDir();
     writeSeoRouteEntries(directory, [{ path: '/katalog/gspp/%C3%9Cber%20uns', title: 'Übersicht' }], BASE_URL);
     const html = readFileSync(join(directory, 'katalog/gspp/Über uns/index.html'), 'utf8');
-    expect(metadata(html).url).toBe(BASE_URL + 'katalog/gspp/%C3%9Cber%20uns');
+    expect(metadata(html).url).toBe(BASE_URL + 'katalog/gspp/%C3%9Cber%20uns/');
   });
 
   it('preserves route metadata for query URLs and uses a configured deployment base', () => {
@@ -219,11 +219,11 @@ describe('writeSeoRouteEntries', () => {
     writeSeoRouteEntries(directory, listSeoRouteMetadata([]), 'https://example.com/preview/');
     for (const target of ['https://example.com/preview/suche?q=secret', 'https://example.com/preview/suche?filter=secret#secret']) {
       const route = new URL(target).pathname.slice('/preview/'.length);
-      expect(metadata(readFileSync(join(directory, route, 'index.html'), 'utf8'))).toEqual({ title: 'Suche', url: 'https://example.com/preview/suche' });
+      expect(metadata(readFileSync(join(directory, route, 'index.html'), 'utf8'))).toEqual({ title: 'Suche', url: 'https://example.com/preview/suche/' });
     }
   });
 
-  it.each(['/../escape', '/%2e%2e/escape', '/a/%2Fescape', '/a/%5cescape', '/a?q=secret', '/a#secret', '//evil', '/a/%00'])('rejects unsafe route %s before writing any output', path => {
+  it.each(['/../escape', '/%2e%2e/escape', '/a/%2Fescape', '/a/%5cescape', '/a?q=secret', '/a#secret', '//evil', '/a/%00', '/a/', '/a//', '/a//b'])('rejects unsafe route %s before writing any output', path => {
     const directory = tempDir();
     expect(() => writeSeoRouteEntries(directory, [{ path: '/suche', title: 'Suche' }, { path, title: 'Unsafe' }], BASE_URL)).toThrow();
     expect(readdirSync(directory)).toEqual(['index.html']);
