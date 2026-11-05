@@ -143,6 +143,12 @@ export function spaFallbackPlugin(
       writeStaticRouteEntries(outDir, options.catalogs, modulePreloads);
       writeSpaFallbackFile(outDir);
       writeSitemapFile(outDir);
+      writeFileSync(resolve(outDir, 'robots.txt'), [
+        'User-agent: *',
+        'Allow: /',
+        `Sitemap: ${CANONICAL_ORIGIN}${resolveDeploymentBase()}sitemap.xml`,
+        '',
+      ].join('\n'), 'utf8');
       checkBuiltSeoTitles(outDir);
       writeChecksumsManifestFile(outDir);
     },
@@ -248,7 +254,7 @@ export function buildSitemapXml(
   const baseUrl = `${origin}${basePath}`;
 
   const urlEntries = routes.map((route) => {
-    const loc = escapeXml(`${baseUrl}${route.slice(1)}`);
+    const loc = escapeXml(`${baseUrl}${route.slice(1)}${route.endsWith('/') ? '' : '/'}`);
     return `  <url><loc>${loc}</loc></url>`;
   });
 
