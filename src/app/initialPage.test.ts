@@ -23,12 +23,12 @@ async function settledAfter(promise: Promise<void>, ms: number): Promise<boolean
 
 describe('initialRoutePath', () => {
   it.each([
-    ['/Grundschutz-Navigator/suche', '/Grundschutz-Navigator', '/suche'],
-    ['/Grundschutz-Navigator/', '/Grundschutz-Navigator', '/'],
-    ['/Grundschutz-Navigator', '/Grundschutz-Navigator', '/'],
-    ['/Grundschutz-Navigator-x/suche', '/Grundschutz-Navigator', '/Grundschutz-Navigator-x/suche'],
+    ['/preview/suche', '/preview', '/suche'],
+    ['/preview/', '/preview', '/'],
+    ['/preview', '/preview', '/'],
+    ['/preview-x/suche', '/preview', '/preview-x/suche'],
     ['/suche', undefined, '/suche'],
-    ['/andere/suche', '/Grundschutz-Navigator', '/andere/suche'],
+    ['/andere/suche', '/preview', '/andere/suche'],
   ])('%s mit Basis %s ergibt %s', (pathname, basename, expected) => {
     expect(initialRoutePath(pathname, basename)).toBe(expected);
   });
@@ -63,7 +63,7 @@ describe('preloadInitialPage', () => {
 
   it('wendet die Basis an, bevor es den Chunk sucht', async () => {
     vi.useFakeTimers();
-    const pending = preloadInitialPage('/Basis/about', '/Basis', 50);
+    const pending = preloadInitialPage('/preview/about', '/preview', 50);
 
     expect(await settledAfter(pending, 49)).toBe(false);
     expect(await settledAfter(pending, 1)).toBe(true);
@@ -72,7 +72,7 @@ describe('preloadInitialPage', () => {
   it('wartet nicht auf einen Pfad, der nur den Basisnamen als Präfix trägt', async () => {
     vi.useFakeTimers();
 
-    expect(await settledAfter(preloadInitialPage('/Basis-x/datenschutz', '/Basis', 50), 0)).toBe(true);
+    expect(await settledAfter(preloadInitialPage('/preview-x/datenschutz', '/preview', 50), 0)).toBe(true);
   });
 
   it('räumt den Timer auf', async () => {

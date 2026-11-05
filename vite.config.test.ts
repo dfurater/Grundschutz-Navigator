@@ -23,7 +23,7 @@ import {
   writeStaticRouteEntries,
 } from './vite.config';
 import { createRequire } from 'node:module';
-import { assertChecksumsManifest, parseChecksumsManifest } from './scripts/deployChecksums.mjs';
+import { assertChecksumsManifest, parseChecksumsManifest, sha256Hex } from './scripts/deployChecksums.mjs';
 import { LAZY_ROUTE_MODULES } from './src/app/lazyRouteModules.mjs';
 import { HOME_OG_TITLE } from './src/app/pageTitles';
 
@@ -135,7 +135,7 @@ describe('writeSitemapFile / buildSitemapXml', () => {
     '  <url><loc>https://gspp-navigator.furater.com/</loc></url>',
     ...listCanonicalEntryRoutes().map(
       (route) =>
-        `  <url><loc>https://gspp-navigator.furater.com${route}</loc></url>`,
+        `  <url><loc>https://gspp-navigator.furater.com${route}/</loc></url>`,
     ),
     '</urlset>',
     '',
@@ -155,7 +155,7 @@ describe('writeSitemapFile / buildSitemapXml', () => {
     expect(new Set(locs).size).toBe(locs.length);
     expect(locs).toContain('https://gspp-navigator.furater.com/');
     for (const route of listCanonicalEntryRoutes()) {
-      expect(locs).toContain(`https://gspp-navigator.furater.com${route}`);
+      expect(locs).toContain(`https://gspp-navigator.furater.com${route}/`);
     }
     expect(locs).toHaveLength(1 + listCanonicalEntryRoutes().length);
   });
@@ -164,7 +164,7 @@ describe('writeSitemapFile / buildSitemapXml', () => {
     const locs = buildSitemapXml().match(/<loc>[^<]*<\/loc>/g) ?? [];
 
     for (const loc of locs) {
-      expect(loc).not.toMatch(/^<loc>https:\/\/gspp-navigator\.furater\.com\/katalog<\/loc>$/);
+      expect(loc).not.toMatch(/^<loc>https:\/\/gspp-navigator\.furater\.com\/katalog\/<\/loc>$/);
       expect(loc).not.toContain('/mehr');
       expect(loc).not.toContain('/kontrolle/');
       expect(loc).not.toContain('?');
@@ -188,7 +188,11 @@ describe('writeSitemapFile / buildSitemapXml', () => {
       routes: ['/a&b<c>d"e\''],
     });
 
-    expect(xml).toContain('<loc>https://example.com/base/a&amp;b&lt;c&gt;d&quot;e&apos;</loc>');
+    expect(xml).toContain('<loc>https://example.com/base/a&amp;b&lt;c&gt;d&quot;e&apos;/</loc>');
+  });
+
+  it('preserves encoded Unicode and spaces in directory URLs', () => {
+    expect(buildSitemapXml({ routes: ['/katalog/%C3%9Cber%20uns'] })).toContain('<loc>https://gspp-navigator.furater.com/katalog/%C3%9Cber%20uns/</loc>');
   });
 
   it('writes byte-deterministically to dist/sitemap.xml', () => {
@@ -219,7 +223,7 @@ describe('writeSitemapFile / buildSitemapXml', () => {
     try {
       expect(resolveDeploymentBase()).toBe('/preview/');
       expect(buildSitemapXml()).toContain(
-        '<loc>https://gspp-navigator.furater.com/preview/suche</loc>',
+        '<loc>https://gspp-navigator.furater.com/preview/suche/</loc>',
       );
     } finally {
       delete process.env.BUILD_BASE;
@@ -232,7 +236,7 @@ describe('writeSitemapFile / buildSitemapXml', () => {
     try {
       expect(resolveDeploymentBase()).toBe('/preview/');
       expect(buildSitemapXml()).toContain(
-        '<loc>https://gspp-navigator.furater.com/preview/suche</loc>',
+        '<loc>https://gspp-navigator.furater.com/preview/suche/</loc>',
       );
       expect(buildSitemapXml()).not.toContain('previewsuche');
     } finally {
@@ -311,7 +315,7 @@ describe('writeStaticRouteEntries', () => {
     writeStaticRouteEntries(distDir);
     for (const route of listCanonicalEntryRoutes()) {
       const html = readFileSync(join(distDir, route.slice(1), 'index.html'), 'utf8');
-      expect(html).toContain(`<meta property="og:url" content="https://gspp-navigator.furater.com${route}" />`);
+      expect(html).toContain(`<meta property="og:url" content="https://gspp-navigator.furater.com${route}/" />`);
       expect(html.match(/property="og:title"/g)).toHaveLength(1);
       expect(html).toContain('<script type="module" src="/assets/app.js"></script>');
     }
@@ -339,7 +343,7 @@ describe('writeStaticRouteEntries', () => {
       expect(fallback).toContain('property="og:url" content="https://gspp-navigator.furater.com/preview/"');
       expect(fallback).toContain('name="twitter:image" content="https://gspp-navigator.furater.com/preview/og-image.png"');
       expect(fallback).toBe(readFileSync(join(distDir, 'index.html'), 'utf8'));
-      expect(readFileSync(join(distDir, 'suche/index.html'), 'utf8')).toContain('content="https://gspp-navigator.furater.com/preview/suche"');
+      expect(readFileSync(join(distDir, 'suche/index.html'), 'utf8')).toContain('content="https://gspp-navigator.furater.com/preview/suche/"');
       expect(existsSync(join(distDir, 'katalog/unknown/index.html'))).toBe(false);
     } finally {
       delete process.env.BUILD_BASE;
@@ -425,11 +429,33 @@ describe('modulepreload für Lazy-Routen (GSPP-506)', () => {
 });
 
 describe('spaFallbackPlugin closeBundle', () => {
+  it.each([undefined, '/preview', '/preview/'])('writes deterministic robots and slash URLs with BUILD_BASE=%s before hashing', base => {
+    if (base === undefined) delete process.env.BUILD_BASE;
+    else process.env.BUILD_BASE = base;
+    try {
+      const distDir = createTempDistWithIndex();
+      const plugin = spaFallbackPlugin({ outDir: distDir, catalogs: [], modulePreloads: MODULE_PRELOADS });
+      plugin.closeBundle();
+      const prefix = 'https://gspp-navigator.furater.com' + (base ? '/preview/' : '/');
+      const expected = `User-agent: *\nAllow: /\nSitemap: ${prefix}sitemap.xml\n`;
+      expect(readFileSync(join(distDir, 'robots.txt'))).toEqual(Buffer.from(expected, 'utf8'));
+      const first = readFileSync(join(distDir, 'SHA256SUMS'));
+      expect(readFileSync(join(distDir, 'sitemap.xml'), 'utf8')).toContain(`<loc>${prefix}suche/</loc>`);
+      expect(readFileSync(join(distDir, 'suche/index.html'), 'utf8')).toContain(`content="${prefix}suche/"`);
+      expect(readFileSync(join(distDir, 'index.html'), 'utf8')).toContain(`content="${prefix}"`);
+      expect(assertChecksumsManifest(distDir).fileCount).toBe(listFilesRecursive(distDir).length);
+      plugin.closeBundle();
+      expect(readFileSync(join(distDir, 'SHA256SUMS'))).toEqual(first);
+    } finally {
+      delete process.env.BUILD_BASE;
+    }
+  });
+
   it('runs only in the build, not when a dev or Vitest server closes', () => {
     expect(spaFallbackPlugin().apply).toBe('build');
   });
 
-  it('writes SHA256SUMS last so it binds route entries, 404.html, sitemap and assets', () => {
+  it('writes SHA256SUMS last so it binds route entries, 404.html, sitemap, robots and assets', () => {
     const distDir = createTempDistWithIndex();
     writeFileSync(join(distDir, 'favicon.svg'), '<svg/>');
 
@@ -439,6 +465,8 @@ describe('spaFallbackPlugin closeBundle', () => {
     const paths = [...parseChecksumsManifest(manifest).keys()];
     expect(paths).toContain('404.html');
     expect(paths).toContain('sitemap.xml');
+    expect(paths).toContain('robots.txt');
+    expect(parseChecksumsManifest(manifest).get('robots.txt')).toBe(sha256Hex(readFileSync(join(distDir, 'robots.txt'))));
     expect(paths).toContain('favicon.svg');
     expect(paths).toContain('suche/index.html');
     expect(paths).not.toContain('SHA256SUMS');

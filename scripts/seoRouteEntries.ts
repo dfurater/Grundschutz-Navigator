@@ -188,7 +188,7 @@ const OG_IMAGE_FILE = 'og-image.png';
 /** HTML-Kopf eines Einstiegs: OG-Titel, -URL und -Bild, bei Lazy-Routen das `modulepreload`. */
 function renderRouteEntry(template: string, entry: SeoRouteMetadata, base: URL): string {
   if (!entry.title.trim()) throw new Error('SEO title must not be empty');
-  const url = new URL(entry.path.slice(1), base).href;
+  const url = new URL(entry.path === '/' ? '' : entry.path.slice(1) + '/', base).href;
   const image = new URL(OG_IMAGE_FILE, base).href;
   let html = replaceOgTag(replaceOgTag(template, 'og:title', entry.title), 'og:url', url);
   html = replaceOgTag(replaceOgTag(html, 'og:image', image), 'twitter:image', image);
