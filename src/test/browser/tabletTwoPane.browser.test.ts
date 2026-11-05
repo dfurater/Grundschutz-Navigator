@@ -366,6 +366,14 @@ test.each([768, 1023])('gibt bei %i px nach herausgescrollter Zeile Fokus und Si
   // Die auslösende Zeile aus dem sichtbaren Listenbereich scrollen.
   listScroller.scrollTop = listScroller.scrollHeight;
   await expect.poll(() => listScroller.scrollTop).toBeGreaterThan(0);
+  await expect.poll(() => {
+    const row = rowButton(shell, 'TOP.1.1');
+    if (!row) return true;
+    const rowBox = row.getBoundingClientRect();
+    const listBox = listScroller.getBoundingClientRect();
+    return rowBox.bottom <= listBox.top || rowBox.top >= listBox.bottom;
+  }).toBe(true);
+  await expect.poll(() => shell.querySelector('[data-tablet-detail-panel]')?.contains(document.activeElement)).toBe(true);
 
   // Nur keydown: Das keyup von userEvent ginge an die bereits ungemountete
   // Überschrift und zöge den Fokus auf `body` — ein Testartefakt, kein
@@ -373,11 +381,17 @@ test.each([768, 1023])('gibt bei %i px nach herausgescrollter Zeile Fokus und Si
   document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
   await expect.poll(() => shell.querySelector('[data-testid="tablet-detail-panel"]')).toBeNull();
 
-  const row = rowButton(shell, 'TOP.1.1');
-  expect(document.activeElement).toBe(row);
+  await expect.poll(() => {
+    const row = rowButton(shell, 'TOP.1.1');
+    return row != null && row.isConnected && document.activeElement === row;
+  }).toBe(true);
   // Die fokussierte Zeile steht wieder im sichtbaren Listenbereich.
-  const rowBox = row.getBoundingClientRect();
-  const listBox = listScroller.getBoundingClientRect();
-  expect(rowBox.top).toBeGreaterThanOrEqual(listBox.top - 1);
-  expect(rowBox.bottom).toBeLessThanOrEqual(listBox.bottom + 1);
+  await expect.poll(() => {
+    const row = rowButton(shell, 'TOP.1.1');
+    if (!row?.isConnected || document.activeElement !== row) return false;
+    const rowBox = row.getBoundingClientRect();
+    const listBox = listScroller.getBoundingClientRect();
+    return rowBox.top >= listBox.top - 1 && rowBox.bottom <= listBox.bottom + 1
+      && rowBox.left >= listBox.left - 1 && rowBox.right <= listBox.right + 1;
+  }).toBe(true);
 });
