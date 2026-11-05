@@ -23,15 +23,18 @@
  * zurückgenommen wurde. Jede Inhaltsklasse hat deshalb ihre eigene, benannte
  * Bezugsgröße:
  *
- * - **M1** (nur das Manifest) übernimmt wholesale aus `main`, aber nur unter
- *   der Vorbedingung, dass develops aktuelles Manifest byte-identisch mit dem
- *   Manifest an irgendeinem von `origin/main` erreichbaren Commit ist. Dann
+ * Quellstand ist `origin/main`, außer der erste offene Cherry-Pick blockiert;
+ * dann ist es der erste Elternteil von dessen Squash-Commit.
+ *
+ * - **M1** (nur das Manifest) übernimmt wholesale aus dem Quellstand, aber nur
+ *   unter der Vorbedingung, dass develops aktuelles Manifest byte-identisch mit
+ *   dem Manifest an irgendeinem vom Quellstand erreichbaren Commit ist. Dann
  *   stammt develops Stand nachweislich aus `main`. Übernommen wird immer der
- *   Sprung auf `main`s aktuellen Stand, nie ein Einzelschritt. Weil die
+ *   Sprung auf das Manifest des Quellstands, nie ein Einzelschritt. Weil die
  *   Vorbedingung inhaltsbasiert ist, braucht M1 keine Historie und darf
  *   gesquasht werden.
  * - **M2** (Manifest und Quellregister) und **M3** (Inhalt ohne Manifestpfad)
- *   nutzen einen Drei-Wege-Merge gegen `git merge-base origin/main
+ *   nutzen einen Drei-Wege-Merge gegen `git merge-base <Quellstand>
  *   origin/develop`. Beide tragen gewöhnlichen Quellcode, den beide Linien
  *   bewegen dürfen; dort ist Gits Merge-Semantik das richtige Werkzeug und ein
  *   Konflikt eine echte Aussage. Damit diese Basis gültig bleibt, müssen M2
@@ -937,8 +940,10 @@ export async function resolvePendingCherryPicks(git, { github }) {
  * Die Quellen liegen auf `develop` bereits, oft schon mit späteren Änderungen
  * derselben Zeilen; ein Inhalts-Merge des Squash-Commits kollidierte dann.
  * `-s ours` behält den `develop`-Baum und verwirft die andere Seite vollständig,
- * auch alles, was `main` vor dem Squash trug. Deshalb muss jeder von `main` vor
- * dem Squash bewegte Pfad auf dem Branch schon byte-gleich vorliegen.
+ * auch alles, was `main` vor dem Squash trug. Deshalb verbindet der Lauf einen
+ * Pick nur, wenn `git merge-tree --write-tree` aus Branch und Stand vor dem
+ * Squash konfliktfrei genau den Baum des Branches errechnet; `develop` darf
+ * übernommene Dateien danach weiter geändert haben.
  *
  * Trägt `main` vor einem Squash Inhalt, den `develop` noch nicht hat, verbindet
  * der Lauf nur die Picks davor. Betrifft das schon den ersten, liefert er
