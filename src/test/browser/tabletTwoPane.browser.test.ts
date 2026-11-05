@@ -391,6 +391,7 @@ test.each([768, 1023])('gibt bei %i px nach herausgescrollter Zeile Fokus und Si
     if (!row?.isConnected || document.activeElement !== row) return false;
     const rowBox = row.getBoundingClientRect();
     const listBox = listScroller.getBoundingClientRect();
-    return rowBox.top >= listBox.top - 1 && rowBox.bottom <= listBox.bottom + 1;
+    return rowBox.top >= listBox.top - 1 && rowBox.bottom <= listBox.bottom + 1
+      && rowBox.left >= listBox.left - 1 && rowBox.right <= listBox.right + 1;
   }).toBe(true);
 });
