@@ -1,4 +1,5 @@
 export declare const CHECKSUMS_FILE: 'SHA256SUMS';
+export declare const UPLOADER_EXCLUDED_NAMES: ReadonlySet<string>;
 
 export declare class DeploymentManifestError extends Error {}
 

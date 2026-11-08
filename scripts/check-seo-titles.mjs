@@ -26,6 +26,7 @@
  */
 
 import { compareStringsByCodeUnit } from '../src/domain/codeUnitOrder.mjs';
+import { UPLOADER_EXCLUDED_NAMES } from './deployChecksums.mjs';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join, relative, resolve } from 'node:path';
@@ -123,9 +124,8 @@ export function collectBuiltHtmlFiles(distDir) {
   const files = [];
   const walk = (directory) => {
     for (const entry of readdirSync(directory, { withFileTypes: true })) {
-      // Packregel des gepinnten `actions/upload-pages-artifact`: Namen mit
-      // führendem Punkt fallen samt Unterbaum aus der Auslieferung heraus.
-      if (entry.name.startsWith('.')) continue;
+      // Packregel des gepinnten `actions/upload-pages-artifact` (siehe deployChecksums.mjs).
+      if (UPLOADER_EXCLUDED_NAMES.has(entry.name)) continue;
       const full = join(directory, entry.name);
       if (entry.isDirectory()) {
         walk(full);

@@ -14,6 +14,7 @@ import { tmpdir } from 'os';
 import { afterEach, afterAll, describe, expect, it } from 'vitest';
 import {
   listCanonicalEntryRoutes,
+  buildSecurityTxt,
   buildSitemapXml,
   resolveDeploymentBase,
   spaFallbackPlugin,
@@ -428,6 +429,28 @@ describe('modulepreload für Lazy-Routen (GSPP-506)', () => {
   });
 });
 
+describe('buildSecurityTxt', () => {
+  it.each([
+    [undefined, 'https://gspp-navigator.furater.com/.well-known/security.txt'],
+    ['/preview', 'https://gspp-navigator.furater.com/preview/.well-known/security.txt'],
+  ])('emits the RFC 9116 fields with Expires 364 days ahead for BUILD_BASE=%s', (base, canonical) => {
+    if (base === undefined) delete process.env.BUILD_BASE;
+    else process.env.BUILD_BASE = base;
+    try {
+      expect(buildSecurityTxt(new Date('2026-11-08T19:42:47.039Z'))).toBe([
+        'Contact: https://github.com/dfurater/Grundschutz-Navigator/security/advisories/new',
+        'Expires: 2027-11-07T19:42:47Z',
+        'Preferred-Languages: de, en',
+        `Canonical: ${canonical}`,
+        'Policy: https://github.com/dfurater/Grundschutz-Navigator/blob/main/SECURITY.md',
+        '',
+      ].join('\n'));
+    } finally {
+      delete process.env.BUILD_BASE;
+    }
+  });
+});
+
 describe('spaFallbackPlugin closeBundle', () => {
   it.each([undefined, '/preview', '/preview/'])('writes deterministic robots and slash URLs with BUILD_BASE=%s before hashing', base => {
     if (base === undefined) delete process.env.BUILD_BASE;
@@ -439,6 +462,8 @@ describe('spaFallbackPlugin closeBundle', () => {
       const prefix = 'https://gspp-navigator.furater.com' + (base ? '/preview/' : '/');
       const expected = `User-agent: *\nAllow: /\nSitemap: ${prefix}sitemap.xml\n`;
       expect(readFileSync(join(distDir, 'robots.txt'))).toEqual(Buffer.from(expected, 'utf8'));
+      expect(readFileSync(join(distDir, '.well-known/security.txt'), 'utf8'))
+        .toContain(`\nCanonical: ${prefix}.well-known/security.txt\n`);
       const first = readFileSync(join(distDir, 'SHA256SUMS'));
       expect(readFileSync(join(distDir, 'sitemap.xml'), 'utf8')).toContain(`<loc>${prefix}suche/</loc>`);
       expect(readFileSync(join(distDir, 'suche/index.html'), 'utf8')).toContain(`content="${prefix}suche/"`);
@@ -455,7 +480,7 @@ describe('spaFallbackPlugin closeBundle', () => {
     expect(spaFallbackPlugin().apply).toBe('build');
   });
 
-  it('writes SHA256SUMS last so it binds route entries, 404.html, sitemap, robots and assets', () => {
+  it('writes SHA256SUMS last so it binds route entries, 404.html, sitemap, robots, security.txt and assets', () => {
     const distDir = createTempDistWithIndex();
     writeFileSync(join(distDir, 'favicon.svg'), '<svg/>');
 
@@ -466,6 +491,8 @@ describe('spaFallbackPlugin closeBundle', () => {
     expect(paths).toContain('404.html');
     expect(paths).toContain('sitemap.xml');
     expect(paths).toContain('robots.txt');
+    expect(parseChecksumsManifest(manifest).get('.well-known/security.txt'))
+      .toBe(sha256Hex(readFileSync(join(distDir, '.well-known/security.txt'))));
     expect(parseChecksumsManifest(manifest).get('robots.txt')).toBe(sha256Hex(readFileSync(join(distDir, 'robots.txt'))));
     expect(paths).toContain('favicon.svg');
     expect(paths).toContain('suche/index.html');

@@ -9,10 +9,12 @@
  * Subject-Zahl bleibt eins, gleich wie viele Routen oder Assets hinzukommen.
  *
  * Die Dateimenge folgt der Packregel des gepinnten
- * `actions/upload-pages-artifact`: Namen mit führendem Punkt fallen samt
- * Unterbaum heraus. Symlinks und andere nicht reguläre Dateitypen brechen ab,
- * statt still mitzulaufen — der Uploader würde sie dereferenzieren und damit
- * Bytes veröffentlichen, die das Manifest nicht sieht.
+ * `actions/upload-pages-artifact` mit `include-hidden-files: true`:
+ * Pfadkomponenten `.git` und `.github` fallen samt Unterbaum heraus, alle
+ * anderen Punkt-Namen wie `.well-known` werden veröffentlicht. Symlinks und
+ * andere nicht reguläre Dateitypen brechen ab, statt still mitzulaufen — der
+ * Uploader würde sie dereferenzieren und damit Bytes veröffentlichen, die das
+ * Manifest nicht sieht.
  *
  * Das Modul läuft ohne Vite und ohne `@/`-Alias: `vite.config.ts` ruft den
  * Schreiber im Build auf, die CLI prüft das fertige `dist/` in CI.
@@ -28,6 +30,9 @@ import { pathToFileURL } from 'node:url';
 export { sha256Hex } from './contentHashes.mjs';
 
 export const CHECKSUMS_FILE = 'SHA256SUMS';
+
+/** Namen, die der gepinnte Uploader unabhängig von `include-hidden-files` ausschließt. */
+export const UPLOADER_EXCLUDED_NAMES = new Set(['.git', '.github']);
 
 const SAFE_PATH = /^[A-Za-z0-9._/-]+$/;
 const MANIFEST_LINE = /^([0-9a-f]{64}) {2}(.+)$/;
@@ -62,7 +67,7 @@ export function collectDeployedFiles(distDir) {
   const files = [];
   const walk = (directory, prefix) => {
     for (const entry of readdirSync(directory, { withFileTypes: true })) {
-      if (entry.name.startsWith('.')) continue;
+      if (UPLOADER_EXCLUDED_NAMES.has(entry.name)) continue;
       const relativePath = prefix === '' ? entry.name : `${prefix}/${entry.name}`;
       assertSafeRelativePath(relativePath);
       if (entry.isSymbolicLink()) {
