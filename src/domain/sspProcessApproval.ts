@@ -43,7 +43,7 @@ function uuidCounts(source: unknown): Map<string, number> {
 }
 
 /** Sequenzen wählen die Kette; ein fehlerhafter Beleg wird niemals übersprungen. */
-export function processActionChain(source: unknown, processUuid: string): { sequence: number; action?: JsonObject } {
+export function processActionChain(source: unknown, processUuid: string): { sequence: number; action?: JsonObject; withdrawable?: JsonObject } {
   const target = processUuidKey(processUuid);
   const all = processObjects(readSspValue(source, ['metadata', 'actions']));
   const own = all.filter(action => action.system === PROCESS_CIA_ACTIONS_SYSTEM);
@@ -65,13 +65,18 @@ export function processActionChain(source: unknown, processUuid: string): { sequ
     if (!seq || !/^[1-9]\d{0,15}$/.test(seq) || !Number.isSafeInteger(Number(seq))) return processBindingError();
   }
   selected.sort((a, b) => Number(property(a, 'process-cia-sequence')) - Number(property(b, 'process-cia-sequence')));
+  const approvals: JsonObject[] = [];
   let previous: JsonObject | undefined;
   selected.forEach((action, index) => {
     if (Number(property(action, 'process-cia-sequence')) !== index + 1) return processBindingError();
-    if (action.type === 'withdrawn' && (previous?.type !== 'approved' || processUuidKey(property(action, 'process-cia-withdraws')) !== processUuidKey(previous.uuid))) return processBindingError();
+    if (action.type === 'approved') approvals.push(action);
+    else {
+      const approval = approvals.pop();
+      if (!approval || processUuidKey(property(action, 'process-cia-withdraws')) !== processUuidKey(approval.uuid)) return processBindingError();
+    }
     previous = action;
   });
-  return { sequence: selected.length, action: previous };
+  return { sequence: selected.length, action: previous, withdrawable: approvals.at(-1) };
 }
 
 export function processActionFailure(source: unknown): { code: string; path: string } | undefined {
@@ -113,21 +118,22 @@ export function appendProcessDecision(source: unknown, input: ProcessDecisionInp
   const chain = processActionChain(source, input.processUuid);
   const axes = protection(source, input.processUuid);
   processUuidKey(input.uuid);
-  if (!validDate(input.date) || !input.date.endsWith('Z') || !input.remarks.trim() || uuidCounts(source).has(input.uuid.toLowerCase()) || chain.sequence === Number.MAX_SAFE_INTEGER) return processBindingError();
+  const date = input.date.replace(/\+00:00$/, 'Z');
+  if (!validDate(date) || !date.endsWith('Z') || !input.remarks.trim() || uuidCounts(source).has(input.uuid.toLowerCase()) || chain.sequence === Number.MAX_SAFE_INTEGER) return processBindingError();
   if (input.type === 'approved') {
     if (axes?.context !== 'context-complete' || axes.cia !== 'complete' || !hash || !PROCESS_HASH_PATTERN.test(hash)) return processBindingError();
-  } else if (input.type !== 'withdrawn' || chain.action?.type !== 'approved') return processBindingError();
+  } else if (input.type !== 'withdrawn' || !chain.withdrawable) return processBindingError();
   const decisionParties = [{ 'role-id': 'institution-management', 'party-uuids': [...input.partyUuids] }];
   processDecisionReferences(source, decisionParties);
   const props = [
     { ns, name: 'process-cia-process-uuid', value: input.processUuid },
     { ns, name: 'process-cia-sequence', value: String(chain.sequence + 1) },
-    input.type === 'approved' ? { ns, name: 'process-cia-content-hash', value: hash } : { ns, name: 'process-cia-withdraws', value: chain.action!.uuid },
+    input.type === 'approved' ? { ns, name: 'process-cia-content-hash', value: hash } : { ns, name: 'process-cia-withdraws', value: chain.withdrawable!.uuid },
   ];
   const copy = structuredClone(source);
   const metadata = readSspValue(copy, ['metadata']);
   if (!isJsonObject(metadata)) return processBindingError();
-  metadata.actions = [...readArray(metadata.actions), { uuid: input.uuid, type: input.type, system: PROCESS_CIA_ACTIONS_SYSTEM, date: input.date, 'responsible-parties': decisionParties, props, remarks: input.remarks }];
+  metadata.actions = [...readArray(metadata.actions), { uuid: input.uuid, type: input.type, system: PROCESS_CIA_ACTIONS_SYSTEM, date, 'responsible-parties': decisionParties, props, remarks: input.remarks }];
   return copy;
 }
 

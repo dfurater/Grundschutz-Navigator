@@ -118,9 +118,62 @@ describe('Prozessbindung process-cia/3', () => {
     const actions = readSspValue(withdrawn, ['metadata', 'actions']) as JsonObject[];
     expect(actions).toHaveLength(3);
     expect(props(actions[2])).toContainEqual({ ns, name: 'process-cia-withdraws', value: decision.uuid });
-    expect(() => appendProcessDecision(withdrawn, { ...decision, uuid: 'dddddddd-0000-4000-8000-000000000006', type: 'withdrawn' })).toThrow();
-    const again = appendProcessDecision(withdrawn, { ...decision, uuid: 'eeeeeeee-0000-4000-8000-000000000006' }, hash);
-    expect(await deriveProcessApproval(again, processUuid)).toMatchObject({ state: 'current', sequence: 4 });
+    const older = appendProcessDecision(withdrawn, { ...decision, uuid: 'dddddddd-0000-4000-8000-000000000006', type: 'withdrawn' });
+    expect(await deriveProcessApproval(older, processUuid)).toMatchObject({ state: 'withdrawn', sequence: 4 });
+    const olderActions = readSspValue(older, ['metadata', 'actions']) as JsonObject[];
+    expect(props(olderActions[3])).toContainEqual({ ns, name: 'process-cia-withdraws', value: actions[0].uuid });
+    expect(actions).toHaveLength(3);
+    expect(() => appendProcessDecision(older, { ...decision, uuid: 'ffffffff-0000-4000-8000-000000000006', type: 'withdrawn' })).toThrow();
+    const again = appendProcessDecision(older, { ...decision, uuid: 'eeeeeeee-0000-4000-8000-000000000006' }, hash);
+    expect(await deriveProcessApproval(again, processUuid)).toMatchObject({ state: 'current', sequence: 5 });
+  });
+
+  it.each(PINNED_OSCAL_VERSIONS)('liest explizite Rücknahmen überholter Freigaben nach Sequenz: %s', async version => {
+    const source = makeProcessCiaSsp(version);
+    const twice = appendProcessDecision(source, decision, await processContentHash(source, processUuid, decisionParties));
+    const withdrawn = appendProcessDecision(twice, { ...decision, uuid: 'cccccccc-0000-4000-8000-000000000006', type: 'withdrawn' });
+    const actions = readSspValue(withdrawn, ['metadata', 'actions']) as JsonObject[];
+    const older = structuredClone(actions[2]);
+    older.uuid = 'dddddddd-0000-4000-8000-000000000006';
+    changeProp(older, 'process-cia-sequence', { value: '4' });
+    changeProp(older, 'process-cia-withdraws', { value: (actions[0].uuid as string).toUpperCase() });
+    actions.push(older);
+    actions.reverse();
+    const before = structuredClone(withdrawn);
+    expect(await deriveProcessApproval(withdrawn, processUuid)).toMatchObject({ state: 'withdrawn', sequence: 4, actionUuid: older.uuid });
+    expect(validateSspTargets(withdrawn)).toBeUndefined();
+    expect(withdrawn).toEqual(before);
+  });
+
+  it.each(['out-of-order', 'duplicate'])('weist falsch zugeordnete historische Rücknahmen ab: %s', async kind => {
+    const f = fixture();
+    const twice = appendProcessDecision(f.source, decision, await processContentHash(f.source, processUuid, decisionParties));
+    const withdrawn = appendProcessDecision(twice, { ...decision, uuid: 'cccccccc-0000-4000-8000-000000000006', type: 'withdrawn' });
+    const actions = readSspValue(withdrawn, ['metadata', 'actions']) as JsonObject[];
+    if (kind === 'out-of-order') changeProp(actions[2], 'process-cia-withdraws', { value: actions[0].uuid });
+    else {
+      const duplicate = structuredClone(actions[2]);
+      duplicate.uuid = 'dddddddd-0000-4000-8000-000000000006';
+      changeProp(duplicate, 'process-cia-sequence', { value: '4' });
+      actions.push(duplicate);
+    }
+    expect(await deriveProcessApproval(withdrawn, processUuid)).toMatchObject({ state: 'invalid' });
+    expect(validateSspTargets(withdrawn)).toMatchObject({ code: 'SSP_PROCESS_BINDING_INVALID' });
+  });
+
+  it.each(['2026-11-08T12:00:00+00:00', '2026-11-08T12:00:00.123456+00:00'])('schreibt UTC-Zeitpunkte mit +00:00 als Z ohne Präzisionsverlust: %s', async date => {
+    const f = fixture();
+    const saved = appendProcessDecision(f.source, { ...decision, date }, await processContentHash(f.source, processUuid, decisionParties));
+    const actions = readSspValue(saved, ['metadata', 'actions']) as JsonObject[];
+    expect(actions[1].date).toBe(date.replace('+00:00', 'Z'));
+    expect(await deriveProcessApproval(saved, processUuid)).toMatchObject({ state: 'current' });
+  });
+
+  it.each(['2026-02-30T12:00:00+00:00', '2026-11-08T25:00:00+00:00', '2026-11-08T12:00:00'])('weist ungültige Entscheidungszeitpunkte verlustfrei ab: %s', async date => {
+    const f = fixture();
+    const before = structuredClone(f.source);
+    expect(() => appendProcessDecision(f.source, { ...decision, date }, `process-cia/3:sha-256:${hashes[3]}`)).toThrow('SSP_PROCESS_BINDING_INVALID');
+    expect(f.source).toEqual(before);
   });
 
   it.each(['gap', 'duplicate-sequence', 'duplicate-uuid', 'foreign-withdrawal', 'unknown-hash', 'date', 'remarks', 'party', 'system', 'missing-target'])(`weist eine fehlerhafte Kette ab: %s`, async kind => {

@@ -28,12 +28,16 @@ async function setup() {
 }
 it('speichert eine native Entscheidung atomar ohne lokale Prüfspur', async () => {
   const { store, envelope } = await setup();
-  const saved = value(await store.saveProcessDecision(envelope.localId, envelope.savedAt, null, decision));
+  const saved = value(await store.saveProcessDecision(envelope.localId, envelope.savedAt, null, { ...decision, date: '2026-11-08T12:00:00+00:00' }));
   expect(await deriveProcessApproval(saved.source, decision.processUuid)).toMatchObject({ state: 'current', sequence: 2, actionUuid: decision.uuid });
+  expect((readSspValue(saved.source, ['metadata', 'actions']) as JsonObject[])[1].date).toBe(decision.date);
   const db = new Dexie(WORKSPACE_DATABASE_NAME); await db.open();
   try { expect(await db.table('reviewTrail').count()).toBe(0); } finally { db.close(); }
   const withdrawn = value(await store.saveProcessDecision(envelope.localId, saved.savedAt, null, { ...decision, type: 'withdrawn', uuid: 'cccccccc-0000-4000-8000-000000000006' }));
   expect(await deriveProcessApproval(withdrawn.source, decision.processUuid)).toMatchObject({ state: 'withdrawn', sequence: 3 });
+  const older = value(await store.saveProcessDecision(envelope.localId, withdrawn.savedAt, null, { ...decision, type: 'withdrawn', uuid: 'dddddddd-0000-4000-8000-000000000006' }));
+  expect(await deriveProcessApproval(older.source, decision.processUuid)).toMatchObject({ state: 'withdrawn', sequence: 4 });
+  expect(value(await store.getDocument(envelope.localId))).toEqual(older);
 });
 it.each(['document', 'draft'])('verwirft CAS-Konflikte nach Workerarbeit: %s', async kind => {
   const { store, envelope } = await setup();
