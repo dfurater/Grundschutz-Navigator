@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Catalog, CatalogState } from '@/domain/models';
 import { useCatalog } from '@/hooks/useCatalog';
@@ -11,6 +11,23 @@ vi.mock('@/hooks/useCatalog', () => ({
 
 const mockedUseCatalog = vi.mocked(useCatalog);
 const originalClipboardDescriptor = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+
+/** Prüft den Vertrag des manuellen Kopierfelds: Rolle, Name, Schreibschutz, Wert und Auswahl bei jedem Fokus. */
+function expectManualCopyField(name: string, value: string) {
+  const field = screen.getByRole<HTMLTextAreaElement>('textbox', { name });
+
+  expect(field).toHaveAttribute('readonly');
+  expect(field).not.toBeDisabled();
+  expect(field.value).toBe(value);
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    act(() => field.blur());
+    field.setSelectionRange(0, 0);
+    act(() => field.focus());
+    expect(field.selectionStart).toBe(0);
+    expect(field.selectionEnd).toBe(value.length);
+  }
+}
 
 function setClipboard(writeText?: (text: string) => Promise<void>) {
   Object.defineProperty(navigator, 'clipboard', {
@@ -622,14 +639,17 @@ describe('AboutPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Code kopieren' }));
 
     const alert = await screen.findByRole('alert');
-    const command = screen.getByLabelText('Prüfbefehl zum manuellen Kopieren');
+    const command = screen.getByRole<HTMLTextAreaElement>('textbox', {
+      name: 'Prüfbefehl zum manuellen Kopieren',
+    });
 
     expect(alert).toHaveTextContent(
       'Kopieren nicht möglich. Bitte den vollständigen Wert manuell markieren und kopieren.',
     );
     expect(screen.queryByText('Browser detail')).not.toBeInTheDocument();
-    expect(command).toHaveClass('select-all');
-    expect(command).toHaveTextContent(/^bash -lc/);
+    expect(writeText).toHaveBeenCalledWith(command.value);
+    expect(command.value).toMatch(/^bash -lc /);
+    expectManualCopyField('Prüfbefehl zum manuellen Kopieren', command.value);
   });
 
   it('shows the full selectable snapshot commit when the Clipboard API is unavailable', async () => {
@@ -644,11 +664,9 @@ describe('AboutPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Snapshot-Commit kopieren' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Kopieren nicht möglich');
-    expect(
-      screen.getByLabelText('Snapshot-Commit: vollständiger Wert zum manuellen Kopieren'),
-    ).toHaveTextContent('fedcba0987654321fedcba0987654321fedcba09');
-    expect(
-      screen.getByLabelText('Snapshot-Commit: vollständiger Wert zum manuellen Kopieren'),
-    ).toHaveClass('select-all');
+    expectManualCopyField(
+      'Snapshot-Commit: vollständiger Wert zum manuellen Kopieren',
+      'fedcba0987654321fedcba0987654321fedcba09',
+    );
   });
 });
