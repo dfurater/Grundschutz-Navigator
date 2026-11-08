@@ -5,6 +5,7 @@ import { readSspValue, sspBody, SspPatchError, type SspPath } from '@/domain/ssp
 import { readCatalogPins } from '@/domain/workspaceCatalogPin';
 import { closeTargetCategories, type CategoryClosure } from '@/domain/targetObjectCategories';
 import { compareStringsByCodeUnit } from '@/domain/codeUnitOrder.mjs';
+import { processActionFailure } from '@/domain/sspProcessApproval';
 
 export interface TargetCategoryContext { readonly commit: string; readonly namespace: VocabularyNamespaceData }
 export const TARGET_LISTS = [
@@ -152,7 +153,7 @@ export function validateSspTargets(source: unknown, context?: TargetCategoryCont
     const categories = categoryFailure(source, path, context, checkDerived);
     if (categories) return categories;
   }
-  return validateBusinessProcessProjectProps(processReads).diagnostics[0];
+  return validateBusinessProcessProjectProps(processReads).diagnostics[0] ?? processActionFailure(source);
 }
 
 export function prepareSspTargets(source: unknown, context?: TargetCategoryContext): { ok: true; source: unknown } | ({ ok: false } & TargetFailure) {

@@ -25,6 +25,10 @@ import { appendDecisionError, deriveReviewState, resolveActionReferences, REVIEW
 import { documentBody } from '@/domain/documentContent';
 import { isJsonObject, readArray, type JsonObject } from '@/domain/jsonGuards';
 import { hasSspTargetDeletion, sspDeletionBlocked } from '@/domain/sspTargetDeletion';
+import { appendProcessDecision, type ProcessDecisionInput } from '@/domain/sspProcessApproval';
+import { commitSspSave, sspReadinessBlocker } from '@/domain/sspSave';
+import { validateSspTargets, type TargetCategoryContext } from '@/domain/sspTargetObjects';
+import { isPinnedOscalVersion } from '@/domain/oscalVersionMatrix';
 
 export const WORKSPACE_DATABASE_NAME = 'gspp-workspace';
 export const WORKSPACE_DELETE_BLOCKED_TIMEOUT_MS = 2_000;
@@ -318,6 +322,39 @@ export class WorkspaceStore {
 
   async saveDocument(localId: LocalId, expectedSavedAt: string, expectedDraftSavedAt: string | null, input: Class2OscalImportedDocument, changedBindings?: readonly WorkspaceBinding[], state?: DocumentState, approval?: ReviewApprovalWrite): Promise<WorkspaceResult<WorkspaceEnvelope>> {
     return this.storeDocument(localId, expectedSavedAt, expectedDraftSavedAt, input, { changedBindings, state, approval: approval?.request, guard: approval?.guard });
+  }
+
+  /** Prozessentscheidung nur zum gespeicherten Stand; keine lokale Prüfspur und keine Entwurfsübernahme. */
+  async saveProcessDecision(localId: LocalId, expectedSavedAt: string, expectedDraftSavedAt: string | null, input: ProcessDecisionInput, categories?: TargetCategoryContext, guard?: ReviewGuard): Promise<WorkspaceResult<WorkspaceEnvelope>> {
+    try {
+      const decision = structuredClone(input);
+      if (typeof expectedSavedAt !== 'string' || !expectedSavedAt || (expectedDraftSavedAt !== null && typeof expectedDraftSavedAt !== 'string')) reject('WORKSPACE_SAVE_CONFLICT');
+      const categoryContext = categories === undefined ? undefined : structuredClone(categories);
+      const read = await this.read(['documents', 'drafts'], () => this.current(localId, expectedSavedAt, expectedDraftSavedAt));
+      if (!read.ok) return read;
+      const stored = read.value;
+      if (stored.rootType !== 'system-security-plan' || !isPinnedOscalVersion(stored.oscalVersion) || stored.documentState === 'draft' || expectedDraftSavedAt !== null) reject('SSP_PROCESS_DECISION_BLOCKED');
+      const source = structuredClone(stored.source);
+      const work = await reviewTrailInWorker({ source, rootType: 'system-security-plan', previous: null, baseSequence: null, diff: false,
+        processBinding: { processUuid: decision.processUuid, decisionParties: [{ 'role-id': 'institution-management', 'party-uuids': decision.partyUuids }] } });
+      if (!work.ok) return work;
+      let next: unknown;
+      try { next = appendProcessDecision(source, decision, work.value.processHash); }
+      catch { reject('SSP_PROCESS_BINDING_INVALID'); }
+      next = commitSspSave(source, next, new Date().toISOString()).source;
+      const blocker = validateSspTargets(next, categoryContext) ?? sspReadinessBlocker(next);
+      if (blocker) reject(blocker.code);
+      const { document } = await snapshotDocument({ source: next, rootType: 'system-security-plan', oscalVersion: stored.oscalVersion, context: { trustClass: 'class-2-local-user' } }, stored.documentState);
+      return await this.write(async stamp => {
+        const current = await this.current(localId, expectedSavedAt, expectedDraftSavedAt);
+        if (serializeWorkspaceJson(current.source) !== serializeWorkspaceJson(source)) reject('WORKSPACE_SAVE_CONFLICT');
+        await this.enforceReviewGuard(localId, guard);
+        const updated: WorkspaceEnvelope = { ...writtenRow(current), source: document.source, savedAt: stamp };
+        await this.documents.put(updated);
+        await this.drafts.delete(localId);
+        return updated;
+      });
+    } catch (error) { return failure(error); }
   }
 
   private async storeDocument(localId: LocalId, expectedSavedAt: string, expectedDraftSavedAt: string | null, input: Class2OscalImportedDocument, options: StoreDocumentOptions): Promise<WorkspaceResult<WorkspaceEnvelope>> {

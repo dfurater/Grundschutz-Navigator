@@ -4,6 +4,7 @@ import { CONTENT_HASH_ALGORITHM, CONTENT_HASH_VERSION, REVIEW_TRAIL_DEADLINE_MS 
 import type { DocumentDiff } from '@/domain/documentDiff';
 import type { DocumentSnapshot, WorkspaceResult } from '@/domain/workspaceModel';
 import { compareStringsByCodeUnit } from '@/domain/codeUnitOrder.mjs';
+import { PROCESS_HASH_PATTERN } from '@/domain/sspProcessProjection';
 
 export interface ReviewTrailWorkRequest {
   readonly source: unknown;
@@ -13,15 +14,17 @@ export interface ReviewTrailWorkRequest {
   readonly baseSequence: number | null;
   /** `false` spart den Diff, wenn nur der Stand gebraucht wird (Freigabe, reine Prüfung). */
   readonly diff: boolean;
+  readonly processBinding?: { readonly processUuid: string; readonly decisionParties: readonly unknown[] };
 }
 
 export interface ReviewTrailWorkResult {
   readonly snapshot: DocumentSnapshot;
   readonly diff?: DocumentDiff;
+  readonly processHash?: string;
 }
 
 export type ReviewTrailWorkResponse =
-  | { readonly ok: true; readonly snapshot: DocumentSnapshot; readonly diff?: DocumentDiff }
+  | { readonly ok: true; readonly snapshot: DocumentSnapshot; readonly diff?: DocumentDiff; readonly processHash?: string }
   | { readonly ok: false };
 
 const SHA256 = /^[a-f0-9]{64}$/;
@@ -82,9 +85,11 @@ export function reviewTrailInWorker(request: ReviewTrailWorkRequest): Promise<Wo
         const data = event.data as Record<string, unknown> | null;
         if (!data || typeof data !== 'object' || data.ok !== true || !validSnapshot(data.snapshot)) return workerFailure();
         const keys = Object.keys(data).sort(compareStringsByCodeUnit).join(',');
-        if (keys !== (request.diff ? 'diff,ok,snapshot' : 'ok,snapshot')) return workerFailure();
+        const expectedKeys = ['ok', 'snapshot', ...(request.diff ? ['diff'] : []), ...(request.processBinding ? ['processHash'] : [])].sort(compareStringsByCodeUnit).join(',');
+        if (keys !== expectedKeys) return workerFailure();
         if (request.diff ? !validDiff(data.diff) : data.diff !== undefined) return workerFailure();
-        finish({ ok: true, value: { snapshot: data.snapshot, ...(request.diff ? { diff: data.diff as DocumentDiff } : {}) } });
+        if (request.processBinding && (request.rootType !== 'system-security-plan' || data.snapshot.rootType !== request.rootType || typeof data.processHash !== 'string' || !PROCESS_HASH_PATTERN.test(data.processHash))) return workerFailure();
+        finish({ ok: true, value: { snapshot: data.snapshot, ...(request.diff ? { diff: data.diff as DocumentDiff } : {}), ...(request.processBinding ? { processHash: data.processHash as string } : {}) } });
       };
       worker.onerror = workerFailure;
       worker.onmessageerror = workerFailure;
