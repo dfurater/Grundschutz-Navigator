@@ -15,6 +15,8 @@ import '@/index.css';
  * Das schreibgeschützte Prüfbefehlsfeld der About-Seite zeigt den langen Befehl
  * bei jeder Breite vollständig (GSPP-698): Die Höhe folgt dem Umbruch auch nach
  * einem Breitenwechsel, ohne innere Scrollleiste und ohne seitenweiten Überlauf.
+ * Die Fehlermeldung des Kopierknopfs steht unter der Kopfzeile und bleibt auch
+ * bei 320px innerhalb des Panels.
  */
 
 const catalog = {
@@ -74,4 +76,24 @@ test('der Prüfbefehl bleibt bei schmal, breit und zurück vollständig sichtbar
   await page.viewport(320, 800);
   await expect.poll(() => field.offsetHeight).toBe(narrowHeight);
   await expectFullyVisible(field);
+});
+
+test('die Kopier-Fehlermeldung bleibt bei 320px innerhalb des Prüfbefehl-Panels', async () => {
+  const clipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: undefined });
+  try {
+    await page.viewport(320, 800);
+    const field = renderAbout();
+    await page.getByRole('button', { name: 'Code kopieren' }).click();
+    const alert = page.getByRole('alert').element();
+    const panel = field.closest<HTMLElement>('.overflow-hidden')!.getBoundingClientRect();
+    const bounds = alert.getBoundingClientRect();
+
+    expect(alert.textContent).toContain('Kopieren nicht möglich');
+    expect(bounds.left).toBeGreaterThanOrEqual(panel.left);
+    expect(bounds.right).toBeLessThanOrEqual(panel.right);
+  } finally {
+    if (clipboard) Object.defineProperty(navigator, 'clipboard', clipboard);
+    else Reflect.deleteProperty(navigator, 'clipboard');
+  }
 });
