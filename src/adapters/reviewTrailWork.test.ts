@@ -105,3 +105,19 @@ it('fails closed when the worker cannot be created', async () => {
   expect(result).toMatchObject({ ok: false, diagnostic: { code: 'REVIEW_TRAIL_WORK_FAILED' } });
   expect(JSON.stringify(result)).not.toContain('PRIVATE_SYNTHETIC');
 });
+
+it('requires the requested process hash and rejects malformed or unsolicited bindings', async () => {
+  const processBinding = { processUuid: 'aaaaaaaa-0000-4000-8000-000000000002', decisionParties: [{ 'role-id': 'institution-management', 'party-uuids': ['aaaaaaaa-0000-4000-8000-000000000005'] }] };
+  const hash = `process-cia/3:sha-256:${'a'.repeat(64)}`;
+  const valid = start({ ...request, rootType: 'system-security-plan', processBinding });
+  valid.worker.send({ ok: true, snapshot: { ...snapshot, rootType: 'system-security-plan' }, processHash: hash });
+  await expect(valid.result).resolves.toMatchObject({ ok: true, value: { processHash: hash } });
+  for (const processHash of [undefined, 'bad', hash.toUpperCase()]) {
+    const invalid = start({ ...request, rootType: 'system-security-plan', processBinding });
+    invalid.worker.send({ ok: true, snapshot, ...(processHash && { processHash }) });
+    await expect(invalid.result).resolves.toMatchObject({ ok: false });
+  }
+  const extra = start();
+  extra.worker.send({ ok: true, snapshot, processHash: hash });
+  await expect(extra.result).resolves.toMatchObject({ ok: false });
+});

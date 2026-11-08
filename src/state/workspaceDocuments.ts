@@ -16,6 +16,7 @@ import type { WorkspacePort } from '@/state/workspaceVerbundView';
 
 type Port<K extends keyof WorkspacePort> = WorkspacePort[K];
 type Save = Parameters<Port<'saveDocument'>>;
+type ProcessDecision = Parameters<Port<'saveProcessDecision'>>;
 
 /** Ungespeicherte Zuordnung eines Imports; der `href` prüft, dass der Import an dem Pointer noch derselbe ist. */
 export interface PendingImportTarget {
@@ -35,6 +36,7 @@ export interface WorkspaceDocuments {
   readonly addDocument: Port<'addDocument'>;
   /** Der Katalog-Guard wird hier ergänzt; Aufrufer reichen nur die Freigabe. */
   readonly saveDocument: (localId: Save[0], savedAt: Save[1], draftSavedAt: Save[2], input: Save[3], bindings?: Save[4], state?: Save[5], approval?: ReviewApprovalRequest) => ReturnType<Port<'saveDocument'>>;
+  readonly saveProcessDecision: (localId: ProcessDecision[0], savedAt: ProcessDecision[1], draftSavedAt: ProcessDecision[2], input: ProcessDecision[3], categories?: ProcessDecision[4]) => ReturnType<Port<'saveProcessDecision'>>;
   /** Schreibt nur den Entwurf; die Verbundansicht bleibt, weil sie Entwürfe nicht liest. */
   readonly autosaveDraft: Port<'autosaveDraft'>;
   readonly setBinding: Port<'setBinding'>;
@@ -123,6 +125,13 @@ export function createWorkspaceDocuments({ port, write, quiet, class1, delivery,
     // Eine Freigabe ist eine Prüfentscheidung und braucht den gebundenen Bezugsstand.
     saveDocument: (localId, savedAt, draftSavedAt, input, bindings, state, approval) => write(async (store) =>
       store.saveDocument(localId, savedAt, draftSavedAt, input, bindings, state, approval ? { request: approval, guard: await reviewGuard(delivery) } : undefined)),
+    saveProcessDecision: (localId, savedAt, draftSavedAt, input, categories) => {
+      try {
+        const decision = structuredClone(input);
+        const context = categories === undefined ? undefined : structuredClone(categories);
+        return write(async (store) => store.saveProcessDecision(localId, savedAt, draftSavedAt, decision, context, await reviewGuard(delivery)));
+      } catch { return Promise.resolve(storageFailed()); }
+    },
     autosaveDraft: (...args) => quiet((store) => store.autosaveDraft(...args)),
     setBinding: (...args) => write((store) => store.setBinding(...args)),
     deleteDocument: async (localId) => {

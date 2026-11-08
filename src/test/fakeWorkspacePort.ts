@@ -32,6 +32,7 @@ export function fakePort(overrides: Partial<WorkspacePort> = {}): WorkspacePort 
     restoreVerbundBackup: () => fail('WORKSPACE_CONFIRMATION_REQUIRED'),
     addDocument: () => fail('WORKSPACE_STORAGE_FAILED'),
     saveDocument: () => fail('WORKSPACE_STORAGE_FAILED'),
+    saveProcessDecision: () => fail('WORKSPACE_STORAGE_FAILED'),
     autosaveDraft: () => fail('WORKSPACE_STORAGE_FAILED'),
     setBinding: () => fail('WORKSPACE_STORAGE_FAILED'),
     removeBinding: () => fail('WORKSPACE_STORAGE_FAILED'),
