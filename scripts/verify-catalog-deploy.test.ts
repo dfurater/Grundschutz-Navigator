@@ -338,3 +338,120 @@ describe('verifyCatalogDeploy — absolute verification budget (GSPP-423)', () =
     expect(fetchImpl.mock.calls.length).toBeLessThan(60);
   });
 });
+
+// Echte LF/CR-Zeichen: Ohne geprüfte Ausgabe begänne `::error::` im Actions-Log
+// eine eigene Zeile und würde als Runner-Kommando gelesen.
+const INJECTION = '\n::error::INJECTED\r::error::INJECTED';
+const RUN_URL = `https://github.com/${REPOSITORY}/actions/runs/29871256790`;
+
+function captureLog() {
+  const messages: string[] = [];
+  return { messages, log: (message: string) => messages.push(message) };
+}
+
+async function rejectionMessage(promise: Promise<unknown>) {
+  const error = await promise.then(() => undefined, (caught: unknown) => caught);
+  expect(error).toBeInstanceOf(Error);
+  return (error as Error).message;
+}
+
+describe('verifyCatalogDeploy — geprüfte Ausgabewerte', () => {
+  it('logs discovery and success from repository and run id, never from html_url', async () => {
+    const { messages, log } = captureLog();
+    const fetchImpl = makeFetch({
+      discovered: [makeRun({ status: 'in_progress', conclusion: null, html_url: `x${INJECTION}` })],
+      runSequence: [makeRun({ html_url: `x${INJECTION}` })],
+    });
+    await expect(verifyCatalogDeploy(options(fetchImpl, { log }))).resolves.toBe(DEPLOY_CONFIRMED);
+    expect(messages).toEqual([
+      `Push deploy found: ${RUN_URL} (in_progress/pending)`,
+      `Push deploy succeeded: ${RUN_URL}`,
+    ]);
+  });
+
+  it.each([
+    ['injected text', `in_progress${INJECTION}`],
+    ['a number', 7],
+    ['an array', ['completed']],
+    ['an object', { toString: () => 'completed' }],
+    ['a missing value', undefined],
+  ])('logs unbekannt for a discovered status that is %s', async (_label, status) => {
+    const { messages, log } = captureLog();
+    const fetchImpl = makeFetch({
+      discovered: [makeRun({ status, conclusion: ['x'] })],
+      runSequence: [makeRun()],
+    });
+    await expect(verifyCatalogDeploy(options(fetchImpl, { log }))).resolves.toBe(DEPLOY_CONFIRMED);
+    expect(messages[0]).toBe(`Push deploy found: ${RUN_URL} (unbekannt/unbekannt)`);
+  });
+
+  it('keeps the failure decision for an injected conclusion and reports unbekannt', async () => {
+    const { messages, log } = captureLog();
+    const fetchImpl = makeFetch({ discovered: [makeRun({ conclusion: `failure${INJECTION}` })] });
+    const message = await rejectionMessage(verifyCatalogDeploy(options(fetchImpl, { log })));
+    expect(message).toBe(`push deploy ${RUN_URL} completed with conclusion unbekannt`);
+    expect(messages.join('\n')).not.toMatch(/succeeded/);
+  });
+
+  it('never claims success for a conclusion that only resembles success', async () => {
+    const fetchImpl = makeFetch({ discovered: [makeRun({ conclusion: `success${INJECTION}` })] });
+    const message = await rejectionMessage(verifyCatalogDeploy(options(fetchImpl)));
+    expect(message).toBe(`push deploy ${RUN_URL} completed with conclusion unbekannt`);
+  });
+
+  it('reports an injected last status as unbekannt when the terminal wait times out', async () => {
+    const pending = makeRun({ status: `queued${INJECTION}`, conclusion: null });
+    const fetchImpl = makeFetch({ discovered: [pending], runSequence: [pending, pending] });
+    const message = await rejectionMessage(
+      verifyCatalogDeploy(options(fetchImpl, { terminalAttempts: 2 })),
+    );
+    expect(message).toBe(
+      `push deploy ${RUN_URL} did not reach a terminal state within the verification budget `
+      + '(last status unbekannt)',
+    );
+  });
+
+  it('reports unbekannt for an injected run id and head_sha on a SHA mismatch', async () => {
+    const fetchImpl = makeFetch({
+      discovered: [makeRun({ id: `1${INJECTION}`, head_sha: `${'b'.repeat(40)}${INJECTION}` })],
+    });
+    const message = await rejectionMessage(verifyCatalogDeploy(options(fetchImpl)));
+    expect(message).toBe(`deploy run unbekannt reports head_sha unbekannt instead of ${MERGE_SHA}`);
+  });
+
+  it('names a well-formed mismatching head_sha and run id', async () => {
+    const otherSha = 'b'.repeat(40);
+    const fetchImpl = makeFetch({ discovered: [makeRun({ head_sha: otherSha })] });
+    const message = await rejectionMessage(verifyCatalogDeploy(options(fetchImpl)));
+    expect(message).toBe(`deploy run 29871256790 reports head_sha ${otherSha} instead of ${MERGE_SHA}`);
+  });
+
+  it('logs unbekannt for an invalid run id and still aborts as before', async () => {
+    const { messages, log } = captureLog();
+    const fetchImpl = makeFetch({ discovered: [makeRun({ id: `1${INJECTION}` })] });
+    await expect(verifyCatalogDeploy(options(fetchImpl, { log }))).rejects.toThrow('positive integer');
+    expect(messages).toEqual(['Push deploy found: unbekannt (completed/success)']);
+  });
+
+  it('refuses the fallback for an injected compare status and reports unbekannt', async () => {
+    const fetchImpl = makeFetch({ compareStatus: `ahead${INJECTION}` });
+    const message = await rejectionMessage(
+      verifyCatalogDeploy(options(fetchImpl, { discoveryAttempts: 1 })),
+    );
+    expect(message).toBe(
+      'merge commit is no longer verifiably on main (status=unbekannt); refusing fallback dispatch',
+    );
+  });
+
+  it('logs a late-registered deploy without its html_url', async () => {
+    const { messages, log } = captureLog();
+    const fetchImpl = makeFetch({ discovered: [undefined, makeRun({ html_url: `x${INJECTION}` })] });
+    await expect(
+      verifyCatalogDeploy(options(fetchImpl, { discoveryAttempts: 1, log })),
+    ).resolves.toBe(DEPLOY_CONFIRMED);
+    expect(messages).toEqual([
+      `Push deploy registered late: ${RUN_URL}`,
+      `Push deploy succeeded: ${RUN_URL}`,
+    ]);
+  });
+});

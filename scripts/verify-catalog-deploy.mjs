@@ -4,6 +4,13 @@ import { pathToFileURL } from 'node:url';
 import { appendFile } from 'node:fs/promises';
 import { DEFAULT_REQUEST_TIMEOUT_MS, fetchGitHubJson as fetchSharedGitHubJson } from './githubApiFetch.mjs';
 import { sleep as defaultSleep } from './transientRetry.mjs';
+import {
+  displayRunId,
+  displayRunUrl,
+  displaySha,
+  displayState,
+  isValidRepository,
+} from './deployRunDisplay.mjs';
 
 export const DEPLOY_WORKFLOW_FILE = 'deploy.yml';
 export const PROTECTED_BRANCH = 'main';
@@ -35,16 +42,8 @@ export const DEFAULT_VERIFICATION_BUDGET_MS = 25 * 60 * 1000;
 export const VERIFY_JOB_TIMEOUT_MS = 30 * 60 * 1000;
 export const VERIFY_SETUP_RESERVE_MS = VERIFY_JOB_TIMEOUT_MS - DEFAULT_VERIFICATION_BUDGET_MS;
 
-/** `owner/repo` in der von GitHub zugelassenen Zeichenmenge (vgl. greptile-review-nudge). */
-const REPOSITORY_PATTERN = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/;
-
 function assertValidRepository(repository) {
-  if (typeof repository !== 'string' || !REPOSITORY_PATTERN.test(repository)) {
-    throw new Error('repository must have the form owner/repo');
-  }
-  // `..` bestünde die Zeichenklasse, trüge aber eine Traversierung in den Pfad.
-  const [owner, repo] = repository.split('/');
-  if (owner === '.' || owner === '..' || repo === '.' || repo === '..') {
+  if (!isValidRepository(repository)) {
     throw new Error('repository must have the form owner/repo');
   }
 }
@@ -112,7 +111,9 @@ export async function findPushDeployRun(repository, commitSha, { fetchImpl = fet
   // Never trust the filter alone: a mismatching head_sha here would confirm a
   // deploy of a different commit.
   if (run.head_sha !== commitSha) {
-    throw new Error(`deploy run ${run.id} reports head_sha ${run.head_sha} instead of ${commitSha}`);
+    throw new Error(
+      `deploy run ${displayRunId(run.id)} reports head_sha ${displaySha(run.head_sha)} instead of ${commitSha}`,
+    );
   }
   return run;
 }
@@ -177,15 +178,16 @@ export async function awaitDeploySuccess(repository, run, {
     assertVerificationBudgetMs(verificationBudgetMs);
   }
   let current = run;
+  const runUrl = () => displayRunUrl(repository, current.id);
 
   for (let attempt = 1; attempt <= terminalAttempts; attempt += 1) {
     if (current.status === 'completed') {
       if (current.conclusion !== 'success') {
         throw new Error(
-          `push deploy ${current.html_url} completed with conclusion ${current.conclusion}`,
+          `push deploy ${runUrl()} completed with conclusion ${displayState(current.conclusion)}`,
         );
       }
-      log(`Push deploy succeeded: ${current.html_url}`);
+      log(`Push deploy succeeded: ${runUrl()}`);
       return current;
     }
     if (attempt === terminalAttempts) {
@@ -211,8 +213,8 @@ export async function awaitDeploySuccess(repository, run, {
   }
 
   throw new Error(
-    `push deploy ${current.html_url} did not reach a terminal state within the verification budget `
-    + `(last status ${current.status})`,
+    `push deploy ${runUrl()} did not reach a terminal state within the verification budget `
+    + `(last status ${displayState(current.status)})`,
   );
 }
 
@@ -229,7 +231,7 @@ async function verifyMergeCommitOnMain(repository, commitSha, { fetchImpl, token
   // is still on main. `ahead` or `diverged` means main no longer contains it.
   if (comparison?.status !== 'identical' && comparison?.status !== 'behind') {
     throw new Error(
-      `merge commit is no longer verifiably on ${PROTECTED_BRANCH} (status=${comparison?.status}); `
+      `merge commit is no longer verifiably on ${PROTECTED_BRANCH} (status=${displayState(comparison?.status)}); `
       + 'refusing fallback dispatch',
     );
   }
@@ -320,7 +322,10 @@ export async function verifyCatalogDeploy({
       requestTimeoutMs: cappedRequestTimeout(`discovery ${attempt}/${discoveryAttempts}`),
     });
     if (run) {
-      log(`Push deploy found: ${run.html_url} (${run.status}/${run.conclusion ?? 'pending'})`);
+      log(
+        `Push deploy found: ${displayRunUrl(repository, run.id)} `
+        + `(${displayState(run.status)}/${displayState(run.conclusion ?? 'pending')})`,
+      );
       await awaitTerminal(run);
       return DEPLOY_CONFIRMED;
     }
@@ -349,7 +354,7 @@ export async function verifyCatalogDeploy({
     requestTimeoutMs: cappedRequestTimeout('late deploy lookup'),
   });
   if (lateRun) {
-    log(`Push deploy registered late: ${lateRun.html_url}`);
+    log(`Push deploy registered late: ${displayRunUrl(repository, lateRun.id)}`);
     await awaitTerminal(lateRun);
     return DEPLOY_CONFIRMED;
   }
@@ -395,9 +400,11 @@ async function main() {
 const isDirectExecution = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 
 if (isDirectExecution) {
-  // Top-Level-Await ohne Catch: Ein Verifikationsversagen soll den Workflow
-  // laut failen (Node beendet mit Exit-Code 1). Fehlerabgeleitete Texte werden
-  // bewusst nicht selbst geloggt — GitHub-API-Antworten (Run-URLs, Statuswerte)
-  // sind keine Log-Eingabe (jssecurity:S5145).
+  // Top-Level-Await ohne Catch: Ein Verifikationsversagen lässt den Verify-Job
+  // fehlschlagen (Node beendet mit Exit-Code 1 und gibt die Fehlermeldung aus).
+  // Logs und Fehlermeldungen tragen GitHub-API-Werte nur über
+  // `deployRunDisplay.mjs`: Run-Adressen aus geprüftem Repository und Run-ID,
+  // Status-, Conclusion- und SHA-Werte nur aus ihrer Positivmenge, sonst
+  // `unbekannt` (jssecurity:S5145).
   await main();
 }
