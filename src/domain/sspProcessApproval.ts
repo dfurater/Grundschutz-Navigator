@@ -2,7 +2,7 @@ import { isJsonObject, readArray, readString, type JsonObject } from '@/domain/j
 import { PROCESS_CIA_ACTIONS_SYSTEM, PROJECT_PROPS_NAMESPACE as ns, readProjectProps } from '@/domain/projectProps';
 import { readSspValue } from '@/domain/sspAuthoring';
 import { deriveSspProcessProtection } from '@/domain/sspProcessProtection';
-import { processBindingError, processContentHash, processObjects, processProjection, processProps, processUuidKey, PROCESS_HASH_PATTERN } from '@/domain/sspProcessProjection';
+import { processBindingError, processContentHash, processDecisionReferences, processObjects, processProps, processUuidKey, PROCESS_HASH_PATTERN } from '@/domain/sspProcessProjection';
 import { parseTimestamp } from '@/domain/evidenceReadModel';
 
 export type ProcessApprovalState = 'missing' | 'current' | 'stale' | 'withdrawn' | 'invalid';
@@ -49,11 +49,15 @@ export function processActionChain(source: unknown, processUuid: string): { sequ
   const own = all.filter(action => action.system === PROCESS_CIA_ACTIONS_SYSTEM);
   // Ein Beleg ohne eindeutigen Gegenstand kann keinem Prozess sicher zugeordnet werden.
   const selected = own.filter(action => processUuidKey(property(action, 'process-cia-process-uuid')) === target);
+  if (selected.length) {
+    const components = processObjects(readSspValue(source, ['system-implementation', 'components'])).filter(component => processUuidKey(component.uuid) === target);
+    if (components.length !== 1 || components[0].type !== 'business-process') return processBindingError();
+  }
   const counts = uuidCounts(source);
   for (const action of selected) {
     if (counts.get(processUuidKey(action.uuid)) !== 1 || !validDate(action.date) || typeof action.remarks !== 'string' || !action.remarks.trim()) return processBindingError();
     if (!readProjectProps(action.props, 'metadata-action').writeAllowed || !['approved', 'withdrawn'].includes(action.type as string)) return processBindingError();
-    processProjection(source, processUuid, action['responsible-parties']);
+    processDecisionReferences(source, action['responsible-parties']);
     const hash = property(action, 'process-cia-content-hash');
     const withdraws = property(action, 'process-cia-withdraws');
     if (action.type === 'approved' ? !hash || !PROCESS_HASH_PATTERN.test(hash) || withdraws !== undefined : hash !== undefined || withdraws === undefined) return processBindingError();
@@ -96,7 +100,9 @@ export async function deriveProcessApproval(source: unknown, processUuid: string
     const actionUuid = chain.action.uuid as string;
     if (chain.action.type === 'withdrawn') return { state: 'withdrawn', sequence: chain.sequence, actionUuid };
     const hash = property(chain.action, 'process-cia-content-hash')!;
-    const current = await processContentHash(source, processUuid, chain.action['responsible-parties']);
+    let current: string;
+    try { current = await processContentHash(source, processUuid, chain.action['responsible-parties']); }
+    catch { return { state: 'stale', sequence: chain.sequence, actionUuid, hash }; }
     const axes = protection(source, processUuid, true);
     return { state: hash === current && axes?.context === 'context-complete' && axes.cia === 'complete' ? 'current' : 'stale', sequence: chain.sequence, actionUuid, hash };
   } catch { return { state: 'invalid', sequence: 0 }; }
@@ -112,7 +118,7 @@ export function appendProcessDecision(source: unknown, input: ProcessDecisionInp
     if (axes?.context !== 'context-complete' || axes.cia !== 'complete' || !hash || !PROCESS_HASH_PATTERN.test(hash)) return processBindingError();
   } else if (input.type !== 'withdrawn' || chain.action?.type !== 'approved') return processBindingError();
   const decisionParties = [{ 'role-id': 'institution-management', 'party-uuids': [...input.partyUuids] }];
-  processProjection(source, input.processUuid, decisionParties);
+  processDecisionReferences(source, decisionParties);
   const props = [
     { ns, name: 'process-cia-process-uuid', value: input.processUuid },
     { ns, name: 'process-cia-sequence', value: String(chain.sequence + 1) },

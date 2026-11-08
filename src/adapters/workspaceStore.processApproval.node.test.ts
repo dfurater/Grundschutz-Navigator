@@ -14,6 +14,8 @@ import { makeProcessCiaSsp } from '@/test/fixtures/processCia';
 import { value, imported } from '@/test/reviewTrailFixtures';
 import { deriveProcessApproval } from '@/domain/sspProcessApproval';
 import { createOscalDiagnostic } from '@/domain/oscalDiagnostics';
+import { readSspValue } from '@/domain/sspAuthoring';
+import type { JsonObject } from '@/domain/jsonGuards';
 
 const decision = { processUuid: 'aaaaaaaa-0000-4000-8000-000000000002', type: 'approved' as const, uuid: 'bbbbbbbb-0000-4000-8000-000000000006', date: '2026-11-08T12:00:00Z', partyUuids: ['aaaaaaaa-0000-4000-8000-000000000005'], remarks: 'Erklärte Leitungsentscheidung' };
 const stores: WorkspaceStore[] = [];
@@ -89,4 +91,14 @@ it('verwirft einen gespeicherten Entwurf nicht und beachtet den transaktionalen 
   const clean = value(await other.store.exportBackup());
   expect(await other.store.saveProcessDecision(other.envelope.localId, other.envelope.savedAt, null, decision, undefined, () => 'WORKSPACE_CATALOG_PIN_UNVERIFIED')).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_CATALOG_PIN_UNVERIFIED' } });
   expect(value(await other.store.exportBackup())).toBe(clean);
+});
+it('speichert die Rücknahme ohne Hash einer nicht berechenbaren aktuellen Projektion', async () => {
+  const { store, envelope } = await setup();
+  const changed = makeProcessCiaSsp('1.2.2');
+  (readSspValue(changed, ['system-implementation', 'components']) as JsonObject[])[1].type = 'business-process';
+  const saved = value(await store.saveDocument(envelope.localId, envelope.savedAt, null, await imported(changed)));
+  vi.mocked(reviewTrailInWorker).mockClear();
+  const withdrawn = value(await store.saveProcessDecision(envelope.localId, saved.savedAt, null, { ...decision, type: 'withdrawn' }));
+  expect(vi.mocked(reviewTrailInWorker)).not.toHaveBeenCalled();
+  expect(await deriveProcessApproval(withdrawn.source, decision.processUuid)).toMatchObject({ state: 'withdrawn', sequence: 2 });
 });

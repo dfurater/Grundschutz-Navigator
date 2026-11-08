@@ -4,6 +4,8 @@ import { importClass2OscalDocument } from '@/adapters/oscalImportGate';
 import { makeProcessCiaSsp } from '@/test/fixtures/processCia';
 import { REVIEW_TRAIL_DEADLINE_MS } from '@/domain/reviewTrail';
 import { deriveProcessApproval } from '@/domain/sspProcessApproval';
+import { readSspValue } from '@/domain/sspAuthoring';
+import type { JsonObject } from '@/domain/jsonGuards';
 
 const decision = { processUuid: 'aaaaaaaa-0000-4000-8000-000000000002', type: 'approved' as const, uuid: 'bbbbbbbb-0000-4000-8000-000000000006', date: '2026-11-08T12:00:00Z', partyUuids: ['aaaaaaaa-0000-4000-8000-000000000005'], remarks: 'Erklärte Leitungsentscheidung' };
 async function setup() {
@@ -20,6 +22,16 @@ test('berechnet die Prozessbindung im echten Worker und speichert in nativem Ind
   const saved = value(await store.saveProcessDecision(envelope.localId, envelope.savedAt, null, decision));
   expect(await deriveProcessApproval(saved.source, decision.processUuid)).toMatchObject({ state: 'current', sequence: 2 });
   expect(value(await store.getDraft(envelope.localId))).toBeUndefined();
+});
+test('nimmt einen überholten, nicht mehr projizierbaren Prozessstand ohne Hashberechnung zurück', async () => {
+  const { store, envelope } = await setup();
+  const source = structuredClone(envelope.source);
+  (readSspValue(source, ['system-implementation', 'components']) as JsonObject[])[1].type = 'business-process';
+  const imported = await importClass2OscalDocument(new TextEncoder().encode(JSON.stringify(source)), { trustClass: 'class-2-local-user' });
+  if (!imported.ok) throw new Error(imported.diagnostic.code);
+  const changed = value(await store.saveDocument(envelope.localId, envelope.savedAt, null, imported.document));
+  const withdrawn = value(await store.saveProcessDecision(envelope.localId, changed.savedAt, null, { ...decision, type: 'withdrawn' }));
+  expect(await deriveProcessApproval(withdrawn.source, decision.processUuid)).toMatchObject({ state: 'withdrawn', sequence: 2 });
 });
 test.each(['document', 'draft'])('verwirft einen konkurrierenden nativen %s-Stand nach Workerstart', async kind => {
   const { store, envelope, document } = await setup();

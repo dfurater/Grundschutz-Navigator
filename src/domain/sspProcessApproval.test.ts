@@ -170,4 +170,24 @@ describe('Prozessbindung process-cia/3', () => {
     f.application['responsible-roles'] = [{ 'role-id': 'institution-management' }];
     expect(() => processProjection(f.source, processUuid, decisionParties)).not.toThrow();
   });
+
+  it('trennt eine nicht berechenbare aktuelle Projektion von der intakten Belegkette', async () => {
+    const f = fixture();
+    // Das referenzierte Component ist jetzt selbst ein Prozess: Kontext offen, alte Aktion intakt.
+    f.application.type = 'business-process';
+    expect(await deriveProcessApproval(f.source, processUuid)).toMatchObject({ state: 'stale' });
+    expect(validateSspTargets(f.source)).toBeUndefined();
+    const withdrawn = appendProcessDecision(f.source, { ...decision, type: 'withdrawn' });
+    expect(await deriveProcessApproval(withdrawn, processUuid)).toMatchObject({ state: 'withdrawn' });
+    expect(validateSspTargets(withdrawn)).toBeUndefined();
+  });
+
+  it('hält einen gelöschten Aktionsgegenstand oder eine verlorene Entscheidungspartei ungültig', async () => {
+    const f = fixture();
+    f.components.shift();
+    expect(validateSspTargets(f.source)).toMatchObject({ code: 'SSP_PROCESS_BINDING_INVALID' });
+    const other = fixture();
+    (other.metadata.parties as JsonObject[]).pop();
+    expect(await deriveProcessApproval(other.source, processUuid)).toMatchObject({ state: 'invalid' });
+  });
 });

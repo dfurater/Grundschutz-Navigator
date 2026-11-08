@@ -335,11 +335,15 @@ export class WorkspaceStore {
       const stored = read.value;
       if (stored.rootType !== 'system-security-plan' || !isPinnedOscalVersion(stored.oscalVersion) || stored.documentState === 'draft' || expectedDraftSavedAt !== null) reject('SSP_PROCESS_DECISION_BLOCKED');
       const source = structuredClone(stored.source);
-      const work = await reviewTrailInWorker({ source, rootType: 'system-security-plan', previous: null, baseSequence: null, diff: false,
-        processBinding: { processUuid: decision.processUuid, decisionParties: [{ 'role-id': 'institution-management', 'party-uuids': decision.partyUuids }] } });
-      if (!work.ok) return work;
+      let hash: string | undefined;
+      if (decision.type === 'approved') {
+        const work = await reviewTrailInWorker({ source, rootType: 'system-security-plan', previous: null, baseSequence: null, diff: false,
+          processBinding: { processUuid: decision.processUuid, decisionParties: [{ 'role-id': 'institution-management', 'party-uuids': decision.partyUuids }] } });
+        if (!work.ok) return work;
+        hash = work.value.processHash;
+      }
       let next: unknown;
-      try { next = appendProcessDecision(source, decision, work.value.processHash); }
+      try { next = appendProcessDecision(source, decision, hash); }
       catch { reject('SSP_PROCESS_BINDING_INVALID'); }
       next = commitSspSave(source, next, new Date().toISOString()).source;
       const blocker = validateSspTargets(next, categoryContext) ?? sspReadinessBlocker(next);

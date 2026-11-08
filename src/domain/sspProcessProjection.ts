@@ -75,6 +75,19 @@ function referenceClosure(metadata: JsonObject, assignments: readonly JsonObject
   };
 }
 
+function decisionAssignments(value: unknown): readonly JsonObject[] {
+  const decisions = processObjects(value);
+  if (decisions.length !== 1 || decisions[0]['role-id'] !== 'institution-management' || !readArray(decisions[0]['party-uuids']).length) return processBindingError();
+  return decisions;
+}
+
+/** Die Entscheidungsträger bleiben auch ohne berechenbaren aktuellen Prozessstand prüfbar. */
+export function processDecisionReferences(source: unknown, decisionParties: unknown) {
+  const metadata = readSspValue(source, ['metadata']);
+  if (!isJsonObject(metadata)) return processBindingError();
+  return referenceClosure(metadata, decisionAssignments(decisionParties));
+}
+
 /** Prozessvertrag §5: nur explizit ausgewählte Knoten; Arrays behalten Quellreihenfolge. */
 export function processProjection(source: unknown, processUuid: string, decisionParties: unknown): JsonObject {
   const metadata = readSspValue(source, ['metadata']);
@@ -88,8 +101,7 @@ export function processProjection(source: unknown, processUuid: string, decision
   const applications = processProps(process, 'process-application-uuid').map(prop => one(components, 'uuid', prop.value, true));
   if (applications.some(app => app.type === 'business-process') || new Set(applications.map(app => processUuidKey(app.uuid))).size !== applications.length) return processBindingError();
   applications.sort((a, b) => compareStringsByCodeUnit(processUuidKey(a.uuid), processUuidKey(b.uuid)));
-  const decisions = processObjects(decisionParties);
-  if (decisions.length !== 1 || decisions[0]['role-id'] !== 'institution-management' || !readArray(decisions[0]['party-uuids']).length) return processBindingError();
+  const decisions = decisionAssignments(decisionParties);
   const refs = [...processObjects(process['responsible-roles']), ...applications.flatMap(app => processObjects(app['responsible-roles'])), ...decisions];
   const closure = referenceClosure(metadata, refs);
   const usedCategories = new Set(processProps(process, 'process-protection-category').map(prop => prop.value));

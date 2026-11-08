@@ -125,8 +125,13 @@ export function createWorkspaceDocuments({ port, write, quiet, class1, delivery,
     // Eine Freigabe ist eine Prüfentscheidung und braucht den gebundenen Bezugsstand.
     saveDocument: (localId, savedAt, draftSavedAt, input, bindings, state, approval) => write(async (store) =>
       store.saveDocument(localId, savedAt, draftSavedAt, input, bindings, state, approval ? { request: approval, guard: await reviewGuard(delivery) } : undefined)),
-    saveProcessDecision: (localId, savedAt, draftSavedAt, input, categories) => write(async (store) =>
-      store.saveProcessDecision(localId, savedAt, draftSavedAt, input, categories, await reviewGuard(delivery))),
+    saveProcessDecision: (localId, savedAt, draftSavedAt, input, categories) => {
+      try {
+        const decision = structuredClone(input);
+        const context = categories === undefined ? undefined : structuredClone(categories);
+        return write(async (store) => store.saveProcessDecision(localId, savedAt, draftSavedAt, decision, context, await reviewGuard(delivery)));
+      } catch { return Promise.resolve(storageFailed()); }
+    },
     autosaveDraft: (...args) => quiet((store) => store.autosaveDraft(...args)),
     setBinding: (...args) => write((store) => store.setBinding(...args)),
     deleteDocument: async (localId) => {
