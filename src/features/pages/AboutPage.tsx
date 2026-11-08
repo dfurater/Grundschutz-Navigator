@@ -176,8 +176,8 @@ function ManualCopyField({ label, value }: Readonly<{ label: string; value: stri
   const fieldRef = useRef<HTMLTextAreaElement>(null);
 
   useLayoutEffect(() => {
-    const field = fieldRef.current;
-    if (!field) return;
+    // Layout-Effekte laufen erst nach dem Anhängen; die Ref ist hier immer gesetzt.
+    const field = fieldRef.current!;
 
     const fitHeight = () => {
       field.style.height = 'auto';
