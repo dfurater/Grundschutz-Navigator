@@ -96,6 +96,15 @@ describe.each(PINNED_OSCAL_VERSIONS)('Prozess-CIA-Vertrag %s', version => {
     expect(derive(source)).toMatchObject({ cia: 'conflict', riskConsideration: 'unknown' });
     expect(derive(source).objectives.integrity.value).toBe('conflict');
   });
+
+  it.each(['normal', 'hoch'])('genau ein bewertetes Ziel %s ergibt partial mit unabhängigem Risikoanlass', value => {
+    const { source, process } = fixture(version);
+    remove(process, 'process-protection-confidentiality');
+    remove(process, 'process-protection-availability');
+    set(process, 'process-protection-integrity', value, { remarks: 'Synthetischer Schadensgrund' });
+    expect(derive(source)).toMatchObject({ cia: 'partial', riskConsideration: value === 'hoch' ? 'required' : 'unknown',
+      objectives: { confidentiality: { value: 'unknown' }, integrity: { value }, availability: { value: 'unknown' } } });
+  });
 });
 
 describe('Unabhängige Achsen und rein lesende Ableitung', () => {
@@ -143,6 +152,23 @@ describe('Unabhängige Achsen und rein lesende Ableitung', () => {
     expect(derive(source)).toMatchObject({ context: 'context-open', cia: 'complete' });
     remove(metadata, 'process-category-label');
     expect(derive(source)).toMatchObject({ context: 'context-open', cia: 'complete' });
+  });
+
+  it.each([' kritisch ', 'KRÍTISCH'])('ordnet kollidierende Kategorienamen nur den betroffenen Prozessen zu: %s', duplicate => {
+    const { source, process, components, metadata } = fixture(undefined, true);
+    props(metadata).find(prop => prop.name === 'process-category-label')!.value = duplicate.includes('́') ? 'Krítisch' : 'Kritisch';
+    props(metadata).push({ ns, name: 'process-category-label', group: 'cat-zwei', value: duplicate });
+    const other = structuredClone(process);
+    other.uuid = 'bbbbbbbb-0000-4000-8000-000000000002';
+    set(other, 'process-id', 'P-02');
+    remove(other, 'process-protection-category');
+    components.push(other);
+    const before = structuredClone(source);
+    const result = deriveSspProcessProtection(source);
+    expect(result.processes.map(row => row.context)).toEqual(['invalid', 'context-complete']);
+    expect(result.processes[0]).toMatchObject({ cia: 'complete', riskConsideration: 'required' });
+    expect(result.processes[0].diagnostics).toContainEqual({ code: 'OSCAL_PROJECT_PROP_DUPLICATE_VALUE', path: '/system-security-plan/metadata/props' });
+    expect(source).toEqual(before);
   });
 
   it('unterscheidet fehlende und ungültige Angaben und bewahrt Fremdfelder unverändert', () => {

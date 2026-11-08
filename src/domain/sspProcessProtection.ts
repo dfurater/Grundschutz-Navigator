@@ -42,6 +42,25 @@ function textKey(value: string): string { return value.normalize('NFC').trim().t
 function uuid(value: unknown): string | undefined { return typeof value === 'string' && isOscalUuid(value) ? value.toLowerCase() : undefined; }
 function objects(value: unknown): readonly JsonObject[] { return readArray(value).filter(isJsonObject); }
 
+function indexBy<T>(items: readonly T[], keyOf: (item: T) => string | undefined): ReadonlyMap<string, readonly T[]> {
+  const index = new Map<string, T[]>();
+  for (const item of items) {
+    const key = keyOf(item);
+    if (key === undefined) continue;
+    const matches = index.get(key);
+    if (matches) matches.push(item);
+    else index.set(key, [item]);
+  }
+  return index;
+}
+
+interface ContextIndex {
+  readonly components: ReadonlyMap<string, readonly JsonObject[]>;
+  readonly roles: ReadonlyMap<string, readonly JsonObject[]>;
+  readonly parties: ReadonlyMap<string, readonly JsonObject[]>;
+  readonly categoryLabels: ReadonlyMap<string, readonly RawOscalProp[]>;
+}
+
 /** Die Registry prüft nur die für diese Achse ausgewählten Properties. */
 function selectedProps(node: JsonObject, carrier: ProjectPropCarrier, select: (prop: RawOscalProp) => boolean) {
   const raw = node.props;
@@ -68,7 +87,7 @@ function requiredText(check: ContextCheck, node: JsonObject, key: string, path: 
   else if (!hasText(node[key])) contextFinding(check, 'invalid', `${path}/${key}`);
 }
 
-function ownerContext(process: JsonObject, metadata: JsonObject, path: string, check: ContextCheck): void {
+function ownerContext(process: JsonObject, index: ContextIndex, path: string, check: ContextCheck): void {
   const assignments = process['responsible-roles'];
   if (assignments !== undefined && (!Array.isArray(assignments) || !assignments.every(isJsonObject))) {
     contextFinding(check, 'invalid', `${path}/responsible-roles`);
@@ -76,21 +95,20 @@ function ownerContext(process: JsonObject, metadata: JsonObject, path: string, c
   }
   const owners = objects(assignments).filter(row => row['role-id'] === 'process-owner');
   if (owners.length === 0) { contextFinding(check, 'missing', `${path}/responsible-roles`); return; }
-  const roles = objects(metadata.roles).filter(row => row.id === 'process-owner');
-  const parties = objects(metadata.parties);
+  const roles = index.roles.get('process-owner') ?? [];
   const refs = readArray(owners[0]['party-uuids']);
   const keys = refs.map(uuid);
   const valid = owners.length === 1 && roles.length === 1 && hasText(roles[0].title)
     && refs.length > 0 && new Set(keys).size === keys.length
     && keys.every(key => {
       if (key === undefined) return false;
-      const matches = parties.filter(party => uuid(party.uuid) === key);
+      const matches = index.parties.get(key) ?? [];
       return matches.length === 1 && hasText(matches[0].name) && ['person', 'organization'].includes(matches[0].type as string);
     });
   if (!valid) contextFinding(check, 'invalid', `${path}/responsible-roles`);
 }
 
-function applicationsContext(process: JsonObject, components: readonly JsonObject[], path: string, check: ContextCheck): void {
+function applicationsContext(process: JsonObject, components: ContextIndex['components'], path: string, check: ContextCheck): void {
   const read = selectedProps(process, 'business-process', prop => CONTEXT_PROPS.has(prop.name));
   if (!read.writeAllowed) {
     check.invalid = true;
@@ -101,7 +119,7 @@ function applicationsContext(process: JsonObject, components: readonly JsonObjec
   if (!apps.length && !read.projectProps.some(prop => prop.name === 'process-applications-none')) contextFinding(check, 'missing', `${path}/props`);
   for (const app of apps) {
     const key = uuid(app.value);
-    const matches = components.filter(item => uuid(item.uuid) === key);
+    const matches = key === undefined ? [] : components.get(key) ?? [];
     if (key === undefined || key === uuid(process.uuid) || matches.length !== 1
       || matches[0].type === BUSINESS_PROCESS_COMPONENT_TYPE || !hasText(matches[0].title)) {
       contextFinding(check, 'invalid', `${path}/props`);
@@ -109,29 +127,33 @@ function applicationsContext(process: JsonObject, components: readonly JsonObjec
   }
 }
 
-function categoryContext(process: JsonObject, metadata: JsonObject, check: ContextCheck): void {
+function categoryContext(process: JsonObject, metadata: JsonObject, labels: ContextIndex['categoryLabels'], check: ContextCheck): void {
   const uses = selectedProps(process, 'business-process', prop => prop.name === 'process-protection-category');
   // Ungültige Verwendungen sind CIA-Konflikte; nur auflösbare Kategorien haben Kontextfelder.
   for (const use of uses.projectProps) {
     if (typeof use.value !== 'string') continue;
     const contextRead = selectedProps(metadata, 'metadata', prop => ['process-category-label', 'process-category-definition'].includes(prop.name) && prop.group === use.value);
     if (!contextRead.writeAllowed) { check.invalid = true; check.diagnostics.push(...findings(contextRead, METADATA_PATH)); }
+    const labelFindings = contextRead.projectProps
+      .filter(prop => prop.name === 'process-category-label' && hasText(prop.value))
+      .flatMap(prop => findings(readProjectProps(labels.get(textKey(prop.value)), 'metadata'), METADATA_PATH));
+    if (labelFindings.length) { check.invalid = true; check.diagnostics.push(...labelFindings); }
     for (const name of ['process-category-label', 'process-category-definition']) {
       if (!contextRead.projectProps.some(prop => prop.name === name)) contextFinding(check, 'missing', `${METADATA_PATH}/props`);
     }
   }
 }
 
-function processContext(process: JsonObject, components: readonly JsonObject[], metadata: JsonObject, path: string, duplicateIds: ReadonlySet<string>): { state: ContextState; diagnostics: readonly ProcessProtectionDiagnostic[] } {
+function processContext(process: JsonObject, index: ContextIndex, metadata: JsonObject, path: string, duplicateIds: ReadonlySet<string>): { state: ContextState; diagnostics: readonly ProcessProtectionDiagnostic[] } {
   const check: ContextCheck = { missing: false, invalid: false, diagnostics: [] };
   const key = uuid(process.uuid);
-  if (key === undefined || components.filter(item => uuid(item.uuid) === key).length !== 1) contextFinding(check, 'invalid', `${path}/uuid`);
+  if (key === undefined || index.components.get(key)?.length !== 1) contextFinding(check, 'invalid', `${path}/uuid`);
   for (const field of ['title', 'description', 'purpose']) requiredText(check, process, field, path);
   const ids = selectedProps(process, 'business-process', prop => prop.name === 'process-id').projectProps;
   if (ids.some(prop => hasText(prop.value) && duplicateIds.has(textKey(prop.value)))) contextFinding(check, 'invalid', `${path}/props`);
-  ownerContext(process, metadata, path, check);
-  applicationsContext(process, components, path, check);
-  categoryContext(process, metadata, check);
+  ownerContext(process, index, path, check);
+  applicationsContext(process, index.components, path, check);
+  categoryContext(process, metadata, index.categoryLabels, check);
   let state: ContextState = check.missing ? 'context-open' : 'context-complete';
   if (check.invalid) state = 'invalid';
   return { state, diagnostics: check.diagnostics };
@@ -196,10 +218,17 @@ export function deriveSspProcessProtection(source: unknown): SspProcessProtectio
   const metadataValue = readSspValue(source, ['metadata']);
   const metadata = isJsonObject(metadataValue) ? metadataValue : {};
   const duplicateIds = duplicateProcessIds(components);
+  const labels = selectedProps(metadata, 'metadata', prop => prop.name === 'process-category-label');
+  const contextIndex: ContextIndex = {
+    components: indexBy(components, item => uuid(item.uuid)),
+    roles: indexBy(objects(metadata.roles), item => readString(item.id)),
+    parties: indexBy(objects(metadata.parties), item => uuid(item.uuid)),
+    categoryLabels: indexBy(labels.projectProps, prop => hasText(prop.value) ? textKey(prop.value) : undefined),
+  };
   const processes = rawComponents.flatMap((process, index): ProcessProtection[] => {
     if (!isJsonObject(process) || process.type !== BUSINESS_PROCESS_COMPONENT_TYPE) return [];
     const path = `${COMPONENT_PATH}/${index}`;
-    const context = processContext(process, components, metadata, path, duplicateIds);
+    const context = processContext(process, contextIndex, metadata, path, duplicateIds);
     const confidentiality = effectiveObjective(process, metadata, 'confidentiality', path);
     const integrity = effectiveObjective(process, metadata, 'integrity', path);
     const availability = effectiveObjective(process, metadata, 'availability', path);
