@@ -557,6 +557,7 @@ scripts/                          # Build-, CI- und Wartungsskripte
 ├── contentHashes.mjs               # SHA-256 und Git-Blob-IDs für Node-Skripte
 ├── control-identity-delta.mjs        # Control-Identitätsdelta zwischen Snapshots
 ├── deployChecksums.d.mts            # Typen des Prüfsummen-Manifests
+├── deployRunDisplay.mjs              # Geprüfte Log-Ausgabewerte der Deploy-Skripte
 ├── deployChecksums.mjs               # Prüfsummen-Manifest SHA256SUMS der Pages-Auslieferung
 ├── fetch-catalog.mjs                 # Registry-gesteuerter Abruf, Validierung und Ausgabe
 ├── git-changed-files.mjs             # Geänderte Dateien eines Pull Requests
@@ -1245,8 +1246,10 @@ Ein erkannter Upstream-Delta durchläuft folgende Lane:
 3. Die GitHub App pusht den Branch und erstellt oder aktualisiert den PR.
 4. `validate` und `catalog-sync-guard` sind die vom Preflight erwarteten Required Status Checks (`REQUIRED_CHECKS` in `scripts/catalog-sync-policy.mjs`). Der Guard bindet Registry-Metadaten, Begleit- und Vokabularinventur, Blob-SHAs und Content-Hashes an den ausgewählten BSI-Snapshot.
 5. Der Workflow fordert ausschließlich GitHub Auto-Merge mit Squash und Branch-Löschung an.
-6. `.github/workflows/verify-catalog-merge.yml` verifiziert Merge-Commit und Manifest auf `main`. Die anschließende Deploy-Prüfung liegt in `scripts/verify-catalog-deploy.mjs`: Sie bestätigt den Push-Deploy zum Merge-Commit erst bei terminalem Zustand mit `conclusion = success`. Ein fehlgeschlagener oder unbestätigter Deploy lässt den Verify-Job fehlschlagen. Erscheint gar kein Push-Deploy, werden Merge-Commit und Manifest erneut gegen `main` geprüft, bevor der Workflow den begrenzten Fallback dispatcht.
+6. `.github/workflows/verify-catalog-merge.yml` verifiziert Merge-Commit und Manifest auf `main`; die Manifestprüfung ruft `node scripts/catalog-sync-guard.mjs --validate-manifest upstream-manifest.json` auf. Der Guard akzeptiert hinter `--validate-manifest` ausschließlich das Argument `upstream-manifest.json`, lehnt jedes andere vor dem Öffnen einer Datei mit festem Fehlertext ab und liest die Datei über `readRegularFileNoFollow`. Die anschließende Deploy-Prüfung liegt in `scripts/verify-catalog-deploy.mjs`: Sie bestätigt den Push-Deploy zum Merge-Commit erst bei terminalem Zustand mit `conclusion = success`. Ein fehlgeschlagener oder unbestätigter Deploy lässt den Verify-Job fehlschlagen. Erscheint gar kein Push-Deploy, werden Merge-Commit und Manifest erneut gegen `main` geprüft, bevor der Workflow den begrenzten Fallback dispatcht.
 7. Der Fallback-Dispatch übergibt `dispatch_source=catalog-sync-fallback` an `deploy.yml`, wo der Job `idempotency_guard` (`scripts/check-deploy-idempotency.mjs`) prüft, ob für denselben Commit-SHA bereits ein Deploy-Lauf erfolgreich abgeschlossen wurde. Der Guard kann einen Deploy ausschließlich verhindern, nie erzwingen. Ein manueller `workflow_dispatch` lässt `dispatch_source` leer und deployt immer.
+
+`verify-catalog-deploy.mjs` und `check-deploy-idempotency.mjs` geben Werte aus GitHub-API-Antworten nur über `scripts/deployRunDisplay.mjs` in Logs und Fehlermeldungen aus: Die Run-Adresse entsteht aus dem geprüften `owner/repo` und der Run-ID als positiver sicherer Ganzzahl, `html_url` wird nicht ausgegeben. `status`, `conclusion` und der Vergleichsstatus erscheinen nur bei vollständiger Übereinstimmung mit `^[a-z_]+$`, SHAs nur als 40 kleingeschriebene Hexzeichen; jeder andere Wert erscheint als `unbekannt`. Die Deploy- und Fallback-Entscheidungen vergleichen die unveränderten Antwortwerte. Abruf- und Parsefehler der Idempotenzprüfung erscheinen als fester Text.
 
 #### Manifestregel des Guards
 

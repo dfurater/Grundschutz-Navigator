@@ -2,6 +2,7 @@
 
 import { pathToFileURL } from 'node:url';
 import { appendFile } from 'node:fs/promises';
+import { displayRunUrl } from './deployRunDisplay.mjs';
 
 export const SKIP_DEPLOY = 'skip-deploy';
 export const RUN_DEPLOY = 'run-deploy';
@@ -20,7 +21,7 @@ export async function checkDeployIdempotency({
   // The GitHub API matches `head_sha` only against full SHAs, never abbreviated
   // ones, so an abbreviated SHA would make the guard a silent no-op.
   if (!/^[0-9a-f]{40}$/.test(commitSha ?? '')) {
-    log(`Commit SHA ${commitSha} is not a full 40-character SHA; deploying without an idempotency check.`);
+    log('Commit SHA is not a full 40-character SHA; deploying without an idempotency check.');
     return RUN_DEPLOY;
   }
 
@@ -42,11 +43,11 @@ export async function checkDeployIdempotency({
       throw new Error(`HTTP ${response.status}`);
     }
     payload = await response.json();
-  } catch (error) {
+  } catch {
     // A lookup that cannot answer must never suppress a deploy: the worst case
     // of deploying is a redundant run, the worst case of skipping is no deploy.
-    log(`Deploy run lookup failed (${error instanceof Error ? error.message : 'unknown error'}); `
-      + 'deploying rather than skipping.');
+    // Fixed text: a parse error message can quote the response body.
+    log('Deploy run lookup failed; deploying rather than skipping.');
     return RUN_DEPLOY;
   }
 
@@ -61,7 +62,7 @@ export async function checkDeployIdempotency({
     && run.status === 'completed'
     && run.conclusion === 'success');
   if (completed) {
-    log(`Commit ${commitSha} already deployed successfully: ${completed.html_url}`);
+    log(`Commit ${commitSha} already deployed successfully: ${displayRunUrl(repository, completed.id)}`);
     return SKIP_DEPLOY;
   }
 
@@ -101,8 +102,8 @@ const isDirectExecution = process.argv[1] && import.meta.url === pathToFileURL(p
 if (isDirectExecution) {
   try {
     await main();
-  } catch (error) {
+  } catch {
     // Same rule at the top level: an unexpected failure must not cancel a deploy.
-    console.error(error instanceof Error ? error.message : error);
+    console.error('Deploy idempotency check failed unexpectedly; deploying.');
   }
 }

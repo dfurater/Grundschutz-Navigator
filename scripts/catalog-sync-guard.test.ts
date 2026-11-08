@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { describe, expect, it, vi } from 'vitest';
 import {
@@ -10,8 +10,10 @@ import {
   getPullRequestDiffEntries,
   guardCatalogSyncPullRequest,
   parseNameStatusDiff,
+  TRACKED_MANIFEST_PATH,
   validateCatalogSyncManifest,
   validateCatalogSyncPullRequest,
+  validateTrackedManifestCli,
   verifySnapshotProgress,
 } from './catalog-sync-guard.mjs';
 import { OFFICIAL_BSI_REPOSITORY_URL } from './security-guards.mjs';
@@ -1235,5 +1237,88 @@ describe('getPullRequestDiffEntries', () => {
     } finally {
       await rm(repository, { recursive: true, force: true });
     }
+  });
+});
+
+describe('--validate-manifest', () => {
+  const GUARD_SCRIPT = resolve(import.meta.dirname, 'catalog-sync-guard.mjs');
+  const FIXED_ERROR = `--validate-manifest accepts exactly the argument ${TRACKED_MANIFEST_PATH}`;
+  const SECRET = 'MANIFEST_CONTENT_SENTINEL';
+  const REJECTED_ARGUMENTS: Array<[string, string[]]> = [
+    ['missing', []],
+    ['additional', [TRACKED_MANIFEST_PATH, 'other.json']],
+    ['absolute', [resolve(TRACKED_MANIFEST_PATH)]],
+    ['traversing', [`../${TRACKED_MANIFEST_PATH}`]],
+    ['otherwise deviating', [`./${TRACKED_MANIFEST_PATH}`]],
+  ];
+
+  async function withManifestDir(
+    prepare: (dir: string) => Promise<void>,
+    check: (dir: string) => Promise<void>,
+  ) {
+    const dir = await mkdtemp(join(getAllowedTempRoot(), 'catalog-sync-guard-cli-'));
+    try {
+      await prepare(dir);
+      await check(dir);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }
+
+  async function runGuard(args: string[], cwd: string) {
+    return execFileAsync(process.execPath, [GUARD_SCRIPT, '--validate-manifest', ...args], {
+      cwd,
+      encoding: 'utf8',
+    }).then(
+      ({ stdout, stderr }) => ({ code: 0, stdout, stderr }),
+      (error: { code: number; stdout: string; stderr: string }) => error,
+    );
+  }
+
+  it.each(REJECTED_ARGUMENTS)('rejects a %s argument before opening any file', async (_label, args) => {
+    const readManifest = vi.fn();
+    await expect(validateTrackedManifestCli(args, { readManifest })).rejects.toThrow(
+      new Error(FIXED_ERROR),
+    );
+    expect(readManifest).not.toHaveBeenCalled();
+  });
+
+  it.each(REJECTED_ARGUMENTS)('exits with 1 for a %s argument without echoing it', async (_label, args) => {
+    await withManifestDir(
+      (dir) => writeFile(join(dir, 'other.json'), SECRET),
+      async (dir) => {
+        const result = await runGuard(args, dir);
+        expect(result.code).toBe(1);
+        expect(result.stderr.trim()).toBe(FIXED_ERROR);
+        expect(result.stderr).not.toContain(SECRET);
+      },
+    );
+  });
+
+  it('validates the regular tracked manifest exactly as the workflow and backmerge call it', async () => {
+    const { manifest } = makeFixture();
+    await withManifestDir(
+      (dir) => writeFile(join(dir, TRACKED_MANIFEST_PATH), JSON.stringify(manifest)),
+      async (dir) => {
+        const result = await runGuard([TRACKED_MANIFEST_PATH], dir);
+        expect(result.code).toBe(0);
+        expect(result.stdout.trim()).toBe(`Validated catalog sync manifest: ${TRACKED_MANIFEST_PATH}`);
+      },
+    );
+  });
+
+  it('rejects a symlink at the tracked manifest path', async () => {
+    const { manifest } = makeFixture();
+    await withManifestDir(
+      async (dir) => {
+        await writeFile(join(dir, 'target.json'), JSON.stringify(manifest));
+        await symlink(join(dir, 'target.json'), join(dir, TRACKED_MANIFEST_PATH));
+      },
+      async (dir) => {
+        const result = await runGuard([TRACKED_MANIFEST_PATH], dir);
+        expect(result.code).toBe(1);
+        expect(result.stderr).toContain('must be a regular file');
+      },
+    );
   });
 });

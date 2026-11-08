@@ -129,3 +129,70 @@ describe('checkDeployIdempotency', () => {
     await expect(checkDeployIdempotency(options(fetchImpl))).resolves.toBe(RUN_DEPLOY);
   });
 });
+
+// Echte LF/CR-Zeichen: Ohne geprüfte Ausgabe begänne `::error::` im Actions-Log
+// eine eigene Zeile und würde als Runner-Kommando gelesen.
+const INJECTION = '\n::error::INJECTED\r::error::INJECTED';
+
+describe('checkDeployIdempotency — geprüfte Ausgabewerte', () => {
+  function run(overrides: Record<string, unknown>, extraOptions = {}) {
+    const messages: string[] = [];
+    const fetchImpl = makeFetch([makeRun(overrides)]);
+    const outcome = checkDeployIdempotency(
+      options(fetchImpl, { log: (message: string) => messages.push(message), ...extraOptions }),
+    );
+    return { messages, outcome };
+  }
+
+  it('logs the run address from repository and run id, never html_url', async () => {
+    const { messages, outcome } = run({ html_url: `https://example.invalid/${INJECTION}` });
+    await expect(outcome).resolves.toBe(SKIP_DEPLOY);
+    expect(messages).toEqual([
+      `Commit ${COMMIT_SHA} already deployed successfully: `
+      + `https://github.com/${REPOSITORY}/actions/runs/29871256790`,
+    ]);
+  });
+
+  it.each([
+    ['injected text', `29871256790${INJECTION}`],
+    ['a numeric string', '29871256790'],
+    ['an unsafe integer', 2 ** 53],
+    ['a missing value', undefined],
+  ])('logs unbekannt for a run id that is %s and keeps the skip decision', async (_label, id) => {
+    const { messages, outcome } = run({ id });
+    await expect(outcome).resolves.toBe(SKIP_DEPLOY);
+    expect(messages).toEqual([`Commit ${COMMIT_SHA} already deployed successfully: unbekannt`]);
+  });
+
+  it.each([`dfurater/Grundschutz-Navigator${INJECTION}`, '../Grundschutz-Navigator', 42])(
+    'logs only the run id when the repository %j fails the check',
+    async (repository) => {
+      const { messages, outcome } = run({}, { repository });
+      await expect(outcome).resolves.toBe(SKIP_DEPLOY);
+      expect(messages).toEqual([`Commit ${COMMIT_SHA} already deployed successfully: 29871256790`]);
+    },
+  );
+
+  it('reports an invalid commit SHA with a fixed text', async () => {
+    const { messages, outcome } = run({}, { commitSha: `c3994ba${INJECTION}` });
+    await expect(outcome).resolves.toBe(RUN_DEPLOY);
+    expect(messages).toEqual([
+      'Commit SHA is not a full 40-character SHA; deploying without an idempotency check.',
+    ]);
+  });
+
+  it('reports a failed lookup with a fixed text instead of the parse error', async () => {
+    const messages: string[] = [];
+    const fetchImpl = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => {
+        throw new SyntaxError(`Unexpected token in "${INJECTION}"`);
+      },
+    }));
+    await expect(
+      checkDeployIdempotency(options(fetchImpl, { log: (message: string) => messages.push(message) })),
+    ).resolves.toBe(RUN_DEPLOY);
+    expect(messages).toEqual(['Deploy run lookup failed; deploying rather than skipping.']);
+  });
+});

@@ -3,7 +3,6 @@
 import { compareStringsByCodeUnit } from '../src/domain/codeUnitOrder.mjs';
 import { execFile } from 'node:child_process';
 import { computeGitBlobSha, sha256Hex } from './contentHashes.mjs';
-import { readFile } from 'node:fs/promises';
 import { promisify } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import { DEFAULT_REQUEST_TIMEOUT_MS, fetchGitHubJson } from './githubApiFetch.mjs';
@@ -575,18 +574,26 @@ export async function guardCatalogSyncPullRequest({
   };
 }
 
-async function readJson(filePath) {
-  return JSON.parse(await readFile(filePath, 'utf8'));
+/**
+ * CLI-Zweig `--validate-manifest`: Er akzeptiert genau das Argument
+ * `TRACKED_MANIFEST_PATH` und liest nur diesen festen Pfad symlinksicher.
+ * Jedes andere Argument wird vor jedem Dateizugriff mit festem Text abgelehnt.
+ *
+ * @param {string[]} args Argumente nach `--validate-manifest`.
+ */
+export async function validateTrackedManifestCli(args, { readManifest = readRegularFileNoFollow } = {}) {
+  if (args.length !== 1 || args[0] !== TRACKED_MANIFEST_PATH) {
+    throw new Error(`--validate-manifest accepts exactly the argument ${TRACKED_MANIFEST_PATH}`);
+  }
+  return validateCatalogSyncManifest(
+    JSON.parse((await readManifest(TRACKED_MANIFEST_PATH)).toString('utf8')),
+  );
 }
 
 async function runCli() {
   if (process.argv[2] === '--validate-manifest') {
-    const manifestPath = process.argv[3];
-    if (!manifestPath) {
-      throw new Error('--validate-manifest requires a path');
-    }
-    validateCatalogSyncManifest(await readJson(manifestPath));
-    console.log(`Validated catalog sync manifest: ${manifestPath}`);
+    await validateTrackedManifestCli(process.argv.slice(3));
+    console.log(`Validated catalog sync manifest: ${TRACKED_MANIFEST_PATH}`);
     return;
   }
 
