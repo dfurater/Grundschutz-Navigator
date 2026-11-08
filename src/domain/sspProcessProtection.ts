@@ -138,9 +138,7 @@ function categoryContext(process: JsonObject, metadata: JsonObject, labels: Cont
       .filter(prop => prop.name === 'process-category-label' && hasText(prop.value))
       .flatMap(prop => findings(readProjectProps(labels.get(textKey(prop.value)), 'metadata'), METADATA_PATH));
     if (labelFindings.length) { check.invalid = true; check.diagnostics.push(...labelFindings); }
-    for (const name of ['process-category-label', 'process-category-definition']) {
-      if (!contextRead.projectProps.some(prop => prop.name === name)) contextFinding(check, 'missing', `${METADATA_PATH}/props`);
-    }
+    if (!contextRead.projectProps.some(prop => prop.name === 'process-category-definition')) contextFinding(check, 'missing', `${METADATA_PATH}/props`);
   }
 }
 

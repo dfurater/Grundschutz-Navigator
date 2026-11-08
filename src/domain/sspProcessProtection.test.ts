@@ -105,6 +105,20 @@ describe.each(PINNED_OSCAL_VERSIONS)('Prozess-CIA-Vertrag %s', version => {
     expect(derive(source)).toMatchObject({ cia: 'partial', riskConsideration: value === 'hoch' ? 'required' : 'unknown',
       objectives: { confidentiality: { value: 'unknown' }, integrity: { value }, availability: { value: 'unknown' } } });
   });
+
+  it('hält eine verwendete Kategorie ohne optionales Label vollständig', () => {
+    const { source, metadata } = fixture(version, true);
+    remove(metadata, 'process-category-label');
+    const before = structuredClone(source);
+    expect(derive(source)).toMatchObject({ context: 'context-complete', cia: 'complete', riskConsideration: 'required', diagnostics: [] });
+    expect(source).toEqual(before);
+  });
+
+  it('hält eine verwendete Kategorie ohne Definition im Kontext offen', () => {
+    const { source, metadata } = fixture(version, true);
+    remove(metadata, 'process-category-definition');
+    expect(derive(source)).toMatchObject({ context: 'context-open', cia: 'complete', riskConsideration: 'required' });
+  });
 });
 
 describe('Unabhängige Achsen und rein lesende Ableitung', () => {
@@ -146,14 +160,6 @@ describe('Unabhängige Achsen und rein lesende Ableitung', () => {
     expect(deriveSspProcessProtection(source).processes.map(row => row.cia)).toEqual(['complete', 'complete']);
   });
 
-  it('hält fehlende Kategoriebezeichnung/Definition im Kontext offen, Mapping bleibt auswertbar', () => {
-    const { source, metadata } = fixture(undefined, true);
-    remove(metadata, 'process-category-definition');
-    expect(derive(source)).toMatchObject({ context: 'context-open', cia: 'complete' });
-    remove(metadata, 'process-category-label');
-    expect(derive(source)).toMatchObject({ context: 'context-open', cia: 'complete' });
-  });
-
   it.each([' kritisch ', 'KRÍTISCH'])('ordnet kollidierende Kategorienamen nur den betroffenen Prozessen zu: %s', duplicate => {
     const { source, process, components, metadata } = fixture(undefined, true);
     props(metadata).find(prop => prop.name === 'process-category-label')!.value = duplicate.includes('́') ? 'Krítisch' : 'Kritisch';
@@ -184,16 +190,18 @@ describe('Unabhängige Achsen und rein lesende Ableitung', () => {
     expect(JSON.stringify(derive(source).diagnostics)).not.toContain('Synthetisch');
   });
 
-  it.each(['invalid-mapping', 'duplicate-mapping', 'invalid-category', 'duplicate-category-use', 'invalid-definition'])('meldet Kategoriefehler ohne automatische Korrektur: %s', kind => {
+  it.each(['invalid-mapping', 'duplicate-mapping', 'invalid-category', 'duplicate-category-use', 'invalid-definition', 'invalid-label'])('meldet Kategoriefehler ohne automatische Korrektur: %s', kind => {
     const { source, process, metadata } = fixture(undefined, true);
     if (kind === 'invalid-mapping') set(metadata, 'process-category-mapping', 'hoch', { group: 'cat-kritisch' });
     if (kind === 'duplicate-mapping') props(metadata).push({ ...props(metadata).find(prop => prop.name === 'process-category-mapping')! });
     if (kind === 'invalid-category') props(process).find(prop => prop.name === 'process-protection-category')!.group = 'unbekannt';
     if (kind === 'duplicate-category-use') props(process).push({ ...props(process).find(prop => prop.name === 'process-protection-category')! });
     if (kind === 'invalid-definition') set(metadata, 'process-category-definition', ' ', { group: 'cat-kritisch' });
+    if (kind === 'invalid-label') set(metadata, 'process-category-label', ' ', { group: 'cat-kritisch' });
     const before = structuredClone(source);
     const result = derive(source);
-    expect(kind === 'invalid-definition' ? result.context : result.cia).toBe(kind === 'invalid-definition' ? 'invalid' : 'conflict');
+    const contextError = kind === 'invalid-definition' || kind === 'invalid-label';
+    expect(contextError ? result.context : result.cia).toBe(contextError ? 'invalid' : 'conflict');
     expect(result.diagnostics.length).toBeGreaterThan(0);
     expect(source).toEqual(before);
   });
