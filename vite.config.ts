@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve, sep } from 'node:path';
-import { copyFileSync, existsSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import type { Catalog } from './src/domain/models.ts';
 import {
   STATIC_CONTENT_TITLES, listSeoRouteMetadata, loadPublicSeoCatalogs, writeSeoRouteEntries,
@@ -107,6 +107,8 @@ export function spaFallbackPlugin(
   } = {},
 ) {
   const outDir = options.outDir ?? DIST_DIR;
+  // Einmal je Plugin-Instanz, damit ein wiederholtes closeBundle byte-gleich schreibt.
+  const buildTime = new Date();
   const foundPreloads = new Map<string, string>();
   return {
     name: 'github-pages-spa-fallback',
@@ -143,6 +145,14 @@ export function spaFallbackPlugin(
       writeStaticRouteEntries(outDir, options.catalogs, modulePreloads);
       writeSpaFallbackFile(outDir);
       writeSitemapFile(outDir);
+      writeFileSync(resolve(outDir, 'robots.txt'), [
+        'User-agent: *',
+        'Allow: /',
+        `Sitemap: ${CANONICAL_ORIGIN}${resolveDeploymentBase()}sitemap.xml`,
+        '',
+      ].join('\n'), 'utf8');
+      mkdirSync(resolve(outDir, '.well-known'), { recursive: true });
+      writeFileSync(resolve(outDir, '.well-known', 'security.txt'), buildSecurityTxt(buildTime), 'utf8');
       checkBuiltSeoTitles(outDir);
       writeChecksumsManifestFile(outDir);
     },
@@ -220,6 +230,24 @@ export function resolveDeploymentBase(): string {
   return base.endsWith('/') ? base : `${base}/`;
 }
 
+const SECURITY_TXT_VALIDITY_MS = 364 * 24 * 60 * 60 * 1000;
+
+/**
+ * security.txt nach RFC 9116. `Expires` liegt 364 Tage nach `now`, weil §2.5.5
+ * weniger als ein Jahr empfiehlt; jeder Deploy erneuert den Wert.
+ */
+export function buildSecurityTxt(now: Date): string {
+  const expires = new Date(now.getTime() + SECURITY_TXT_VALIDITY_MS).toISOString().replace(/\.\d{3}Z$/, 'Z');
+  return [
+    'Contact: https://github.com/dfurater/Grundschutz-Navigator/security/advisories/new',
+    `Expires: ${expires}`,
+    'Preferred-Languages: de, en',
+    `Canonical: ${CANONICAL_ORIGIN}${resolveDeploymentBase()}.well-known/security.txt`,
+    'Policy: https://github.com/dfurater/Grundschutz-Navigator/blob/main/SECURITY.md',
+    '',
+  ].join('\n');
+}
+
 function escapeXml(value: string): string {
   return value
     .replaceAll('&', '&amp;')
@@ -248,7 +276,7 @@ export function buildSitemapXml(
   const baseUrl = `${origin}${basePath}`;
 
   const urlEntries = routes.map((route) => {
-    const loc = escapeXml(`${baseUrl}${route.slice(1)}`);
+    const loc = escapeXml(`${baseUrl}${route.slice(1)}${route.endsWith('/') ? '' : '/'}`);
     return `  <url><loc>${loc}</loc></url>`;
   });
 

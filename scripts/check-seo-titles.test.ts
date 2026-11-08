@@ -140,7 +140,7 @@ function withBody(html: string, body: string) {
 }
 
 describe('collectBuiltHtmlFiles', () => {
-  it('collects nested HTML files sorted and skips dotfiles like the Pages pack rule', () => {
+  it('collects nested HTML files sorted and skips only .git and .github like the Pages pack rule', () => {
     const dir = scratchTree({
       'index.html': page(),
       'suche/index.html': page(),
@@ -148,8 +148,11 @@ describe('collectBuiltHtmlFiles', () => {
       'assets/app.js': 'console.log(1)',
       '.DS_Store': 'mac',
       '.hidden/index.html': page(),
+      '.git/index.html': page(),
+      'katalog/.github/index.html': page(),
     });
     expect(collectBuiltHtmlFiles(dir)).toEqual([
+      '.hidden/index.html',
       'index.html',
       'katalog/gspp/GC/index.html',
       'suche/index.html',

@@ -49,7 +49,8 @@ afterEach(() => {
   while (tempDirs.length > 0) rmSync(tempDirs.pop()!, { recursive: true, force: true });
 });
 
-// Sichtbare Dateien, tiefe Routen, Dotfiles und versteckte Unterverzeichnisse.
+// Sichtbare Dateien, tiefe Routen, Dotfiles, versteckte Unterverzeichnisse und
+// die immer ausgeschlossenen `.git`/`.github`, auch verschachtelt.
 const FIXTURE = {
   'index.html': '<!doctype html>',
   '404.html': '<!doctype html>',
@@ -63,6 +64,11 @@ const FIXTURE = {
   '.well-known/security.txt': 'hidden dir',
   'assets/.cache/x.js': 'hidden nested dir',
   'katalog/.hidden': 'hidden nested file',
+  '.gitignore': 'near miss',
+  '.git/HEAD': 'ref',
+  '.github/workflows/x.yml': 'workflow',
+  'assets/.git/config': 'nested git',
+  'katalog/.github/y': 'nested github',
 };
 
 describe('assertSafeRelativePath', () => {
@@ -79,17 +85,22 @@ describe('assertSafeRelativePath', () => {
 });
 
 describe('collectDeployedFiles', () => {
-  it('lists visible regular files sorted by UTF-16 code unit and skips dot names with their subtree', () => {
+  it('lists regular files sorted by UTF-16 code unit and skips only .git and .github with their subtree', () => {
     const dist = tempDir();
     writeTree(dist, FIXTURE);
 
     expect(collectDeployedFiles(dist)).toEqual([
+      '.DS_Store',
+      '.gitignore',
+      '.well-known/security.txt',
       '404.html',
       'B/index.html',
       'a/index.html',
+      'assets/.cache/x.js',
       'assets/index-abc.js',
       'favicon.svg',
       'index.html',
+      'katalog/.hidden',
       'katalog/gspp/GC/index.html',
       'katalog/gspp/kontrolle/80351189-6ffc-495e-a995-6219b9704724/index.html',
     ]);
@@ -225,7 +236,7 @@ describe('assertChecksumsManifest', () => {
     const dist = builtDist();
     const before = readFileSync(join(dist, CHECKSUMS_FILE));
 
-    expect(assertChecksumsManifest(dist)).toEqual({ fileCount: 9, subjectCount: 1 });
+    expect(assertChecksumsManifest(dist)).toEqual({ fileCount: 14, subjectCount: 1 });
     expect(readFileSync(join(dist, CHECKSUMS_FILE))).toEqual(before);
   });
 
@@ -319,7 +330,7 @@ describe('check CLI', () => {
     const script = join(import.meta.dirname, 'deployChecksums.mjs');
 
     const ok = execFileSync(process.execPath, [script, '--dist', dist], { encoding: 'utf8' });
-    expect(ok).toContain('9 Dateien einschließlich Manifest, 1 Attestierungs-Subject');
+    expect(ok).toContain('14 Dateien einschließlich Manifest, 1 Attestierungs-Subject');
 
     writeFileSync(join(dist, 'index.html'), 'tampered');
     expect(() => execFileSync(process.execPath, [script, '--dist', dist], { stdio: 'pipe' })).toThrow(
@@ -339,8 +350,9 @@ describe('check CLI', () => {
 /*
  * Paketabdeckung gegen den gepinnten Pages-Uploader
  * (actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9,
- * action.yml, Linux-Zweig). Die tar-Optionen sind dort wörtlich übernommen;
- * `deploy.yml` pinnt denselben SHA, ein Pin-Wechsel fällt im Test unten auf.
+ * action.yml, Linux-Zweig). Die tar-Optionen sind dort wörtlich übernommen,
+ * mit `include-hidden-files: true` also ohne `--exclude=.[^/]*`; `deploy.yml`
+ * pinnt denselben SHA mit derselben Eingabe, eine Abweichung fällt im Test unten auf.
  * Nur GNU tar kennt `--hard-dereference`, deshalb läuft der Test auf Linux
  * (CI) und wird mit bsdtar übersprungen.
  */
@@ -368,9 +380,10 @@ function listExtracted(root: string): string[] {
 }
 
 describe('package coverage against the pinned Pages uploader', () => {
-  it('pins the uploader whose tar options this test replays', () => {
+  it('pins the uploader whose tar options this test replays, with hidden files included', () => {
     const deploy = readFileSync(join(import.meta.dirname, '..', '.github/workflows/deploy.yml'), 'utf8');
-    expect(deploy).toContain(`uses: ${UPLOAD_PAGES_PIN}`);
+    const step = deploy.split(`uses: ${UPLOAD_PAGES_PIN}`)[1]?.split('\n      - ')[0];
+    expect(step).toMatch(/^ {10}include-hidden-files: true$/m);
   });
 
   it.skipIf(!isGnuTar())('publishes exactly the manifest entries plus SHA256SUMS', () => {
@@ -388,7 +401,6 @@ describe('package coverage against the pinned Pages uploader', () => {
       '-cvf', archive,
       '--exclude=.git',
       '--exclude=.github',
-      '--exclude=.[^/]*',
       '.',
     ]);
     execFileSync('tar', ['-xf', archive, '-C', extracted]);
