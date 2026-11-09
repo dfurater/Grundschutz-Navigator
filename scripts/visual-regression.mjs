@@ -23,8 +23,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 /** Gepinntes Image; die Version muss der `playwright`-Version in `package-lock.json` entsprechen. */
 export const PLAYWRIGHT_IMAGE = {
-  version: '1.64.1',
-  digest: 'sha256:7852dc5a7d72f5fe458a597d690f6c42fbc8e9e26ddfa95f8e6ef552558d9bbf',
+  version: '1.65.0',
+  digest: 'sha256:6e3fb709361521eb27161606e6da6d2674e5e89fa16516cb37d6fdd91372273d',
 };
 
 const TEST_FILE = 'src/test/browser/visualRegression.browser.test.ts';
