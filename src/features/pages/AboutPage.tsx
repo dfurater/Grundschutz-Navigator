@@ -1,3 +1,4 @@
+import { useLayoutEffect, useRef, type ReactNode } from 'react';
 import {
   IconShieldCheck,
   IconExternalLink,
@@ -71,6 +72,8 @@ const verificationFailureTone = {
 } as const;
 const copyErrorMessage =
   'Kopieren nicht möglich. Bitte den vollständigen Wert manuell markieren und kopieren.';
+const manualCopyFieldClass =
+  'block w-full resize-none overflow-hidden break-all rounded-md border border-[var(--color-border-strong)] bg-[var(--color-surface-base)] px-3 py-2 text-left font-mono text-base text-[var(--color-text-primary)] shadow-sm focus-visible:border-[var(--color-focus-ring)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)] sm:text-sm';
 
 type VerificationTone = typeof verificationSuccessTone | typeof verificationFailureTone;
 
@@ -164,6 +167,67 @@ function formatPartyLabel(party: CatalogParty): string {
   return party.email ? `${party.name} (${party.email})` : party.name;
 }
 
+/**
+ * Schreibgeschütztes Textfeld für die manuelle Kopie. Jeder Fokus wählt den
+ * vollständigen Wert aus; die Höhe folgt dem umbrochenen Inhalt, damit weder
+ * Zeichen verdeckt noch innere Scrollleisten nötig werden.
+ */
+function ManualCopyField({ label, value }: Readonly<{ label: string; value: string }>) {
+  const fieldRef = useRef<HTMLTextAreaElement>(null);
+
+  useLayoutEffect(() => {
+    // Layout-Effekte laufen erst nach dem Anhängen; die Ref ist hier immer gesetzt.
+    const field = fieldRef.current!;
+
+    const fitHeight = () => {
+      field.style.height = 'auto';
+      field.style.height = `${field.scrollHeight + field.offsetHeight - field.clientHeight}px`;
+    };
+    fitHeight();
+    // Ein nachgeladener Wert (z. B. Snapshot-Commit im Prüfbefehl) darf die Auswahl im Fokus nicht verwerfen.
+    if (document.activeElement === field) field.select();
+    // Plex Mono kann nach dem ersten Layout eintreffen und den Umbruch verschieben.
+    void document.fonts?.ready.then(fitHeight);
+
+    if (typeof ResizeObserver === 'undefined') return;
+    let width = field.clientWidth;
+    let frame = 0;
+    // Nur Breitenwechsel messen neu; der nächste Frame vermeidet eine ResizeObserver-Schleife.
+    const observer = new ResizeObserver(() => {
+      if (field.clientWidth === width) return;
+      width = field.clientWidth;
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(fitHeight);
+    });
+    observer.observe(field);
+
+    return () => {
+      observer.disconnect();
+      cancelAnimationFrame(frame);
+    };
+  }, [value]);
+
+  return (
+    <textarea
+      ref={fieldRef}
+      readOnly
+      rows={1}
+      value={value}
+      aria-label={label}
+      spellCheck={false}
+      onFocus={(event) => {
+        const field = event.currentTarget;
+        field.select();
+        // WebKit stellt nach dem Fokusereignis die vorige Auswahl wieder her.
+        requestAnimationFrame(() => {
+          if (document.activeElement === field) field.select();
+        });
+      }}
+      className={manualCopyFieldClass}
+    />
+  );
+}
+
 function CopyableValue({
   label,
   value,
@@ -206,51 +270,49 @@ function CopyableValue({
           <p role="alert" className="text-xs text-[var(--color-danger-text)]">
             {copyErrorMessage}
           </p>
-          <code
-            tabIndex={0}
-            aria-label={`${label}: vollständiger Wert zum manuellen Kopieren`}
-            className="block select-all break-all font-mono text-xs text-[var(--color-text-primary)]"
-          >
-            {value}
-          </code>
+          <ManualCopyField
+            label={`${label}: vollständiger Wert zum manuellen Kopieren`}
+            value={value}
+          />
         </div>
       )}
     </div>
   );
 }
 
-function CopyButton({ command }: Readonly<{ command: string }>) {
+/** Kopfzeile mit Kopierknopf; die Fehlermeldung steht darunter, damit sie auf schmalen Breiten nicht neben dem Titel abgeschnitten wird. */
+function CopyCommandHeader({ command, children }: Readonly<{ command: string; children: ReactNode }>) {
   const { copy, copied, error } = useClipboard();
 
   return (
-    <div className="flex shrink-0 flex-col items-end gap-1">
-      <button
-        type="button"
-        onClick={() => void copy(command)}
-        className="touch-target-size flex items-center justify-center gap-1 rounded p-2 text-xs text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-surface-subtle)] hover:text-[var(--color-text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
-        aria-label="Code kopieren"
-      >
-        {copied ? (
-          <>
-            <IconCheck className="h-3.5 w-3.5 text-[var(--color-success-text)]" />
-            <span className="text-[var(--color-success-text)]">Kopiert</span>
-          </>
-        ) : (
-          <>
-            <IconClipboard className="h-3.5 w-3.5" />
-            <span>Kopieren</span>
-          </>
-        )}
-      </button>
-      {error && (
-        <p
-          role="alert"
-          className="max-w-64 text-right text-xs leading-relaxed text-[var(--color-danger-text)]"
+    <>
+      <div className="flex items-start justify-between gap-3">
+        {children}
+        <button
+          type="button"
+          onClick={() => void copy(command)}
+          className="touch-target-size flex shrink-0 items-center justify-center gap-1 rounded p-2 text-xs text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-surface-subtle)] hover:text-[var(--color-text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
+          aria-label="Code kopieren"
         >
+          {copied ? (
+            <>
+              <IconCheck className="h-3.5 w-3.5 text-[var(--color-success-text)]" />
+              <span className="text-[var(--color-success-text)]">Kopiert</span>
+            </>
+          ) : (
+            <>
+              <IconClipboard className="h-3.5 w-3.5" />
+              <span>Kopieren</span>
+            </>
+          )}
+        </button>
+      </div>
+      {error && (
+        <p role="alert" className="mt-2 text-right text-xs leading-relaxed text-[var(--color-danger-text)]">
           {copyErrorMessage}
         </p>
       )}
-    </div>
+    </>
   );
 }
 
@@ -970,24 +1032,17 @@ export function AboutPage() {
 
           <div className={`${surfacePanelClass} mt-5 overflow-hidden`}>
             <div className="px-4 py-3">
-              <div className="flex items-start justify-between gap-3">
+              <CopyCommandHeader command={verifyCommand}>
                 <div className="min-w-0">
                   <p className="type-meta">Prüfbefehl</p>
                   <p className="mt-1 text-sm font-medium text-[var(--color-text-primary)]">
                     SHA-256 von App- und Upstream-Katalog vergleichen
                   </p>
                 </div>
-                <CopyButton command={verifyCommand} />
-              </div>
+              </CopyCommandHeader>
 
-              <div className="mt-3 rounded-sm bg-[var(--color-surface-subtle)] px-4 py-3">
-                <code
-                  tabIndex={0}
-                  aria-label="Prüfbefehl zum manuellen Kopieren"
-                  className="select-all break-all font-mono text-xs leading-relaxed text-[var(--color-text-primary)]"
-                >
-                  {verifyCommand}
-                </code>
+              <div className="mt-3">
+                <ManualCopyField label="Prüfbefehl zum manuellen Kopieren" value={verifyCommand} />
               </div>
 
               <p className="type-meta mt-3">
