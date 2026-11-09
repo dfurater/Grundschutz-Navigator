@@ -164,7 +164,7 @@ export function HeaderBar({
           className="group flex min-h-11 min-w-0 items-center gap-2 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--header-focus-ring)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--header-bg)]"
         >
           <IconShield className="h-5 w-5 shrink-0 text-[var(--header-brand-accent)] transition-colors group-hover:text-[var(--header-brand-accent-hover)]" />
-          <span className="min-w-0 whitespace-nowrap text-sm font-bold leading-tight tracking-wide transition-colors group-hover:text-[var(--header-text-hover)] sm:text-base">
+          <span className="min-w-0 whitespace-nowrap text-sm font-bold leading-tight tracking-wide transition-colors group-hover:text-[var(--header-text-hover)] md:text-base">
             Grundschutz++ Navigator
           </span>
         </Link>
@@ -176,7 +176,7 @@ export function HeaderBar({
       </div>
 
       {/* Search */}
-      <div inert={obscured} className="hidden w-full px-4 sm:block lg:px-8">
+      <div inert={obscured} className="hidden w-full px-2 sm:block md:px-4 lg:px-8">
         <div className="relative group">
           <IconSearch className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--header-text-subtle)] transition-colors group-focus-within:text-[var(--header-brand-accent)]" />
           <input

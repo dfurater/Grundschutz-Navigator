@@ -355,10 +355,8 @@ describe('AppShell', () => {
     const { container, rerenderApp } = renderAppShell(['/']);
 
     // Mobil folgt die Breite derselben Bewegung wie die verschobene Seite.
-    const sidebar = container.querySelector('aside');
-    expect(sidebar).toHaveStyle({
-      transition: 'width var(--mobile-nav-motion), translate var(--mobile-nav-motion)',
-    });
+    const sidebar = container.querySelector('aside')!;
+    expect(sidebar.style.transition).toBe('width var(--mobile-nav-motion), translate var(--mobile-nav-motion)');
 
     mockedUseMediaQuery.mockReturnValue(true);
 
