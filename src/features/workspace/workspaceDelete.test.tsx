@@ -1,12 +1,13 @@
 // Gesamtlöschung des Arbeitsbereichs: Dialog, Sicherungsangebot und Löschablauf (GSPP-635).
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppShell } from '@/app/AppShell';
 import { buildVerbundUrl, buildWorkspaceIndexUrl } from '@/app/routes';
+import { deleteDatabase } from '@/adapters/workspaceDatabaseLifecycle';
 import { StorageFailure, failure } from '@/adapters/workspaceStorageFailure';
-import type { WorkspaceResult } from '@/domain/workspaceModel';
+import type { VerbundId, WorkspaceResult, WorkspaceVerbund } from '@/domain/workspaceModel';
 import { CatalogContext } from '@/state/CatalogContext';
-import { WorkspaceProvider } from '@/state/WorkspaceContext';
+import { WorkspaceProvider, type OpenWorkspace } from '@/state/WorkspaceContext';
 import { createWorkspaceSession } from '@/state/workspaceSession';
 import type { WorkspacePort } from '@/state/workspaceVerbundView';
 import { fakeLocks } from '@/test/fakeLocks';
@@ -15,8 +16,8 @@ import { EMPTY_CATALOG_STATE } from '@/test/renderWorkspaceArea';
 import { renderAppShell } from '@/test/renderAppShell';
 
 vi.mock('@/features/catalog/CatalogBrowser', () => ({ CatalogBrowser: () => <h1>Katalogansicht</h1> }));
-const downloads = vi.hoisted(() => [] as string[]);
-vi.mock('@/adapters/browserDownload', () => ({ downloadBlob: (_blob: Blob, filename: string) => { downloads.push(filename); } }));
+const downloads = vi.hoisted(() => [] as Blob[]);
+vi.mock('@/adapters/browserDownload', () => ({ downloadBlob: (blob: Blob) => { downloads.push(blob); } }));
 
 const ENTRY = 'Alle lokalen Daten löschen…';
 const CONFIRM = 'Alle lokalen Daten endgültig löschen';
@@ -25,8 +26,9 @@ type Final = (result: WorkspaceResult<void>) => void;
 let locks: LockManager | undefined;
 let router: ReturnType<typeof renderAppShell>['router'];
 beforeEach(() => { locks = fakeLocks(); downloads.length = 0; });
+afterEach(() => { vi.unstubAllGlobals(); });
 
-function renderWith(port: WorkspacePort, open = vi.fn(() => ok(port))) {
+function renderWith(port: WorkspacePort, open: OpenWorkspace = vi.fn(() => ok(port))) {
   ({ router } = renderAppShell([buildWorkspaceIndexUrl()], {
     shell: () => (
       <CatalogContext.Provider value={EMPTY_CATALOG_STATE}>
@@ -51,6 +53,7 @@ describe('Gesamtlöschung', () => {
     expect(dialog.getByRole('button', { name: 'Abbrechen' })).toHaveFocus();
     await waitFor(() => expect(dialog.getByRole('button', { name: CONFIRM })).toBeEnabled());
     expect(dialog.getByText(/Verknüpfungen, Prüfspuren und Vergleichsstände/)).toBeInTheDocument();
+    expect(dialog.getByText('Metadaten des Arbeitsbereichs')).toBeInTheDocument();
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(screen.queryByRole('alertdialog')).toBeNull();
     expect(screen.getByRole('button', { name: ENTRY })).toHaveFocus();
@@ -120,6 +123,55 @@ describe('Gesamtlöschung', () => {
     expect(deleteAll).not.toHaveBeenCalled();
   });
 
+  it('„Vorher sichern“ legt den Namen im Anlegeformular vor; nur ein angelegter Name steht in der Sicherung', async () => {
+    const verbuende: WorkspaceVerbund[] = [VERBUND];
+    const createVerbund = vi.fn((name: string) => {
+      const created = { ...VERBUND, verbundId: '0b6c2a4e-1d3f-4a5b-8c7d-9e0f1a2b3c4d' as VerbundId, name };
+      verbuende.push(created);
+      return ok(created);
+    });
+    const exportBackup = () => ok(JSON.stringify({ verbuende: verbuende.map(({ name }) => name) }));
+    renderWith(fakePort({ createVerbund, exportBackup, listVerbuende: () => ok([...verbuende]) }));
+    const backupWith = async (name: string, decision: 'Anlegen' | 'Verwerfen') => {
+      await screen.findByRole('link', { name: VERBUND.name });
+      fireEvent.change(screen.getByLabelText('Name'), { target: { value: name } });
+      const dialog = await openDialog();
+      await waitFor(() => expect(dialog.getByRole('button', { name: 'Vorher sichern' })).toBeEnabled());
+      fireEvent.click(dialog.getByRole('button', { name: 'Vorher sichern' }));
+      expect(await dialog.findByText(`„${name}“`, { exact: false })).toBeInTheDocument();
+      expect(downloads).toHaveLength(0);
+      fireEvent.click(dialog.getByRole('button', { name: decision }));
+      expect(await dialog.findByText('Download gestartet. Bewahren Sie die Datei auf.')).toBeInTheDocument();
+      fireEvent.click(dialog.getByRole('button', { name: 'Abbrechen' }));
+      expect(screen.getByLabelText('Name')).toHaveValue('');
+      return downloads.splice(0)[0].text();
+    };
+    expect(await backupWith('Labor', 'Anlegen')).toContain('Labor');
+    expect(createVerbund).toHaveBeenCalledExactlyOnceWith('Labor');
+    expect(await backupWith('Verworfen', 'Verwerfen')).not.toContain('Verworfen');
+    expect(createVerbund).toHaveBeenCalledTimes(1);
+  });
+
+  it('ein während einer fremden Gesamtlöschung wartender Tab legt den gelöschten Speicher nicht neu an', async () => {
+    const holder = createWorkspaceSession(locks);
+    await holder.register();
+    const entry = await holder.enterExclusive();
+    if (entry.status !== 'granted') throw new Error(entry.status);
+    const port = fakePort({ createVerbund: () => ok(VERBUND) });
+    const open = vi.fn((existing?: boolean) => existing ? ok(null) : ok(port));
+    renderWith(port, open);
+    expect(await screen.findByText('Speicher wird geöffnet…')).toBeInTheDocument();
+    expect(open).not.toHaveBeenCalled();
+    // Die Löschung des anderen Tabs ist abgeschlossen: Nur ein vorhandener Speicher würde jetzt geöffnet.
+    entry.release();
+    expect(await screen.findByText('Lokale Daten gelöscht')).toBeInTheDocument();
+    expect(open).toHaveBeenCalledExactlyOnceWith(true);
+    expect(screen.getByText('0 Informationsverbünde')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Neu' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Anlegen' }));
+    await waitFor(() => expect(open).toHaveBeenLastCalledWith(false));
+  });
+
   it('meldet eine nach dem Abbruch abgeschlossene Speicherung und startet danach keinen Download', async () => {
     let finishRename: (result: WorkspaceResult<typeof VERBUND>) => void = () => undefined;
     const renameVerbund = vi.fn(() => new Promise<WorkspaceResult<typeof VERBUND>>((resolve) => { finishRename = resolve; }));
@@ -156,7 +208,8 @@ describe('Gesamtlöschung', () => {
     let final: Final = () => undefined;
     const deleteAll = vi.fn((_confirmation: string, onFinal?: Final) => { final = onFinal!; return fail('WORKSPACE_DELETE_PENDING'); });
     const listVerbuende = vi.fn(() => ok([VERBUND]));
-    const open = renderWith(fakePort({ deleteAll, listVerbuende }));
+    const previewRestore = vi.fn(() => fail('WORKSPACE_BACKUP_INVALID'));
+    const open = renderWith(fakePort({ deleteAll, listVerbuende, previewRestore }));
     const dialog = await openDialog();
     await waitFor(() => expect(dialog.getByRole('button', { name: CONFIRM })).toBeEnabled());
     const confirm = dialog.getByRole('button', { name: CONFIRM });
@@ -189,10 +242,53 @@ describe('Gesamtlöschung', () => {
     await act(() => router.navigate(buildVerbundUrl(VERBUND.verbundId)));
     expect(await screen.findByText('Unter dieser Adresse ist in diesem Browser kein Informationsverbund gespeichert.')).toBeInTheDocument();
     await act(() => router.navigate(buildWorkspaceIndexUrl()));
-    // Erst das ausdrückliche Anlegen öffnet einen neuen Speicher.
-    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Neu' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Anlegen' }));
-    await waitFor(() => expect(open).toHaveBeenCalledTimes(2));
+    // Die Wiederherstellung bleibt der Einstieg für die gerade angebotene Sicherung; erst die gewählte Datei öffnet einen neuen Speicher.
+    expect(screen.getByRole('button', { name: 'Sicherung wiederherstellen…' })).toBeEnabled();
+    expect(open).toHaveBeenCalledTimes(1);
+    fireEvent.change(screen.getAllByLabelText('Sicherungsdatei')[0], { target: { files: [new File(['{}'], 'sicherung.json', { type: 'application/json' })] } });
+    await waitFor(() => expect(previewRestore).toHaveBeenCalledTimes(1));
+    expect(open).toHaveBeenCalledTimes(2);
+  });
+
+  it('beendet die Sperre nach Blockade und späterem Fehler desselben nativen Requests ohne Erfolgsmeldung', async () => {
+    const request: { onsuccess?: () => void; onerror?: () => void; onblocked?: () => void; error: DOMException | null } = { error: null };
+    const deleteNative = vi.fn(() => request);
+    vi.stubGlobal('indexedDB', { deleteDatabase: deleteNative });
+    renderWith(fakePort({ deleteAll: (_confirmation, onFinal) => deleteDatabase('gspp-workspace', 10, onFinal) }));
+    const dialog = await openDialog();
+    await waitFor(() => expect(dialog.getByRole('button', { name: CONFIRM })).toBeEnabled());
+    fireEvent.click(dialog.getByRole('button', { name: CONFIRM }));
+    act(() => request.onblocked!());
+    expect(await dialog.findByRole('heading', { name: 'Löschung wartet' })).toBeInTheDocument();
+    request.error = new DOMException('blocked', 'UnknownError');
+    act(() => request.onerror!());
+    expect(await dialog.findByRole('heading', { name: 'Löschung fehlgeschlagen' })).toBeInTheDocument();
+    expect(screen.queryByText('Lokale Daten gelöscht')).toBeNull();
+    expect(deleteNative).toHaveBeenCalledTimes(1);
+    // Die Sperre ist beendet: Der Dialog schließt, und ein weiterer Tab kann sich anmelden.
+    fireEvent.click(dialog.getByRole('button', { name: 'Schließen' }));
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(await createWorkspaceSession(locks).register()).toBe(true);
+  });
+
+  it('beendet bei Ablage im Seitencache Verbindung und Sitzung und lädt bei der Rückkehr neu', async () => {
+    const reload = vi.fn();
+    vi.stubGlobal('location', { ...globalThis.location, reload });
+    const close = vi.fn();
+    renderWith(fakePort({ close }));
+    await screen.findByRole('link', { name: VERBUND.name });
+    const other = createWorkspaceSession(locks);
+    await other.register();
+    expect(await other.enterExclusive()).toEqual({ status: 'other-sessions' });
+    act(() => { globalThis.dispatchEvent(new PageTransitionEvent('pagehide')); });
+    expect(close).not.toHaveBeenCalled();
+    act(() => { globalThis.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true })); });
+    expect(close).toHaveBeenCalled();
+    const entry = await other.enterExclusive();
+    expect(entry.status).toBe('granted');
+    if (entry.status === 'granted') entry.release();
+    act(() => { globalThis.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true })); });
+    expect(reload).toHaveBeenCalledTimes(1);
   });
 
   it('zeigt einen endgültigen Fehler ohne Erfolgsmeldung und ohne den Bestand als gelöscht darzustellen', async () => {

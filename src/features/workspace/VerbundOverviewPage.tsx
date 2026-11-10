@@ -150,6 +150,8 @@ export function VerbundOverviewPage() {
   const [restored, setRestored] = useState<RestoreDone | null>(null);
   // Zeilenentwürfe stehen auf Seitenebene, damit das Prüfblatt sie klären und nach Erfolg zurücksetzen kann.
   const [rowDrafts] = useState(() => new Map<string, string>());
+  // Eingabe im Anlegeformular; „Vorher sichern“ legt sie zum Anlegen oder Verwerfen vor.
+  const createDraft = useRef('');
   const [, rerender] = useReducer((value: number) => value + 1, 0);
   const setRowDraft = (verbundId: string, draft: string | null) => {
     if (draft === null) rowDrafts.delete(verbundId);
@@ -184,6 +186,7 @@ export function VerbundOverviewPage() {
   useEffect(() => {
     if (!deleted) return;
     rowDrafts.clear();
+    createDraft.current = '';
     heading.current?.focus();
   }, [deleted, rowDrafts]);
 
@@ -254,7 +257,12 @@ export function VerbundOverviewPage() {
               label="Name"
               submitLabel="Anlegen"
               disabled={!ready || !writable}
-              onSubmit={async (name) => (await createVerbund(name)).ok}
+              onChange={(name) => { createDraft.current = name; }}
+              onSubmit={async (name) => {
+                const created = (await createVerbund(name)).ok;
+                if (created) createDraft.current = '';
+                return created;
+              }}
             />
           </div>
         </section>
@@ -267,7 +275,7 @@ export function VerbundOverviewPage() {
                 Sicherung exportieren
               </Button>
               <input ref={fileInput} aria-label="Sicherungsdatei" type="file" accept="application/json,.json" className="hidden" tabIndex={-1} onChange={chooseFile} />
-              <Button ref={restoreButton} variant="secondary" size="sm" className={ROW_BUTTON} onClick={() => fileInput.current?.click()} disabled={!ready || !writable || deleted}>
+              <Button ref={restoreButton} variant="secondary" size="sm" className={ROW_BUTTON} onClick={() => fileInput.current?.click()} disabled={!ready || !writable}>
                 Sicherung wiederherstellen…
               </Button>
             </div>
@@ -309,6 +317,11 @@ export function VerbundOverviewPage() {
       {deleteShown && (
         <WorkspaceDeleteDialog
           rowDrafts={rowDrafts}
+          createDraft={createDraft}
+          onCreateDraftDone={() => {
+            createDraft.current = '';
+            setFormRun((run) => run + 1);
+          }}
           onPrepared={() => setPrepared(true)}
           onClose={(confirmed) => {
             if (confirmed) setPrepared(false);

@@ -145,6 +145,16 @@ export class WorkspaceStore {
     return withinDeadline(WORKSPACE_OPEN_TIMEOUT_MS, 'WORKSPACE_OPEN_TIMEOUT', expired => WorkspaceStore.openDatabase(expired), late => { if (late.ok) late.value.close(); });
   }
 
+  /** Opens like `open()` only if the database exists; otherwise `null`, without creating it. */
+  static openExisting(): Promise<WorkspaceResult<WorkspaceStore | null>> {
+    return withinDeadline<WorkspaceStore | null>(WORKSPACE_OPEN_TIMEOUT_MS, 'WORKSPACE_OPEN_TIMEOUT', async expired => {
+      try {
+        if (!await Dexie.exists(WORKSPACE_DATABASE_NAME)) return { ok: true, value: null };
+      } catch (error) { return failure(error); }
+      return WorkspaceStore.openDatabase(expired);
+    }, late => { if (late.ok) late.value?.close(); });
+  }
+
   private static async openDatabase(expired: () => boolean): Promise<WorkspaceResult<WorkspaceStore>> {
     let db = new Dexie(WORKSPACE_DATABASE_NAME);
     let newerSchema = false;

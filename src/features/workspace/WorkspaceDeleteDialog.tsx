@@ -10,17 +10,26 @@ import { useScrollLock } from '@/hooks/useScrollLock';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import type { ExclusiveEntry } from '@/state/workspaceSession';
 import type { RestoreInput, RestoreScope } from '@/state/workspaceRestore';
-import { BUTTON, ClarifyRow, Message, inputKey } from '@/features/workspace/RestoreSheetParts';
+import { isVerbundName } from '@/domain/workspaceModel';
+import { BUTTON, ClarifyItem, ClarifyRow, Message, inputKey } from '@/features/workspace/RestoreSheetParts';
 import { useBackupExport } from '@/features/workspace/WorkspaceNotices';
 
 /** Stabiler Code der gesperrten Gesamtlöschung ohne belastbare Prüfung auf weitere Tabs. */
 export const WORKSPACE_SESSION_UNAVAILABLE = 'WORKSPACE_SESSION_UNAVAILABLE';
 
 const WHOLE_WORKSPACE: RestoreScope = { kind: 'workspace', documents: [] };
+/** Markiert den gescheiterten Versuch, den Namen im Anlegeformular anzulegen. */
+const NEW_NAME = { kind: 'new-name' } as const;
 
 type Backup =
   | { readonly step: 'idle' | 'saving' | 'started' | 'save-failed' | 'export-failed' }
-  | { readonly step: 'clarify'; readonly inputs: readonly RestoreInput[]; readonly failed?: RestoreInput };
+  | {
+    readonly step: 'clarify';
+    readonly inputs: readonly RestoreInput[];
+    /** Offener Name im Anlegeformular; ohne Anlegen enthielte die Sicherung ihn nicht. */
+    readonly newName?: string;
+    readonly failed?: RestoreInput | typeof NEW_NAME;
+  };
 
 const WAITING = {
   deleting: {
@@ -37,9 +46,13 @@ const WAITING = {
  * Bestätigung der Gesamtlöschung mit Sicherungsangebot. Öffnen und Abbrechen schreiben nichts; erst
  * „Vorher sichern“ speichert oder klärt offene Eingaben. Nach dem Start bietet der Dialog keinen Abbruch.
  */
-export function WorkspaceDeleteDialog({ rowDrafts, onPrepared, onClose }: Readonly<{
+export function WorkspaceDeleteDialog({ rowDrafts, createDraft, onCreateDraftDone, onPrepared, onClose }: Readonly<{
   /** Offene Umbenennungen der Übersichtszeilen. */
   rowDrafts: Map<string, string>;
+  /** Eingabe im Anlegeformular der Übersicht. */
+  createDraft: { readonly current: string };
+  /** Der Name aus dem Anlegeformular wurde angelegt oder verworfen; das Formular wird geleert. */
+  onCreateDraftDone: () => void;
   /** „Vorher sichern“ hat eine Eingabe gespeichert; kann nach dem Schließen eintreffen, wenn die Speicherung noch lief. */
   onPrepared: () => void;
   /** `confirmed`: Die Löschung wurde bestätigt und gestartet. */
@@ -47,7 +60,7 @@ export function WorkspaceDeleteDialog({ rowDrafts, onPrepared, onClose }: Readon
 }>) {
   const {
     status, verbuende, writable, deletion, enterWorkspaceDeletion, leaveWorkspaceDeletion, deleteWorkspace, dismissDeletionFailure,
-    flushAutosaves, pendingRestoreInputs, discardRestoreInput, renameVerbund,
+    flushAutosaves, pendingRestoreInputs, discardRestoreInput, renameVerbund, createVerbund,
   } = useWorkspace();
   const { exportBackup } = useBackupExport();
   const navigate = useNavigate();
@@ -89,12 +102,13 @@ export function WorkspaceDeleteDialog({ rowDrafts, onPrepared, onClose }: Readon
   }, true);
 
   /** Nach Speichern und Klären: verbleibende Eingaben zeigen, ohne Rest die Gesamtsicherung exportieren. */
-  const continueBackup = async (failed?: RestoreInput): Promise<void> => {
+  const continueBackup = async (failed?: RestoreInput | typeof NEW_NAME): Promise<void> => {
     if (closed.current) return;
     const inputs = await pendingRestoreInputs(WHOLE_WORKSPACE, rowDrafts);
     if (closed.current) return;
     if (!inputs.ok) { setBackup({ step: 'export-failed' }); return; }
-    if (inputs.value.length > 0) { setBackup({ step: 'clarify', inputs: inputs.value, failed }); return; }
+    const newName = createDraft.current.trim() || undefined;
+    if (inputs.value.length > 0 || newName) { setBackup({ step: 'clarify', inputs: inputs.value, newName, failed }); return; }
     setBackup({ step: 'saving' });
     // Ein Abbruch während des Exports verwirft die Datei vor dem Download.
     const downloaded = await exportBackup(() => !closed.current);
@@ -116,6 +130,21 @@ export function WorkspaceDeleteDialog({ rowDrafts, onPrepared, onClose }: Readon
     await continueBackup(result.ok ? undefined : entry);
   };
 
+  const saveNewName = async (name: string) => {
+    setBackup({ step: 'saving' });
+    const result = await createVerbund(name);
+    if (result.ok) {
+      onPrepared();
+      onCreateDraftDone();
+    }
+    await continueBackup(result.ok ? undefined : NEW_NAME);
+  };
+
+  const discardNewName = () => {
+    onCreateDraftDone();
+    void continueBackup();
+  };
+
   const confirm = () => {
     closed.current = true;
     onClose(true);
@@ -123,6 +152,9 @@ export function WorkspaceDeleteDialog({ rowDrafts, onPrepared, onClose }: Readon
   };
 
   const backupBlocked = backup.step === 'clarify' || backup.step === 'saving';
+  const clarifying = backup.step === 'clarify' ? backup : null;
+  const newName = clarifying?.newName;
+  const openInputs = (clarifying?.inputs.length ?? 0) + (newName ? 1 : 0);
   const deleteBlocked = check !== 'granted' || status !== 'ready' || backupBlocked || backup.step === 'save-failed' || backup.step === 'export-failed';
   let title = 'Alle lokalen Daten löschen?';
   if (started) title = WAITING[deletion].title;
@@ -170,6 +202,7 @@ export function WorkspaceDeleteDialog({ rowDrafts, onPrepared, onClose }: Readon
                     <li>Informationsverbünde, Dokumente und Entwürfe</li>
                     <li>Verknüpfungen, Prüfspuren und Vergleichsstände</li>
                     <li>Offene Eingaben und geladene Arbeitsstände</li>
+                    <li>Metadaten des Arbeitsbereichs</li>
                   </ul>
                   <p className="mt-2 text-xs text-[var(--color-text-secondary)]">Exportierte Dateien und ihre Kopien bleiben erhalten.</p>
                 </div>
@@ -202,8 +235,14 @@ export function WorkspaceDeleteDialog({ rowDrafts, onPrepared, onClose }: Readon
 
                 {backup.step === 'clarify' && (
                   <div className="rounded-md border border-[var(--color-border-strong)] p-3">
-                    <h3 className="font-semibold">{backup.inputs.length === 1 ? 'Eine offene Eingabe klären' : `${backup.inputs.length} offene Eingaben klären`}</h3>
+                    <h3 className="font-semibold">{openInputs === 1 ? 'Eine offene Eingabe klären' : `${openInputs} offene Eingaben klären`}</h3>
                     <ul className="mt-1 divide-y divide-[var(--color-border-subtle)]">
+                      {newName && (
+                        <ClarifyItem label={<><span className="font-semibold">Neuer Informationsverbund</span> · „{newName}“</>} failed={backup.failed === NEW_NAME}>
+                          <Button variant="secondary" size="sm" className={BUTTON} disabled={!writable || !isVerbundName(newName)} onClick={() => void saveNewName(newName)}>Anlegen</Button>
+                          <Button variant="ghost" size="sm" className={BUTTON} onClick={discardNewName}>Verwerfen</Button>
+                        </ClarifyItem>
+                      )}
                       {backup.inputs.map((entry) => (
                         <ClarifyRow
                           key={inputKey(entry)}

@@ -18,13 +18,14 @@ import { createWorkspaceDocuments, type PendingImportTarget, type WorkspaceDocum
 import type { VerbundView, WorkspacePort } from '@/state/workspaceVerbundView';
 import { createWorkspaceSession, type ExclusiveEntry, type WorkspaceSession } from '@/state/workspaceSession';
 
-export type OpenWorkspace = () => Promise<WorkspaceResult<WorkspacePort>>;
+/** `existing`: nur einen vorhandenen Speicher öffnen; ein fehlender ergibt `null`, statt angelegt zu werden. */
+export type OpenWorkspace = (existing?: boolean) => Promise<WorkspaceResult<WorkspacePort | null>>;
 
 // Speicher und Dokumentgraph laden als eigene Chunks: Der Katalogpfad lädt sie nie.
 // Ein nicht geladener Chunk oder ein Wurf wird zur redigierten Speicherdiagnose.
 const storageFailed = () => failure(new StorageFailure('WORKSPACE_STORAGE_FAILED'));
-const openWorkspaceStore: OpenWorkspace = () =>
-  import('@/adapters/workspaceStore').then(({ WorkspaceStore }) => WorkspaceStore.open());
+const openWorkspaceStore: OpenWorkspace = (existing) =>
+  import('@/adapters/workspaceStore').then(({ WorkspaceStore }) => existing ? WorkspaceStore.openExisting() : WorkspaceStore.open());
 const loadView = (port: WorkspacePort, verbundId: VerbundId, class1: readonly WorkspaceClass1Artifact[], delivery: CatalogDelivery): Promise<WorkspaceResult<VerbundView | null>> =>
   import('@/state/workspaceVerbundView')
     .then(({ loadVerbundView }) => loadVerbundView(port, verbundId, class1, delivery))
@@ -42,7 +43,7 @@ export interface VerbundViewState {
 export interface WorkspaceContextValue {
   /**
    * `idle` bis zum ersten Betreten des Bereichs; der Katalogpfad öffnet den Speicher nicht.
-   * `deleted` nach abgeschlossener Gesamtlöschung: Der Speicher ist entfernt und nicht geöffnet.
+   * `deleted`, wenn die Gesamtlöschung dieses oder eines anderen Tabs den Speicher entfernt hat: Er ist nicht geöffnet.
    */
   readonly status: 'idle' | 'opening' | 'ready' | 'unavailable' | 'deleted';
   readonly verbuende: readonly WorkspaceVerbund[] | null;
@@ -189,11 +190,19 @@ export function WorkspaceProvider({ open = openWorkspaceStore, session: provided
     opening.current ??= (async () => {
       setStatus('opening');
       // Die Anmeldung wartet, solange ein anderer Tab die Gesamtlöschung vorbereitet oder ausführt.
-      await session.register();
-      const opened = await openRef.current().catch(storageFailed);
+      let waited = false;
+      await session.register(() => { waited = true; });
+      // Hat der andere Tab inzwischen gelöscht, legt erst ein neuer ausdrücklicher Einstieg den Speicher wieder an.
+      const opened = await openRef.current(waited).catch(storageFailed);
       if (!opened.ok) {
         setStatus('unavailable');
         report(opened.diagnostic);
+        return null;
+      }
+      if (!opened.value) {
+        opening.current = null;
+        setVerbuende([]);
+        setStatus('deleted');
         return null;
       }
       await checkSchema(opened.value);
@@ -450,8 +459,10 @@ export function WorkspaceProvider({ open = openWorkspaceStore, session: provided
     },
     exportVerbundBackup: (verbundId) => quiet((store) => store.exportVerbundBackup(verbundId)),
     previewRestore: async (bytes) => {
-      if (!port) return storageFailed();
-      const result = await port.previewRestore(bytes).catch(storageFailed);
+      // Nach einer Gesamtlöschung ist die gewählte Sicherungsdatei ein ausdrücklicher Einstieg: Er legt den Speicher neu an.
+      const store = status === 'deleted' ? await openStore() : port;
+      if (!store) return storageFailed();
+      const result = await store.previewRestore(bytes).catch(storageFailed);
       // Die Ansicht zeigt jeden Fehler selbst; nur die Schreibsperre ist ein Zustand des Bereichs.
       if (!result.ok && result.diagnostic.code === 'WORKSPACE_SCHEMA_NEWER') report(result.diagnostic);
       return result;
@@ -470,6 +481,8 @@ export function WorkspaceProvider({ open = openWorkspaceStore, session: provided
       return result;
     },
     pendingRestoreInputs: async (scope, rowDrafts) => {
+      // Die Gesamtlöschung hat alle Sitzungseingaben verworfen; ein danach geöffneter Speicher ist leer.
+      if (status === 'deleted') return { ok: true, value: [] };
       const listed = port ? await port.listDocuments().catch(storageFailed) : storageFailed();
       if (!listed.ok) return listed;
       return { ok: true, value: collectRestoreInputs({ scope, renameDrafts, rowDrafts, importTargets, verbuende: verbuende ?? [], documents: listed.value }) };

@@ -1,7 +1,7 @@
 /**
  * Koordiniert Arbeitsbereich-Sitzungen mehrerer Tabs über Web Locks (docs/PERSISTENCE.md §12).
- * Jede Sitzung hält einen eigenen Anwesenheits-Lock; Registrierung und exklusive Datenaktion
- * laufen über denselben Tor-Lock. Die Lock-Namen tragen nur eine zufällige Sitzungskennung.
+ * Jede Sitzung hält einen eigenen Anwesenheits-Lock; Registrierung (geteilt) und exklusive
+ * Datenaktion laufen über denselben Tor-Lock. Die Lock-Namen tragen nur eine zufällige Sitzungskennung.
  */
 export const WORKSPACE_GATE_LOCK = 'gspp-workspace-gate';
 export const WORKSPACE_SESSION_LOCK_PREFIX = 'gspp-workspace-session-';
@@ -14,8 +14,11 @@ export type ExclusiveEntry =
   | { readonly status: 'unavailable' };
 
 export interface WorkspaceSession {
-  /** Meldet die Sitzung an; wartet, solange eine andere Sitzung die exklusive Datenaktion hält. */
-  readonly register: () => Promise<boolean>;
+  /**
+   * Meldet die Sitzung an; wartet, solange eine andere Sitzung die exklusive Datenaktion hält. `onWait` meldet
+   * dieses Warten: Die Anmeldung kommt dann erst nach dem Ende dieser Datenaktion durch.
+   */
+  readonly register: (onWait?: () => void) => Promise<boolean>;
   readonly enterExclusive: () => Promise<ExclusiveEntry>;
   /** Beendet die Anwesenheit dieser Sitzung. */
   readonly leave: () => void;
@@ -40,12 +43,17 @@ export function createWorkspaceSession(locks: LockManager | undefined = globalTh
   // Zählt jedes Verlassen: Eine davor begonnene Anmeldung gibt ihren später erhaltenen Lock sofort frei.
   let left = 0;
   return {
-    register: () => {
+    register: (onWait) => {
       if (!locks) return Promise.resolve(false);
       registering ??= (async () => {
         const run = left;
         try {
-          const gate = await hold(locks, WORKSPACE_GATE_LOCK);
+          // Anmeldungen teilen sich das Tor; besetzt ist es nur, solange eine Sitzung die exklusive Datenaktion hält.
+          let gate = await hold(locks, WORKSPACE_GATE_LOCK, { mode: 'shared', ifAvailable: true });
+          if (!gate) {
+            onWait?.();
+            gate = await hold(locks, WORKSPACE_GATE_LOCK, { mode: 'shared' });
+          }
           try {
             const granted = await hold(locks, name);
             if (run === left) presence = granted;

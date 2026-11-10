@@ -397,7 +397,7 @@ src/                              # Anwendungsquellcode
 │       ├── ReferenceEdges.tsx            # Referenzkanten eines Dokuments mit Feld, Pflicht und Zustand
 │       ├── RestoreSheet.tsx              # Prüfblatt „Sicherung wiederherstellen“: Datei, offene Eingaben, Vorschau, Bestätigung
 │       ├── WorkspaceDeleteDialog.tsx     # Bestätigung der Gesamtlöschung: Sicherungsangebot, weitere Tabs, Warte- und Fehlerzustand
-│       ├── RestoreSheetParts.tsx         # Abschnitte, Meldungen, Vorschautabelle und Klärungszeilen des Prüfblatts
+│       ├── RestoreSheetParts.tsx         # Abschnitte, Meldungen, Vorschautabelle und Klärungszeilen des Prüfblatts und des Löschdialogs
 │       ├── StationCards.tsx              # Fünf Stationskarten der Verbund-Übersicht mit Statuswort und Kennzahl
 │       ├── StationStrip.tsx              # Stationsreiter unter der Kopfzeile mit Statuspunkt, alle Layoutstufen
 │       ├── VerbundOverviewPage.tsx       # Verbünde anlegen, umbenennen, mit Bestätigung löschen, sichern, wiederherstellen

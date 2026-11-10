@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createWorkspaceSession } from '@/state/workspaceSession';
 import { fakeLocks } from '@/test/fakeLocks';
 
@@ -7,8 +7,10 @@ describe('Arbeitsbereich-Sitzungen', () => {
     const locks = fakeLocks();
     const own = createWorkspaceSession(locks);
     const other = createWorkspaceSession(locks);
-    expect(await own.register()).toBe(true);
-    expect(await other.register()).toBe(true);
+    // Gleichzeitige Anmeldungen teilen sich das Tor und warten nicht aufeinander.
+    const onWait = vi.fn();
+    expect(await Promise.all([own.register(onWait), other.register(onWait)])).toEqual([true, true]);
+    expect(onWait).not.toHaveBeenCalled();
     expect(await own.enterExclusive()).toEqual({ status: 'other-sessions' });
     other.leave();
     const entry = await own.enterExclusive();
@@ -16,9 +18,10 @@ describe('Arbeitsbereich-Sitzungen', () => {
     // Eine zweite Datenaktion und eine neue Sitzung kommen erst nach der Freigabe zum Zug.
     expect(await other.enterExclusive()).toEqual({ status: 'unavailable' });
     let registered = false;
-    const late = other.register().then((result) => { registered = result; });
+    const late = other.register(onWait).then((result) => { registered = result; });
     await Promise.resolve();
     expect(registered).toBe(false);
+    expect(onWait).toHaveBeenCalledTimes(1);
     if (entry.status === 'granted') entry.release();
     await late;
     expect(registered).toBe(true);
