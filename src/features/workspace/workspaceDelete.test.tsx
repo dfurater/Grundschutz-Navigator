@@ -140,8 +140,12 @@ describe('Gesamtlöschung', () => {
       fireEvent.click(dialog.getByRole('button', { name: 'Vorher sichern' }));
       expect(await dialog.findByText(`„${name}“`, { exact: false })).toBeInTheDocument();
       expect(downloads).toHaveLength(0);
-      fireEvent.click(dialog.getByRole('button', { name: decision }));
+      const decide = dialog.getByRole('button', { name: decision });
+      decide.focus();
+      fireEvent.click(decide);
       expect(await dialog.findByText('Download gestartet. Bewahren Sie die Datei auf.')).toBeInTheDocument();
+      // Die erledigte Klärungszeile nimmt den Fokus nicht aus dem Dialog mit.
+      expect(dialog.getByRole('heading', { name: 'Vor dem Löschen sichern' })).toHaveFocus();
       fireEvent.click(dialog.getByRole('button', { name: 'Abbrechen' }));
       expect(screen.getByLabelText('Name')).toHaveValue('');
       return downloads.splice(0)[0].text();
@@ -150,6 +154,23 @@ describe('Gesamtlöschung', () => {
     expect(createVerbund).toHaveBeenCalledExactlyOnceWith('Labor');
     expect(await backupWith('Verworfen', 'Verwerfen')).not.toContain('Verworfen');
     expect(createVerbund).toHaveBeenCalledTimes(1);
+  });
+
+  it('ein nach dem Abbruch fertig angelegter Name leert keine inzwischen neu getippte Eingabe', async () => {
+    let finishCreate: (result: WorkspaceResult<WorkspaceVerbund>) => void = () => undefined;
+    const createVerbund = vi.fn(() => new Promise<WorkspaceResult<WorkspaceVerbund>>((resolve) => { finishCreate = resolve; }));
+    renderWith(fakePort({ createVerbund }));
+    await screen.findByRole('link', { name: VERBUND.name });
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Labor' } });
+    const dialog = await openDialog();
+    await waitFor(() => expect(dialog.getByRole('button', { name: 'Vorher sichern' })).toBeEnabled());
+    fireEvent.click(dialog.getByRole('button', { name: 'Vorher sichern' }));
+    fireEvent.click(await dialog.findByRole('button', { name: 'Anlegen' }));
+    fireEvent.click(dialog.getByRole('button', { name: 'Abbrechen' }));
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Rechenzentrum' } });
+    await act(async () => { finishCreate({ ok: true, value: { ...VERBUND, name: 'Labor' } }); await Promise.resolve(); });
+    expect(await screen.findByText('Löschung abgebrochen. Vorbereitend gespeicherte Eingaben bleiben erhalten.')).toBeInTheDocument();
+    expect(screen.getByLabelText('Name')).toHaveValue('Rechenzentrum');
   });
 
   it('ein während einer fremden Gesamtlöschung wartender Tab legt den gelöschten Speicher nicht neu an', async () => {

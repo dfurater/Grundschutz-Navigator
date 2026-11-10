@@ -51,8 +51,8 @@ export function WorkspaceDeleteDialog({ rowDrafts, createDraft, onCreateDraftDon
   rowDrafts: Map<string, string>;
   /** Eingabe im Anlegeformular der Übersicht. */
   createDraft: { readonly current: string };
-  /** Der Name aus dem Anlegeformular wurde angelegt oder verworfen; das Formular wird geleert. */
-  onCreateDraftDone: () => void;
+  /** `name` aus dem Anlegeformular wurde angelegt oder verworfen; eine danach geänderte Eingabe bleibt stehen. */
+  onCreateDraftDone: (name: string) => void;
   /** „Vorher sichern“ hat eine Eingabe gespeichert; kann nach dem Schließen eintreffen, wenn die Speicherung noch lief. */
   onPrepared: () => void;
   /** `confirmed`: Die Löschung wurde bestätigt und gestartet. */
@@ -66,6 +66,7 @@ export function WorkspaceDeleteDialog({ rowDrafts, createDraft, onCreateDraftDon
   const navigate = useNavigate();
   const dialogRef = useRef<HTMLDialogElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
+  const backupHeading = useRef<HTMLHeadingElement>(null);
   const titleId = useId();
   const descriptionId = useId();
   const [check, setCheck] = useState<ExclusiveEntry['status'] | 'checking'>('checking');
@@ -88,6 +89,10 @@ export function WorkspaceDeleteDialog({ rowDrafts, createDraft, onCreateDraftDon
   }, []);
   // Ohne Aktion im Dialog erhält die Überschrift den Fokus, damit der Zustand angesagt wird.
   useEffect(() => { if (started) heading.current?.focus(); }, [started, deletion]);
+  // Mit einer erledigten Klärungszeile verschwindet ihr fokussierter Button; der Fokus bleibt im Sicherungsabschnitt.
+  useEffect(() => {
+    if (!dialogRef.current?.contains(document.activeElement)) backupHeading.current?.focus();
+  }, [backup]);
 
   const cancel = () => {
     if (started) return;
@@ -135,13 +140,13 @@ export function WorkspaceDeleteDialog({ rowDrafts, createDraft, onCreateDraftDon
     const result = await createVerbund(name);
     if (result.ok) {
       onPrepared();
-      onCreateDraftDone();
+      onCreateDraftDone(name);
     }
     await continueBackup(result.ok ? undefined : NEW_NAME);
   };
 
-  const discardNewName = () => {
-    onCreateDraftDone();
+  const discardNewName = (name: string) => {
+    onCreateDraftDone(name);
     void continueBackup();
   };
 
@@ -224,7 +229,7 @@ export function WorkspaceDeleteDialog({ rowDrafts, createDraft, onCreateDraftDon
                 )}
 
                 <section aria-labelledby={`${titleId}-backup`} className="py-3">
-                  <h3 id={`${titleId}-backup`} className="font-semibold">Vor dem Löschen sichern</h3>
+                  <h3 ref={backupHeading} id={`${titleId}-backup`} tabIndex={-1} className="font-semibold focus:outline-none">Vor dem Löschen sichern</h3>
                   <p className="mt-1 text-xs text-[var(--color-text-secondary)]">„Vorher sichern“ speichert oder klärt auch offene Eingaben. Bei einem späteren Abbruch bleiben diese Speicherungen erhalten.</p>
                   <Button variant="secondary" className={`mt-3 ${BUTTON}`} disabled={check !== 'granted' || backupBlocked} onClick={() => void backupFirst()}>Vorher sichern</Button>
                   <output className="mt-3 block empty:hidden">
@@ -240,7 +245,7 @@ export function WorkspaceDeleteDialog({ rowDrafts, createDraft, onCreateDraftDon
                       {newName && (
                         <ClarifyItem label={<><span className="font-semibold">Neuer Informationsverbund</span> · „{newName}“</>} failed={backup.failed === NEW_NAME}>
                           <Button variant="secondary" size="sm" className={BUTTON} disabled={!writable || !isVerbundName(newName)} onClick={() => void saveNewName(newName)}>Anlegen</Button>
-                          <Button variant="ghost" size="sm" className={BUTTON} onClick={discardNewName}>Verwerfen</Button>
+                          <Button variant="ghost" size="sm" className={BUTTON} onClick={() => discardNewName(newName)}>Verwerfen</Button>
                         </ClarifyItem>
                       )}
                       {backup.inputs.map((entry) => (

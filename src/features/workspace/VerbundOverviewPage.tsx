@@ -318,7 +318,9 @@ export function VerbundOverviewPage() {
         <WorkspaceDeleteDialog
           rowDrafts={rowDrafts}
           createDraft={createDraft}
-          onCreateDraftDone={() => {
+          onCreateDraftDone={(name) => {
+            // Ein nach dem Start von „Anlegen“ getippter Name bleibt im Formular.
+            if (createDraft.current.trim() !== name) return;
             createDraft.current = '';
             setFormRun((run) => run + 1);
           }}
