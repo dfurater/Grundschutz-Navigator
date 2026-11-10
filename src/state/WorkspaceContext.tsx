@@ -206,7 +206,6 @@ export function WorkspaceProvider({ open = openWorkspaceStore, session: provided
   const activate = useCallback(() => { void openStore(); }, [openStore]);
 
   useEffect(() => () => port?.close(), [port]);
-  useEffect(() => () => session.leave(), [session]);
 
   // Eine aus dem Seitencache zurückgeholte Seite hielte einen Arbeitsstand von vor einer möglichen Löschung.
   useEffect(() => {
@@ -277,9 +276,12 @@ export function WorkspaceProvider({ open = openWorkspaceStore, session: provided
     if (!isLocalIdentity(selectedVerbundId)) return { verbundId: selectedVerbundId, status: 'not-found' };
     // Ein gescheitertes Öffnen ist terminal; „Neu laden“ auf der Fehlerfläche versucht es erneut.
     if (status === 'unavailable') return { verbundId: selectedVerbundId, status: 'failed' };
+    // Nach der Gesamtlöschung gibt es den Verbund nicht mehr; während sie läuft, lädt ohne Port nichts.
+    if (status === 'deleted') return { verbundId: selectedVerbundId, status: 'not-found' };
+    if (deletion !== 'idle') return { verbundId: selectedVerbundId, status: 'failed' };
     if (loaded?.verbundId === selectedVerbundId) return loaded;
     return { verbundId: selectedVerbundId, status: 'loading' };
-  }, [selectedVerbundId, loaded, status]);
+  }, [selectedVerbundId, loaded, status, deletion]);
 
   const writeTo = useCallback(async <T,>(store: WorkspacePort | null, operation: (store: WorkspacePort) => Promise<WorkspaceResult<T>>): Promise<WorkspaceResult<T>> => {
     if (!store) return storageFailed();

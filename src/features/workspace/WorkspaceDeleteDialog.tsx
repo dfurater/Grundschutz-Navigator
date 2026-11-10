@@ -37,11 +37,13 @@ const WAITING = {
  * Bestätigung der Gesamtlöschung mit Sicherungsangebot. Öffnen und Abbrechen schreiben nichts; erst
  * „Vorher sichern“ speichert oder klärt offene Eingaben. Nach dem Start bietet der Dialog keinen Abbruch.
  */
-export function WorkspaceDeleteDialog({ rowDrafts, onClose }: Readonly<{
+export function WorkspaceDeleteDialog({ rowDrafts, onPrepared, onClose }: Readonly<{
   /** Offene Umbenennungen der Übersichtszeilen. */
   rowDrafts: Map<string, string>;
-  /** `prepared`: „Vorher sichern“ hat vor dem Abbruch mindestens eine Eingabe gespeichert. */
-  onClose: (prepared: boolean) => void;
+  /** „Vorher sichern“ hat eine Eingabe gespeichert; kann nach dem Schließen eintreffen, wenn die Speicherung noch lief. */
+  onPrepared: () => void;
+  /** `confirmed`: Die Löschung wurde bestätigt und gestartet. */
+  onClose: (confirmed: boolean) => void;
 }>) {
   const {
     status, verbuende, writable, deletion, enterWorkspaceDeletion, leaveWorkspaceDeletion, deleteWorkspace, dismissDeletionFailure,
@@ -55,7 +57,8 @@ export function WorkspaceDeleteDialog({ rowDrafts, onClose }: Readonly<{
   const descriptionId = useId();
   const [check, setCheck] = useState<ExclusiveEntry['status'] | 'checking'>('checking');
   const [backup, setBackup] = useState<Backup>({ step: 'idle' });
-  const prepared = useRef(false);
+  // Nach Abbruch oder Aushängen: gestartete Speicherungen bleiben, die Sicherung läuft nicht weiter.
+  const closed = useRef(false);
   const started = deletion === 'deleting' || deletion === 'pending';
 
   const runCheck = () => {
@@ -64,8 +67,9 @@ export function WorkspaceDeleteDialog({ rowDrafts, onClose }: Readonly<{
   };
   useEffect(() => {
     // Ein während der Löschung wieder eingehängter Dialog prüft nicht erneut.
+    closed.current = false;
     if (deletion === 'idle') void enterWorkspaceDeletion().then(setCheck);
-    return leaveWorkspaceDeletion;
+    return () => { closed.current = true; leaveWorkspaceDeletion(); };
     // Die Prüfung läuft einmal je Öffnen; „Erneut prüfen“ startet sie ausdrücklich.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -75,7 +79,8 @@ export function WorkspaceDeleteDialog({ rowDrafts, onClose }: Readonly<{
   const cancel = () => {
     if (started) return;
     if (deletion === 'failed') dismissDeletionFailure();
-    onClose(prepared.current);
+    closed.current = true;
+    onClose(false);
   };
   useModalDialog(dialogRef, true, cancel);
   useScrollLock(true);
@@ -85,7 +90,9 @@ export function WorkspaceDeleteDialog({ rowDrafts, onClose }: Readonly<{
 
   /** Nach Speichern und Klären: verbleibende Eingaben zeigen, ohne Rest die Gesamtsicherung exportieren. */
   const continueBackup = async (failed?: RestoreInput): Promise<void> => {
+    if (closed.current) return;
     const inputs = await pendingRestoreInputs(WHOLE_WORKSPACE, rowDrafts);
+    if (closed.current) return;
     if (!inputs.ok) { setBackup({ step: 'export-failed' }); return; }
     if (inputs.value.length > 0) { setBackup({ step: 'clarify', inputs: inputs.value, failed }); return; }
     setBackup({ step: 'saving' });
@@ -101,14 +108,15 @@ export function WorkspaceDeleteDialog({ rowDrafts, onClose }: Readonly<{
   const saveRename = async (entry: Extract<RestoreInput, { kind: 'rename' }>) => {
     const result = await renameVerbund(entry.verbundId, entry.draft.trim());
     if (result.ok) {
-      prepared.current = true;
+      onPrepared();
       discardRestoreInput(entry, rowDrafts);
     }
     await continueBackup(result.ok ? undefined : entry);
   };
 
   const confirm = () => {
-    onClose(false);
+    closed.current = true;
+    onClose(true);
     void deleteWorkspace();
   };
 

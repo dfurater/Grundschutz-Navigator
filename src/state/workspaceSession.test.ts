@@ -25,6 +25,22 @@ describe('Arbeitsbereich-Sitzungen', () => {
     expect(await own.enterExclusive()).toEqual({ status: 'other-sessions' });
   });
 
+  it('gibt den Lock einer Anmeldung frei, die erst nach dem Verlassen zum Zug kommt', async () => {
+    const locks = fakeLocks();
+    const holder = createWorkspaceSession(locks);
+    await holder.register();
+    const entry = await holder.enterExclusive();
+    const session = createWorkspaceSession(locks);
+    const stale = session.register();
+    session.leave();
+    if (entry.status === 'granted') entry.release();
+    expect(await stale).toBe(false);
+    // Die überholte Anmeldung hält nichts: Eine neue Anmeldung derselben Sitzung kommt durch.
+    expect(await session.register()).toBe(true);
+    holder.leave();
+    expect((await session.enterExclusive()).status).toBe('granted');
+  });
+
   it('sperrt die Datenaktion ohne Web Locks, ohne Anmeldung und bei gescheiterter Prüfung', async () => {
     const missing = createWorkspaceSession(undefined);
     expect(await missing.register()).toBe(false);

@@ -1,8 +1,8 @@
 // Gesamtlöschung des Arbeitsbereichs: Dialog, Sicherungsangebot und Löschablauf (GSPP-635).
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppShell } from '@/app/AppShell';
-import { buildWorkspaceIndexUrl } from '@/app/routes';
+import { buildVerbundUrl, buildWorkspaceIndexUrl } from '@/app/routes';
 import { StorageFailure, failure } from '@/adapters/workspaceStorageFailure';
 import type { WorkspaceResult } from '@/domain/workspaceModel';
 import { CatalogContext } from '@/state/CatalogContext';
@@ -23,16 +23,17 @@ const CONFIRM = 'Alle lokalen Daten endgültig löschen';
 type Final = (result: WorkspaceResult<void>) => void;
 
 let locks: LockManager | undefined;
+let router: ReturnType<typeof renderAppShell>['router'];
 beforeEach(() => { locks = fakeLocks(); downloads.length = 0; });
 
 function renderWith(port: WorkspacePort, open = vi.fn(() => ok(port))) {
-  renderAppShell([buildWorkspaceIndexUrl()], {
+  ({ router } = renderAppShell([buildWorkspaceIndexUrl()], {
     shell: () => (
       <CatalogContext.Provider value={EMPTY_CATALOG_STATE}>
         <WorkspaceProvider open={open} session={createWorkspaceSession(locks)}><AppShell /></WorkspaceProvider>
       </CatalogContext.Provider>
     ),
-  });
+  }));
   return open;
 }
 
@@ -118,6 +119,25 @@ describe('Gesamtlöschung', () => {
     expect(deleteAll).not.toHaveBeenCalled();
   });
 
+  it('meldet eine nach dem Abbruch abgeschlossene Speicherung und startet danach keinen Download', async () => {
+    let finishRename: (result: WorkspaceResult<typeof VERBUND>) => void = () => undefined;
+    const renameVerbund = vi.fn(() => new Promise<WorkspaceResult<typeof VERBUND>>((resolve) => { finishRename = resolve; }));
+    renderWith(fakePort({ renameVerbund }));
+    await screen.findByRole('link', { name: VERBUND.name });
+    fireEvent.click(screen.getByRole('button', { name: 'Umbenennen' }));
+    fireEvent.change(screen.getByLabelText('Neuer Name'), { target: { value: 'Neuer Name' } });
+    fireEvent.click(screen.getByRole('button', { name: ENTRY }));
+    const dialog = within(await screen.findByRole('alertdialog'));
+    await waitFor(() => expect(dialog.getByRole('button', { name: 'Vorher sichern' })).toBeEnabled());
+    fireEvent.click(dialog.getByRole('button', { name: 'Vorher sichern' }));
+    fireEvent.click(await dialog.findByRole('button', { name: 'Speichern' }));
+    fireEvent.click(dialog.getByRole('button', { name: 'Abbrechen' }));
+    expect(screen.queryByText(/Löschung abgebrochen/)).toBeNull();
+    finishRename({ ok: true, value: { ...VERBUND, name: 'Neuer Name' } });
+    expect(await screen.findByText('Löschung abgebrochen. Vorbereitend gespeicherte Eingaben bleiben erhalten.')).toBeInTheDocument();
+    expect(downloads).toHaveLength(0);
+  });
+
   it('startet genau einen Löschrequest, bleibt bei Blockade ausstehend und bestätigt erst den endgültigen Erfolg', async () => {
     let final: Final = () => undefined;
     const deleteAll = vi.fn((_confirmation: string, onFinal?: Final) => { final = onFinal!; return fail('WORKSPACE_DELETE_PENDING'); });
@@ -151,6 +171,10 @@ describe('Gesamtlöschung', () => {
     expect(open).toHaveBeenCalledTimes(1);
     expect(listVerbuende).toHaveBeenCalledTimes(reads);
 
+    // Eine Verbundroute endet nach der Löschung terminal statt im Ladezustand.
+    await act(() => router.navigate(buildVerbundUrl(VERBUND.verbundId)));
+    expect(await screen.findByText('Unter dieser Adresse ist in diesem Browser kein Informationsverbund gespeichert.')).toBeInTheDocument();
+    await act(() => router.navigate(buildWorkspaceIndexUrl()));
     // Erst das ausdrückliche Anlegen öffnet einen neuen Speicher.
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Neu' } });
     fireEvent.click(screen.getByRole('button', { name: 'Anlegen' }));

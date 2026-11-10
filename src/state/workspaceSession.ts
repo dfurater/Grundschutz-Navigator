@@ -37,14 +37,21 @@ export function createWorkspaceSession(locks: LockManager | undefined = globalTh
   const name = `${WORKSPACE_SESSION_LOCK_PREFIX}${crypto.randomUUID()}`;
   let presence: Release | null = null;
   let registering: Promise<boolean> | null = null;
+  // Zählt jedes Verlassen: Eine davor begonnene Anmeldung gibt ihren später erhaltenen Lock sofort frei.
+  let left = 0;
   return {
     register: () => {
       if (!locks) return Promise.resolve(false);
       registering ??= (async () => {
+        const run = left;
         try {
           const gate = await hold(locks, WORKSPACE_GATE_LOCK);
-          try { presence = await hold(locks, name); } finally { gate?.(); }
-          return true;
+          try {
+            const granted = await hold(locks, name);
+            if (run === left) presence = granted;
+            else granted?.();
+          } finally { gate?.(); }
+          return run === left;
         } catch {
           registering = null;
           return false;
@@ -72,6 +79,7 @@ export function createWorkspaceSession(locks: LockManager | undefined = globalTh
       }
     },
     leave: () => {
+      left++;
       presence?.();
       presence = null;
       registering = null;

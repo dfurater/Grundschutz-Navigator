@@ -138,7 +138,10 @@ export function VerbundOverviewPage() {
   const { exporting, exportBackup, exportVerbund } = useBackupExport();
   const [pendingDelete, setPendingDelete] = useState<WorkspaceVerbund | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [cancelledAfterSave, setCancelledAfterSave] = useState(false);
+  // „Vorher sichern“ hat eine Eingabe gespeichert und die Löschung wurde nicht bestätigt.
+  const [prepared, setPrepared] = useState(false);
+  const [formRun, setFormRun] = useState(0);
+  const [wasDeleted, setWasDeleted] = useState(false);
   // Eine laufende Gesamtlöschung hält ihren Dialog offen, auch nach einem Routenwechsel zurück auf diese Seite.
   const deleteShown = deleteOpen || deletion !== 'idle';
   const deleted = status === 'deleted';
@@ -159,6 +162,15 @@ export function VerbundOverviewPage() {
   const restoreButton = useRef<HTMLButtonElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
   const ready = (status === 'ready' || deleted) && verbuende !== null;
+  // Mit der Gesamtlöschung fallen auch die Eingaben und Meldungen der Seite zum gelöschten Bestand.
+  if (deleted !== wasDeleted) {
+    setWasDeleted(deleted);
+    if (deleted) {
+      setRestored(null);
+      setPrepared(false);
+      setFormRun((run) => run + 1);
+    }
+  }
   const count = verbuende?.length ?? 0;
 
   useEffect(() => {
@@ -221,7 +233,7 @@ export function VerbundOverviewPage() {
             <span className="mt-1 block text-sm text-[var(--color-text-secondary)]">Der gesamte Arbeitsbestand wurde aus diesem Browserprofil entfernt. Exportierte Dateien bleiben erhalten.</span>
           </output>
         )}
-        {cancelledAfterSave && !deleteShown && !deleted && (
+        {prepared && !deleteShown && !deleted && (
           <output className="block rounded-md border border-[var(--color-border-strong)] bg-[var(--color-surface-base)] p-4 text-sm text-[var(--color-text-primary)]">
             Löschung abgebrochen. Vorbereitend gespeicherte Eingaben bleiben erhalten.
           </output>
@@ -237,6 +249,7 @@ export function VerbundOverviewPage() {
           <h2 id="verbund-anlegen" className="text-base font-semibold leading-snug">Informationsverbund anlegen</h2>
           <div className="mt-3">
             <NameForm
+              key={formRun}
               label="Name"
               submitLabel="Anlegen"
               disabled={!ready || !writable}
@@ -284,7 +297,7 @@ export function VerbundOverviewPage() {
                 <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">Lokale Daten löschen</h3>
                 <p className="mt-1 text-xs text-[var(--color-text-secondary)]">Alle Informationsverbünde dieses Browserprofils entfernen.</p>
               </div>
-              <Button variant="danger" className={`${ROW_BUTTON} shrink-0`} disabled={status !== 'ready'} onClick={() => { setCancelledAfterSave(false); setDeleteOpen(true); }}>
+              <Button variant="danger" className={`${ROW_BUTTON} shrink-0`} disabled={status !== 'ready'} onClick={() => { setPrepared(false); setDeleteOpen(true); }}>
                 Alle lokalen Daten löschen…
               </Button>
             </div>
@@ -293,7 +306,11 @@ export function VerbundOverviewPage() {
       </div>
 
       {deleteShown && (
-        <WorkspaceDeleteDialog rowDrafts={rowDrafts} onClose={(prepared) => { setCancelledAfterSave(prepared); setDeleteOpen(false); }} />
+        <WorkspaceDeleteDialog
+          rowDrafts={rowDrafts}
+          onPrepared={() => setPrepared(true)}
+          onClose={(confirmed) => { if (confirmed) setPrepared(false); setDeleteOpen(false); }}
+        />
       )}
 
       <ConfirmDialog
