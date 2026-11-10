@@ -138,6 +138,19 @@ describe('Gesamtlöschung', () => {
     expect(downloads).toHaveLength(0);
   });
 
+  it('startet keinen Download, wenn der Dialog während des Exports abgebrochen wird', async () => {
+    let finishExport: (result: WorkspaceResult<string>) => void = () => undefined;
+    const exportBackup = vi.fn(() => new Promise<WorkspaceResult<string>>((resolve) => { finishExport = resolve; }));
+    renderWith(fakePort({ exportBackup }));
+    const dialog = await openDialog();
+    await waitFor(() => expect(dialog.getByRole('button', { name: 'Vorher sichern' })).toBeEnabled());
+    fireEvent.click(dialog.getByRole('button', { name: 'Vorher sichern' }));
+    await waitFor(() => expect(exportBackup).toHaveBeenCalledTimes(1));
+    fireEvent.click(dialog.getByRole('button', { name: 'Abbrechen' }));
+    await act(async () => { finishExport({ ok: true, value: '{}' }); await Promise.resolve(); });
+    expect(downloads).toHaveLength(0);
+  });
+
   it('startet genau einen Löschrequest, bleibt bei Blockade ausstehend und bestätigt erst den endgültigen Erfolg', async () => {
     let final: Final = () => undefined;
     const deleteAll = vi.fn((_confirmation: string, onFinal?: Final) => { final = onFinal!; return fail('WORKSPACE_DELETE_PENDING'); });

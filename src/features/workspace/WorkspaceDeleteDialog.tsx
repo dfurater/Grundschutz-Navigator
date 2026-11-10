@@ -96,7 +96,9 @@ export function WorkspaceDeleteDialog({ rowDrafts, onPrepared, onClose }: Readon
     if (!inputs.ok) { setBackup({ step: 'export-failed' }); return; }
     if (inputs.value.length > 0) { setBackup({ step: 'clarify', inputs: inputs.value, failed }); return; }
     setBackup({ step: 'saving' });
-    setBackup({ step: await exportBackup() ? 'started' : 'export-failed' });
+    // Ein Abbruch während des Exports verwirft die Datei vor dem Download.
+    const downloaded = await exportBackup(() => !closed.current);
+    if (!closed.current) setBackup({ step: downloaded ? 'started' : 'export-failed' });
   };
 
   const backupFirst = async () => {
