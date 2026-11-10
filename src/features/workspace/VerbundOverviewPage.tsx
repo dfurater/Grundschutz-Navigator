@@ -309,7 +309,10 @@ export function VerbundOverviewPage() {
         <WorkspaceDeleteDialog
           rowDrafts={rowDrafts}
           onPrepared={() => setPrepared(true)}
-          onClose={(confirmed) => { if (confirmed) setPrepared(false); setDeleteOpen(false); }}
+          onClose={(confirmed) => {
+            if (confirmed) setPrepared(false);
+            setDeleteOpen(false);
+          }}
         />
       )}
 
