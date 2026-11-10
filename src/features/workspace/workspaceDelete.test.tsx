@@ -53,6 +53,7 @@ describe('Gesamtlöschung', () => {
     expect(dialog.getByText(/Verknüpfungen, Prüfspuren und Vergleichsstände/)).toBeInTheDocument();
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(screen.getByRole('button', { name: ENTRY })).toHaveFocus();
     for (const call of Object.values(calls)) expect(call).not.toHaveBeenCalled();
     // Nach dem Abbruch ist die Koordination frei: Ein weiterer Tab kann sich anmelden.
     expect(await createWorkspaceSession(locks).register()).toBe(true);

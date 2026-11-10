@@ -157,7 +157,8 @@ export function VerbundOverviewPage() {
     rerender();
   };
   // Fokus nach dem Prüfblatt: Überschrift nach Erfolg, Einstieg nach Abbruch.
-  const focusTarget = useRef<'heading' | 'restore' | null>(null);
+  const focusTarget = useRef<'heading' | 'restore' | 'delete' | null>(null);
+  const deleteButton = useRef<HTMLButtonElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const restoreButton = useRef<HTMLButtonElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
@@ -174,10 +175,10 @@ export function VerbundOverviewPage() {
   const count = verbuende?.length ?? 0;
 
   useEffect(() => {
-    if (restoreFile || !focusTarget.current) return;
-    (focusTarget.current === 'heading' ? heading : restoreButton).current?.focus();
+    if (restoreFile || deleteShown || !focusTarget.current) return;
+    ({ heading, restore: restoreButton, delete: deleteButton })[focusTarget.current].current?.focus();
     focusTarget.current = null;
-  }, [restoreFile]);
+  }, [restoreFile, deleteShown]);
 
   // Nach der Gesamtlöschung: keine Zeilenentwürfe des gelöschten Bestands, Fokus auf der Überschrift.
   useEffect(() => {
@@ -297,7 +298,7 @@ export function VerbundOverviewPage() {
                 <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">Lokale Daten löschen</h3>
                 <p className="mt-1 text-xs text-[var(--color-text-secondary)]">Alle Informationsverbünde dieses Browserprofils entfernen.</p>
               </div>
-              <Button variant="danger" className={`${ROW_BUTTON} shrink-0`} disabled={status !== 'ready'} onClick={() => { setPrepared(false); setDeleteOpen(true); }}>
+              <Button ref={deleteButton} variant="danger" className={`${ROW_BUTTON} shrink-0`} disabled={status !== 'ready'} onClick={() => { setPrepared(false); setDeleteOpen(true); }}>
                 Alle lokalen Daten löschen…
               </Button>
             </div>
@@ -311,6 +312,8 @@ export function VerbundOverviewPage() {
           onPrepared={() => setPrepared(true)}
           onClose={(confirmed) => {
             if (confirmed) setPrepared(false);
+            // Der Dialog setzt den Fokus beim Öffnen selbst; nach einem Abbruch kehrt er zum Einstieg zurück.
+            else focusTarget.current = 'delete';
             setDeleteOpen(false);
           }}
         />
