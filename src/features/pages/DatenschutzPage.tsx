@@ -183,7 +183,9 @@ export function DatenschutzPage() {
         </p>
         <p className="catalog-prose-text text-sm text-slate-700 leading-relaxed">
           Im Bereich Informationsverbünde können Sie einen Informationsverbund
-          mit allen zugehörigen Dokumenten vollständig löschen und eine
+          mit allen zugehörigen Dokumenten vollständig löschen, sämtliche in
+          diesem Browserprofil gespeicherten Daten dieses Bereichs nach
+          ausdrücklicher Bestätigung auf einmal löschen und eine
           Sicherungsdatei aller gespeicherten Daten oder eines einzelnen
           Informationsverbunds exportieren. Eine solche Sicherungsdatei können
           Sie wiederherstellen: Die Anwendung prüft sie ausschließlich in Ihrem
@@ -197,9 +199,15 @@ export function DatenschutzPage() {
           speichern. Ein gespeichertes, gültiges Profil können Sie als
           OSCAL-JSON-Datei auf Ihr Gerät exportieren, und Sie können ein
           einzelnes Profil samt Entwurf vollständig löschen. Über die technische
-          Schnittstelle lassen sich zudem andere einzelne Dokumente oder
-          sämtliche gespeicherten Daten vollständig löschen; Bedienelemente dafür
-          sind derzeit nicht verfügbar. Über die Browser-Einstellungen können
+          Schnittstelle lassen sich zudem andere einzelne Dokumente vollständig
+          löschen; Bedienelemente dafür sind derzeit nicht verfügbar. Die
+          Löschung sämtlicher Daten setzt voraus, dass kein weiterer Tab mit dem
+          Bereich Informationsverbünde geöffnet ist; vorher bietet die Anwendung eine
+          Sicherungsdatei an. Hält eine andere Verbindung die Daten noch
+          geöffnet, wartet die gestartete Löschung und lässt sich nicht
+          zurücknehmen. Die Löschung entfernt die Daten aus dem Speicher des
+          Browsers; eine sichere Bereinigung des Datenträgers ist damit nicht
+          verbunden. Über die Browser-Einstellungen können
           Sie sämtliche lokalen Daten dieser Anwendung entfernen.
           Bereits exportierte Dateien werden dadurch nicht gelöscht; das gilt
           auch für deren Kopien, etwa in Betriebssystem-Backups oder bei Dritten.

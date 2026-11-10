@@ -15,7 +15,7 @@ import type { CatalogKey } from '@/domain/sourceRegistry';
 /** Die Speicheroperationen, die der Bereich Informationsverbünde nutzt. */
 export type WorkspacePort = Pick<WorkspaceStore,
   | 'schemaStatus' | 'listVerbuende' | 'listDocuments' | 'getDocument' | 'getDraft' | 'listBindings'
-  | 'createVerbund' | 'renameVerbund' | 'deleteVerbund' | 'exportBackup' | 'estimate' | 'close'
+  | 'createVerbund' | 'renameVerbund' | 'deleteVerbund' | 'deleteAll' | 'exportBackup' | 'estimate' | 'close'
   | 'exportVerbundBackup' | 'previewRestore' | 'restoreBackup' | 'restoreVerbundBackup'
   | 'addDocument' | 'saveDocument' | 'saveProcessDecision' | 'autosaveDraft' | 'setBinding' | 'removeBinding' | 'deleteDocument'
   | 'listReviewTrail' | 'appendCheckpoint' | 'appendDecision'>;

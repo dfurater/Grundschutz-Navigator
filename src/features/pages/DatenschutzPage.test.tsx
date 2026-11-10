@@ -205,10 +205,15 @@ describe('DatenschutzPage', () => {
     it('erläutert Löschumfang und Grenzen genau mit den vorhandenen Bedienelementen', () => {
       const { container } = render(<DatenschutzPage />);
 
-      expect(container).toHaveTextContent(/Informationsverbund mit allen zugehörigen Dokumenten vollständig löschen und eine Sicherungsdatei aller gespeicherten Daten oder eines einzelnen Informationsverbunds exportieren/);
+      expect(container).toHaveTextContent(/Informationsverbund mit allen zugehörigen Dokumenten vollständig löschen, sämtliche/);
+      expect(container).toHaveTextContent(/eine Sicherungsdatei aller gespeicherten Daten oder eines einzelnen Informationsverbunds exportieren/);
       expect(container).toHaveTextContent(/ersetzt die dort gespeicherten Daten einschließlich der Entwürfe erst nach Ihrer Bestätigung/);
       expect(container).toHaveTextContent(/einzelnes Profil samt Entwurf vollständig löschen/);
-      expect(container).toHaveTextContent(/andere einzelne Dokumente oder sämtliche gespeicherten Daten vollständig löschen; Bedienelemente dafür sind derzeit nicht verfügbar/);
+      expect(container).toHaveTextContent(/sämtliche in diesem Browserprofil gespeicherten Daten dieses Bereichs nach ausdrücklicher Bestätigung auf einmal löschen/);
+      expect(container).toHaveTextContent(/andere einzelne Dokumente vollständig löschen; Bedienelemente dafür sind derzeit nicht verfügbar/);
+      expect(container).toHaveTextContent(/kein weiterer Tab mit dem Bereich Informationsverbünde geöffnet ist/);
+      expect(container).toHaveTextContent(/wartet die gestartete Löschung und lässt sich nicht zurücknehmen/);
+      expect(container).toHaveTextContent(/eine sichere Bereinigung des Datenträgers ist damit nicht verbunden/);
       expect(container).toHaveTextContent(/Bereits exportierte Dateien werden dadurch nicht gelöscht/);
     });
 

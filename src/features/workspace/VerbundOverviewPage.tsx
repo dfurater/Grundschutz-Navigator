@@ -11,6 +11,7 @@ import { isVerbundName, type WorkspaceVerbund } from '@/domain/workspaceModel';
 import { FOCUS_RING, OriginLabel } from '@/features/workspace/DocumentMarks';
 import { WorkspaceNotices, useBackupExport } from '@/features/workspace/WorkspaceNotices';
 import { RestoreSheet, type RestoreDone } from '@/features/workspace/RestoreSheet';
+import { WorkspaceDeleteDialog } from '@/features/workspace/WorkspaceDeleteDialog';
 
 const INPUT = `min-h-touch w-full rounded-md border border-[var(--color-border-strong)] bg-[var(--color-surface-base)] px-3 py-2 text-base text-[var(--color-text-primary)] shadow-sm placeholder:text-[var(--color-text-muted)] focus-visible:border-[var(--color-focus-ring)] sm:text-sm desktop:min-h-0 ${FOCUS_RING}`;
 const ROW_BUTTON = 'min-h-touch desktop:min-h-0';
@@ -127,15 +128,20 @@ function VerbundRow({ verbund, writable, rowDrafts, onRowDraft, restored, export
 
 function inventoryLabel(status: WorkspaceContextValue['status'], verbuende: readonly WorkspaceVerbund[] | null): string {
   if (status === 'unavailable') return 'Speicher nicht verfügbar';
-  if (status !== 'ready' || verbuende === null) return 'Speicher wird geöffnet…';
+  if ((status !== 'ready' && status !== 'deleted') || verbuende === null) return 'Speicher wird geöffnet…';
   return `${verbuende.length} ${verbuende.length === 1 ? 'Informationsverbund' : 'Informationsverbünde'}`;
 }
 
-/** Übersicht des Bereichs: Verbünde anlegen, umbenennen, sichern, wiederherstellen und mit Bestätigung löschen. */
+/** Übersicht des Bereichs: Verbünde anlegen, umbenennen, sichern, wiederherstellen und einzeln oder insgesamt mit Bestätigung löschen. */
 export function VerbundOverviewPage() {
-  const { status, verbuende, writable, createVerbund, deleteVerbund } = useWorkspace();
+  const { status, verbuende, writable, deletion, createVerbund, deleteVerbund } = useWorkspace();
   const { exporting, exportBackup, exportVerbund } = useBackupExport();
   const [pendingDelete, setPendingDelete] = useState<WorkspaceVerbund | null>(null);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [cancelledAfterSave, setCancelledAfterSave] = useState(false);
+  // Eine laufende Gesamtlöschung hält ihren Dialog offen, auch nach einem Routenwechsel zurück auf diese Seite.
+  const deleteShown = deleteOpen || deletion !== 'idle';
+  const deleted = status === 'deleted';
   // Das Prüfblatt ist Ansichtszustand dieser Seite: keine Route, kein Seitentitel mit Organisationsdaten.
   const [restoreFile, setRestoreFile] = useState<File | null>(null);
   const [restored, setRestored] = useState<RestoreDone | null>(null);
@@ -152,7 +158,7 @@ export function VerbundOverviewPage() {
   const fileInput = useRef<HTMLInputElement>(null);
   const restoreButton = useRef<HTMLButtonElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
-  const ready = status === 'ready' && verbuende !== null;
+  const ready = (status === 'ready' || deleted) && verbuende !== null;
   const count = verbuende?.length ?? 0;
 
   useEffect(() => {
@@ -160,6 +166,13 @@ export function VerbundOverviewPage() {
     (focusTarget.current === 'heading' ? heading : restoreButton).current?.focus();
     focusTarget.current = null;
   }, [restoreFile]);
+
+  // Nach der Gesamtlöschung: keine Zeilenentwürfe des gelöschten Bestands, Fokus auf der Überschrift.
+  useEffect(() => {
+    if (!deleted) return;
+    rowDrafts.clear();
+    heading.current?.focus();
+  }, [deleted, rowDrafts]);
 
   const chooseFile = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -202,6 +215,17 @@ export function VerbundOverviewPage() {
         {/* S6819: <output> trägt die implizite Rolle "status". Sie steht vorab und außerhalb des Layoutflusses,
             damit die Ergebnismeldung angesagt wird, ohne dass die leere Fläche einen Abstand erzeugt. */}
         <output className="sr-only">{restored ? `Wiederhergestellt: ${restored.text}` : ''}</output>
+        {deleted && (
+          <output className="block rounded-md border border-[var(--color-border-strong)] bg-[var(--color-surface-base)] p-4">
+            <span className="block text-sm font-semibold text-[var(--color-text-primary)]">Lokale Daten gelöscht</span>
+            <span className="mt-1 block text-sm text-[var(--color-text-secondary)]">Der gesamte Arbeitsbestand wurde aus diesem Browserprofil entfernt. Exportierte Dateien bleiben erhalten.</span>
+          </output>
+        )}
+        {cancelledAfterSave && !deleteShown && !deleted && (
+          <output className="block rounded-md border border-[var(--color-border-strong)] bg-[var(--color-surface-base)] p-4 text-sm text-[var(--color-text-primary)]">
+            Löschung abgebrochen. Vorbereitend gespeicherte Eingaben bleiben erhalten.
+          </output>
+        )}
         {restored && (
           <div aria-hidden="true" className="rounded-md border border-[var(--color-border-strong)] bg-[var(--color-surface-base)] p-4">
             <p className="text-sm font-semibold text-[var(--color-text-primary)]">Wiederhergestellt</p>
@@ -229,13 +253,13 @@ export function VerbundOverviewPage() {
                 Sicherung exportieren
               </Button>
               <input ref={fileInput} aria-label="Sicherungsdatei" type="file" accept="application/json,.json" className="hidden" tabIndex={-1} onChange={chooseFile} />
-              <Button ref={restoreButton} variant="secondary" size="sm" className={ROW_BUTTON} onClick={() => fileInput.current?.click()} disabled={!ready || !writable}>
+              <Button ref={restoreButton} variant="secondary" size="sm" className={ROW_BUTTON} onClick={() => fileInput.current?.click()} disabled={!ready || !writable || deleted}>
                 Sicherung wiederherstellen…
               </Button>
             </div>
           </div>
           {ready && count === 0 && (
-            <p className="px-4 py-3 text-sm text-[var(--color-text-secondary)]">Noch kein Informationsverbund angelegt.</p>
+            <p className="px-4 py-3 text-sm text-[var(--color-text-secondary)]">{deleted ? 'Keine Informationsverbünde vorhanden.' : 'Noch kein Informationsverbund angelegt.'}</p>
           )}
           {ready && count > 0 && (
             <ul className="divide-y divide-[var(--color-border-subtle)]">
@@ -254,8 +278,23 @@ export function VerbundOverviewPage() {
               ))}
             </ul>
           )}
+          {!deleted && (
+            <div className="flex flex-col gap-3 border-t border-[var(--color-border-default)] p-4 md:flex-row md:items-center md:justify-between">
+              <div>
+                <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">Lokale Daten löschen</h3>
+                <p className="mt-1 text-xs text-[var(--color-text-secondary)]">Alle Informationsverbünde dieses Browserprofils entfernen.</p>
+              </div>
+              <Button variant="danger" className={`${ROW_BUTTON} shrink-0`} disabled={status !== 'ready'} onClick={() => { setCancelledAfterSave(false); setDeleteOpen(true); }}>
+                Alle lokalen Daten löschen…
+              </Button>
+            </div>
+          )}
         </section>
       </div>
+
+      {deleteShown && (
+        <WorkspaceDeleteDialog rowDrafts={rowDrafts} onClose={(prepared) => { setCancelledAfterSave(prepared); setDeleteOpen(false); }} />
+      )}
 
       <ConfirmDialog
         open={pendingDelete !== null}

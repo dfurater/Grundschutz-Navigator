@@ -681,9 +681,10 @@ export class WorkspaceStore {
     catch (error) { return failure(error); }
   }
 
-  async deleteAll(confirmation: 'delete-workspace'): Promise<WorkspaceResult<void>> {
+  /** `onFinal` receives the native outcome of the started request once, also after `WORKSPACE_DELETE_PENDING`. */
+  async deleteAll(confirmation: 'delete-workspace', onFinal?: (result: WorkspaceResult<void>) => void): Promise<WorkspaceResult<void>> {
     if (confirmation !== 'delete-workspace') return failure(new StorageFailure('WORKSPACE_CONFIRMATION_REQUIRED'));
     this.close();
-    return deleteDatabase(WORKSPACE_DATABASE_NAME, WORKSPACE_DELETE_BLOCKED_TIMEOUT_MS);
+    return deleteDatabase(WORKSPACE_DATABASE_NAME, WORKSPACE_DELETE_BLOCKED_TIMEOUT_MS, onFinal);
   }
 }

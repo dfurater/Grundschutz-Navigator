@@ -25,6 +25,7 @@ export function fakePort(overrides: Partial<WorkspacePort> = {}): WorkspacePort 
     createVerbund: () => fail('WORKSPACE_STORAGE_FAILED'),
     renameVerbund: () => fail('WORKSPACE_STORAGE_FAILED'),
     deleteVerbund: () => fail('WORKSPACE_STORAGE_FAILED'),
+    deleteAll: () => fail('WORKSPACE_STORAGE_FAILED'),
     exportBackup: () => ok('{"format":"gspp-workspace"}'),
     exportVerbundBackup: () => ok('{"format":"gspp-workspace-verbund"}'),
     previewRestore: () => fail('WORKSPACE_BACKUP_INVALID'),

@@ -16,6 +16,7 @@ import {
 } from '@/state/workspaceNotices';
 import { createWorkspaceDocuments, type PendingImportTarget, type WorkspaceDocuments } from '@/state/workspaceDocuments';
 import type { VerbundView, WorkspacePort } from '@/state/workspaceVerbundView';
+import { createWorkspaceSession, type ExclusiveEntry, type WorkspaceSession } from '@/state/workspaceSession';
 
 export type OpenWorkspace = () => Promise<WorkspaceResult<WorkspacePort>>;
 
@@ -39,8 +40,11 @@ export interface VerbundViewState {
 }
 
 export interface WorkspaceContextValue {
-  /** `idle` bis zum ersten Betreten des Bereichs; der Katalogpfad öffnet den Speicher nicht. */
-  readonly status: 'idle' | 'opening' | 'ready' | 'unavailable';
+  /**
+   * `idle` bis zum ersten Betreten des Bereichs; der Katalogpfad öffnet den Speicher nicht.
+   * `deleted` nach abgeschlossener Gesamtlöschung: Der Speicher ist entfernt und nicht geöffnet.
+   */
+  readonly status: 'idle' | 'opening' | 'ready' | 'unavailable' | 'deleted';
   readonly verbuende: readonly WorkspaceVerbund[] | null;
   readonly writable: boolean;
   /** Ausgelieferte BSI-Katalogstände dieser Sitzung; nur das Manifest, keine Katalogbytes. */
@@ -53,6 +57,14 @@ export interface WorkspaceContextValue {
   readonly createVerbund: (name: string) => Promise<WorkspaceResult<WorkspaceVerbund>>;
   readonly renameVerbund: (verbundId: VerbundId, name: string) => Promise<WorkspaceResult<WorkspaceVerbund>>;
   readonly deleteVerbund: (verbundId: VerbundId) => Promise<WorkspaceResult<void>>;
+  /** Stand der Gesamtlöschung; `pending` heißt: Der gestartete Löschrequest wartet auf eine andere Verbindung. */
+  readonly deletion: 'idle' | 'deleting' | 'pending' | 'failed';
+  /** Prüft unter exklusiver Koordination auf weitere Arbeitsbereich-Tabs; `granted` sperrt neue Sitzungen bis zum Verlassen. */
+  readonly enterWorkspaceDeletion: () => Promise<ExclusiveEntry['status']>;
+  readonly leaveWorkspaceDeletion: () => void;
+  /** Startet genau einen Löschrequest; `true` erst nach dessen endgültigem nativem Erfolg. */
+  readonly deleteWorkspace: () => Promise<boolean>;
+  readonly dismissDeletionFailure: () => void;
   readonly exportBackup: () => Promise<WorkspaceResult<string>>;
   readonly exportVerbundBackup: (verbundId: VerbundId) => Promise<WorkspaceResult<string>>;
   /** Prüft eine Sicherungsdatei und liest die an diesen Speicher gebundene Vorschau; schreibt nichts. */
@@ -91,6 +103,11 @@ export const WorkspaceContext = createContext<WorkspaceContextValue>({
   createVerbund: unavailable,
   renameVerbund: unavailable,
   deleteVerbund: unavailable,
+  deletion: 'idle',
+  enterWorkspaceDeletion: () => Promise.resolve('unavailable'),
+  leaveWorkspaceDeletion: () => undefined,
+  deleteWorkspace: () => Promise.resolve(false),
+  dismissDeletionFailure: () => undefined,
   exportBackup: unavailable,
   exportVerbundBackup: unavailable,
   previewRestore: unavailable,
@@ -104,10 +121,21 @@ export const WorkspaceContext = createContext<WorkspaceContextValue>({
   analysisRevision: 0,
 });
 
-export function WorkspaceProvider({ open = openWorkspaceStore, children }: Readonly<{
+export function WorkspaceProvider({ open = openWorkspaceStore, session: providedSession, children }: Readonly<{
   open?: OpenWorkspace;
+  session?: WorkspaceSession;
   children: ReactNode;
 }>) {
+  const [session] = useState(() => providedSession ?? createWorkspaceSession());
+  const [deletion, setDeletion] = useState<WorkspaceContextValue['deletion']>('idle');
+  // Ab dem Start der Gesamtlöschung bis zu ihrem endgültigen Ausgang: kein Öffnen, keine Meldung überholter Rückläufe.
+  const [freeze] = useState(() => {
+    let active = false;
+    return { active: () => active, set: (next: boolean) => { active = next; } };
+  });
+  const exclusive = useRef<(() => void) | null>(null);
+  const entryRun = useRef(0);
+  const entering = useRef<Promise<unknown>>(Promise.resolve());
   const [port, setPort] = useState<WorkspacePort | null>(null);
   const [status, setStatus] = useState<WorkspaceContextValue['status']>('idle');
   const [verbuende, setVerbuende] = useState<readonly WorkspaceVerbund[] | null>(null);
@@ -126,7 +154,7 @@ export function WorkspaceProvider({ open = openWorkspaceStore, children }: Reado
     setAnalysisRevision(analysisEpoch.advance());
   }, [analysisEpoch]);
   const openRef = useRef(open);
-  const startedRef = useRef(false);
+  const opening = useRef<Promise<WorkspacePort | null> | null>(null);
   const autosaves = useRef(new Set<AutosaveFlush>());
   // Ein stabiles Objekt je Provider, nur im Arbeitsspeicher dieses Tabs.
   const [importTargets] = useState(() => new Map<LocalId, Map<string, PendingImportTarget>>());
@@ -136,10 +164,11 @@ export function WorkspaceProvider({ open = openWorkspaceStore, children }: Reado
   const delivery = useMemo(() => catalogDelivery(catalogs), [catalogs]);
 
   const report = useCallback((diagnostic: { readonly code: string }) => {
+    if (freeze.active()) return;
     const notice = noticeForDiagnostic(diagnostic);
     if (notice === 'write-locked') setWritable(false);
     setNotices((current) => withNotice(current, notice));
-  }, []);
+  }, [freeze]);
 
   // Eine nicht bestätigte Schemaversion gibt das Schreiben nicht frei; Lesen und Export bleiben.
   const checkSchema = useCallback(async (store: WorkspacePort) => {
@@ -155,23 +184,46 @@ export function WorkspaceProvider({ open = openWorkspaceStore, children }: Reado
     }
   }, [report]);
 
-  const activate = useCallback(() => {
-    if (startedRef.current) return;
-    startedRef.current = true;
-    setStatus('opening');
-    void openRef.current().catch(storageFailed).then(async (opened) => {
+  const openStore = useCallback((): Promise<WorkspacePort | null> => {
+    if (freeze.active()) return Promise.resolve(null);
+    opening.current ??= (async () => {
+      setStatus('opening');
+      // Die Anmeldung wartet, solange ein anderer Tab die Gesamtlöschung vorbereitet oder ausführt.
+      await session.register();
+      const opened = await openRef.current().catch(storageFailed);
       if (!opened.ok) {
         setStatus('unavailable');
         report(opened.diagnostic);
-        return;
+        return null;
       }
       await checkSchema(opened.value);
       setPort(opened.value);
       setStatus('ready');
-    });
-  }, [report, checkSchema]);
+      return opened.value;
+    })();
+    return opening.current;
+  }, [session, report, checkSchema, freeze]);
+  const activate = useCallback(() => { void openStore(); }, [openStore]);
 
   useEffect(() => () => port?.close(), [port]);
+  useEffect(() => () => session.leave(), [session]);
+
+  // Eine aus dem Seitencache zurückgeholte Seite hielte einen Arbeitsstand von vor einer möglichen Löschung.
+  useEffect(() => {
+    const hide = (event: PageTransitionEvent) => {
+      if (!event.persisted || freeze.active()) return;
+      port?.close();
+      session.leave();
+    };
+    // shortcut: Neuladen verwirft auch offene Eingaben; ein feineres Zurücksetzen lohnt erst, wenn die Seite den Seitencache tatsächlich nutzt.
+    const show = (event: PageTransitionEvent) => { if (event.persisted) globalThis.location.reload(); };
+    globalThis.addEventListener('pagehide', hide);
+    globalThis.addEventListener('pageshow', show);
+    return () => {
+      globalThis.removeEventListener('pagehide', hide);
+      globalThis.removeEventListener('pageshow', show);
+    };
+  }, [port, session, freeze]);
 
   // Bestand und Speicherbelegung bei jedem Öffnen, Neuladen und Schreiben.
   useEffect(() => {
@@ -229,15 +281,84 @@ export function WorkspaceProvider({ open = openWorkspaceStore, children }: Reado
     return { verbundId: selectedVerbundId, status: 'loading' };
   }, [selectedVerbundId, loaded, status]);
 
-  const write = useCallback(async <T,>(operation: (store: WorkspacePort) => Promise<WorkspaceResult<T>>): Promise<WorkspaceResult<T>> => {
-    if (!port) return storageFailed();
-    const result = await operation(port);
+  const writeTo = useCallback(async <T,>(store: WorkspacePort | null, operation: (store: WorkspacePort) => Promise<WorkspaceResult<T>>): Promise<WorkspaceResult<T>> => {
+    if (!store) return storageFailed();
+    const result = await operation(store);
     if (result.ok) {
       invalidateAnalysis();
       setRevision((value) => value + 1);
     } else if (result.diagnostic.code !== 'WORKSPACE_OPERATION_CANCELLED') report(result.diagnostic);
     return result;
-  }, [port, report, invalidateAnalysis]);
+  }, [report, invalidateAnalysis]);
+  const write = useCallback(async <T,>(operation: (store: WorkspacePort) => Promise<WorkspaceResult<T>>) => writeTo(port, operation), [port, writeTo]);
+
+  const enterWorkspaceDeletion = useCallback((): Promise<ExclusiveEntry['status']> => {
+    const run = ++entryRun.current;
+    // Nacheinander: Eine noch laufende eigene Prüfung hält das Tor und sähe sonst wie ein anderer Tab aus.
+    const next = entering.current.then(async (): Promise<ExclusiveEntry['status']> => {
+      if (run !== entryRun.current) return 'other-sessions';
+      if (exclusive.current) return 'granted';
+      const entry = await session.enterExclusive();
+      if (entry.status !== 'granted') return entry.status;
+      // Inzwischen abgebrochen: Diese Freigabe hält niemand mehr.
+      if (run !== entryRun.current) { entry.release(); return 'other-sessions'; }
+      exclusive.current = entry.release;
+      return 'granted';
+    });
+    entering.current = next;
+    return next;
+  }, [session]);
+
+  const leaveWorkspaceDeletion = useCallback(() => {
+    entryRun.current++;
+    // Nach dem Start endet die Koordination erst mit dem endgültigen Ausgang des Löschrequests.
+    if (freeze.active()) return;
+    exclusive.current?.();
+    exclusive.current = null;
+  }, [freeze]);
+
+  const deleteWorkspace = useCallback((): Promise<boolean> => {
+    const release = exclusive.current;
+    if (!port || !release || freeze.active()) return Promise.resolve(false);
+    freeze.set(true);
+    setDeletion('deleting');
+    // Ohne Port erreicht keine Operation des Bereichs mehr den Speicher; der Adapter schließt seine Verbindung selbst.
+    setPort(null);
+    return new Promise<boolean>((resolve) => {
+      let settled = false;
+      const settle = (result: WorkspaceResult<void>) => {
+        if (settled) return;
+        settled = true;
+        freeze.set(false);
+        exclusive.current = null;
+        opening.current = null;
+        if (result.ok) {
+          // Keine Restkopie des gelöschten Bestands im Tab.
+          importTargets.clear();
+          renameDrafts.clear();
+          setLoaded(null);
+          setVerbuende([]);
+          setNotices([]);
+          setWritable(true);
+          invalidateAnalysis();
+          setDeletion('idle');
+          setStatus('deleted');
+        } else {
+          // Der Bestand kann fortbestehen; erst ein erneutes Öffnen zeigt ihn wieder.
+          setDeletion('failed');
+          setStatus('unavailable');
+          setNotices((current) => withNotice(current, 'storage-failed'));
+        }
+        release();
+        resolve(result.ok);
+      };
+      void port.deleteAll('delete-workspace', settle).catch(storageFailed).then((first) => {
+        if (settled) return;
+        if (!first.ok && first.diagnostic.code === 'WORKSPACE_DELETE_PENDING') setDeletion('pending');
+        else settle(first);
+      });
+    });
+  }, [port, importTargets, renameDrafts, invalidateAnalysis, freeze]);
 
   const quiet = useCallback(async <T,>(operation: (store: WorkspacePort) => Promise<WorkspaceResult<T>>): Promise<WorkspaceResult<T>> => {
     if (!port) return storageFailed();
@@ -280,13 +401,14 @@ export function WorkspaceProvider({ open = openWorkspaceStore, children }: Reado
       // Ein gescheitertes Öffnen wird erneut versucht, eine gescheiterte Schemaprüfung
       // ebenso; eine Schreibsperre durch ein neueres Speicherschema bleibt bestehen.
       if (status === 'unavailable') {
-        startedRef.current = false;
+        opening.current = null;
         activate();
       } else if (port && !writable && !notices.includes('write-locked')) {
         void checkSchema(port);
       }
     },
-    createVerbund: (name) => write((store) => store.createVerbund(name)),
+    // Nach einer Gesamtlöschung legt erst dieses ausdrückliche Anlegen einen neuen Speicher an.
+    createVerbund: async (name) => writeTo(status === 'deleted' ? await openStore() : port, (store) => store.createVerbund(name)),
     renameVerbund: (verbundId, name) => write((store) => store.renameVerbund(verbundId, name)),
     deleteVerbund: async (verbundId) => {
       // Auch ungespeicherte Importziele sind Dokumentinhalt (`href`); sie fallen mit dem Verbund.
@@ -306,13 +428,18 @@ export function WorkspaceProvider({ open = openWorkspaceStore, children }: Reado
       }
       return result;
     },
+    deletion,
+    enterWorkspaceDeletion,
+    leaveWorkspaceDeletion,
+    deleteWorkspace,
+    dismissDeletionFailure: () => setDeletion((current) => current === 'failed' ? 'idle' : current),
     exportBackup: async () => {
       if (port) {
         const result = await port.exportBackup();
         if (!result.ok) report(result.diagnostic);
         return result;
       }
-      if (!notices.includes('migration-failed')) return storageFailed();
+      if (freeze.active() || !notices.includes('migration-failed')) return storageFailed();
       const result = await import('@/adapters/workspaceStore')
         .then(({ WorkspaceStore }) => WorkspaceStore.exportRecoveryBackup())
         .catch(storageFailed);
@@ -359,7 +486,7 @@ export function WorkspaceProvider({ open = openWorkspaceStore, children }: Reado
     documents,
     analysisRevision,
     renameDrafts,
-  }), [status, verbuende, writable, delivery, notices, verbund, activate, checkSchema, write, quiet, port, report, registerAutosave, flushAutosaves, documents, importTargets, invalidateAnalysis, analysisRevision, renameDrafts]);
+  }), [status, verbuende, writable, delivery, notices, verbund, activate, openStore, checkSchema, write, writeTo, deletion, enterWorkspaceDeletion, leaveWorkspaceDeletion, deleteWorkspace, freeze, quiet, port, report, registerAutosave, flushAutosaves, documents, importTargets, invalidateAnalysis, analysisRevision, renameDrafts]);
 
   return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>;
 }

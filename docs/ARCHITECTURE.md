@@ -300,6 +300,7 @@ src/                              # Anwendungsquellcode
 │   ├── workspaceProfileAnalysis.ts   # Schnappschuss und Ableitung der Profilanalyse
 │   ├── workspaceProfileAnalysisSession.ts # Sitzungscache und abbrechbare Vorbereitung der Editoranalyse
 │   ├── workspaceRestore.ts           # Offene Sitzungseingaben eines Restore-Zielbereichs und ihre Verwerfung
+│   ├── workspaceSession.ts           # Web-Locks-Koordination der Tabs: Sitzungsanmeldung und exklusive Gesamtlöschung
 │   └── workspaceVerbundView.ts       # Verbundansicht aus Speicher und Dokumentgraph
 ├── hooks/                        # Wiederverwendbare React Hooks
 │   ├── breakpointQueries.ts          # Media Queries der Breakpoints: rem-Grenzen und Desktop-Bedingung mit Eingabemöglichkeit
@@ -395,6 +396,7 @@ src/                              # Anwendungsquellcode
 │       ├── EditorFrame.tsx               # Werkzeugleiste und rechtes Panel einer Bearbeitungsansicht
 │       ├── ReferenceEdges.tsx            # Referenzkanten eines Dokuments mit Feld, Pflicht und Zustand
 │       ├── RestoreSheet.tsx              # Prüfblatt „Sicherung wiederherstellen“: Datei, offene Eingaben, Vorschau, Bestätigung
+│       ├── WorkspaceDeleteDialog.tsx     # Bestätigung der Gesamtlöschung: Sicherungsangebot, weitere Tabs, Warte- und Fehlerzustand
 │       ├── RestoreSheetParts.tsx         # Abschnitte, Meldungen, Vorschautabelle und Klärungszeilen des Prüfblatts
 │       ├── StationCards.tsx              # Fünf Stationskarten der Verbund-Übersicht mit Statuswort und Kennzahl
 │       ├── StationStrip.tsx              # Stationsreiter unter der Kopfzeile mit Statuspunkt, alle Layoutstufen
@@ -518,6 +520,7 @@ src/                              # Anwendungsquellcode
 │   ├── documentTitle.ts              # Prüft den Seitentitel auf genau ein <title>
 │   ├── eslintWithoutTypes.ts         # Repo-ESLint ohne Project Service für Regeltests
 │   ├── fakeWorkspacePort.ts          # WorkspacePort-Fake und Meldungsabfrage für Shell-Tests des Bereichs Informationsverbünde
+│   ├── fakeLocks.ts                  # Web-Locks-Nachbildung für jsdom-Tests der Sitzungskoordination
 │   ├── fakeWorker.ts                 # Worker-Testdouble und Installation als globaler `Worker`
 │   ├── noNetwork.ts                  # Werfende Stubs für fetch, XMLHttpRequest und sendBeacon
 │   ├── oscalGraphCompare.ts          # Graphvergleich mit Object.is-Semantik
