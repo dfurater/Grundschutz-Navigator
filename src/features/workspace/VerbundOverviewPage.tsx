@@ -220,6 +220,8 @@ export function VerbundOverviewPage() {
             // Der Restore ersetzt den Zielbereich; dessen offene Zeilenformulare gelten nicht mehr.
             if (done.verbundId) rowDrafts.delete(done.verbundId);
             else rowDrafts.clear();
+            // Das neuere Ergebnis ersetzt den Abbruchhinweis einer früheren Löschvorbereitung in der Statusregion.
+            setPrepared(false);
             focusTarget.current = 'heading'; setRestored(done); setRestoreFile(null);
           }}
         />
