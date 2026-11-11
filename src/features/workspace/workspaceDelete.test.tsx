@@ -21,6 +21,9 @@ vi.mock('@/adapters/browserDownload', () => ({ downloadBlob: (blob: Blob) => { d
 
 const ENTRY = 'Alle lokalen Daten löschen…';
 const CONFIRM = 'Alle lokalen Daten endgültig löschen';
+const ABORTED = 'Löschung abgebrochen. Vorbereitend gespeicherte Eingaben bleiben erhalten.';
+/** Vorab eingehängte Statusregion der Übersicht; die sichtbaren Meldungsflächen sind aria-hidden-Spiegel. */
+const statusRegion = () => document.querySelector('output.sr-only');
 type Final = (result: WorkspaceResult<void>) => void;
 
 let locks: LockManager | undefined;
@@ -43,6 +46,38 @@ async function openDialog() {
   await screen.findByRole('link', { name: VERBUND.name });
   fireEvent.click(screen.getByRole('button', { name: ENTRY }));
   return within(await screen.findByRole('alertdialog'));
+}
+
+/**
+ * Rendert mit verzögertem `createVerbund` und „Labor“ im Anlegeformular. Der Rückgabewert startet „Vorher sichern“
+ * im Dialog, während die Anlage läuft, und prüft, dass der Verbund danach genau einmal angelegt und gesichert ist.
+ */
+async function renderWithPendingCreate() {
+  const verbuende: WorkspaceVerbund[] = [VERBUND];
+  let finishCreate: () => void = () => undefined;
+  const createVerbund = vi.fn((name: string) => new Promise<WorkspaceResult<WorkspaceVerbund>>((resolve) => {
+    finishCreate = () => {
+      const created = { ...VERBUND, verbundId: '0b6c2a4e-1d3f-4a5b-8c7d-9e0f1a2b3c4d' as VerbundId, name };
+      verbuende.push(created);
+      resolve({ ok: true, value: created });
+    };
+  }));
+  const exportBackup = () => ok(JSON.stringify({ verbuende: verbuende.map(({ name }) => name) }));
+  renderWith(fakePort({ createVerbund, exportBackup, listVerbuende: () => ok([...verbuende]) }));
+  await screen.findByRole('link', { name: VERBUND.name });
+  fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Labor' } });
+  return async (dialog: Awaited<ReturnType<typeof openDialog>>) => {
+    await waitFor(() => expect(dialog.getByRole('button', { name: 'Vorher sichern' })).toBeEnabled());
+    fireEvent.click(dialog.getByRole('button', { name: 'Vorher sichern' }));
+    await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+    expect(dialog.queryByRole('button', { name: 'Anlegen' })).toBeNull();
+    expect(downloads).toHaveLength(0);
+    await act(async () => { finishCreate(); await Promise.resolve(); });
+    expect(await dialog.findByText('Download gestartet. Bewahren Sie die Datei auf.')).toBeInTheDocument();
+    expect(dialog.queryByRole('button', { name: 'Anlegen' })).toBeNull();
+    expect(createVerbund).toHaveBeenCalledExactlyOnceWith('Labor');
+    expect((await downloads[0].text()).match(/Labor/g)).toHaveLength(1);
+  };
 }
 
 describe('Gesamtlöschung', () => {
@@ -118,8 +153,12 @@ describe('Gesamtlöschung', () => {
     fireEvent.click(dialog.getByRole('button', { name: 'Speichern' }));
     expect(await dialog.findByText('Download gestartet. Bewahren Sie die Datei auf.')).toBeInTheDocument();
     expect(renameVerbund).toHaveBeenCalledWith(VERBUND.verbundId, 'Neuer Name');
+    const region = statusRegion();
+    expect(region).toBeEmptyDOMElement();
     fireEvent.click(dialog.getByRole('button', { name: 'Abbrechen' }));
-    expect(await screen.findByText('Löschung abgebrochen. Vorbereitend gespeicherte Eingaben bleiben erhalten.')).toBeInTheDocument();
+    expect(await screen.findByText(ABORTED, { selector: 'p' })).toBeInTheDocument();
+    expect(statusRegion()).toBe(region);
+    expect(region).toHaveTextContent(ABORTED);
     expect(deleteAll).not.toHaveBeenCalled();
   });
 
@@ -169,8 +208,24 @@ describe('Gesamtlöschung', () => {
     fireEvent.click(dialog.getByRole('button', { name: 'Abbrechen' }));
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Rechenzentrum' } });
     await act(async () => { finishCreate({ ok: true, value: { ...VERBUND, name: 'Labor' } }); await Promise.resolve(); });
-    expect(await screen.findByText('Löschung abgebrochen. Vorbereitend gespeicherte Eingaben bleiben erhalten.')).toBeInTheDocument();
+    expect(await screen.findByText(ABORTED, { selector: 'p' })).toBeInTheDocument();
     expect(screen.getByLabelText('Name')).toHaveValue('Rechenzentrum');
+  });
+
+  it('„Vorher sichern“ wartet eine laufende Anlage aus dem Formular ab und sichert den Verbund genau einmal', async () => {
+    const backupWhileCreating = await renderWithPendingCreate();
+    fireEvent.click(screen.getByRole('button', { name: 'Anlegen' }));
+    await backupWhileCreating(await openDialog());
+  });
+
+  it('ein erneutes „Vorher sichern“ wartet eine nach dem Abbruch weiterlaufende Anlage aus der Klärungszeile ab', async () => {
+    const backupWhileCreating = await renderWithPendingCreate();
+    const dialog = await openDialog();
+    await waitFor(() => expect(dialog.getByRole('button', { name: 'Vorher sichern' })).toBeEnabled());
+    fireEvent.click(dialog.getByRole('button', { name: 'Vorher sichern' }));
+    fireEvent.click(await dialog.findByRole('button', { name: 'Anlegen' }));
+    fireEvent.click(dialog.getByRole('button', { name: 'Abbrechen' }));
+    await backupWhileCreating(await openDialog());
   });
 
   it('ein während einer fremden Gesamtlöschung wartender Tab legt den gelöschten Speicher nicht neu an', async () => {
@@ -208,7 +263,7 @@ describe('Gesamtlöschung', () => {
     fireEvent.click(dialog.getByRole('button', { name: 'Abbrechen' }));
     expect(screen.queryByText(/Löschung abgebrochen/)).toBeNull();
     finishRename({ ok: true, value: { ...VERBUND, name: 'Neuer Name' } });
-    expect(await screen.findByText('Löschung abgebrochen. Vorbereitend gespeicherte Eingaben bleiben erhalten.')).toBeInTheDocument();
+    expect(await screen.findByText(ABORTED, { selector: 'p' })).toBeInTheDocument();
     expect(downloads).toHaveLength(0);
   });
 
@@ -246,9 +301,13 @@ describe('Gesamtlöschung', () => {
     let entered = false;
     void createWorkspaceSession(locks).register().then(() => { entered = true; });
     const reads = listVerbuende.mock.calls.length;
+    const region = statusRegion();
+    expect(region).toBeEmptyDOMElement();
 
     final({ ok: true, value: undefined });
     expect(await screen.findByText('Lokale Daten gelöscht')).toBeInTheDocument();
+    expect(statusRegion()).toBe(region);
+    expect(region).toHaveTextContent('Lokale Daten gelöscht. Der gesamte Arbeitsbestand wurde aus diesem Browserprofil entfernt. Exportierte Dateien bleiben erhalten.');
     expect(screen.queryByRole('alertdialog')).toBeNull();
     expect(screen.getByRole('heading', { level: 1, name: 'Informationsverbünde' })).toHaveFocus();
     expect(screen.getByText('0 Informationsverbünde')).toBeInTheDocument();

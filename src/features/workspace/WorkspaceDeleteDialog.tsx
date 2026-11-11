@@ -46,11 +46,13 @@ const WAITING = {
  * Bestätigung der Gesamtlöschung mit Sicherungsangebot. Öffnen und Abbrechen schreiben nichts; erst
  * „Vorher sichern“ speichert oder klärt offene Eingaben. Nach dem Start bietet der Dialog keinen Abbruch.
  */
-export function WorkspaceDeleteDialog({ rowDrafts, createDraft, onCreateDraftDone, onPrepared, onClose }: Readonly<{
+export function WorkspaceDeleteDialog({ rowDrafts, createDraft, creatingRef, onCreateDraftDone, onPrepared, onClose }: Readonly<{
   /** Offene Umbenennungen der Übersichtszeilen. */
   rowDrafts: Map<string, string>;
   /** Eingabe im Anlegeformular der Übersicht. */
   createDraft: { readonly current: string };
+  /** Laufende Anlage aus Anlegeformular oder Klärungszeile; „Vorher sichern“ wartet sie ab, bevor es `createDraft` liest. */
+  creatingRef: { current: Promise<unknown> | null };
   /** `name` aus dem Anlegeformular wurde angelegt oder verworfen; eine danach geänderte Eingabe bleibt stehen. */
   onCreateDraftDone: (name: string) => void;
   /** „Vorher sichern“ hat eine Eingabe gespeichert; kann nach dem Schließen eintreffen, wenn die Speicherung noch lief. */
@@ -122,6 +124,8 @@ export function WorkspaceDeleteDialog({ rowDrafts, createDraft, onCreateDraftDon
 
   const backupFirst = async () => {
     setBackup({ step: 'saving' });
+    await creatingRef.current;
+    if (closed.current) return;
     if (!await flushAutosaves()) { setBackup({ step: 'save-failed' }); return; }
     await continueBackup();
   };
@@ -137,12 +141,13 @@ export function WorkspaceDeleteDialog({ rowDrafts, createDraft, onCreateDraftDon
 
   const saveNewName = async (name: string) => {
     setBackup({ step: 'saving' });
-    const result = await createVerbund(name);
-    if (result.ok) {
-      onPrepared();
-      onCreateDraftDone(name);
-    }
-    await continueBackup(result.ok ? undefined : NEW_NAME);
+    const run = (async () => {
+      const result = await createVerbund(name);
+      if (result.ok) { onPrepared(); onCreateDraftDone(name); }
+      return result.ok;
+    })();
+    creatingRef.current = run;
+    await continueBackup(await run ? undefined : NEW_NAME);
   };
 
   const discardNewName = (name: string) => {

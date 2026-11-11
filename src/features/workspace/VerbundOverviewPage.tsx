@@ -15,6 +15,9 @@ import { WorkspaceDeleteDialog } from '@/features/workspace/WorkspaceDeleteDialo
 
 const INPUT = `min-h-touch w-full rounded-md border border-[var(--color-border-strong)] bg-[var(--color-surface-base)] px-3 py-2 text-base text-[var(--color-text-primary)] shadow-sm placeholder:text-[var(--color-text-muted)] focus-visible:border-[var(--color-focus-ring)] sm:text-sm desktop:min-h-0 ${FOCUS_RING}`;
 const ROW_BUTTON = 'min-h-touch desktop:min-h-0';
+const DELETED_TITLE = 'Lokale Daten gelöscht';
+const DELETED_TEXT = 'Der gesamte Arbeitsbestand wurde aus diesem Browserprofil entfernt. Exportierte Dateien bleiben erhalten.';
+const ABORTED_TEXT = 'Löschung abgebrochen. Vorbereitend gespeicherte Eingaben bleiben erhalten.';
 
 /** Namensfeld für Anlegen und Umbenennen; `onCancel` macht daraus ein Umbenennen-Formular. */
 export function NameForm({ label, submitLabel, initial = '', disabled, onSubmit, onCancel, onChange }: Readonly<{
@@ -152,6 +155,8 @@ export function VerbundOverviewPage() {
   const [rowDrafts] = useState(() => new Map<string, string>());
   // Eingabe im Anlegeformular; „Vorher sichern“ legt sie zum Anlegen oder Verwerfen vor.
   const createDraft = useRef('');
+  // Laufende Anlage aus Anlegeformular oder Klärungszeile; „Vorher sichern“ wartet sie ab, bevor es den Namen zur Klärung liest.
+  const creating = useRef<Promise<unknown> | null>(null);
   const [, rerender] = useReducer((value: number) => value + 1, 0);
   const setRowDraft = (verbundId: string, draft: string | null) => {
     if (draft === null) rowDrafts.delete(verbundId);
@@ -175,6 +180,11 @@ export function VerbundOverviewPage() {
     }
   }
   const count = verbuende?.length ?? 0;
+  const aborted = prepared && !deleteShown && !deleted;
+  let statusText = '';
+  if (deleted) statusText = `${DELETED_TITLE}. ${DELETED_TEXT}`;
+  else if (aborted) statusText = ABORTED_TEXT;
+  else if (restored) statusText = `Wiederhergestellt: ${restored.text}`;
 
   useEffect(() => {
     if (restoreFile || deleteShown || !focusTarget.current) return;
@@ -228,19 +238,19 @@ export function VerbundOverviewPage() {
 
         <WorkspaceNotices />
 
-        {/* S6819: <output> trägt die implizite Rolle "status". Sie steht vorab und außerhalb des Layoutflusses,
-            damit die Ergebnismeldung angesagt wird, ohne dass die leere Fläche einen Abstand erzeugt. */}
-        <output className="sr-only">{restored ? `Wiederhergestellt: ${restored.text}` : ''}</output>
+        {/* S6819: <output> trägt die implizite Rolle "status". Die eine Region steht vorab und außerhalb des Layoutflusses
+            und sagt Lösch-, Abbruch- und Wiederherstellungsmeldung an; die sichtbaren Flächen sind aria-hidden-Spiegel. */}
+        <output className="sr-only">{statusText}</output>
         {deleted && (
-          <output className="block rounded-md border border-[var(--color-border-strong)] bg-[var(--color-surface-base)] p-4">
-            <span className="block text-sm font-semibold text-[var(--color-text-primary)]">Lokale Daten gelöscht</span>
-            <span className="mt-1 block text-sm text-[var(--color-text-secondary)]">Der gesamte Arbeitsbestand wurde aus diesem Browserprofil entfernt. Exportierte Dateien bleiben erhalten.</span>
-          </output>
+          <div aria-hidden="true" className="block rounded-md border border-[var(--color-border-strong)] bg-[var(--color-surface-base)] p-4">
+            <span className="block text-sm font-semibold text-[var(--color-text-primary)]">{DELETED_TITLE}</span>
+            <span className="mt-1 block text-sm text-[var(--color-text-secondary)]">{DELETED_TEXT}</span>
+          </div>
         )}
-        {prepared && !deleteShown && !deleted && (
-          <output className="block rounded-md border border-[var(--color-border-strong)] bg-[var(--color-surface-base)] p-4 text-sm text-[var(--color-text-primary)]">
-            Löschung abgebrochen. Vorbereitend gespeicherte Eingaben bleiben erhalten.
-          </output>
+        {aborted && (
+          <p aria-hidden="true" className="block rounded-md border border-[var(--color-border-strong)] bg-[var(--color-surface-base)] p-4 text-sm text-[var(--color-text-primary)]">
+            {ABORTED_TEXT}
+          </p>
         )}
         {restored && (
           <div aria-hidden="true" className="rounded-md border border-[var(--color-border-strong)] bg-[var(--color-surface-base)] p-4">
@@ -258,10 +268,14 @@ export function VerbundOverviewPage() {
               submitLabel="Anlegen"
               disabled={!ready || !writable}
               onChange={(name) => { createDraft.current = name; }}
-              onSubmit={async (name) => {
-                const created = (await createVerbund(name)).ok;
-                if (created) createDraft.current = '';
-                return created;
+              onSubmit={(name) => {
+                const run = (async () => {
+                  const created = (await createVerbund(name)).ok;
+                  if (created) createDraft.current = '';
+                  return created;
+                })();
+                creating.current = run;
+                return run;
               }}
             />
           </div>
@@ -318,6 +332,7 @@ export function VerbundOverviewPage() {
         <WorkspaceDeleteDialog
           rowDrafts={rowDrafts}
           createDraft={createDraft}
+          creatingRef={creating}
           onCreateDraftDone={(name) => {
             // Ein nach dem Start von „Anlegen“ getippter Name bleibt im Formular.
             if (createDraft.current.trim() !== name) return;
