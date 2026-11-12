@@ -212,6 +212,42 @@ describe('Gesamtlöschung', () => {
     expect(screen.getByLabelText('Name')).toHaveValue('Rechenzentrum');
   });
 
+  it('ein während der Anlage getippter Name bleibt im Formular und wird vor der Sicherung zur Klärung vorgelegt', async () => {
+    let finishCreate: (result: WorkspaceResult<WorkspaceVerbund>) => void = () => undefined;
+    const createVerbund = vi.fn(() => new Promise<WorkspaceResult<WorkspaceVerbund>>((resolve) => { finishCreate = resolve; }));
+    renderWith(fakePort({ createVerbund }));
+    await screen.findByRole('link', { name: VERBUND.name });
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Labor-Review' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Anlegen' }));
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Rechenzentrum-Review' } });
+    const dialog = await openDialog();
+    await waitFor(() => expect(dialog.getByRole('button', { name: 'Vorher sichern' })).toBeEnabled());
+    fireEvent.click(dialog.getByRole('button', { name: 'Vorher sichern' }));
+    await act(async () => { finishCreate({ ok: true, value: { ...VERBUND, name: 'Labor-Review' } }); await Promise.resolve(); });
+    expect(await dialog.findByText('„Rechenzentrum-Review“', { exact: false })).toBeInTheDocument();
+    expect(downloads).toHaveLength(0);
+    fireEvent.click(dialog.getByRole('button', { name: 'Abbrechen' }));
+    expect(screen.getByLabelText('Name')).toHaveValue('Rechenzentrum-Review');
+    expect(createVerbund).toHaveBeenCalledExactlyOnceWith('Labor-Review');
+  });
+
+  it('das Formular legt einen Namen nicht erneut an, solange die Klärungszeile ihn nach dem Abbruch noch anlegt', async () => {
+    let finishCreate: (result: WorkspaceResult<WorkspaceVerbund>) => void = () => undefined;
+    const createVerbund = vi.fn(() => new Promise<WorkspaceResult<WorkspaceVerbund>>((resolve) => { finishCreate = resolve; }));
+    renderWith(fakePort({ createVerbund }));
+    await screen.findByRole('link', { name: VERBUND.name });
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Labor' } });
+    const dialog = await openDialog();
+    await waitFor(() => expect(dialog.getByRole('button', { name: 'Vorher sichern' })).toBeEnabled());
+    fireEvent.click(dialog.getByRole('button', { name: 'Vorher sichern' }));
+    fireEvent.click(await dialog.findByRole('button', { name: 'Anlegen' }));
+    fireEvent.click(dialog.getByRole('button', { name: 'Abbrechen' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Anlegen' }));
+    await act(async () => { finishCreate({ ok: true, value: { ...VERBUND, name: 'Labor' } }); await Promise.resolve(); });
+    await waitFor(() => expect(screen.getByLabelText('Name')).toHaveValue(''));
+    expect(createVerbund).toHaveBeenCalledExactlyOnceWith('Labor');
+  });
+
   it('„Vorher sichern“ wartet eine laufende Anlage aus dem Formular ab und sichert den Verbund genau einmal', async () => {
     const backupWhileCreating = await renderWithPendingCreate();
     fireEvent.click(screen.getByRole('button', { name: 'Anlegen' }));

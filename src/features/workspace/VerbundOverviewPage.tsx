@@ -11,7 +11,7 @@ import { isVerbundName, type WorkspaceVerbund } from '@/domain/workspaceModel';
 import { FOCUS_RING, OriginLabel } from '@/features/workspace/DocumentMarks';
 import { WorkspaceNotices, useBackupExport } from '@/features/workspace/WorkspaceNotices';
 import { RestoreSheet, type RestoreDone } from '@/features/workspace/RestoreSheet';
-import { WorkspaceDeleteDialog } from '@/features/workspace/WorkspaceDeleteDialog';
+import { WorkspaceDeleteDialog, type CreateRun } from '@/features/workspace/WorkspaceDeleteDialog';
 
 const INPUT = `min-h-touch w-full rounded-md border border-[var(--color-border-strong)] bg-[var(--color-surface-base)] px-3 py-2 text-base text-[var(--color-text-primary)] shadow-sm placeholder:text-[var(--color-text-muted)] focus-visible:border-[var(--color-focus-ring)] sm:text-sm desktop:min-h-0 ${FOCUS_RING}`;
 const ROW_BUTTON = 'min-h-touch desktop:min-h-0';
@@ -38,9 +38,11 @@ export function NameForm({ label, submitLabel, initial = '', disabled, onSubmit,
     event.preventDefault();
     if (saving || !isVerbundName(name)) return;
     setSaving(true);
-    void onSubmit(name.trim()).then((saved) => {
+    const submitted = name.trim();
+    void onSubmit(submitted).then((saved) => {
       setSaving(false);
-      if (saved && !onCancel) setName('');
+      // Ein während des Speicherns getippter Name bleibt stehen.
+      if (saved && !onCancel) setName((current) => (current.trim() === submitted ? '' : current));
     });
   };
   return (
@@ -156,7 +158,23 @@ export function VerbundOverviewPage() {
   // Eingabe im Anlegeformular; „Vorher sichern“ legt sie zum Anlegen oder Verwerfen vor.
   const createDraft = useRef('');
   // Laufende Anlage aus Anlegeformular oder Klärungszeile; „Vorher sichern“ wartet sie ab, bevor es den Namen zur Klärung liest.
-  const creating = useRef<Promise<unknown> | null>(null);
+  const creating = useRef<CreateRun | null>(null);
+  /** Legt `name` an; läuft dieselbe Eingabe schon über den anderen Einstieg, wird deren Ergebnis abgewartet statt erneut angelegt. */
+  const createOnce = (name: string, onCreated: () => void): Promise<boolean> => {
+    const previous = creating.current;
+    const entry: CreateRun = {
+      name,
+      run: (async () => {
+        if (previous?.name === name && await previous.run) return true;
+        const created = (await createVerbund(name)).ok;
+        if (created) onCreated();
+        return created;
+      })(),
+    };
+    creating.current = entry;
+    void entry.run.finally(() => { if (creating.current === entry) creating.current = null; });
+    return entry.run;
+  };
   const [, rerender] = useReducer((value: number) => value + 1, 0);
   const setRowDraft = (verbundId: string, draft: string | null) => {
     if (draft === null) rowDrafts.delete(verbundId);
@@ -270,15 +288,10 @@ export function VerbundOverviewPage() {
               submitLabel="Anlegen"
               disabled={!ready || !writable}
               onChange={(name) => { createDraft.current = name; }}
-              onSubmit={(name) => {
-                const run = (async () => {
-                  const created = (await createVerbund(name)).ok;
-                  if (created) createDraft.current = '';
-                  return created;
-                })();
-                creating.current = run;
-                return run;
-              }}
+              onSubmit={(name) => createOnce(name, () => {
+                // Ein nach dem Absenden getippter Name bleibt für Formular und Klärung erhalten.
+                if (createDraft.current.trim() === name) createDraft.current = '';
+              })}
             />
           </div>
         </section>
@@ -335,6 +348,7 @@ export function VerbundOverviewPage() {
           rowDrafts={rowDrafts}
           createDraft={createDraft}
           creatingRef={creating}
+          createName={createOnce}
           onCreateDraftDone={(name) => {
             // Ein nach dem Start von „Anlegen“ getippter Name bleibt im Formular.
             if (createDraft.current.trim() !== name) return;

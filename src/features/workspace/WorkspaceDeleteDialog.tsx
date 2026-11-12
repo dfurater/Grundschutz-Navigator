@@ -17,6 +17,9 @@ import { useBackupExport } from '@/features/workspace/WorkspaceNotices';
 /** Stabiler Code der gesperrten Gesamtlöschung ohne belastbare Prüfung auf weitere Tabs. */
 export const WORKSPACE_SESSION_UNAVAILABLE = 'WORKSPACE_SESSION_UNAVAILABLE';
 
+/** Laufende Anlage eines Namens aus Anlegeformular oder Klärungszeile; `run` liefert, ob er angelegt ist. */
+export type CreateRun = { readonly name: string; readonly run: Promise<boolean> };
+
 const WHOLE_WORKSPACE: RestoreScope = { kind: 'workspace', documents: [] };
 /** Markiert den gescheiterten Versuch, den Namen im Anlegeformular anzulegen. */
 const NEW_NAME = { kind: 'new-name' } as const;
@@ -46,13 +49,15 @@ const WAITING = {
  * Bestätigung der Gesamtlöschung mit Sicherungsangebot. Öffnen und Abbrechen schreiben nichts; erst
  * „Vorher sichern“ speichert oder klärt offene Eingaben. Nach dem Start bietet der Dialog keinen Abbruch.
  */
-export function WorkspaceDeleteDialog({ rowDrafts, createDraft, creatingRef, onCreateDraftDone, onPrepared, onClose }: Readonly<{
+export function WorkspaceDeleteDialog({ rowDrafts, createDraft, creatingRef, createName, onCreateDraftDone, onPrepared, onClose }: Readonly<{
   /** Offene Umbenennungen der Übersichtszeilen. */
   rowDrafts: Map<string, string>;
   /** Eingabe im Anlegeformular der Übersicht. */
   createDraft: { readonly current: string };
   /** Laufende Anlage aus Anlegeformular oder Klärungszeile; „Vorher sichern“ wartet sie ab, bevor es `createDraft` liest. */
-  creatingRef: { current: Promise<unknown> | null };
+  creatingRef: { readonly current: CreateRun | null };
+  /** Legt einen Namen über denselben Weg wie das Anlegeformular an; `onCreated` läuft vor dem Ende der Anlage. */
+  createName: (name: string, onCreated: () => void) => Promise<boolean>;
   /** `name` aus dem Anlegeformular wurde angelegt oder verworfen; eine danach geänderte Eingabe bleibt stehen. */
   onCreateDraftDone: (name: string) => void;
   /** „Vorher sichern“ hat eine Eingabe gespeichert; kann nach dem Schließen eintreffen, wenn die Speicherung noch lief. */
@@ -62,7 +67,7 @@ export function WorkspaceDeleteDialog({ rowDrafts, createDraft, creatingRef, onC
 }>) {
   const {
     status, verbuende, writable, deletion, enterWorkspaceDeletion, leaveWorkspaceDeletion, deleteWorkspace, dismissDeletionFailure,
-    flushAutosaves, pendingRestoreInputs, discardRestoreInput, renameVerbund, createVerbund,
+    flushAutosaves, pendingRestoreInputs, discardRestoreInput, renameVerbund,
   } = useWorkspace();
   const { exportBackup } = useBackupExport();
   const navigate = useNavigate();
@@ -124,7 +129,7 @@ export function WorkspaceDeleteDialog({ rowDrafts, createDraft, creatingRef, onC
 
   const backupFirst = async () => {
     setBackup({ step: 'saving' });
-    await creatingRef.current;
+    await creatingRef.current?.run;
     if (closed.current) return;
     if (!await flushAutosaves()) { setBackup({ step: 'save-failed' }); return; }
     await continueBackup();
@@ -141,13 +146,8 @@ export function WorkspaceDeleteDialog({ rowDrafts, createDraft, creatingRef, onC
 
   const saveNewName = async (name: string) => {
     setBackup({ step: 'saving' });
-    const run = (async () => {
-      const result = await createVerbund(name);
-      if (result.ok) { onPrepared(); onCreateDraftDone(name); }
-      return result.ok;
-    })();
-    creatingRef.current = run;
-    await continueBackup(await run ? undefined : NEW_NAME);
+    const created = await createName(name, () => { onPrepared(); onCreateDraftDone(name); });
+    await continueBackup(created ? undefined : NEW_NAME);
   };
 
   const discardNewName = (name: string) => {
