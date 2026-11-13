@@ -483,9 +483,12 @@ export function WorkspaceProvider({ open = openWorkspaceStore, session: provided
     pendingRestoreInputs: async (scope, rowDrafts) => {
       // Die Gesamtlöschung hat alle Sitzungseingaben verworfen; ein danach geöffneter Speicher ist leer.
       if (status === 'deleted') return { ok: true, value: [] };
-      const listed = port ? await port.listDocuments().catch(storageFailed) : storageFailed();
+      if (!port) return storageFailed();
+      // Gespeicherte Namen frisch lesen: Eine während des Wartens abgeschlossene Umbenennung fehlt im gerenderten Stand.
+      const [stored, listed] = await Promise.all([port.listVerbuende().catch(storageFailed), port.listDocuments().catch(storageFailed)]);
+      if (!stored.ok) return stored;
       if (!listed.ok) return listed;
-      return { ok: true, value: collectRestoreInputs({ scope, renameDrafts, rowDrafts, importTargets, verbuende: verbuende ?? [], documents: listed.value }) };
+      return { ok: true, value: collectRestoreInputs({ scope, renameDrafts, rowDrafts, importTargets, verbuende: stored.value, documents: listed.value }) };
     },
     discardRestoreInput: (input, rowDrafts) => {
       if (input.kind !== 'rename') {

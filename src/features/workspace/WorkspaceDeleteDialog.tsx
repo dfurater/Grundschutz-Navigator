@@ -73,6 +73,7 @@ export function WorkspaceDeleteDialog({ rowDrafts, createDraft, writes, track, c
   const dialogRef = useRef<HTMLDialogElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
   const backupHeading = useRef<HTMLHeadingElement>(null);
+  const clarifyHeading = useRef<HTMLHeadingElement>(null);
   const titleId = useId();
   const descriptionId = useId();
   const [check, setCheck] = useState<ExclusiveEntry['status'] | 'checking'>('checking');
@@ -95,10 +96,11 @@ export function WorkspaceDeleteDialog({ rowDrafts, createDraft, writes, track, c
   }, []);
   // Ohne Aktion im Dialog erhält die Überschrift den Fokus, damit der Zustand angesagt wird.
   useEffect(() => { if (started) heading.current?.focus(); }, [started, deletion]);
-  // Mit einer erledigten Klärungszeile verschwindet ihr fokussierter Button; der Fokus bleibt im Sicherungsabschnitt.
+  // Die Klärung sagt mit ihrer Überschrift die offenen Eingaben an; verschwindet sonst der fokussierte Button, bleibt der Fokus im Sicherungsabschnitt.
   useEffect(() => {
-    if (!dialogRef.current?.contains(document.activeElement)) backupHeading.current?.focus();
-  }, [backup]);
+    if (backup.step === 'clarify') clarifyHeading.current?.focus();
+    else if (!dialogRef.current?.contains(document.activeElement)) backupHeading.current?.focus();
+  }, [backup, check]);
 
   const cancel = () => {
     if (started) return;
@@ -218,15 +220,14 @@ export function WorkspaceDeleteDialog({ rowDrafts, createDraft, writes, track, c
                   <p className="mt-2 text-xs text-[var(--color-text-secondary)]">Exportierte Dateien und ihre Kopien bleiben erhalten.</p>
                 </div>
 
-                {check === 'other-sessions' && (
-                  <div className="mb-3 rounded-md border border-[var(--color-border-strong)] p-3">
-                    <output className="block">
-                      <span className="block font-semibold text-[var(--color-warning-text)]">Andere Arbeitsbereich-Tabs schließen</span>
-                      <span className="mt-1 block">Sichern Sie dort offene Arbeit und schließen Sie die Tabs. Danach werden hier Sicherung und Löschung freigegeben.</span>
-                    </output>
-                    <Button variant="secondary" className={`mt-2 ${BUTTON}`} onClick={runCheck}>Erneut prüfen</Button>
-                  </div>
-                )}
+                {/* Die Statusregion ist schon vor dem Prüfergebnis eingehängt; „Erneut prüfen“ nennt die Sperre zusätzlich beim Fokus. */}
+                <div className={check === 'other-sessions' ? 'mb-3 rounded-md border border-[var(--color-border-strong)] p-3' : undefined}>
+                  <output id={`${titleId}-tabs`} className="block">
+                    {check === 'other-sessions' && <span className="block font-semibold text-[var(--color-warning-text)]">Andere Arbeitsbereich-Tabs schließen</span>}
+                    {check === 'other-sessions' && <span className="mt-1 block">Sichern Sie dort offene Arbeit und schließen Sie die Tabs. Danach werden hier Sicherung und Löschung freigegeben.</span>}
+                  </output>
+                  {check === 'other-sessions' && <Button variant="secondary" className={`mt-2 ${BUTTON}`} aria-describedby={`${titleId}-tabs`} onClick={runCheck}>Erneut prüfen</Button>}
+                </div>
                 {check === 'unavailable' && (
                   <div role="alert" data-diagnostic={WORKSPACE_SESSION_UNAVAILABLE} className="mb-3 rounded-md border border-[var(--color-border-strong)] p-3">
                     <h3 className="font-semibold">Löschung hier nicht verfügbar</h3>
@@ -246,7 +247,7 @@ export function WorkspaceDeleteDialog({ rowDrafts, createDraft, writes, track, c
 
                 {backup.step === 'clarify' && (
                   <div className="rounded-md border border-[var(--color-border-strong)] p-3">
-                    <h3 className="font-semibold">{openInputs === 1 ? 'Eine offene Eingabe klären' : `${openInputs} offene Eingaben klären`}</h3>
+                    <h3 ref={clarifyHeading} tabIndex={-1} className="font-semibold focus:outline-none">{openInputs === 1 ? 'Eine offene Eingabe klären' : `${openInputs} offene Eingaben klären`}</h3>
                     <ul className="mt-1 divide-y divide-[var(--color-border-subtle)]">
                       {newName && (
                         <ClarifyItem label={<><span className="font-semibold">Neuer Informationsverbund</span> · „{newName}“</>} failed={backup.failed === NEW_NAME}>

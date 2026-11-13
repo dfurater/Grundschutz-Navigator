@@ -107,8 +107,13 @@ describe('Gesamtlöschung', () => {
     expect(dialog.getByRole('button', { name: CONFIRM })).toBeDisabled();
     expect(dialog.getByRole('button', { name: 'Vorher sichern' })).toBeDisabled();
     other.leave();
-    fireEvent.click(dialog.getByRole('button', { name: 'Erneut prüfen' }));
+    const recheck = dialog.getByRole('button', { name: 'Erneut prüfen' });
+    expect(recheck).toHaveAccessibleDescription(/^Andere Arbeitsbereich-Tabs schließen/);
+    recheck.focus();
+    fireEvent.click(recheck);
     await waitFor(() => expect(dialog.getByRole('button', { name: CONFIRM })).toBeEnabled());
+    // Der verschwundene Button gibt den Fokus an den Sicherungsabschnitt ab, nicht an die Seite.
+    expect(dialog.getByRole('heading', { name: 'Vor dem Löschen sichern' })).toHaveFocus();
     expect(deleteAll).not.toHaveBeenCalled();
   });
 
@@ -159,10 +164,13 @@ describe('Gesamtlöschung', () => {
     expect(await screen.findByText(ABORTED, { selector: 'p' })).toBeInTheDocument();
     expect(statusRegion()).toBe(region);
     expect(region).toHaveTextContent(ABORTED);
+    expect(screen.getByRole('button', { name: ENTRY })).toHaveFocus();
+    expect(screen.getByRole('button', { name: ENTRY })).toHaveAccessibleDescription(ABORTED);
     expect(deleteAll).not.toHaveBeenCalled();
   });
 
-  it('„Vorher sichern“ wartet eine laufende Zeilenumbenennung ab und legt einen danach getippten Namen zur Klärung vor', async () => {
+  // Auch die Rückkehr zum ursprünglichen Namen ist nach der gespeicherten Umbenennung eine offene Eingabe.
+  it.each(['Rechenzentrum-Review', VERBUND.name])('„Vorher sichern“ wartet eine laufende Zeilenumbenennung ab und legt den danach getippten Namen „%s“ zur Klärung vor', async (typed) => {
     let verbund = VERBUND;
     let finishRename: () => void = () => undefined;
     const renameVerbund = vi.fn((_verbundId: string, name: string) => new Promise<WorkspaceResult<WorkspaceVerbund>>((resolve) => {
@@ -173,7 +181,7 @@ describe('Gesamtlöschung', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Umbenennen' }));
     fireEvent.change(screen.getByLabelText('Neuer Name'), { target: { value: 'Labor-Review' } });
     fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
-    fireEvent.change(screen.getByLabelText('Neuer Name'), { target: { value: 'Rechenzentrum-Review' } });
+    fireEvent.change(screen.getByLabelText('Neuer Name'), { target: { value: typed } });
     fireEvent.click(screen.getByRole('button', { name: ENTRY }));
     const dialog = within(await screen.findByRole('alertdialog'));
     await waitFor(() => expect(dialog.getByRole('button', { name: 'Vorher sichern' })).toBeEnabled());
@@ -181,10 +189,10 @@ describe('Gesamtlöschung', () => {
     await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
     expect(dialog.queryByText('Eine offene Eingabe klären')).toBeNull();
     await act(async () => { finishRename(); await Promise.resolve(); });
-    expect(await dialog.findByText(/→ „Rechenzentrum-Review“/)).toBeInTheDocument();
+    expect(await dialog.findByText(`„Labor-Review“ → „${typed}“`, { exact: false })).toBeInTheDocument();
     expect(downloads).toHaveLength(0);
     fireEvent.click(dialog.getByRole('button', { name: 'Abbrechen' }));
-    expect(screen.getByLabelText('Neuer Name')).toHaveValue('Rechenzentrum-Review');
+    expect(screen.getByLabelText('Neuer Name')).toHaveValue(typed);
     expect(renameVerbund).toHaveBeenCalledExactlyOnceWith(VERBUND.verbundId, 'Labor-Review');
   });
 
@@ -237,6 +245,8 @@ describe('Gesamtlöschung', () => {
       await waitFor(() => expect(dialog.getByRole('button', { name: 'Vorher sichern' })).toBeEnabled());
       fireEvent.click(dialog.getByRole('button', { name: 'Vorher sichern' }));
       expect(await dialog.findByText(`„${name}“`, { exact: false })).toBeInTheDocument();
+      expect(dialog.getByRole('heading', { name: 'Eine offene Eingabe klären' })).toHaveFocus();
+      expect(dialog.getByRole('group', { name: `Neuer Informationsverbund · „${name}“` })).toContainElement(dialog.getByRole('button', { name: decision }));
       expect(downloads).toHaveLength(0);
       const decide = dialog.getByRole('button', { name: decision });
       decide.focus();
@@ -404,7 +414,9 @@ describe('Gesamtlöschung', () => {
     expect(statusRegion()).toBe(region);
     expect(region).toHaveTextContent('Lokale Daten gelöscht. Der gesamte Arbeitsbestand wurde aus diesem Browserprofil entfernt. Exportierte Dateien bleiben erhalten.');
     expect(screen.queryByRole('alertdialog')).toBeNull();
-    expect(screen.getByRole('heading', { level: 1, name: 'Informationsverbünde' })).toHaveFocus();
+    const pageHeading = screen.getByRole('heading', { level: 1, name: 'Informationsverbünde' });
+    expect(pageHeading).toHaveFocus();
+    expect(pageHeading).toHaveAccessibleDescription(/^Lokale Daten gelöscht\./);
     expect(screen.getByText('0 Informationsverbünde')).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: VERBUND.name })).toBeNull();
     expect(screen.queryByRole('button', { name: ENTRY })).toBeNull();

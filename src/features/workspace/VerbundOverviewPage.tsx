@@ -200,6 +200,7 @@ export function VerbundOverviewPage() {
   const fileInput = useRef<HTMLInputElement>(null);
   const restoreButton = useRef<HTMLButtonElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
+  const statusId = useId();
   const ready = (status === 'ready' || deleted) && verbuende !== null;
   // Mit der Gesamtlöschung fallen auch die Eingaben und Meldungen der Seite zum gelöschten Bestand.
   if (deleted !== wasDeleted) {
@@ -260,7 +261,8 @@ export function VerbundOverviewPage() {
       {/* Die Übersicht bleibt eingehängt, damit offene Formulareingaben das Prüfblatt überstehen. */}
       <div hidden={restoreFile !== null} className="mx-auto w-full max-w-3xl space-y-4 px-4 py-6 sm:px-6">
         <header className="space-y-2">
-          <h1 ref={heading} tabIndex={-1} className="type-page-title focus:outline-none">Informationsverbünde</h1>
+          {/* Ein gleichzeitiger Fokuswechsel verdrängt die Statusansage; Überschrift und Löscheinstieg tragen sie als Beschreibung mit. */}
+          <h1 ref={heading} tabIndex={-1} aria-describedby={statusText ? statusId : undefined} className="type-page-title focus:outline-none">Informationsverbünde</h1>
           <div className="flex flex-wrap items-center gap-2">
             <OriginLabel />
             <span aria-live="polite" className="text-xs font-medium tabular-nums text-[var(--color-text-secondary)]">
@@ -273,7 +275,7 @@ export function VerbundOverviewPage() {
 
         {/* S6819: <output> trägt die implizite Rolle "status". Die eine Region steht vorab und außerhalb des Layoutflusses
             und sagt Lösch-, Abbruch- und Wiederherstellungsmeldung an; die sichtbaren Flächen sind aria-hidden-Spiegel. */}
-        <output className="sr-only">{statusText}</output>
+        <output id={statusId} className="sr-only">{statusText}</output>
         {deleted && (
           <div aria-hidden="true" className="block rounded-md border border-[var(--color-border-strong)] bg-[var(--color-surface-base)] p-4">
             <span className="block text-sm font-semibold text-[var(--color-text-primary)]">{DELETED_TITLE}</span>
@@ -349,7 +351,7 @@ export function VerbundOverviewPage() {
                 <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">Lokale Daten löschen</h3>
                 <p className="mt-1 text-xs text-[var(--color-text-secondary)]">Alle Informationsverbünde dieses Browserprofils entfernen.</p>
               </div>
-              <Button ref={deleteButton} variant="danger" className={`${ROW_BUTTON} shrink-0`} disabled={status !== 'ready'} onClick={() => { setPrepared(false); setDeleteOpen(true); }}>
+              <Button ref={deleteButton} variant="danger" className={`${ROW_BUTTON} shrink-0`} disabled={status !== 'ready'} aria-describedby={aborted ? statusId : undefined} onClick={() => { setPrepared(false); setDeleteOpen(true); }}>
                 Alle lokalen Daten löschen…
               </Button>
             </div>

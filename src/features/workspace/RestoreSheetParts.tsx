@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import { Button } from '@/components/Button';
 import { ROOT_TYPE_LABELS } from '@/domain/workspaceStations';
 import { isVerbundName } from '@/domain/workspaceModel';
@@ -168,11 +168,13 @@ export function PreviewTable({ preview }: Readonly<{ preview: RestorePreview }>)
 
 /** Zeile einer Klärungsliste: Beschriftung, Aktionen und die Meldung einer gescheiterten Speicherung. */
 export function ClarifyItem({ label, failed, children }: Readonly<{ label: ReactNode; failed: boolean; children: ReactNode }>) {
+  const labelId = useId();
   return (
     <li className="space-y-2 py-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="min-w-0 break-words text-sm text-[var(--color-text-primary)]">{label}</p>
-        <div className="flex gap-1">{children}</div>
+        <p id={labelId} className="min-w-0 break-words text-sm text-[var(--color-text-primary)]">{label}</p>
+        {/* Die Gruppe nennt Screenreadern beim Betreten, zu welcher Eingabe die Aktionen gehören. */}
+        <fieldset aria-labelledby={labelId} className="flex gap-1">{children}</fieldset>
       </div>
       {failed && <Message tone="alert" title="Nicht gespeichert">Die Eingabe bleibt offen.</Message>}
     </li>
