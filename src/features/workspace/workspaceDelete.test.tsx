@@ -106,10 +106,15 @@ describe('Gesamtlöschung', () => {
     expect(await dialog.findByText('Andere Arbeitsbereich-Tabs schließen')).toBeInTheDocument();
     expect(dialog.getByRole('button', { name: CONFIRM })).toBeDisabled();
     expect(dialog.getByRole('button', { name: 'Vorher sichern' })).toBeDisabled();
-    other.leave();
     const recheck = dialog.getByRole('button', { name: 'Erneut prüfen' });
     expect(recheck).toHaveAccessibleDescription(/^Andere Arbeitsbereich-Tabs schließen/);
     recheck.focus();
+    // Bei fortbestehender Sperre bleiben Button und Fokus auf der Prüfung.
+    fireEvent.click(recheck);
+    await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+    expect(recheck).toHaveFocus();
+    expect(dialog.getByRole('button', { name: CONFIRM })).toBeDisabled();
+    other.leave();
     fireEvent.click(recheck);
     await waitFor(() => expect(dialog.getByRole('button', { name: CONFIRM })).toBeEnabled());
     // Der verschwundene Button gibt den Fokus an den Sicherungsabschnitt ab, nicht an die Seite.
@@ -492,6 +497,9 @@ describe('Gesamtlöschung', () => {
     fireEvent.click(dialog.getByRole('button', { name: 'Schließen' }));
     expect(screen.queryByText('Lokale Daten gelöscht')).toBeNull();
     expect(screen.getByText('Speicher nicht verfügbar', { selector: 'span' })).toBeInTheDocument();
+    // Der Löscheinstieg ist gesperrt; der Fokus geht an die Handlung der Speichermeldung.
+    expect(screen.getByRole('button', { name: ENTRY })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Neu laden' })).toHaveFocus();
     expect(deleteAll).toHaveBeenCalledTimes(1);
   });
 });

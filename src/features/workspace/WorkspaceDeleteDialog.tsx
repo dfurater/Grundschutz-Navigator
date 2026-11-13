@@ -82,10 +82,8 @@ export function WorkspaceDeleteDialog({ rowDrafts, createDraft, writes, track, c
   const closed = useRef(false);
   const started = deletion === 'deleting' || deletion === 'pending';
 
-  const runCheck = () => {
-    setCheck('checking');
-    void enterWorkspaceDeletion().then(setCheck);
-  };
+  // Die Sperrmeldung bleibt bis zum Ergebnis stehen: Bei fortbestehender Sperre behält „Erneut prüfen“ den Fokus.
+  const runCheck = () => { void enterWorkspaceDeletion().then(setCheck); };
   useEffect(() => {
     // Ein während der Löschung wieder eingehängter Dialog prüft nicht erneut.
     closed.current = false;

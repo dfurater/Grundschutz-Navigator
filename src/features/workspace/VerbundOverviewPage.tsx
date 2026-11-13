@@ -194,8 +194,9 @@ export function VerbundOverviewPage() {
     else rowDrafts.set(verbundId, draft);
     rerender();
   };
-  // Fokus nach dem Prüfblatt: Überschrift nach Erfolg, Einstieg nach Abbruch.
-  const focusTarget = useRef<'heading' | 'restore' | 'delete' | null>(null);
+  // Fokus nach Prüfblatt und Löschdialog: Überschrift nach Erfolg, Einstieg nach Abbruch, Speichermeldung nach Löschfehler.
+  const focusTarget = useRef<'heading' | 'restore' | 'delete' | 'reload' | null>(null);
+  const page = useRef<HTMLDivElement>(null);
   const deleteButton = useRef<HTMLButtonElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const restoreButton = useRef<HTMLButtonElement>(null);
@@ -220,7 +221,8 @@ export function VerbundOverviewPage() {
 
   useEffect(() => {
     if (restoreFile || deleteShown || !focusTarget.current) return;
-    ({ heading, restore: restoreButton, delete: deleteButton })[focusTarget.current].current?.focus();
+    if (focusTarget.current === 'reload') page.current?.querySelector<HTMLButtonElement>('[data-notice="storage-failed"] button')?.focus();
+    else ({ heading, restore: restoreButton, delete: deleteButton })[focusTarget.current].current?.focus();
     focusTarget.current = null;
   }, [restoreFile, deleteShown]);
 
@@ -259,7 +261,7 @@ export function VerbundOverviewPage() {
         />
       )}
       {/* Die Übersicht bleibt eingehängt, damit offene Formulareingaben das Prüfblatt überstehen. */}
-      <div hidden={restoreFile !== null} className="mx-auto w-full max-w-3xl space-y-4 px-4 py-6 sm:px-6">
+      <div ref={page} hidden={restoreFile !== null} className="mx-auto w-full max-w-3xl space-y-4 px-4 py-6 sm:px-6">
         <header className="space-y-2">
           {/* Ein gleichzeitiger Fokuswechsel verdrängt die Statusansage; Überschrift und Löscheinstieg tragen sie als Beschreibung mit. */}
           <h1 ref={heading} tabIndex={-1} aria-describedby={statusText ? statusId : undefined} className="type-page-title focus:outline-none">Informationsverbünde</h1>
@@ -375,8 +377,9 @@ export function VerbundOverviewPage() {
           onPrepared={() => setPrepared(true)}
           onClose={(confirmed) => {
             if (confirmed) setPrepared(false);
-            // Der Dialog setzt den Fokus beim Öffnen selbst; nach einem Abbruch kehrt er zum Einstieg zurück.
-            else focusTarget.current = 'delete';
+            // Der Dialog setzt den Fokus beim Öffnen selbst; nach einem Abbruch kehrt er zum Einstieg zurück,
+            // nach einem Löschfehler zu „Neu laden“, weil der Einstieg dann gesperrt ist.
+            else focusTarget.current = deletion === 'failed' ? 'reload' : 'delete';
             setDeleteOpen(false);
           }}
         />
