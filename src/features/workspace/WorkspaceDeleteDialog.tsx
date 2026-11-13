@@ -17,9 +17,6 @@ import { useBackupExport } from '@/features/workspace/WorkspaceNotices';
 /** Stabiler Code der gesperrten Gesamtlöschung ohne belastbare Prüfung auf weitere Tabs. */
 export const WORKSPACE_SESSION_UNAVAILABLE = 'WORKSPACE_SESSION_UNAVAILABLE';
 
-/** Laufende Anlage eines Namens aus Anlegeformular oder Klärungszeile; `run` liefert, ob er angelegt ist. */
-export type CreateRun = { readonly name: string; readonly run: Promise<boolean> };
-
 const WHOLE_WORKSPACE: RestoreScope = { kind: 'workspace', documents: [] };
 /** Markiert den gescheiterten Versuch, den Namen im Anlegeformular anzulegen. */
 const NEW_NAME = { kind: 'new-name' } as const;
@@ -49,13 +46,15 @@ const WAITING = {
  * Bestätigung der Gesamtlöschung mit Sicherungsangebot. Öffnen und Abbrechen schreiben nichts; erst
  * „Vorher sichern“ speichert oder klärt offene Eingaben. Nach dem Start bietet der Dialog keinen Abbruch.
  */
-export function WorkspaceDeleteDialog({ rowDrafts, createDraft, creatingRef, createName, onCreateDraftDone, onPrepared, onClose }: Readonly<{
+export function WorkspaceDeleteDialog({ rowDrafts, createDraft, writes, track, createName, onCreateDraftDone, onPrepared, onClose }: Readonly<{
   /** Offene Umbenennungen der Übersichtszeilen. */
   rowDrafts: Map<string, string>;
   /** Eingabe im Anlegeformular der Übersicht. */
   createDraft: { readonly current: string };
-  /** Laufende Anlage aus Anlegeformular oder Klärungszeile; „Vorher sichern“ wartet sie ab, bevor es `createDraft` liest. */
-  creatingRef: { readonly current: CreateRun | null };
+  /** Laufende Anlagen und Umbenennungen der Übersicht; „Vorher sichern“ wartet sie ab, bevor es offene Eingaben liest. */
+  writes: ReadonlySet<Promise<unknown>>;
+  /** Meldet eine Speicherung aus der Klärung in `writes`; sie kann den Dialog überdauern. */
+  track: <T>(run: Promise<T>) => Promise<T>;
   /** Legt einen Namen über denselben Weg wie das Anlegeformular an; `onCreated` läuft vor dem Ende der Anlage. */
   createName: (name: string, onCreated: () => void) => Promise<boolean>;
   /** `name` aus dem Anlegeformular wurde angelegt oder verworfen; eine danach geänderte Eingabe bleibt stehen. */
@@ -129,19 +128,20 @@ export function WorkspaceDeleteDialog({ rowDrafts, createDraft, creatingRef, cre
 
   const backupFirst = async () => {
     setBackup({ step: 'saving' });
-    await creatingRef.current?.run;
+    await Promise.allSettled(writes);
     if (closed.current) return;
     if (!await flushAutosaves()) { setBackup({ step: 'save-failed' }); return; }
     await continueBackup();
   };
 
+  // Jede Klärungsaktion blendet die Liste bis zum erneuten Lesen aus: Sie setzt die Sicherung genau einmal fort.
   const saveRename = async (entry: Extract<RestoreInput, { kind: 'rename' }>) => {
-    const result = await renameVerbund(entry.verbundId, entry.draft.trim());
-    if (result.ok) {
-      onPrepared();
-      discardRestoreInput(entry, rowDrafts);
-    }
-    await continueBackup(result.ok ? undefined : entry);
+    setBackup({ step: 'saving' });
+    const saved = await track(renameVerbund(entry.verbundId, entry.draft.trim()).then(({ ok }) => {
+      if (ok) { onPrepared(); discardRestoreInput(entry, rowDrafts); }
+      return ok;
+    }));
+    await continueBackup(saved ? undefined : entry);
   };
 
   const saveNewName = async (name: string) => {
@@ -151,6 +151,7 @@ export function WorkspaceDeleteDialog({ rowDrafts, createDraft, creatingRef, cre
   };
 
   const discardNewName = (name: string) => {
+    setBackup({ step: 'saving' });
     onCreateDraftDone(name);
     void continueBackup();
   };
@@ -261,7 +262,7 @@ export function WorkspaceDeleteDialog({ rowDrafts, createDraft, creatingRef, cre
                           failed={entry.kind === 'rename' && backup.failed?.kind === 'rename' && backup.failed.verbundId === entry.verbundId && backup.failed.row === entry.row}
                           writable={writable}
                           onSave={saveRename}
-                          onDiscard={() => { discardRestoreInput(entry, rowDrafts); void continueBackup(); }}
+                          onDiscard={() => { setBackup({ step: 'saving' }); discardRestoreInput(entry, rowDrafts); void continueBackup(); }}
                           onOpen={(imported) => { cancel(); void navigate(buildWorkspaceDocumentUrl(imported.verbundId, imported.localId)); }}
                         />
                       ))}

@@ -162,6 +162,65 @@ describe('Gesamtlöschung', () => {
     expect(deleteAll).not.toHaveBeenCalled();
   });
 
+  it('„Vorher sichern“ wartet eine laufende Zeilenumbenennung ab und legt einen danach getippten Namen zur Klärung vor', async () => {
+    let verbund = VERBUND;
+    let finishRename: () => void = () => undefined;
+    const renameVerbund = vi.fn((_verbundId: string, name: string) => new Promise<WorkspaceResult<WorkspaceVerbund>>((resolve) => {
+      finishRename = () => { verbund = { ...VERBUND, name }; resolve({ ok: true, value: verbund }); };
+    }));
+    renderWith(fakePort({ renameVerbund, listVerbuende: () => ok([verbund]) }));
+    await screen.findByRole('link', { name: VERBUND.name });
+    fireEvent.click(screen.getByRole('button', { name: 'Umbenennen' }));
+    fireEvent.change(screen.getByLabelText('Neuer Name'), { target: { value: 'Labor-Review' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+    fireEvent.change(screen.getByLabelText('Neuer Name'), { target: { value: 'Rechenzentrum-Review' } });
+    fireEvent.click(screen.getByRole('button', { name: ENTRY }));
+    const dialog = within(await screen.findByRole('alertdialog'));
+    await waitFor(() => expect(dialog.getByRole('button', { name: 'Vorher sichern' })).toBeEnabled());
+    fireEvent.click(dialog.getByRole('button', { name: 'Vorher sichern' }));
+    await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+    expect(dialog.queryByText('Eine offene Eingabe klären')).toBeNull();
+    await act(async () => { finishRename(); await Promise.resolve(); });
+    expect(await dialog.findByText(/→ „Rechenzentrum-Review“/)).toBeInTheDocument();
+    expect(downloads).toHaveLength(0);
+    fireEvent.click(dialog.getByRole('button', { name: 'Abbrechen' }));
+    expect(screen.getByLabelText('Neuer Name')).toHaveValue('Rechenzentrum-Review');
+    expect(renameVerbund).toHaveBeenCalledExactlyOnceWith(VERBUND.verbundId, 'Labor-Review');
+  });
+
+  it('eine Klärungsaktion sperrt die übrigen bis zum erneuten Lesen; eine Sicherungsaktion startet genau einen Download', async () => {
+    const second = { ...VERBUND, verbundId: '0b6c2a4e-1d3f-4a5b-8c7d-9e0f1a2b3c4d' as VerbundId, name: 'Zweiter Verbund' };
+    let verbuende = [VERBUND, second];
+    const finish: (() => void)[] = [];
+    const renameVerbund = vi.fn((verbundId: string, name: string) => new Promise<WorkspaceResult<WorkspaceVerbund>>((resolve) => {
+      finish.push(() => {
+        verbuende = verbuende.map((entry) => (entry.verbundId === verbundId ? { ...entry, name } : entry));
+        resolve({ ok: true, value: verbuende.find((entry) => entry.verbundId === verbundId)! });
+      });
+    }));
+    renderWith(fakePort({ renameVerbund, listVerbuende: () => ok([...verbuende]) }));
+    await screen.findByRole('link', { name: second.name });
+    fireEvent.click(screen.getAllByRole('button', { name: 'Umbenennen' })[0]);
+    fireEvent.click(screen.getByRole('button', { name: 'Umbenennen' }));
+    const [first, other] = screen.getAllByLabelText('Neuer Name');
+    fireEvent.change(first, { target: { value: 'Labor-Review' } });
+    fireEvent.change(other, { target: { value: 'Rechenzentrum-Review' } });
+    fireEvent.click(screen.getByRole('button', { name: ENTRY }));
+    const dialog = within(await screen.findByRole('alertdialog'));
+    await waitFor(() => expect(dialog.getByRole('button', { name: 'Vorher sichern' })).toBeEnabled());
+    fireEvent.click(dialog.getByRole('button', { name: 'Vorher sichern' }));
+    expect(await dialog.findByText('2 offene Eingaben klären')).toBeInTheDocument();
+    fireEvent.click(dialog.getAllByRole('button', { name: 'Speichern' })[0]);
+    expect(dialog.queryAllByRole('button', { name: /^(Speichern|Verwerfen)$/ })).toHaveLength(0);
+    await act(async () => { finish.shift()!(); await Promise.resolve(); });
+    fireEvent.click(await dialog.findByRole('button', { name: 'Speichern' }));
+    await act(async () => { finish.shift()!(); await Promise.resolve(); });
+    expect(await dialog.findByText('Download gestartet. Bewahren Sie die Datei auf.')).toBeInTheDocument();
+    await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+    expect(downloads).toHaveLength(1);
+    expect(renameVerbund).toHaveBeenCalledTimes(2);
+  });
+
   it('„Vorher sichern“ legt den Namen im Anlegeformular vor; nur ein angelegter Name steht in der Sicherung', async () => {
     const verbuende: WorkspaceVerbund[] = [VERBUND];
     const createVerbund = vi.fn((name: string) => {

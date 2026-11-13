@@ -11,13 +11,16 @@ import { isVerbundName, type WorkspaceVerbund } from '@/domain/workspaceModel';
 import { FOCUS_RING, OriginLabel } from '@/features/workspace/DocumentMarks';
 import { WorkspaceNotices, useBackupExport } from '@/features/workspace/WorkspaceNotices';
 import { RestoreSheet, type RestoreDone } from '@/features/workspace/RestoreSheet';
-import { WorkspaceDeleteDialog, type CreateRun } from '@/features/workspace/WorkspaceDeleteDialog';
+import { WorkspaceDeleteDialog } from '@/features/workspace/WorkspaceDeleteDialog';
 
 const INPUT = `min-h-touch w-full rounded-md border border-[var(--color-border-strong)] bg-[var(--color-surface-base)] px-3 py-2 text-base text-[var(--color-text-primary)] shadow-sm placeholder:text-[var(--color-text-muted)] focus-visible:border-[var(--color-focus-ring)] sm:text-sm desktop:min-h-0 ${FOCUS_RING}`;
 const ROW_BUTTON = 'min-h-touch desktop:min-h-0';
 const DELETED_TITLE = 'Lokale Daten gelöscht';
 const DELETED_TEXT = 'Der gesamte Arbeitsbestand wurde aus diesem Browserprofil entfernt. Exportierte Dateien bleiben erhalten.';
 const ABORTED_TEXT = 'Löschung abgebrochen. Vorbereitend gespeicherte Eingaben bleiben erhalten.';
+
+/** Laufende Anlage eines Namens aus Anlegeformular oder Klärungszeile; `run` liefert, ob er angelegt ist. */
+type CreateRun = { readonly name: string; readonly run: Promise<boolean> };
 
 /** Namensfeld für Anlegen und Umbenennen; `onCancel` macht daraus ein Umbenennen-Formular. */
 export function NameForm({ label, submitLabel, initial = '', disabled, onSubmit, onCancel, onChange }: Readonly<{
@@ -70,12 +73,14 @@ export function NameForm({ label, submitLabel, initial = '', disabled, onSubmit,
   );
 }
 
-function VerbundRow({ verbund, writable, rowDrafts, onRowDraft, restored, exporting, onExport, onDelete }: Readonly<{
+function VerbundRow({ verbund, writable, rowDrafts, onRowDraft, track, restored, exporting, onExport, onDelete }: Readonly<{
   verbund: WorkspaceVerbund;
   writable: boolean;
   /** Offene Zeilenumbenennungen der Seite; ein Eintrag hält das Formular dieser Zeile offen. */
   rowDrafts: Map<string, string>;
   onRowDraft: (verbundId: string, draft: string | null) => void;
+  /** Meldet eine laufende Umbenennung, damit „Vorher sichern“ sie abwartet. */
+  track: <T>(run: Promise<T>) => Promise<T>;
   /** Zuletzt wiederhergestellt; hinterlegt, bis die Seite verlassen wird. */
   restored: boolean;
   exporting: boolean;
@@ -93,15 +98,15 @@ function VerbundRow({ verbund, writable, rowDrafts, onRowDraft, restored, export
           initial={draft}
           disabled={!writable}
           onChange={(name) => rowDrafts.set(verbund.verbundId, name)}
-          onSubmit={async (name) => {
+          onSubmit={(name) => track((async () => {
             // Der neue Name ersetzt nur den Entwurf, der beim Speichern offen war; ein danach getippter bleibt.
             const sessionDraft = renameDrafts.get(verbund.verbundId);
             const result = await renameVerbund(verbund.verbundId, name);
             if (!result.ok) return false;
             if (renameDrafts.get(verbund.verbundId) === sessionDraft) renameDrafts.delete(verbund.verbundId);
-            onRowDraft(verbund.verbundId, null);
+            if (rowDrafts.get(verbund.verbundId)?.trim() === name) onRowDraft(verbund.verbundId, null);
             return true;
-          }}
+          })())}
           onCancel={() => onRowDraft(verbund.verbundId, null)}
         />
       </li>
@@ -157,8 +162,16 @@ export function VerbundOverviewPage() {
   const [rowDrafts] = useState(() => new Map<string, string>());
   // Eingabe im Anlegeformular; „Vorher sichern“ legt sie zum Anlegen oder Verwerfen vor.
   const createDraft = useRef('');
-  // Laufende Anlage aus Anlegeformular oder Klärungszeile; „Vorher sichern“ wartet sie ab, bevor es den Namen zur Klärung liest.
+  // Laufende Anlage aus Anlegeformular oder Klärungszeile; ein zweiter Einstieg mit demselben Namen schließt sich ihr an.
   const creating = useRef<CreateRun | null>(null);
+  // Laufende Anlagen und Umbenennungen; „Vorher sichern“ wartet sie ab, bevor es offene Eingaben liest.
+  const [writes] = useState(() => new Set<Promise<unknown>>());
+  const track = <T,>(run: Promise<T>): Promise<T> => {
+    writes.add(run);
+    const done = () => writes.delete(run);
+    void run.then(done, done);
+    return run;
+  };
   /** Legt `name` an; läuft dieselbe Eingabe schon über den anderen Einstieg, wird deren Ergebnis abgewartet statt erneut angelegt. */
   const createOnce = (name: string, onCreated: () => void): Promise<boolean> => {
     const previous = creating.current;
@@ -173,7 +186,7 @@ export function VerbundOverviewPage() {
     };
     creating.current = entry;
     void entry.run.finally(() => { if (creating.current === entry) creating.current = null; });
-    return entry.run;
+    return track(entry.run);
   };
   const [, rerender] = useReducer((value: number) => value + 1, 0);
   const setRowDraft = (verbundId: string, draft: string | null) => {
@@ -321,6 +334,7 @@ export function VerbundOverviewPage() {
                   writable={writable}
                   rowDrafts={rowDrafts}
                   onRowDraft={setRowDraft}
+                  track={track}
                   restored={restored?.verbundId === verbund.verbundId}
                   exporting={exporting}
                   onExport={(entry) => void exportVerbund(entry.verbundId)}
@@ -347,7 +361,8 @@ export function VerbundOverviewPage() {
         <WorkspaceDeleteDialog
           rowDrafts={rowDrafts}
           createDraft={createDraft}
-          creatingRef={creating}
+          writes={writes}
+          track={track}
           createName={createOnce}
           onCreateDraftDone={(name) => {
             // Ein nach dem Start von „Anlegen“ getippter Name bleibt im Formular.
