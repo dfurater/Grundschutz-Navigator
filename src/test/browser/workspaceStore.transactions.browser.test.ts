@@ -163,12 +163,14 @@ test('blockierte Gesamtlöschung meldet nach fester Frist eine ausstehende Lösc
   });
   const exists = vi.spyOn(Dexie, 'exists');
   const connections = vi.spyOn(Dexie.prototype, 'open');
+  const final = vi.fn();
   try {
     let lateCheck: Promise<boolean>;
     let opened: number;
     try {
       const started = performance.now();
-      expect(await store.deleteAll('delete-workspace')).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_DELETE_PENDING' } });
+      expect(await store.deleteAll('delete-workspace', final)).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_DELETE_PENDING' } });
+      expect(final).not.toHaveBeenCalled();
       expect(performance.now() - started).toBeGreaterThanOrEqual(WORKSPACE_DELETE_BLOCKED_TIMEOUT_MS - 30);
       expect((await indexedDB.databases()).map(database => database.name)).toContain(WORKSPACE_DATABASE_NAME);
       const opening = performance.now();
@@ -182,6 +184,11 @@ test('blockierte Gesamtlöschung meldet nach fester Frist eine ausstehende Lösc
     expect(await lateCheck).toBe(false);
     expect(connections).toHaveBeenCalledTimes(opened);
     await expect.poll(async () => (await indexedDB.databases()).map(database => database.name)).not.toContain(WORKSPACE_DATABASE_NAME);
+    // The same request reports its native outcome once after the pending report.
+    await expect.poll(() => final.mock.calls).toEqual([[{ ok: true, value: undefined }]]);
+    // The closed store cannot reach or recreate the database.
+    expect(await store.listVerbuende()).toMatchObject({ ok: false });
+    expect((await indexedDB.databases()).map(database => database.name)).not.toContain(WORKSPACE_DATABASE_NAME);
   } finally { exists.mockRestore(); connections.mockRestore(); }
 });
 

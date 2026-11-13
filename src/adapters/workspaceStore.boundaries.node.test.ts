@@ -64,6 +64,32 @@ describe('storage boundary failures', () => {
     expect(opened).not.toHaveBeenCalled();
     expect((await indexedDB.databases()).map(database => database.name)).not.toContain(WORKSPACE_DATABASE_NAME);
   });
+  it('openExisting opens only an existing database and redacts a failed existence check', async () => {
+    const existing = value(await WorkspaceStore.openExisting());
+    expect(existing).not.toBeNull();
+    existing?.close();
+    store.close();
+    await Dexie.delete(WORKSPACE_DATABASE_NAME);
+    expect(value(await WorkspaceStore.openExisting())).toBeNull();
+    vi.spyOn(Dexie, 'exists').mockRejectedValueOnce(new Error('PRIVATE_SENTINEL'));
+    rejected(await WorkspaceStore.openExisting(), 'WORKSPACE_STORAGE_FAILED');
+    expect((await indexedDB.databases()).map(database => database.name)).not.toContain(WORKSPACE_DATABASE_NAME);
+  });
+  it('openExisting abandons an existence check that outlasts the deadline without creating the database', async () => {
+    store.close();
+    await Dexie.delete(WORKSPACE_DATABASE_NAME);
+    let settle!: (exists: boolean) => void;
+    vi.spyOn(Dexie, 'exists').mockReturnValue(new Promise<boolean>(resolve => { settle = resolve; }) as ReturnType<typeof Dexie.exists>);
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const pending = WorkspaceStore.openExisting();
+      await vi.advanceTimersByTimeAsync(WORKSPACE_OPEN_TIMEOUT_MS);
+      rejected(await pending, 'WORKSPACE_OPEN_TIMEOUT');
+    } finally { vi.useRealTimers(); }
+    settle(false);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect((await indexedDB.databases()).map(database => database.name)).not.toContain(WORKSPACE_DATABASE_NAME);
+  });
   it('closes a connection that opens after the deadline', async () => {
     store.close();
     const original = Dexie.prototype.open;

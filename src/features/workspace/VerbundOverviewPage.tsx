@@ -11,9 +11,16 @@ import { isVerbundName, type WorkspaceVerbund } from '@/domain/workspaceModel';
 import { FOCUS_RING, OriginLabel } from '@/features/workspace/DocumentMarks';
 import { WorkspaceNotices, useBackupExport } from '@/features/workspace/WorkspaceNotices';
 import { RestoreSheet, type RestoreDone } from '@/features/workspace/RestoreSheet';
+import { WorkspaceDeleteDialog } from '@/features/workspace/WorkspaceDeleteDialog';
 
 const INPUT = `min-h-touch w-full rounded-md border border-[var(--color-border-strong)] bg-[var(--color-surface-base)] px-3 py-2 text-base text-[var(--color-text-primary)] shadow-sm placeholder:text-[var(--color-text-muted)] focus-visible:border-[var(--color-focus-ring)] sm:text-sm desktop:min-h-0 ${FOCUS_RING}`;
 const ROW_BUTTON = 'min-h-touch desktop:min-h-0';
+const DELETED_TITLE = 'Lokale Daten gelöscht';
+const DELETED_TEXT = 'Der gesamte Arbeitsbestand wurde aus diesem Browserprofil entfernt. Exportierte Dateien bleiben erhalten.';
+const ABORTED_TEXT = 'Löschung abgebrochen. Vorbereitend gespeicherte Eingaben bleiben erhalten.';
+
+/** Laufende Anlage eines Namens aus Anlegeformular oder Klärungszeile; `run` liefert, ob er angelegt ist. */
+type CreateRun = { readonly name: string; readonly run: Promise<boolean> };
 
 /** Namensfeld für Anlegen und Umbenennen; `onCancel` macht daraus ein Umbenennen-Formular. */
 export function NameForm({ label, submitLabel, initial = '', disabled, onSubmit, onCancel, onChange }: Readonly<{
@@ -34,9 +41,11 @@ export function NameForm({ label, submitLabel, initial = '', disabled, onSubmit,
     event.preventDefault();
     if (saving || !isVerbundName(name)) return;
     setSaving(true);
-    void onSubmit(name.trim()).then((saved) => {
+    const submitted = name.trim();
+    void onSubmit(submitted).then((saved) => {
       setSaving(false);
-      if (saved && !onCancel) setName('');
+      // Ein während des Speicherns getippter Name bleibt stehen.
+      if (saved && !onCancel) setName((current) => (current.trim() === submitted ? '' : current));
     });
   };
   return (
@@ -64,12 +73,14 @@ export function NameForm({ label, submitLabel, initial = '', disabled, onSubmit,
   );
 }
 
-function VerbundRow({ verbund, writable, rowDrafts, onRowDraft, restored, exporting, onExport, onDelete }: Readonly<{
+function VerbundRow({ verbund, writable, rowDrafts, onRowDraft, track, restored, exporting, onExport, onDelete }: Readonly<{
   verbund: WorkspaceVerbund;
   writable: boolean;
   /** Offene Zeilenumbenennungen der Seite; ein Eintrag hält das Formular dieser Zeile offen. */
   rowDrafts: Map<string, string>;
   onRowDraft: (verbundId: string, draft: string | null) => void;
+  /** Meldet eine laufende Umbenennung, damit „Vorher sichern“ sie abwartet. */
+  track: <T>(run: Promise<T>) => Promise<T>;
   /** Zuletzt wiederhergestellt; hinterlegt, bis die Seite verlassen wird. */
   restored: boolean;
   exporting: boolean;
@@ -87,15 +98,15 @@ function VerbundRow({ verbund, writable, rowDrafts, onRowDraft, restored, export
           initial={draft}
           disabled={!writable}
           onChange={(name) => rowDrafts.set(verbund.verbundId, name)}
-          onSubmit={async (name) => {
+          onSubmit={(name) => track((async () => {
             // Der neue Name ersetzt nur den Entwurf, der beim Speichern offen war; ein danach getippter bleibt.
             const sessionDraft = renameDrafts.get(verbund.verbundId);
             const result = await renameVerbund(verbund.verbundId, name);
             if (!result.ok) return false;
             if (renameDrafts.get(verbund.verbundId) === sessionDraft) renameDrafts.delete(verbund.verbundId);
-            onRowDraft(verbund.verbundId, null);
+            if (rowDrafts.get(verbund.verbundId)?.trim() === name) onRowDraft(verbund.verbundId, null);
             return true;
-          }}
+          })())}
           onCancel={() => onRowDraft(verbund.verbundId, null)}
         />
       </li>
@@ -127,39 +138,101 @@ function VerbundRow({ verbund, writable, rowDrafts, onRowDraft, restored, export
 
 function inventoryLabel(status: WorkspaceContextValue['status'], verbuende: readonly WorkspaceVerbund[] | null): string {
   if (status === 'unavailable') return 'Speicher nicht verfügbar';
-  if (status !== 'ready' || verbuende === null) return 'Speicher wird geöffnet…';
+  if ((status !== 'ready' && status !== 'deleted') || verbuende === null) return 'Speicher wird geöffnet…';
   return `${verbuende.length} ${verbuende.length === 1 ? 'Informationsverbund' : 'Informationsverbünde'}`;
 }
 
-/** Übersicht des Bereichs: Verbünde anlegen, umbenennen, sichern, wiederherstellen und mit Bestätigung löschen. */
+/** Übersicht des Bereichs: Verbünde anlegen, umbenennen, sichern, wiederherstellen und einzeln oder insgesamt mit Bestätigung löschen. */
 export function VerbundOverviewPage() {
-  const { status, verbuende, writable, createVerbund, deleteVerbund } = useWorkspace();
+  const { status, verbuende, writable, deletion, createVerbund, deleteVerbund } = useWorkspace();
   const { exporting, exportBackup, exportVerbund } = useBackupExport();
   const [pendingDelete, setPendingDelete] = useState<WorkspaceVerbund | null>(null);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  // „Vorher sichern“ hat eine Eingabe gespeichert und die Löschung wurde nicht bestätigt.
+  const [prepared, setPrepared] = useState(false);
+  const [formRun, setFormRun] = useState(0);
+  const [wasDeleted, setWasDeleted] = useState(false);
+  // Eine laufende Gesamtlöschung hält ihren Dialog offen, auch nach einem Routenwechsel zurück auf diese Seite.
+  const deleteShown = deleteOpen || deletion !== 'idle';
+  const deleted = status === 'deleted';
   // Das Prüfblatt ist Ansichtszustand dieser Seite: keine Route, kein Seitentitel mit Organisationsdaten.
   const [restoreFile, setRestoreFile] = useState<File | null>(null);
   const [restored, setRestored] = useState<RestoreDone | null>(null);
   // Zeilenentwürfe stehen auf Seitenebene, damit das Prüfblatt sie klären und nach Erfolg zurücksetzen kann.
   const [rowDrafts] = useState(() => new Map<string, string>());
+  // Eingabe im Anlegeformular; „Vorher sichern“ legt sie zum Anlegen oder Verwerfen vor.
+  const createDraft = useRef('');
+  // Laufende Anlage aus Anlegeformular oder Klärungszeile; ein zweiter Einstieg mit demselben Namen schließt sich ihr an.
+  const creating = useRef<CreateRun | null>(null);
+  // Laufende Anlagen und Umbenennungen; „Vorher sichern“ wartet sie ab, bevor es offene Eingaben liest.
+  const [writes] = useState(() => new Set<Promise<unknown>>());
+  const track = <T,>(run: Promise<T>): Promise<T> => {
+    writes.add(run);
+    const done = () => writes.delete(run);
+    void run.then(done, done);
+    return run;
+  };
+  /** Legt `name` an; läuft dieselbe Eingabe schon über den anderen Einstieg, wird deren Ergebnis abgewartet statt erneut angelegt. */
+  const createOnce = (name: string, onCreated: () => void): Promise<boolean> => {
+    const previous = creating.current;
+    const entry: CreateRun = {
+      name,
+      run: (async () => {
+        if (previous?.name === name && await previous.run) return true;
+        const created = (await createVerbund(name)).ok;
+        if (created) onCreated();
+        return created;
+      })(),
+    };
+    creating.current = entry;
+    void entry.run.finally(() => { if (creating.current === entry) creating.current = null; });
+    return track(entry.run);
+  };
   const [, rerender] = useReducer((value: number) => value + 1, 0);
   const setRowDraft = (verbundId: string, draft: string | null) => {
     if (draft === null) rowDrafts.delete(verbundId);
     else rowDrafts.set(verbundId, draft);
     rerender();
   };
-  // Fokus nach dem Prüfblatt: Überschrift nach Erfolg, Einstieg nach Abbruch.
-  const focusTarget = useRef<'heading' | 'restore' | null>(null);
+  // Fokus nach Prüfblatt und Löschdialog: Überschrift nach Erfolg, Einstieg nach Abbruch, Speichermeldung nach Löschfehler.
+  const focusTarget = useRef<'heading' | 'restore' | 'delete' | 'reload' | null>(null);
+  const page = useRef<HTMLDivElement>(null);
+  const deleteButton = useRef<HTMLButtonElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const restoreButton = useRef<HTMLButtonElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
-  const ready = status === 'ready' && verbuende !== null;
+  const statusId = useId();
+  const ready = (status === 'ready' || deleted) && verbuende !== null;
+  // Mit der Gesamtlöschung fallen auch die Eingaben und Meldungen der Seite zum gelöschten Bestand.
+  if (deleted !== wasDeleted) {
+    setWasDeleted(deleted);
+    if (deleted) {
+      setRestored(null);
+      setPrepared(false);
+      setFormRun((run) => run + 1);
+    }
+  }
   const count = verbuende?.length ?? 0;
+  const aborted = prepared && !deleteShown && !deleted;
+  let statusText = '';
+  if (deleted) statusText = `${DELETED_TITLE}. ${DELETED_TEXT}`;
+  else if (aborted) statusText = ABORTED_TEXT;
+  else if (restored) statusText = `Wiederhergestellt: ${restored.text}`;
 
   useEffect(() => {
-    if (restoreFile || !focusTarget.current) return;
-    (focusTarget.current === 'heading' ? heading : restoreButton).current?.focus();
+    if (restoreFile || deleteShown || !focusTarget.current) return;
+    if (focusTarget.current === 'reload') page.current?.querySelector<HTMLButtonElement>('[data-notice="storage-failed"] button')?.focus();
+    else ({ heading, restore: restoreButton, delete: deleteButton })[focusTarget.current].current?.focus();
     focusTarget.current = null;
-  }, [restoreFile]);
+  }, [restoreFile, deleteShown]);
+
+  // Nach der Gesamtlöschung: keine Zeilenentwürfe des gelöschten Bestands, Fokus auf der Überschrift.
+  useEffect(() => {
+    if (!deleted) return;
+    rowDrafts.clear();
+    createDraft.current = '';
+    heading.current?.focus();
+  }, [deleted, rowDrafts]);
 
   const chooseFile = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -181,14 +254,17 @@ export function VerbundOverviewPage() {
             // Der Restore ersetzt den Zielbereich; dessen offene Zeilenformulare gelten nicht mehr.
             if (done.verbundId) rowDrafts.delete(done.verbundId);
             else rowDrafts.clear();
+            // Das neuere Ergebnis ersetzt den Abbruchhinweis einer früheren Löschvorbereitung in der Statusregion.
+            setPrepared(false);
             focusTarget.current = 'heading'; setRestored(done); setRestoreFile(null);
           }}
         />
       )}
       {/* Die Übersicht bleibt eingehängt, damit offene Formulareingaben das Prüfblatt überstehen. */}
-      <div hidden={restoreFile !== null} className="mx-auto w-full max-w-3xl space-y-4 px-4 py-6 sm:px-6">
+      <div ref={page} hidden={restoreFile !== null} className="mx-auto w-full max-w-3xl space-y-4 px-4 py-6 sm:px-6">
         <header className="space-y-2">
-          <h1 ref={heading} tabIndex={-1} className="type-page-title focus:outline-none">Informationsverbünde</h1>
+          {/* Ein gleichzeitiger Fokuswechsel verdrängt die Statusansage; Überschrift und Löscheinstieg tragen sie als Beschreibung mit. */}
+          <h1 ref={heading} tabIndex={-1} aria-describedby={statusText ? statusId : undefined} className="type-page-title focus:outline-none">Informationsverbünde</h1>
           <div className="flex flex-wrap items-center gap-2">
             <OriginLabel />
             <span aria-live="polite" className="text-xs font-medium tabular-nums text-[var(--color-text-secondary)]">
@@ -199,9 +275,20 @@ export function VerbundOverviewPage() {
 
         <WorkspaceNotices />
 
-        {/* S6819: <output> trägt die implizite Rolle "status". Sie steht vorab und außerhalb des Layoutflusses,
-            damit die Ergebnismeldung angesagt wird, ohne dass die leere Fläche einen Abstand erzeugt. */}
-        <output className="sr-only">{restored ? `Wiederhergestellt: ${restored.text}` : ''}</output>
+        {/* S6819: <output> trägt die implizite Rolle "status". Die eine Region steht vorab und außerhalb des Layoutflusses
+            und sagt Lösch-, Abbruch- und Wiederherstellungsmeldung an; die sichtbaren Flächen sind aria-hidden-Spiegel. */}
+        <output id={statusId} className="sr-only">{statusText}</output>
+        {deleted && (
+          <div aria-hidden="true" className="block rounded-md border border-[var(--color-border-strong)] bg-[var(--color-surface-base)] p-4">
+            <span className="block text-sm font-semibold text-[var(--color-text-primary)]">{DELETED_TITLE}</span>
+            <span className="mt-1 block text-sm text-[var(--color-text-secondary)]">{DELETED_TEXT}</span>
+          </div>
+        )}
+        {aborted && (
+          <p aria-hidden="true" className="block rounded-md border border-[var(--color-border-strong)] bg-[var(--color-surface-base)] p-4 text-sm text-[var(--color-text-primary)]">
+            {ABORTED_TEXT}
+          </p>
+        )}
         {restored && (
           <div aria-hidden="true" className="rounded-md border border-[var(--color-border-strong)] bg-[var(--color-surface-base)] p-4">
             <p className="text-sm font-semibold text-[var(--color-text-primary)]">Wiederhergestellt</p>
@@ -213,10 +300,15 @@ export function VerbundOverviewPage() {
           <h2 id="verbund-anlegen" className="text-base font-semibold leading-snug">Informationsverbund anlegen</h2>
           <div className="mt-3">
             <NameForm
+              key={formRun}
               label="Name"
               submitLabel="Anlegen"
               disabled={!ready || !writable}
-              onSubmit={async (name) => (await createVerbund(name)).ok}
+              onChange={(name) => { createDraft.current = name; }}
+              onSubmit={(name) => createOnce(name, () => {
+                // Ein nach dem Absenden getippter Name bleibt für Formular und Klärung erhalten.
+                if (createDraft.current.trim() === name) createDraft.current = '';
+              })}
             />
           </div>
         </section>
@@ -235,7 +327,7 @@ export function VerbundOverviewPage() {
             </div>
           </div>
           {ready && count === 0 && (
-            <p className="px-4 py-3 text-sm text-[var(--color-text-secondary)]">Noch kein Informationsverbund angelegt.</p>
+            <p className="px-4 py-3 text-sm text-[var(--color-text-secondary)]">{deleted ? 'Keine Informationsverbünde vorhanden.' : 'Noch kein Informationsverbund angelegt.'}</p>
           )}
           {ready && count > 0 && (
             <ul className="divide-y divide-[var(--color-border-subtle)]">
@@ -246,6 +338,7 @@ export function VerbundOverviewPage() {
                   writable={writable}
                   rowDrafts={rowDrafts}
                   onRowDraft={setRowDraft}
+                  track={track}
                   restored={restored?.verbundId === verbund.verbundId}
                   exporting={exporting}
                   onExport={(entry) => void exportVerbund(entry.verbundId)}
@@ -254,8 +347,43 @@ export function VerbundOverviewPage() {
               ))}
             </ul>
           )}
+          {!deleted && (
+            <div className="flex flex-col gap-3 border-t border-[var(--color-border-default)] p-4 md:flex-row md:items-center md:justify-between">
+              <div>
+                <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">Lokale Daten löschen</h3>
+                <p className="mt-1 text-xs text-[var(--color-text-secondary)]">Alle Informationsverbünde dieses Browserprofils entfernen.</p>
+              </div>
+              <Button ref={deleteButton} variant="danger" className={`${ROW_BUTTON} shrink-0`} disabled={status !== 'ready'} aria-describedby={aborted ? statusId : undefined} onClick={() => { setPrepared(false); setDeleteOpen(true); }}>
+                Alle lokalen Daten löschen…
+              </Button>
+            </div>
+          )}
         </section>
       </div>
+
+      {deleteShown && (
+        <WorkspaceDeleteDialog
+          rowDrafts={rowDrafts}
+          createDraft={createDraft}
+          writes={writes}
+          track={track}
+          createName={createOnce}
+          onCreateDraftDone={(name) => {
+            // Ein nach dem Start von „Anlegen“ getippter Name bleibt im Formular.
+            if (createDraft.current.trim() !== name) return;
+            createDraft.current = '';
+            setFormRun((run) => run + 1);
+          }}
+          onPrepared={() => setPrepared(true)}
+          onClose={(confirmed) => {
+            if (confirmed) setPrepared(false);
+            // Der Dialog setzt den Fokus beim Öffnen selbst; nach einem Abbruch kehrt er zum Einstieg zurück,
+            // nach einem Löschfehler zu „Neu laden“, weil der Einstieg dann gesperrt ist.
+            else focusTarget.current = deletion === 'failed' ? 'reload' : 'delete';
+            setDeleteOpen(false);
+          }}
+        />
+      )}
 
       <ConfirmDialog
         open={pendingDelete !== null}

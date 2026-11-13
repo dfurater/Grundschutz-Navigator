@@ -49,22 +49,26 @@ function backupFilename(prefix: string): string {
  */
 export function useBackupExport(): {
   readonly exporting: boolean;
-  /** `true`, sobald die Datei als Download übergeben ist; ein Fehlschlag meldet der Bereich als Speichermeldung. */
-  readonly exportBackup: () => Promise<boolean>;
+  /**
+   * `true`, sobald die Datei als Download übergeben ist; ein Fehlschlag meldet der Bereich als Speichermeldung.
+   * `wanted` wird nach dem Export gelesen: `false` verwirft die Datei, ohne einen Download zu starten.
+   */
+  readonly exportBackup: (wanted?: () => boolean) => Promise<boolean>;
   readonly exportVerbund: (verbundId: VerbundId) => Promise<boolean>;
 } {
   const workspace = useWorkspace();
   const [exporting, setExporting] = useState(false);
-  const download = async (result: Promise<WorkspaceResult<string>>, prefix: string): Promise<boolean> => {
+  const download = async (result: Promise<WorkspaceResult<string>>, prefix: string, wanted: () => boolean = () => true): Promise<boolean> => {
     setExporting(true);
     const exported = await result;
     setExporting(false);
+    if (!wanted()) return false;
     if (exported.ok) downloadBlob(new Blob([exported.value], { type: 'application/json' }), backupFilename(prefix));
     return exported.ok;
   };
   return {
     exporting,
-    exportBackup: () => download(workspace.exportBackup(), 'informationsverbuende'),
+    exportBackup: (wanted) => download(workspace.exportBackup(), 'informationsverbuende', wanted),
     exportVerbund: (verbundId) => download(workspace.exportVerbundBackup(verbundId), 'informationsverbund'),
   };
 }

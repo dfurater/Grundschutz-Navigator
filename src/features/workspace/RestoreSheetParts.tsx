@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import { Button } from '@/components/Button';
 import { ROOT_TYPE_LABELS } from '@/domain/workspaceStations';
 import { isVerbundName } from '@/domain/workspaceModel';
@@ -166,6 +166,21 @@ export function PreviewTable({ preview }: Readonly<{ preview: RestorePreview }>)
   );
 }
 
+/** Zeile einer Klärungsliste: Beschriftung, Aktionen und die Meldung einer gescheiterten Speicherung. */
+export function ClarifyItem({ label, failed, children }: Readonly<{ label: ReactNode; failed: boolean; children: ReactNode }>) {
+  const labelId = useId();
+  return (
+    <li className="space-y-2 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p id={labelId} className="min-w-0 break-words text-sm text-[var(--color-text-primary)]">{label}</p>
+        {/* Die Gruppe nennt Screenreadern beim Betreten, zu welcher Eingabe die Aktionen gehören. */}
+        <fieldset aria-labelledby={labelId} className="flex gap-1">{children}</fieldset>
+      </div>
+      {failed && <Message tone="alert" title="Nicht gespeichert">Die Eingabe bleibt offen.</Message>}
+    </li>
+  );
+}
+
 export function ClarifyRow({ entry, verbundName, failed, writable, onSave, onDiscard, onOpen }: Readonly<{
   entry: RestoreInput;
   verbundName: string;
@@ -181,29 +196,23 @@ export function ClarifyRow({ entry, verbundName, failed, writable, onSave, onDis
   else if (entry.kind === 'import') label = <><span className="font-semibold">Importzuordnung</span> · {ROOT_TYPE_LABELS[entry.rootType]} in „{verbundName}“ · {plural(entry.count, 'Verweis', 'Verweise')}</>;
   else label = <><span className="font-semibold">Importzuordnung</span> · Dokument nicht mehr vorhanden · {plural(entry.count, 'Verweis', 'Verweise')}</>;
   return (
-    <li className="space-y-2 py-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="min-w-0 break-words text-sm text-[var(--color-text-primary)]">{label}</p>
-        <div className="flex gap-1">
-          {entry.kind === 'rename' && (
-            <Button
-              variant="secondary"
-              size="sm"
-              className={BUTTON}
-              disabled={!writable || saving || !isVerbundName(entry.draft)}
-              onClick={() => { setSaving(true); void onSave(entry).finally(() => setSaving(false)); }}
-            >
-              Speichern
-            </Button>
-          )}
-          {entry.kind === 'import' && (
-            <Button variant="secondary" size="sm" className={BUTTON} onClick={() => onOpen(entry)}>Zum Dokument</Button>
-          )}
-          <Button variant="ghost" size="sm" className={BUTTON} disabled={saving} onClick={onDiscard}>Verwerfen</Button>
-        </div>
-      </div>
-      {failed && <Message tone="alert" title="Nicht gespeichert">Die Eingabe bleibt offen.</Message>}
-    </li>
+    <ClarifyItem label={label} failed={failed}>
+      {entry.kind === 'rename' && (
+        <Button
+          variant="secondary"
+          size="sm"
+          className={BUTTON}
+          disabled={!writable || saving || !isVerbundName(entry.draft)}
+          onClick={() => { setSaving(true); void onSave(entry).finally(() => setSaving(false)); }}
+        >
+          Speichern
+        </Button>
+      )}
+      {entry.kind === 'import' && (
+        <Button variant="secondary" size="sm" className={BUTTON} onClick={() => onOpen(entry)}>Zum Dokument</Button>
+      )}
+      <Button variant="ghost" size="sm" className={BUTTON} disabled={saving} onClick={onDiscard}>Verwerfen</Button>
+    </ClarifyItem>
   );
 }
 

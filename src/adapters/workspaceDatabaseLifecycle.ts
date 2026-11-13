@@ -51,8 +51,11 @@ export function storedDatabaseShape(name: string): Promise<{ version: number; st
   });
 }
 
-/** A started `deleteDatabase` cannot be cancelled: blocked for `blockedMs`, it reports `WORKSPACE_DELETE_PENDING` and the browser completes it later. */
-export function deleteDatabase(name: string, blockedMs: number): Promise<WorkspaceResult<void>> {
+/**
+ * A started `deleteDatabase` cannot be cancelled: blocked for `blockedMs`, it reports `WORKSPACE_DELETE_PENDING` and the
+ * browser completes it later. `onFinal` receives the native outcome of the same request exactly once, also after the pending report.
+ */
+export function deleteDatabase(name: string, blockedMs: number, onFinal?: (result: WorkspaceResult<void>) => void): Promise<WorkspaceResult<void>> {
   return new Promise(resolve => {
     const request = indexedDB.deleteDatabase(name);
     let settled = false;
@@ -63,8 +66,9 @@ export function deleteDatabase(name: string, blockedMs: number): Promise<Workspa
       if (timer !== undefined) clearTimeout(timer);
       resolve(result);
     };
-    request.onsuccess = () => finish({ ok: true, value: undefined });
-    request.onerror = () => finish(failure(request.error));
+    const final = (result: WorkspaceResult<void>) => { finish(result); onFinal?.(result); };
+    request.onsuccess = () => final({ ok: true, value: undefined });
+    request.onerror = () => final(failure(request.error));
     request.onblocked = () => {
       timer ??= setTimeout(() => finish(failure(new StorageFailure('WORKSPACE_DELETE_PENDING'))), blockedMs);
     };
