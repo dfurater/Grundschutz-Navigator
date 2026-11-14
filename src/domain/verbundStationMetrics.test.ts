@@ -23,13 +23,13 @@ const BSI_KEY = { kind: 'class-1', artifactKey: 'catalog-wlan', lifecycle: 'supp
 const requirement = (index: number) => `/system-security-plan/control-implementation/implemented-requirements/${index}/control-id`;
 
 describe('deriveStationMetrics', () => {
-  it('zählt aufgenommene, dokumentierte und geprüfte Controls aus Graph und Quellen', () => {
+  it('zählt Controls und Findings aus Graph und Quellen', () => {
     const members = [
       member('profile', 'profile', {}),
       member('ssp', 'system-security-plan', {}),
       member('ar', 'assessment-results', { results: [{ findings: [
-        { target: { status: { state: 'satisfied' } } },
-        { target: { status: { state: 'not-satisfied' } } },
+        { target: { 'target-id': 'gleiches-ziel', status: { state: 'satisfied' } } },
+        { target: { 'target-id': 'gleiches-ziel', status: { state: 'not-satisfied' } } },
         { target: { status: { state: 'not-satisfied' } } },
         { target: {} },
       ] }] }),
