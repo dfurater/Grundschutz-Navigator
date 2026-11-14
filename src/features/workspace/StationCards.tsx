@@ -54,14 +54,13 @@ function metricOf(documents: readonly WorkspaceDocumentView[], rootType: OscalRo
 function metricText(metric: DocumentMetric | number | undefined): string | undefined {
   if (typeof metric === 'number') return `${count.format(metric)} Dokumente`;
   switch (metric?.kind) {
-    case 'profile': return `${count.format(metric.included)} von ${count.format(metric.available)} Controls der Importziele aufgenommen`;
-    case 'ssp': return `${count.format(metric.documented)} von ${count.format(metric.baseline)} Anforderungen der aufgelösten Baseline dokumentiert`;
+    case 'profile': return `${count.format(metric.included)} von ${count.format(metric.available)} aufgenommen`;
+    case 'ssp': return `${count.format(metric.documented)} von ${count.format(metric.baseline)} dokumentiert`;
     case 'assessment-results': return [
       `${count.format(metric.assessed + metric.unknown)} Findings`,
-      `${count.format(metric.assessed - metric.notSatisfied)} erfüllt`,
       `${count.format(metric.notSatisfied)} nicht erfüllt`,
-      `${count.format(metric.unknown)} ohne auswertbaren Status`,
-    ].join(' · ');
+      metric.unknown > 0 ? `${count.format(metric.unknown)} ohne auswertbaren Status` : undefined,
+    ].filter(Boolean).join(' · ');
     case 'poam': return `${count.format(metric.open)} ${metric.open === 1 ? 'Maßnahme' : 'Maßnahmen'} · Umsetzung nicht erklärt`;
     default: return undefined;
   }
@@ -153,7 +152,7 @@ function AssessmentRow({ title, documents, metric }: Readonly<{ title: string; d
         <span className="text-sm font-medium text-[var(--color-text-primary)]">{title}</span>
         {validity ? <Validity value={validity} /> : <span className={META}>{NO_DOCUMENT}</span>}
       </span>
-      {metric && <p className={META}>{metric}</p>}
+      {metric && <p className={META}>{metric.split(' · ').map((part, index) => <span key={part}>{index > 0 && ' · '}<span className="whitespace-nowrap">{part}</span></span>)}</p>}
     </div>
   );
 }

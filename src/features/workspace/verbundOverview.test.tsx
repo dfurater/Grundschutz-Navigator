@@ -59,7 +59,7 @@ describe('Verbund-Übersicht', () => {
     expect(ssp.querySelector('[data-validity]')).toHaveTextContent('Entwurf');
     expect(ssp).not.toHaveTextContent(/dokumentiert/);
     expect([...assessment.querySelectorAll('[data-validity]')].map((mark) => mark.textContent)).toEqual(['Gültig · Schema', 'Entwurf']);
-    expect(assessment).toHaveTextContent('0 Findings · 0 erfüllt · 0 nicht erfüllt · 0 ohne auswertbaren Status');
+    expect(assessment).toHaveTextContent('0 Findings · 0 nicht erfüllt');
     expect(poam).toHaveTextContent('Noch kein Dokument');
     expect(poam).not.toHaveTextContent(/\d/);
     expect(poam.querySelector('[data-validity]')).toBeNull();

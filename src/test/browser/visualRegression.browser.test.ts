@@ -10,7 +10,8 @@ import { createAppRoutes } from '@/app/appRoutes';
 import { buildCatalogUrl, buildControlUrl, buildVerbundUrl, buildWorkspaceIndexUrl } from '@/app/routes';
 import { CatalogContext } from '@/state/CatalogContext';
 import { WorkspaceProvider } from '@/state/WorkspaceContext';
-import { resetWorkspace, seedWorkspace } from '@/test/workspaceAreaFixture';
+import { readStore, resetWorkspace, seedWorkspace } from '@/test/workspaceAreaFixture';
+import { makeSchemaValidOscalDocument } from '@/test/fixtures/oscalSchemaFixtures';
 import { ENTRY_CATALOG_KEY } from '@/domain/sourceRegistry';
 import { createA11yCatalogState } from '@/test/browser/a11yCatalogState';
 import '@/index.css';
@@ -108,9 +109,30 @@ describe.skipIf(!inject('visualRegression')).each(VIEWPORTS)('Ansicht $name', ({
   });
 
   test('Informationsverbund', async () => {
-    const { verbundId } = await seedWorkspace();
+    const { verbundId, profile, assessmentResults } = await seedWorkspace();
+    const catalog = await readStore(store => store.addDocument(verbundId, {
+      source: makeSchemaValidOscalDocument('catalog', '1.2.2'), rootType: 'catalog', oscalVersion: '1.2.2', context: { trustClass: 'class-2-local-user' },
+    }));
+    const profileSource = structuredClone(profile.source) as { profile: { imports: { href: string }[] } };
+    profileSource.profile.imports[0].href = 'catalog.json';
+    const localProfile = await readStore(store => store.replaceDocument(profile.localId, profile.savedAt, null, {
+      source: profileSource, rootType: 'profile', oscalVersion: '1.2.2', context: { trustClass: 'class-2-local-user' },
+    }));
+    await readStore(store => store.setBinding({ fromLocalId: profile.localId, pointer: '/profile/imports/0/href', href: 'catalog.json', target: { kind: 'local', localId: catalog.localId } }, localProfile.savedAt));
+    const results = structuredClone(assessmentResults.source) as { 'assessment-results': { results: { findings?: unknown[] }[] } };
+    results['assessment-results'].results[0].findings = [
+      { target: { status: { state: 'satisfied' } } },
+      { target: { status: { state: 'not-satisfied' } } },
+      { target: {} },
+    ];
+    await readStore(store => store.replaceDocument(assessmentResults.localId, assessmentResults.savedAt, null, {
+      source: results, rootType: 'assessment-results', oscalVersion: '1.2.2', context: { trustClass: 'class-2-local-user' },
+    }));
     const shell = await renderAt(buildVerbundUrl(verbundId), width, height);
     await expect.poll(() => shell.querySelector('main')?.textContent).toContain('Prüfergebnisse');
+    await expect.poll(() => shell.querySelector('main')?.textContent).toContain('1 von 1 aufgenommen');
+    await expect.poll(() => shell.querySelector('main')?.textContent).toContain('1 von 1 dokumentiert');
+    await expect.poll(() => shell.querySelector('main')?.textContent).toContain('3 Findings · 1 nicht erfüllt · 1 ohne auswertbaren Status');
     await expect.poll(() => shell.querySelector('nav[aria-label="Stationen"] a')?.textContent).toBe('Übersicht');
     // Chromium malt ein Element-Bildschirmfoto nur im Viewport; mobil scrollt das Dokument,
     // daher wächst der Viewport auf die Dokumenthöhe, damit alle fünf Karten im Bild liegen.
