@@ -30,11 +30,11 @@ afterEach(async () => {
   await resetWorkspace();
 });
 
-describe('Übersicht der Informationsverbünde', () => {
+describe('Arbeitsbereich', () => {
   it('listet die Verbünde aus dem Speicher und legt neue an', async () => {
     renderArea(buildWorkspaceIndexUrl());
     expect(await within(main()).findByRole('link', { name: SENTINEL_VERBUND })).toBeInTheDocument();
-    expect(within(main()).getByText('2 Informationsverbünde')).toHaveClass('tabular-nums');
+    expect(within(within(main()).getByRole('region', { name: 'Alle Informationsverbünde' })).getByText('2')).toHaveClass('tabular-nums');
 
     fireEvent.change(within(main()).getByLabelText('Name'), { target: { value: 'Rechenzentrum Nord' } });
     fireEvent.click(within(main()).getByRole('button', { name: 'Anlegen' }));
@@ -188,7 +188,7 @@ describe('Arbeitsroutenraum: Nicht-gefunden, Reload und Zurück', () => {
   it('verwirft die Ansicht eines gelöschten Verbunds; Browser-Zurück zeigt nichts davon', async () => {
     const { router } = renderArea(buildVerbundUrl(seeded.verbundId));
     await within(main()).findByRole('heading', { level: 1, name: SENTINEL_VERBUND });
-    fireEvent.click(within(screen.getByRole('navigation', { name: 'Pfad' })).getByRole('link', { name: 'Informationsverbünde' }));
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Pfad' })).getByRole('link', { name: 'Arbeitsbereich' }));
     const row = (await within(main()).findByRole('link', { name: SENTINEL_VERBUND })).closest('li')!;
     fireEvent.click(within(row).getByRole('button', { name: 'Löschen…' }));
     fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Endgültig löschen' }));
@@ -279,7 +279,7 @@ describe('Bereichswechsel', () => {
     await within(main()).findByRole('heading', { level: 1, name: SENTINEL_VERBUND });
     const header = within(screen.getByTestId('header-bar'));
     const areas = header.getByRole('navigation', { name: 'Bereiche' });
-    expect(within(areas).getByRole('link', { name: 'Informationsverbünde' })).toHaveAttribute('aria-current', 'true');
+    expect(within(areas).getByRole('link', { name: 'Arbeitsbereich' })).toHaveAttribute('aria-current', 'true');
     expect(within(areas).getByRole('link', { name: 'Katalog' })).not.toHaveAttribute('aria-current');
 
     fireEvent.click(within(areas).getByRole('link', { name: 'Katalog' }), { button: 0 });

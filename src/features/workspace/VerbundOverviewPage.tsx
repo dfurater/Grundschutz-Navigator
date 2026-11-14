@@ -2,19 +2,19 @@ import { useEffect, useId, useReducer, useRef, useState, type ChangeEvent } from
 import { Link } from 'react-router';
 import { PageTitle } from '@/app/PageTitle';
 import { PAGE_TITLES } from '@/app/pageTitles';
-import { buildVerbundUrl } from '@/app/routes';
+import { buildScopeUrl, buildVerbundUrl } from '@/app/routes';
 import { Button } from '@/components/Button';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import type { WorkspaceContextValue } from '@/state/WorkspaceContext';
-import { isVerbundName, type WorkspaceVerbund } from '@/domain/workspaceModel';
+import type { WorkspaceScope, WorkspaceVerbund } from '@/domain/workspaceModel';
 import { FOCUS_RING, OriginLabel } from '@/features/workspace/DocumentMarks';
 import { WorkspaceNotices, useBackupExport } from '@/features/workspace/WorkspaceNotices';
 import { RestoreSheet, type RestoreDone } from '@/features/workspace/RestoreSheet';
 import { WorkspaceDeleteDialog } from '@/features/workspace/WorkspaceDeleteDialog';
+import { NameForm, ROW_BUTTON, SectionHead } from '@/features/workspace/WorkspaceForms';
+import { ScopeCreateView } from '@/features/workspace/ScopeOverviewPage';
 
-const INPUT = `min-h-touch w-full rounded-md border border-[var(--color-border-strong)] bg-[var(--color-surface-base)] px-3 py-2 text-base text-[var(--color-text-primary)] shadow-sm placeholder:text-[var(--color-text-muted)] focus-visible:border-[var(--color-focus-ring)] sm:text-sm desktop:min-h-0 ${FOCUS_RING}`;
-const ROW_BUTTON = 'min-h-touch desktop:min-h-0';
 const DELETED_TITLE = 'Lokale Daten gelöscht';
 const DELETED_TEXT = 'Der gesamte Arbeitsbestand wurde aus diesem Browserprofil entfernt. Exportierte Dateien bleiben erhalten.';
 const ABORTED_TEXT = 'Löschung abgebrochen. Vorbereitend gespeicherte Eingaben bleiben erhalten.';
@@ -22,59 +22,28 @@ const ABORTED_TEXT = 'Löschung abgebrochen. Vorbereitend gespeicherte Eingaben 
 /** Laufende Anlage eines Namens aus Anlegeformular oder Klärungszeile; `run` liefert, ob er angelegt ist. */
 type CreateRun = { readonly name: string; readonly run: Promise<boolean> };
 
-/** Namensfeld für Anlegen und Umbenennen; `onCancel` macht daraus ein Umbenennen-Formular. */
-export function NameForm({ label, submitLabel, initial = '', disabled, onSubmit, onCancel, onChange }: Readonly<{
-  label: string;
-  submitLabel: string;
-  initial?: string;
-  disabled: boolean;
-  onSubmit: (name: string) => Promise<boolean>;
-  onCancel?: () => void;
-  /** Meldet jede Eingabe, etwa um sie über einen Routenwechsel zu erhalten. */
-  onChange?: (name: string) => void;
-}>) {
-  const inputId = useId();
-  const [name, setName] = useState(initial);
-  // Während des Speicherns ist das Formular gesperrt: ein Doppelklick legt keinen zweiten Verbund an.
-  const [saving, setSaving] = useState(false);
-  const handleSubmit = (event: React.SubmitEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (saving || !isVerbundName(name)) return;
-    setSaving(true);
-    const submitted = name.trim();
-    void onSubmit(submitted).then((saved) => {
-      setSaving(false);
-      // Ein während des Speicherns getippter Name bleibt stehen.
-      if (saved && !onCancel) setName((current) => (current.trim() === submitted ? '' : current));
-    });
-  };
+const UNASSIGNED = 'inline-flex items-center whitespace-nowrap rounded border border-[var(--color-border-strong)] px-2 py-0.5 text-xs font-medium leading-4 text-[var(--color-text-secondary)]';
+
+function ScopeRow({ scope, count }: Readonly<{ scope: WorkspaceScope; count: number }>) {
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-2 sm:flex-row sm:items-end">
-      <div className="min-w-0 flex-1">
-        <label htmlFor={inputId} className="text-xs font-medium text-[var(--color-text-secondary)]">{label}</label>
-        <input
-          id={inputId}
-          type="text"
-          autoComplete="off"
-          spellCheck={false}
-          value={name}
-          disabled={disabled}
-          autoFocus={onCancel !== undefined}
-          onChange={(event) => { setName(event.target.value); onChange?.(event.target.value); }}
-          onKeyDown={(event) => { if (event.key === 'Escape' && onCancel) { event.preventDefault(); onCancel(); } }}
-          className={`mt-1 ${INPUT}`}
-        />
-      </div>
-      <div className="flex gap-2">
-        <Button type="submit" className={ROW_BUTTON} disabled={disabled || saving || !isVerbundName(name)}>{submitLabel}</Button>
-        {onCancel && <Button variant="secondary" className={ROW_BUTTON} onClick={onCancel}>Abbrechen</Button>}
-      </div>
-    </form>
+    <li className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2">
+      <Link
+        to={buildScopeUrl(scope.scopeId)}
+        className={`flex min-h-touch min-w-0 flex-1 basis-48 items-center rounded text-sm font-semibold text-[var(--color-text-primary)] hover:underline desktop:min-h-8 ${FOCUS_RING}`}
+      >
+        <span className="min-w-0 break-words">{scope.name}</span>
+      </Link>
+      <span className="text-xs tabular-nums text-[var(--color-text-secondary)]">
+        {count} {count === 1 ? 'Informationsverbund' : 'Informationsverbünde'}
+      </span>
+    </li>
   );
 }
 
-function VerbundRow({ verbund, writable, rowDrafts, onRowDraft, track, restored, exporting, onExport, onDelete }: Readonly<{
+function VerbundRow({ verbund, scopeName, writable, rowDrafts, onRowDraft, track, restored, exporting, onExport, onDelete }: Readonly<{
   verbund: WorkspaceVerbund;
+  /** Name des zugeordneten Anwendungsbereichs; `undefined` bei unzugeordneten Verbünden. */
+  scopeName: string | undefined;
   writable: boolean;
   /** Offene Zeilenumbenennungen der Seite; ein Eintrag hält das Formular dieser Zeile offen. */
   rowDrafts: Map<string, string>;
@@ -120,6 +89,9 @@ function VerbundRow({ verbund, writable, rowDrafts, onRowDraft, track, restored,
       >
         <span className="min-w-0 break-words">{verbund.name}</span>
       </Link>
+      <span className="min-w-0 basis-40 break-words text-sm text-[var(--color-text-secondary)]">
+        {scopeName ?? <span className={UNASSIGNED}>Unzugeordnet</span>}
+      </span>
       <div className="flex gap-1">
         <Button variant="ghost" size="sm" className={ROW_BUTTON} disabled={!writable} onClick={() => onRowDraft(verbund.verbundId, verbund.name)}>Umbenennen</Button>
         <Button variant="ghost" size="sm" className={ROW_BUTTON} disabled={exporting} aria-label={`${verbund.name} sichern`} onClick={() => onExport(verbund)}>Sichern</Button>
@@ -136,15 +108,16 @@ function VerbundRow({ verbund, writable, rowDrafts, onRowDraft, track, restored,
   );
 }
 
-function inventoryLabel(status: WorkspaceContextValue['status'], verbuende: readonly WorkspaceVerbund[] | null): string {
+function inventoryLabel(status: WorkspaceContextValue['status'], ready: boolean): string {
   if (status === 'unavailable') return 'Speicher nicht verfügbar';
-  if ((status !== 'ready' && status !== 'deleted') || verbuende === null) return 'Speicher wird geöffnet…';
-  return `${verbuende.length} ${verbuende.length === 1 ? 'Informationsverbund' : 'Informationsverbünde'}`;
+  return ready ? '' : 'Speicher wird geöffnet…';
 }
 
-/** Übersicht des Bereichs: Verbünde anlegen, umbenennen, sichern, wiederherstellen und einzeln oder insgesamt mit Bestätigung löschen. */
+/** Arbeitsbereich: Anwendungsbereiche anlegen und öffnen; Verbünde anlegen, umbenennen, sichern, wiederherstellen und einzeln oder insgesamt mit Bestätigung löschen. */
 export function VerbundOverviewPage() {
-  const { status, verbuende, writable, deletion, createVerbund, deleteVerbund } = useWorkspace();
+  const { status, verbuende, scopes, writable, deletion, createVerbund, deleteVerbund } = useWorkspace();
+  // „Anwendungsbereich anlegen“ ist Ansichtszustand dieser Seite wie das Prüfblatt: keine Route, kein Name im Titel.
+  const [creatingScope, setCreatingScope] = useState(false);
   const { exporting, exportBackup, exportVerbund } = useBackupExport();
   const [pendingDelete, setPendingDelete] = useState<WorkspaceVerbund | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -195,14 +168,17 @@ export function VerbundOverviewPage() {
     rerender();
   };
   // Fokus nach Prüfblatt und Löschdialog: Überschrift nach Erfolg, Einstieg nach Abbruch, Speichermeldung nach Löschfehler.
-  const focusTarget = useRef<'heading' | 'restore' | 'delete' | 'reload' | null>(null);
+  const focusTarget = useRef<'heading' | 'restore' | 'delete' | 'reload' | 'create-scope' | null>(null);
   const page = useRef<HTMLDivElement>(null);
   const deleteButton = useRef<HTMLButtonElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const restoreButton = useRef<HTMLButtonElement>(null);
+  const createScopeButton = useRef<HTMLButtonElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
   const statusId = useId();
-  const ready = (status === 'ready' || deleted) && verbuende !== null;
+  const ready = (status === 'ready' || deleted) && verbuende !== null && scopes !== null;
+  const scopeNames = new Map((scopes ?? []).map((scope) => [scope.scopeId as string, scope.name]));
+  const startScopeCreation = () => { setCreatingScope(true); };
   // Mit der Gesamtlöschung fallen auch die Eingaben und Meldungen der Seite zum gelöschten Bestand.
   if (deleted !== wasDeleted) {
     setWasDeleted(deleted);
@@ -220,11 +196,11 @@ export function VerbundOverviewPage() {
   else if (restored) statusText = `Wiederhergestellt: ${restored.text}`;
 
   useEffect(() => {
-    if (restoreFile || deleteShown || !focusTarget.current) return;
+    if (restoreFile || deleteShown || creatingScope || !focusTarget.current) return;
     if (focusTarget.current === 'reload') page.current?.querySelector<HTMLButtonElement>('[data-notice="storage-failed"] button')?.focus();
-    else ({ heading, restore: restoreButton, delete: deleteButton })[focusTarget.current].current?.focus();
+    else ({ heading, restore: restoreButton, delete: deleteButton, 'create-scope': createScopeButton })[focusTarget.current].current?.focus();
     focusTarget.current = null;
-  }, [restoreFile, deleteShown]);
+  }, [restoreFile, deleteShown, creatingScope]);
 
   // Nach der Gesamtlöschung: keine Zeilenentwürfe des gelöschten Bestands, Fokus auf der Überschrift.
   useEffect(() => {
@@ -260,16 +236,33 @@ export function VerbundOverviewPage() {
           }}
         />
       )}
-      {/* Die Übersicht bleibt eingehängt, damit offene Formulareingaben das Prüfblatt überstehen. */}
-      <div ref={page} hidden={restoreFile !== null} className="mx-auto w-full max-w-3xl space-y-4 px-4 py-6 sm:px-6">
-        <header className="space-y-2">
-          {/* Ein gleichzeitiger Fokuswechsel verdrängt die Statusansage; Überschrift und Löscheinstieg tragen sie als Beschreibung mit. */}
-          <h1 ref={heading} tabIndex={-1} aria-describedby={statusText ? statusId : undefined} className="type-page-title focus:outline-none">Informationsverbünde</h1>
-          <div className="flex flex-wrap items-center gap-2">
-            <OriginLabel />
-            <span aria-live="polite" className="text-xs font-medium tabular-nums text-[var(--color-text-secondary)]">
-              {inventoryLabel(status, verbuende)}
-            </span>
+      {creatingScope && (
+        <ScopeCreateView writable={writable} onCancel={() => { focusTarget.current = 'create-scope'; setCreatingScope(false); }} />
+      )}
+      {/* Die Übersicht bleibt eingehängt, damit offene Formulareingaben Prüfblatt und Anlageansicht überstehen. */}
+      <div ref={page} hidden={restoreFile !== null || creatingScope} className="mx-auto w-full max-w-screen-2xl space-y-6 p-4 desktop:px-7 desktop:py-6">
+        <header className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3 border-b border-[var(--color-border-default)] pb-4">
+          <div className="space-y-2">
+            {/* Ein gleichzeitiger Fokuswechsel verdrängt die Statusansage; Überschrift und Löscheinstieg tragen sie als Beschreibung mit. */}
+            <h1 ref={heading} tabIndex={-1} aria-describedby={statusText ? statusId : undefined} className="type-page-title focus:outline-none">Arbeitsbereich</h1>
+            <div className="flex flex-wrap items-center gap-2">
+              <OriginLabel />
+              <span aria-live="polite" className="text-xs font-medium text-[var(--color-text-secondary)]">
+                {inventoryLabel(status, ready)}
+              </span>
+            </div>
+          </div>
+          <div className="flex w-full flex-col gap-2 md:w-auto md:flex-row">
+            <Button variant="secondary" className={ROW_BUTTON} onClick={() => void exportBackup()} disabled={status !== 'ready' || exporting}>
+              Sicherung exportieren
+            </Button>
+            <input ref={fileInput} aria-label="Sicherungsdatei" type="file" accept="application/json,.json" className="hidden" tabIndex={-1} onChange={chooseFile} />
+            <Button ref={restoreButton} variant="secondary" className={ROW_BUTTON} onClick={() => fileInput.current?.click()} disabled={!ready || !writable}>
+              Sicherung wiederherstellen…
+            </Button>
+            <Button ref={createScopeButton} className={ROW_BUTTON} onClick={startScopeCreation} disabled={!ready || !writable}>
+              Anwendungsbereich anlegen
+            </Button>
           </div>
         </header>
 
@@ -296,62 +289,78 @@ export function VerbundOverviewPage() {
           </div>
         )}
 
-        <section aria-labelledby="verbund-anlegen" className="rounded-md border border-[var(--color-border-default)] bg-[var(--color-surface-base)] p-4">
-          <h2 id="verbund-anlegen" className="text-base font-semibold leading-snug">Informationsverbund anlegen</h2>
-          <div className="mt-3">
-            <NameForm
-              key={formRun}
-              label="Name"
-              submitLabel="Anlegen"
-              disabled={!ready || !writable}
-              onChange={(name) => { createDraft.current = name; }}
-              onSubmit={(name) => createOnce(name, () => {
-                // Ein nach dem Absenden getippter Name bleibt für Formular und Klärung erhalten.
-                if (createDraft.current.trim() === name) createDraft.current = '';
-              })}
-            />
-          </div>
+        <section aria-labelledby="scope-liste">
+          <SectionHead id="scope-liste" title="Anwendungsbereiche" count={ready ? scopes.length : null} />
+          {ready && (
+            <div className="rounded-md border border-[var(--color-border-default)] bg-[var(--color-surface-base)]">
+              {scopes.length === 0 ? (
+                <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2">
+                  <p className="text-sm text-[var(--color-text-secondary)]">Kein Anwendungsbereich angelegt</p>
+                  <Button variant="ghost" className={ROW_BUTTON} disabled={!writable} onClick={startScopeCreation}>Anwendungsbereich anlegen</Button>
+                </div>
+              ) : (
+                <ul className="divide-y divide-[var(--color-border-subtle)]">
+                  {scopes.map((scope) => (
+                    <ScopeRow key={scope.scopeId} scope={scope} count={verbuende.filter((verbund) => verbund.scopeId === scope.scopeId).length} />
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
         </section>
 
-        <section aria-labelledby="verbund-liste" className="rounded-md border border-[var(--color-border-default)] bg-[var(--color-surface-base)]">
-          <div className="flex min-h-panel-head flex-wrap items-center justify-between gap-2 border-b border-[var(--color-border-subtle)] px-4 py-2 md:py-0">
-            <h2 id="verbund-liste" className="basis-full text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)] md:basis-auto">Bestand</h2>
-            <div className="flex w-full flex-col gap-2 md:w-auto md:flex-row">
-              <Button variant="secondary" size="sm" className={ROW_BUTTON} onClick={() => void exportBackup()} disabled={status !== 'ready' || exporting}>
-                Sicherung exportieren
-              </Button>
-              <input ref={fileInput} aria-label="Sicherungsdatei" type="file" accept="application/json,.json" className="hidden" tabIndex={-1} onChange={chooseFile} />
-              <Button ref={restoreButton} variant="secondary" size="sm" className={ROW_BUTTON} onClick={() => fileInput.current?.click()} disabled={!ready || !writable}>
-                Sicherung wiederherstellen…
-              </Button>
-            </div>
+        <section aria-labelledby="verbund-liste" className="space-y-4">
+          <div>
+            <SectionHead id="verbund-liste" title="Alle Informationsverbünde" count={ready ? count : null} />
+            {ready && (
+              <div className="rounded-md border border-[var(--color-border-default)] bg-[var(--color-surface-base)]">
+                {count === 0 ? (
+                  <p className="px-4 py-3 text-sm text-[var(--color-text-secondary)]">{deleted ? 'Keine Informationsverbünde vorhanden.' : 'Noch kein Informationsverbund angelegt.'}</p>
+                ) : (
+                  <ul className="divide-y divide-[var(--color-border-subtle)]">
+                    {verbuende.map((verbund) => (
+                      <VerbundRow
+                        key={verbund.verbundId}
+                        verbund={verbund}
+                        scopeName={verbund.scopeId === undefined ? undefined : scopeNames.get(verbund.scopeId)}
+                        writable={writable}
+                        rowDrafts={rowDrafts}
+                        onRowDraft={setRowDraft}
+                        track={track}
+                        restored={restored?.verbundId === verbund.verbundId}
+                        exporting={exporting}
+                        onExport={(entry) => void exportVerbund(entry.verbundId)}
+                        onDelete={setPendingDelete}
+                      />
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
           </div>
-          {ready && count === 0 && (
-            <p className="px-4 py-3 text-sm text-[var(--color-text-secondary)]">{deleted ? 'Keine Informationsverbünde vorhanden.' : 'Noch kein Informationsverbund angelegt.'}</p>
-          )}
-          {ready && count > 0 && (
-            <ul className="divide-y divide-[var(--color-border-subtle)]">
-              {verbuende.map((verbund) => (
-                <VerbundRow
-                  key={verbund.verbundId}
-                  verbund={verbund}
-                  writable={writable}
-                  rowDrafts={rowDrafts}
-                  onRowDraft={setRowDraft}
-                  track={track}
-                  restored={restored?.verbundId === verbund.verbundId}
-                  exporting={exporting}
-                  onExport={(entry) => void exportVerbund(entry.verbundId)}
-                  onDelete={setPendingDelete}
-                />
-              ))}
-            </ul>
-          )}
+
+          <section aria-labelledby="verbund-anlegen" className="rounded-md border border-[var(--color-border-default)] bg-[var(--color-surface-base)] p-4">
+            <h3 id="verbund-anlegen" className="text-sm font-semibold text-[var(--color-text-primary)]">Informationsverbund anlegen</h3>
+            <div className="mt-3">
+              <NameForm
+                key={formRun}
+                label="Name"
+                submitLabel="Anlegen"
+                disabled={!ready || !writable}
+                onChange={(name) => { createDraft.current = name; }}
+                onSubmit={(name) => createOnce(name, () => {
+                  // Ein nach dem Absenden getippter Name bleibt für Formular und Klärung erhalten.
+                  if (createDraft.current.trim() === name) createDraft.current = '';
+                })}
+              />
+            </div>
+          </section>
+
           {!deleted && (
-            <div className="flex flex-col gap-3 border-t border-[var(--color-border-default)] p-4 md:flex-row md:items-center md:justify-between">
+            <div className="flex flex-col gap-3 rounded-md border border-[var(--color-border-default)] bg-[var(--color-surface-base)] p-4 md:flex-row md:items-center md:justify-between">
               <div>
                 <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">Lokale Daten löschen</h3>
-                <p className="mt-1 text-xs text-[var(--color-text-secondary)]">Alle Informationsverbünde dieses Browserprofils entfernen.</p>
+                <p className="mt-1 text-xs text-[var(--color-text-secondary)]">Alle Anwendungsbereiche und Informationsverbünde dieses Browserprofils entfernen.</p>
               </div>
               <Button ref={deleteButton} variant="danger" className={`${ROW_BUTTON} shrink-0`} disabled={status !== 'ready'} aria-describedby={aborted ? statusId : undefined} onClick={() => { setPrepared(false); setDeleteOpen(true); }}>
                 Alle lokalen Daten löschen…

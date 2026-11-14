@@ -24,7 +24,7 @@ declare module 'vitest' {
 
 /*
  * Visuelle Regression (GSPP-533, GSPP-577, GSPP-616): Katalogliste, Detail, Filter, Suche,
- * Übersicht der Informationsverbünde und Verbund-Übersicht mit Stationskarten je
+ * Arbeitsbereich und Verbund-Übersicht mit Stationskarten je
  * Desktop und Mobil gegen eingecheckte Referenzbilder
  * (`…-chromium-linux.png`). Erzeugt und geprüft werden sie nur im gepinnten
  * Playwright-Container (`npm run test:browser:visual`,
@@ -99,13 +99,14 @@ describe.skipIf(!inject('visualRegression')).each(VIEWPORTS)('Ansicht $name', ({
     await expectScreen(`filter-${name}`);
   });
 
-  test('Informationsverbünde', async () => {
+  test('Arbeitsbereich', async () => {
     await seedWorkspace();
     const shell = await renderAt(buildWorkspaceIndexUrl(), width, height);
-    await expect.poll(() => shell.querySelector('main')?.textContent).toContain('2 Informationsverbünde');
+    await expect.poll(() => shell.querySelector('main')?.textContent).toContain('Kein Anwendungsbereich angelegt');
+    await expect.poll(() => shell.querySelectorAll('main li').length).toBe(2);
     // Mobil ist die Übersicht höher als der Viewport; wie bei der Verbund-Übersicht wächst er auf die Dokumenthöhe.
     await page.viewport(width, Math.max(height, document.documentElement.scrollHeight));
-    await expectScreen(`informationsverbuende-${name}`);
+    await expectScreen(`arbeitsbereich-${name}`);
   });
 
   test('Informationsverbund', async () => {

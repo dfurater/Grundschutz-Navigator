@@ -65,7 +65,7 @@ export function StationStrip({ verbundId, active, documents }: Readonly<{
         to={buildWorkspaceIndexUrl()}
         className={`flex min-h-touch items-center gap-1 px-4 text-sm font-semibold text-[var(--color-text-primary)] desktop:hidden ${FOCUS_RING} focus-visible:ring-inset focus-visible:ring-offset-0`}
       >
-        <span aria-hidden="true">‹</span> Informationsverbünde
+        <span aria-hidden="true">‹</span> Arbeitsbereich
       </Link>
       <nav aria-label="Stationen" className="scrollbar-hidden overflow-x-auto px-4 pb-2 compact:pt-1 desktop:px-7 desktop:pb-0">
         <ul className="flex gap-2 desktop:gap-4">

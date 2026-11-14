@@ -32,11 +32,11 @@ function routedWorkspace(pathname: string) {
 }
 
 /**
- * Jede Navigation aus dem Bereich Informationsverbünde in den Katalogbereich
+ * Jede Navigation aus dem Arbeitsbereich in den Katalogbereich
  * und jede Navigation weg von einer Dokumentroute, auf der ein Editor offen sein kann.
  */
 const leavesWorkspace = (currentPath: string, nextPath: string) =>
-  (areaForPath(currentPath) === 'informationsverbuende' && areaForPath(nextPath) === 'katalog')
+  (areaForPath(currentPath) === 'arbeitsbereich' && areaForPath(nextPath) === 'katalog')
   || (matchPath(WORKSPACE_DOCUMENT_ROUTE_PATTERN, currentPath) !== null && currentPath !== nextPath);
 
 /**
@@ -90,7 +90,7 @@ export function useShellArea(pathname: string, activeCatalogKey: CatalogKey, bef
   const routed = useMemo(() => routedWorkspace(pathname), [pathname]);
 
   useEffect(() => {
-    if (area === 'informationsverbuende') activate();
+    if (area === 'arbeitsbereich') activate();
   }, [area, activate]);
   useEffect(() => {
     selectVerbund(routed.routeVerbundId);
@@ -113,7 +113,7 @@ export function useShellArea(pathname: string, activeCatalogKey: CatalogKey, bef
     catalogHref: buildCatalogUrl(activeCatalogKey),
     workspaceHref: buildWorkspaceIndexUrl(),
     selectArea,
-    // Im Bereich Informationsverbünde trägt die Schublade nur den Bereichswechsel;
+    // Im Arbeitsbereich trägt die Schublade nur den Bereichswechsel;
     // die Stationen stehen als Reiter unter der Kopfzeile.
     hasAreaNav: area === 'katalog',
     navLabel: area === 'katalog' ? 'Katalog-Explorer' : 'Navigation',

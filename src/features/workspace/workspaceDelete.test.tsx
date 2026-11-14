@@ -352,7 +352,7 @@ describe('Gesamtlöschung', () => {
     entry.release();
     expect(await screen.findByText('Lokale Daten gelöscht')).toBeInTheDocument();
     expect(open).toHaveBeenCalledExactlyOnceWith(true);
-    expect(screen.getByText('0 Informationsverbünde')).toBeInTheDocument();
+    expect(screen.getByText('Keine Informationsverbünde vorhanden.')).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Neu' } });
     fireEvent.click(screen.getByRole('button', { name: 'Anlegen' }));
     await waitFor(() => expect(open).toHaveBeenLastCalledWith(false));
@@ -419,10 +419,10 @@ describe('Gesamtlöschung', () => {
     expect(statusRegion()).toBe(region);
     expect(region).toHaveTextContent('Lokale Daten gelöscht. Der gesamte Arbeitsbestand wurde aus diesem Browserprofil entfernt. Exportierte Dateien bleiben erhalten.');
     expect(screen.queryByRole('alertdialog')).toBeNull();
-    const pageHeading = screen.getByRole('heading', { level: 1, name: 'Informationsverbünde' });
+    const pageHeading = screen.getByRole('heading', { level: 1, name: 'Arbeitsbereich' });
     expect(pageHeading).toHaveFocus();
     expect(pageHeading).toHaveAccessibleDescription(/^Lokale Daten gelöscht\./);
-    expect(screen.getByText('0 Informationsverbünde')).toBeInTheDocument();
+    expect(screen.getByText('Keine Informationsverbünde vorhanden.')).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: VERBUND.name })).toBeNull();
     expect(screen.queryByRole('button', { name: ENTRY })).toBeNull();
     await waitFor(() => expect(entered).toBe(true));

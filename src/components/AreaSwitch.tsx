@@ -14,7 +14,7 @@ export interface AreaSwitchProps {
 
 const AREAS: readonly { readonly area: ProductArea; readonly label: string }[] = [
   { area: 'katalog', label: 'Katalog' },
-  { area: 'informationsverbuende', label: 'Informationsverbünde' },
+  { area: 'arbeitsbereich', label: 'Arbeitsbereich' },
 ];
 
 const TONE = {

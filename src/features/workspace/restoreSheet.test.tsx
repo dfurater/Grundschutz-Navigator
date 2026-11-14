@@ -77,7 +77,7 @@ describe('Sicherung wiederherstellen', () => {
     const confirm = sheet.getByRole('button', { name: `„${VERBUND.name}“ ersetzen` });
     fireEvent.click(confirm);
     fireEvent.click(confirm);
-    const heading = await within(main()).findByRole('heading', { level: 1, name: 'Informationsverbünde' });
+    const heading = await within(main()).findByRole('heading', { level: 1, name: 'Arbeitsbereich' });
     expect(restoreVerbundBackup).toHaveBeenCalledExactlyOnceWith(preview);
     await waitFor(() => expect(heading).toHaveFocus());
     expect(screen.getAllByRole('status').some((entry) => entry.textContent?.startsWith(`Wiederhergestellt: „${VERBUND.name}“ · 5 Dokumente · 3 Entwürfe`))).toBe(true);
@@ -271,7 +271,7 @@ describe('Sicherung wiederherstellen', () => {
     fireEvent.change(within(other).getByLabelText('Neuer Name'), { target: { value: 'Anderer Entwurf' } });
     const sheet = await choose();
     fireEvent.click(await sheet.findByRole('button', { name: `„${VERBUND.name}“ ersetzen` }));
-    await within(main()).findByRole('heading', { level: 1, name: 'Informationsverbünde' });
+    await within(main()).findByRole('heading', { level: 1, name: 'Arbeitsbereich' });
     expect(screen.getAllByLabelText('Neuer Name').map((input) => (input as HTMLInputElement).value)).toEqual(['Anderer Entwurf']);
   });
 
