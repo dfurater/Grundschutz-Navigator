@@ -6,11 +6,13 @@ import { FOCUS_RING } from '@/features/workspace/DocumentMarks';
 const INPUT = `min-h-touch w-full rounded-md border border-[var(--color-border-strong)] bg-[var(--color-surface-base)] px-3 py-2 text-base text-[var(--color-text-primary)] shadow-sm placeholder:text-[var(--color-text-muted)] focus-visible:border-[var(--color-focus-ring)] sm:text-sm desktop:min-h-0 ${FOCUS_RING}`;
 export const ROW_BUTTON = 'min-h-touch desktop:min-h-0';
 /** Namensfeld für Anlegen und Umbenennen; `onCancel` macht daraus ein Umbenennen-Formular. */
-export function NameForm({ label, submitLabel, initial = '', disabled, onSubmit, onCancel, onChange }: Readonly<{
+export function NameForm({ label, submitLabel, initial = '', disabled, busy = false, onSubmit, onCancel, onChange }: Readonly<{
   label: string;
   submitLabel: string;
   initial?: string;
   disabled: boolean;
+  /** Ein vor dieser Formularinstanz gestarteter Schreibvorgang läuft noch; sperrt wie das eigene Speichern. */
+  busy?: boolean;
   onSubmit: (name: string) => Promise<boolean>;
   onCancel?: () => void;
   /** Meldet jede Eingabe, etwa um sie über einen Routenwechsel zu erhalten. */
@@ -19,14 +21,15 @@ export function NameForm({ label, submitLabel, initial = '', disabled, onSubmit,
   const inputId = useId();
   const [name, setName] = useState(initial);
   // Während des Speicherns ist das Formular gesperrt: ein Doppelklick legt keinen zweiten Verbund an.
-  const [saving, setSaving] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const saving = submitting || busy;
   const handleSubmit = (event: React.SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (saving || !isVerbundName(name)) return;
-    setSaving(true);
+    setSubmitting(true);
     const submitted = name.trim();
     void onSubmit(submitted).then((saved) => {
-      setSaving(false);
+      setSubmitting(false);
       // Ein während des Speicherns getippter Name bleibt stehen.
       if (saved && !onCancel) setName((current) => (current.trim() === submitted ? '' : current));
     });

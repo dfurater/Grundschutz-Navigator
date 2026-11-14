@@ -4,7 +4,7 @@ import { PageTitle } from '@/app/PageTitle';
 import { PAGE_TITLES } from '@/app/pageTitles';
 import { buildScopeUrl, buildVerbundUrl, buildWorkspaceIndexUrl, isLocalIdentity } from '@/app/routes';
 import { Button } from '@/components/Button';
-import type { WorkspaceScope } from '@/domain/workspaceModel';
+import type { WorkspaceResult, WorkspaceScope } from '@/domain/workspaceModel';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { FOCUS_RING, OriginLabel } from '@/features/workspace/DocumentMarks';
 import { relativeTime } from '@/features/workspace/StationCards';
@@ -12,6 +12,29 @@ import { NameForm, SaveFailed, SectionHead } from '@/features/workspace/Workspac
 import { WorkspaceNotices } from '@/features/workspace/WorkspaceNotices';
 import { WorkspaceStatePage } from '@/features/workspace/WorkspaceStatePage';
 import { NEW_SCOPE_DRAFT } from '@/state/workspaceRestore';
+
+/**
+ * Ein vor dem Aufbau des Formulars gestarteter Schreibvorgang zu `key` (etwa vor einem Routenwechsel)
+ * sperrt das Formular, bis sein Ergebnis da ist; `onResult` erhält dieses Ergebnis.
+ */
+function usePendingScopeWrite(key: string, onResult: (result: WorkspaceResult<WorkspaceScope>) => void): boolean {
+  const { pendingScopeWrite } = useWorkspace();
+  const [pending] = useState(() => pendingScopeWrite(key));
+  const [busy, setBusy] = useState(pending !== undefined);
+  const handle = useRef(onResult);
+  useEffect(() => { handle.current = onResult; });
+  useEffect(() => {
+    if (!pending) return;
+    let active = true;
+    void pending.then((result) => {
+      if (!active) return;
+      setBusy(false);
+      handle.current(result);
+    });
+    return () => { active = false; };
+  }, [pending]);
+  return busy;
+}
 
 /** Ansicht „Anwendungsbereich anlegen“ (GSPP-669, Ansicht 7): erst nach bestätigtem Speichern öffnet sich die Übersicht. */
 export function ScopeCreateView({ writable, onCancel }: Readonly<{ writable: boolean; onCancel: () => void }>) {
@@ -26,6 +49,10 @@ export function ScopeCreateView({ writable, onCancel }: Readonly<{ writable: boo
     heading.current?.focus();
     return () => { mounted.current = false; };
   }, []);
+  const busy = usePendingScopeWrite(NEW_SCOPE_DRAFT, (result) => {
+    setFailed(!result.ok);
+    if (result.ok) void navigate(buildScopeUrl(result.value.scopeId));
+  });
   return (
     <div className="mx-auto w-full max-w-screen-2xl space-y-4 p-4 desktop:px-7 desktop:py-6">
       <h1 ref={heading} tabIndex={-1} className="type-page-title focus:outline-none">Anwendungsbereich anlegen</h1>
@@ -37,6 +64,7 @@ export function ScopeCreateView({ writable, onCancel }: Readonly<{ writable: boo
           submitLabel="Anlegen"
           initial={scopeDrafts.get(NEW_SCOPE_DRAFT)}
           disabled={!writable}
+          busy={busy}
           onChange={(name) => scopeDrafts.set(NEW_SCOPE_DRAFT, name)}
           onSubmit={async (name) => {
             const result = await createScope(name);
@@ -79,6 +107,14 @@ function ScopeHeader({ scope, now }: Readonly<{ scope: WorkspaceScope; now: numb
     setFailed(false);
     setRenaming(false);
   };
+  // Die abgeschlossene Umbenennung hat den Entwurf entfernt, wenn nicht weitergetippt wurde; dann schließt das Formular.
+  const busy = usePendingScopeWrite(scope.scopeId, (result) => {
+    setFailed(!result.ok);
+    if (result.ok && !scopeDrafts.has(scope.scopeId)) {
+      restoreFocus.current = true;
+      setRenaming(false);
+    }
+  });
   return (
     <header className="space-y-3 border-b border-[var(--color-border-default)] pb-4">
       <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
@@ -102,6 +138,7 @@ function ScopeHeader({ scope, now }: Readonly<{ scope: WorkspaceScope; now: numb
             submitLabel="Speichern"
             initial={scopeDrafts.get(scope.scopeId) ?? scope.name}
             disabled={!writable}
+            busy={busy}
             onChange={(name) => scopeDrafts.set(scope.scopeId, name)}
             onSubmit={async (name) => {
               // Der Vergleichsstand ist der angezeigte: Hat ein anderer Tab inzwischen geschrieben, scheitert das Speichern als Konflikt.

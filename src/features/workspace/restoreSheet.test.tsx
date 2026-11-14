@@ -308,6 +308,24 @@ describe('Sicherung wiederherstellen', () => {
     expect(workspace.scopeDrafts.size).toBe(0);
   });
 
+  it('klärt eine Anlage, deren Speichern noch läuft, erst mit deren Ergebnis', async () => {
+    let finish: (value: Awaited<ReturnType<WorkspacePort['createScope']>>) => void = () => undefined;
+    const createScope = vi.fn(() => new Promise<Awaited<ReturnType<WorkspacePort['createScope']>>>((resolve) => { finish = resolve; }));
+    const scope = { scopeId: '3c2b1a00-5b3f-4c6d-8e9f-0a1b2c3d4e5f' as ScopeId, name: 'Anlage', createdAt: TODAY, savedAt: TODAY, items: [], evidence: [] } as const;
+    renderWith(fakePort({ previewRestore: () => ok(workspacePreview), createScope }));
+    await screen.findByRole('link', { name: VERBUND.name });
+    // Wie die Anlageansicht: Der bestätigte Name verlässt die offenen Eingaben.
+    workspace.scopeDrafts.set(NEW_SCOPE_DRAFT, 'Anlage');
+    void workspace.createScope('Anlage').then((result) => { if (result.ok) workspace.scopeDrafts.delete(NEW_SCOPE_DRAFT); });
+    const sheet = await choose();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(sheet.queryByText(/Neuer Anwendungsbereich/)).toBeNull();
+    expect(sheet.queryByRole('button', { name: 'Gesamten Bestand ersetzen' })).toBeNull();
+    await act(async () => { finish({ ok: true, value: scope }); });
+    expect(await sheet.findByRole('button', { name: 'Gesamten Bestand ersetzen' })).toBeInTheDocument();
+    expect(sheet.queryByText(/Neuer Anwendungsbereich/)).toBeNull();
+  });
+
   it('kehrt bei Abbrechen zum Einstieg zurück', async () => {
     renderWith(fakePort({ previewRestore: () => ok(verbundPreview()) }));
     const sheet = await choose();

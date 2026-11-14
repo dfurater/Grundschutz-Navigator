@@ -103,6 +103,11 @@ export interface WorkspaceContextValue {
    * ein Gesamt-Restore und ein Bestand ohne den Anwendungsbereich verwerfen den Eintrag.
    */
   readonly scopeDrafts: Map<string, string>;
+  /**
+   * Laufender Schreibvorgang zu einem Schlüssel aus `scopeDrafts`; er überdauert die Formularinstanz,
+   * damit ein nach Routenwechsel neu aufgebautes Formular bis zu seinem Ergebnis gesperrt bleibt.
+   */
+  readonly pendingScopeWrite: (key: string) => Promise<WorkspaceResult<WorkspaceScope>> | undefined;
 }
 
 
@@ -142,6 +147,7 @@ export const WorkspaceContext = createContext<WorkspaceContextValue>({
   discardRestoreInput: () => undefined,
   renameDrafts: new Map(),
   scopeDrafts: new Map(),
+  pendingScopeWrite: () => undefined,
   registerAutosave: () => () => undefined,
   flushAutosaves: () => Promise.resolve(true),
   documents: createWorkspaceDocuments({ port: null, write: unavailableWrite, quiet: unavailableWrite, class1: [], delivery: new Map(), targets: new Map() }),
@@ -189,7 +195,7 @@ export function WorkspaceProvider({ open = openWorkspaceStore, session: provided
   const [renameDrafts] = useState(() => new Map<string, string>());
   const [scopeDrafts] = useState(() => new Map<string, string>());
   const [scopesFailed, setScopesFailed] = useState(false);
-  const pendingScope = useRef<{ readonly name: string; readonly run: Promise<WorkspaceResult<WorkspaceScope>> } | null>(null);
+  const pendingScopes = useRef(new Map<string, { readonly name: string; readonly run: Promise<WorkspaceResult<WorkspaceScope>> }>());
   const { catalogs, requestCatalog } = useContext(CatalogContext);
   const class1 = useMemo(() => verifiedCatalogArtifacts(catalogs), [catalogs]);
   const delivery = useMemo(() => catalogDelivery(catalogs), [catalogs]);
@@ -465,6 +471,14 @@ export function WorkspaceProvider({ open = openWorkspaceStore, session: provided
     return result;
   }, []);
 
+  // Laufende Schreibvorgänge je Entwurfsschlüssel (`NEW_SCOPE_DRAFT` oder `scopeId`), bis zu ihrem Ergebnis.
+  const trackScope = useCallback((key: string, name: string, run: Promise<WorkspaceResult<WorkspaceScope>>) => {
+    const entry = { name, run };
+    pendingScopes.current.set(key, entry);
+    void run.finally(() => { if (pendingScopes.current.get(key) === entry) pendingScopes.current.delete(key); });
+    return run;
+  }, []);
+
   const value = useMemo<WorkspaceContextValue>(() => ({
     status,
     verbuende,
@@ -492,16 +506,12 @@ export function WorkspaceProvider({ open = openWorkspaceStore, session: provided
     listScopes: () => quiet((store) => store.listScopes()),
     createScope: (name) => {
       // Eine laufende Anlage mit demselben Namen, etwa nach Verlassen und Wiederöffnen der Anlageansicht, legt keinen zweiten Anwendungsbereich an.
-      if (pendingScope.current?.name === name) return pendingScope.current.run;
-      const entry = {
-        name,
-        run: (async () => keepScope(await writeTo(status === 'deleted' ? await openStore() : port, (store) => store.createScope(name))))(),
-      };
-      pendingScope.current = entry;
-      void entry.run.finally(() => { if (pendingScope.current === entry) pendingScope.current = null; });
-      return entry.run;
+      const pending = pendingScopes.current.get(NEW_SCOPE_DRAFT);
+      if (pending?.name === name) return pending.run;
+      return trackScope(NEW_SCOPE_DRAFT, name, (async () => keepScope(await writeTo(status === 'deleted' ? await openStore() : port, (store) => store.createScope(name))))());
     },
-    renameScope: async (...args) => keepScope(await write((store) => store.renameScope(...args))),
+    renameScope: (scopeId, name, expected) =>
+      trackScope(scopeId, name, (async () => keepScope(await write((store) => store.renameScope(scopeId, name, expected))))()),
     assignVerbuende: (...args) => write((store) => store.assignVerbuende(...args)),
     changeVerbundScope: (...args) => write((store) => store.changeVerbundScope(...args)),
     // Nach einer Gesamtlöschung kann eine ausdrückliche Neuanlage den Speicher wieder öffnen.
@@ -577,6 +587,8 @@ export function WorkspaceProvider({ open = openWorkspaceStore, session: provided
       // Die Gesamtlöschung hat alle Sitzungseingaben verworfen; ein danach geöffneter Speicher ist leer.
       if (status === 'deleted') return { ok: true, value: [] };
       if (!port) return storageFailed();
+      // Ein laufender Namensschreibvorgang entscheidet erst mit seinem Ergebnis, ob seine Eingabe offen bleibt.
+      await Promise.all([...pendingScopes.current.values()].map((entry) => entry.run));
       // Gespeicherte Namen frisch lesen: Eine während des Wartens abgeschlossene Umbenennung fehlt im gerenderten Stand.
       const [stored, listed, storedScopes] = await Promise.all([
         port.listVerbuende().catch(storageFailed), port.listDocuments().catch(storageFailed), port.listScopes().catch(storageFailed),
@@ -608,7 +620,8 @@ export function WorkspaceProvider({ open = openWorkspaceStore, session: provided
     analysisRevision,
     renameDrafts,
     scopeDrafts,
-  }), [status, verbuende, scopes, scopesFailed, scopeDrafts, keepScope, verbundExpectation, writable, delivery, notices, verbund, activate, openStore, checkSchema, write, writeTo, deletion, enterWorkspaceDeletion, leaveWorkspaceDeletion, deleteWorkspace, freeze, quiet, port, report, registerAutosave, flushAutosaves, documents, importTargets, invalidateAnalysis, analysisRevision, renameDrafts]);
+    pendingScopeWrite: (key) => pendingScopes.current.get(key)?.run,
+  }), [status, verbuende, scopes, scopesFailed, scopeDrafts, keepScope, trackScope, verbundExpectation, writable, delivery, notices, verbund, activate, openStore, checkSchema, write, writeTo, deletion, enterWorkspaceDeletion, leaveWorkspaceDeletion, deleteWorkspace, freeze, quiet, port, report, registerAutosave, flushAutosaves, documents, importTargets, invalidateAnalysis, analysisRevision, renameDrafts]);
 
   return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>;
 }

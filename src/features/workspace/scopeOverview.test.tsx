@@ -209,7 +209,7 @@ describe('Speicherfehler, Konflikt und Schreibsperre', () => {
     expect(router.state.location.pathname).toBe('/about');
   });
 
-  it('legt nach Verlassen und Wiederöffnen der laufenden Anlage keinen zweiten Anwendungsbereich an', async () => {
+  it('sperrt die wiedergeöffnete Anlage bis zum Ergebnis des laufenden Speicherns und öffnet dann die Übersicht', async () => {
     let finish: (value: Awaited<ReturnType<WorkspacePort['createScope']>>) => void = () => undefined;
     const createScope = vi.fn(() => new Promise<Awaited<ReturnType<WorkspacePort['createScope']>>>((resolve) => { finish = resolve; }));
     const { router } = renderWith(fakePort({ createScope }));
@@ -224,10 +224,37 @@ describe('Speicherfehler, Konflikt und Schreibsperre', () => {
     // Die offene Anlage öffnet die Anlageansicht mit der Eingabe wieder.
     const input = await within(main()).findByLabelText('Name des Anwendungsbereichs');
     expect(input).toHaveValue('Netzbetrieb');
-    fireEvent.click(within(main()).getByRole('button', { name: 'Anlegen' }));
+    // Der Abbruch würde den Entwurf entfernen, während der Schreibvorgang noch einen Datensatz anlegen kann.
+    expect(within(main()).getByRole('button', { name: 'Abbrechen' })).toBeDisabled();
+    expect(within(main()).getByRole('button', { name: 'Anlegen' })).toBeDisabled();
+    fireEvent.keyDown(input, { key: 'Escape' });
+    expect(within(main()).getByRole('heading', { level: 1, name: 'Anwendungsbereich anlegen' })).toBeInTheDocument();
     finish({ ok: true, value: { ...SCOPE, name: 'Netzbetrieb' } });
     await waitFor(() => expect(router.state.location.pathname).toBe(buildScopeUrl(SCOPE.scopeId)));
     expect(createScope).toHaveBeenCalledTimes(1);
+  });
+
+  it('sperrt die wiedergeöffnete Umbenennung bis zum Ergebnis des laufenden Speicherns', async () => {
+    let finish: (value: Awaited<ReturnType<WorkspacePort['renameScope']>>) => void = () => undefined;
+    const renameScope = vi.fn(() => new Promise<Awaited<ReturnType<WorkspacePort['renameScope']>>>((resolve) => { finish = resolve; }));
+    const { router } = renderWith(fakePort({ listScopes: () => ok([SCOPE]), renameScope }), buildScopeUrl(SCOPE.scopeId));
+    fireEvent.click(await within(main()).findByRole('button', { name: 'Umbenennen' }));
+    fireEvent.change(within(main()).getByLabelText('Neuer Name'), { target: { value: 'Netz Nord' } });
+    fireEvent.click(within(main()).getByRole('button', { name: 'Speichern' }));
+    await router.navigate(buildWorkspaceIndexUrl());
+    await within(main()).findByRole('heading', { level: 1, name: 'Arbeitsbereich' });
+    await router.navigate(buildScopeUrl(SCOPE.scopeId));
+    const input = await within(main()).findByLabelText('Neuer Name');
+    expect(input).toHaveValue('Netz Nord');
+    expect(within(main()).getByRole('button', { name: 'Abbrechen' })).toBeDisabled();
+    expect(within(main()).getByRole('button', { name: 'Speichern' })).toBeDisabled();
+    fireEvent.keyDown(input, { key: 'Escape' });
+    expect(within(main()).getByLabelText('Neuer Name')).toBeInTheDocument();
+    finish({ ok: true, value: { ...SCOPE, name: 'Netz Nord', savedAt: '2026-11-14T01:00:00.000Z' } });
+    expect(await within(main()).findByRole('heading', { level: 1, name: 'Netz Nord' })).toBeInTheDocument();
+    await waitFor(() => expect(within(main()).queryByLabelText('Neuer Name')).toBeNull());
+    expect(within(main()).getByRole('button', { name: 'Umbenennen' })).toHaveFocus();
+    expect(renameScope).toHaveBeenCalledTimes(1);
   });
 
   it('erhält eine offene Umbenennung über einen Routenwechsel', async () => {
