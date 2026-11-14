@@ -11,14 +11,21 @@ import { relativeTime } from '@/features/workspace/StationCards';
 import { NameForm, SaveFailed, SectionHead } from '@/features/workspace/WorkspaceForms';
 import { WorkspaceNotices } from '@/features/workspace/WorkspaceNotices';
 import { WorkspaceStatePage } from '@/features/workspace/WorkspaceStatePage';
+import { NEW_SCOPE_DRAFT } from '@/state/WorkspaceContext';
 
 /** Ansicht „Anwendungsbereich anlegen“ (GSPP-669, Ansicht 7): erst nach bestätigtem Speichern öffnet sich die Übersicht. */
 export function ScopeCreateView({ writable, onCancel }: Readonly<{ writable: boolean; onCancel: () => void }>) {
-  const { createScope } = useWorkspace();
+  const { createScope, scopeDrafts } = useWorkspace();
   const navigate = useNavigate();
   const [failed, setFailed] = useState(false);
   const heading = useRef<HTMLHeadingElement>(null);
-  useEffect(() => { heading.current?.focus(); }, []);
+  // Ein Ergebnis aus einer bereits verlassenen Ansicht navigiert nicht mehr.
+  const mounted = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    heading.current?.focus();
+    return () => { mounted.current = false; };
+  }, []);
   return (
     <div className="mx-auto w-full max-w-screen-2xl space-y-4 p-4 desktop:px-7 desktop:py-6">
       <h1 ref={heading} tabIndex={-1} className="type-page-title focus:outline-none">Anwendungsbereich anlegen</h1>
@@ -28,14 +35,21 @@ export function ScopeCreateView({ writable, onCancel }: Readonly<{ writable: boo
         <NameForm
           label="Name des Anwendungsbereichs"
           submitLabel="Anlegen"
+          initial={scopeDrafts.get(NEW_SCOPE_DRAFT)}
           disabled={!writable}
+          onChange={(name) => scopeDrafts.set(NEW_SCOPE_DRAFT, name)}
           onSubmit={async (name) => {
             const result = await createScope(name);
+            if (result.ok && scopeDrafts.get(NEW_SCOPE_DRAFT)?.trim() === name) scopeDrafts.delete(NEW_SCOPE_DRAFT);
+            if (!mounted.current) return result.ok;
             setFailed(!result.ok);
             if (result.ok) void navigate(buildScopeUrl(result.value.scopeId));
             return result.ok;
           }}
-          onCancel={onCancel}
+          onCancel={() => {
+            scopeDrafts.delete(NEW_SCOPE_DRAFT);
+            onCancel();
+          }}
         />
         {failed && <SaveFailed />}
       </section>
@@ -45,8 +59,9 @@ export function ScopeCreateView({ writable, onCancel }: Readonly<{ writable: boo
 
 /** Kopf des Anwendungsbereichs (GSPP-669, Ansichten 3 und 8): Name, Umbenennen, Herkunft und Speicherstand. */
 function ScopeHeader({ scope, now }: Readonly<{ scope: WorkspaceScope; now: number }>) {
-  const { writable, renameScope } = useWorkspace();
-  const [renaming, setRenaming] = useState(false);
+  // Eine offene Umbenennung überdauert Routen- und Bereichswechsel (`scopeDrafts` im Provider).
+  const { writable, renameScope, scopeDrafts } = useWorkspace();
+  const [renaming, setRenaming] = useState(() => scopeDrafts.has(scope.scopeId));
   const [failed, setFailed] = useState(false);
   const heading = useRef<HTMLHeadingElement>(null);
   const renameButton = useRef<HTMLButtonElement>(null);
@@ -59,6 +74,7 @@ function ScopeHeader({ scope, now }: Readonly<{ scope: WorkspaceScope; now: numb
     renameButton.current?.focus();
   }, [renaming]);
   const stopRenaming = () => {
+    scopeDrafts.delete(scope.scopeId);
     restoreFocus.current = true;
     setFailed(false);
     setRenaming(false);
@@ -71,7 +87,10 @@ function ScopeHeader({ scope, now }: Readonly<{ scope: WorkspaceScope; now: numb
           <h1 ref={heading} tabIndex={-1} className="type-page-title break-words focus:outline-none">{scope.name}</h1>
         </div>
         {!renaming && (
-          <Button ref={renameButton} variant="secondary" className="min-h-touch desktop:min-h-0" disabled={!writable} onClick={() => setRenaming(true)}>
+          <Button ref={renameButton} variant="secondary" className="min-h-touch desktop:min-h-0" disabled={!writable} onClick={() => {
+            if (!scopeDrafts.has(scope.scopeId)) scopeDrafts.set(scope.scopeId, scope.name);
+            setRenaming(true);
+          }}>
             Umbenennen
           </Button>
         )}
@@ -81,13 +100,15 @@ function ScopeHeader({ scope, now }: Readonly<{ scope: WorkspaceScope; now: numb
           <NameForm
             label="Neuer Name"
             submitLabel="Speichern"
-            initial={scope.name}
+            initial={scopeDrafts.get(scope.scopeId) ?? scope.name}
             disabled={!writable}
+            onChange={(name) => scopeDrafts.set(scope.scopeId, name)}
             onSubmit={async (name) => {
               // Der Vergleichsstand ist der angezeigte: Hat ein anderer Tab inzwischen geschrieben, scheitert das Speichern als Konflikt.
               const result = await renameScope(scope.scopeId, name, scope.savedAt);
               setFailed(!result.ok);
-              if (result.ok) stopRenaming();
+              // Wurde während des Speicherns weitergetippt, bleibt das Formular mit dieser Eingabe offen.
+              if (result.ok && scopeDrafts.get(scope.scopeId)?.trim() === name) stopRenaming();
               return result.ok;
             }}
             onCancel={stopRenaming}
@@ -111,10 +132,10 @@ function ScopeHeader({ scope, now }: Readonly<{ scope: WorkspaceScope; now: numb
  */
 export function ScopeOverviewPage() {
   const { scopeId } = useParams();
-  const { status, scopes, verbuende } = useWorkspace();
+  const { status, scopes, scopesFailed, verbuende } = useWorkspace();
   const [now] = useState(Date.now);
   if (!isLocalIdentity(scopeId)) return <WorkspaceStatePage state="scope-not-found" />;
-  if (status === 'unavailable') return <WorkspaceStatePage state="scope-failed" />;
+  if (status === 'unavailable' || scopesFailed) return <WorkspaceStatePage state="scope-failed" />;
   if (scopes === null || verbuende === null) return <WorkspaceStatePage state="scope-loading" />;
   const scope = scopes.find((entry) => entry.scopeId === scopeId);
   if (!scope) return <WorkspaceStatePage state="scope-not-found" />;

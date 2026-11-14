@@ -174,6 +174,57 @@ describe('Speicherfehler, Konflikt und Schreibsperre', () => {
     expect(within(main()).queryByLabelText('Neuer Name')).toBeNull();
   });
 
+  it('zeigt einen Lesefehler der Anwendungsbereiche als solchen, nie als leeren Bestand', async () => {
+    const port = fakePort({ listScopes: () => fail('WORKSPACE_STORAGE_FAILED'), listVerbuende: () => ok([{ ...VERBUND, scopeId: SCOPE.scopeId }]) });
+    const { unmount } = renderWith(port);
+    expect(await within(main()).findByText('Anwendungsbereiche nicht lesbar', { selector: 'section p' })).toBeInTheDocument();
+    expect(within(main()).queryByText('Kein Anwendungsbereich angelegt')).toBeNull();
+    const row = within(main()).getByRole('link', { name: VERBUND.name }).closest('li')!;
+    expect(within(row).getByText('Anwendungsbereiche nicht lesbar')).toBeInTheDocument();
+    expect(within(row).queryByText('Unzugeordnet')).toBeNull();
+    unmount();
+
+    renderWith(port, buildScopeUrl(SCOPE.scopeId));
+    expect(await within(main()).findByRole('heading', { level: 1, name: 'Anwendungsbereich nicht lesbar' })).toBeInTheDocument();
+  });
+
+  it('sperrt Abbrechen, solange die Anlage speichert, und navigiert nicht aus einer verlassenen Ansicht', async () => {
+    let finish: (value: Awaited<ReturnType<WorkspacePort['createScope']>>) => void = () => undefined;
+    const createScope = vi.fn(() => new Promise<Awaited<ReturnType<WorkspacePort['createScope']>>>((resolve) => { finish = resolve; }));
+    const { router } = renderWith(fakePort({ createScope }));
+    const entry = await createEntry();
+    await waitFor(() => expect(entry).toBeEnabled());
+    fireEvent.click(entry);
+    fireEvent.change(within(main()).getByLabelText('Name des Anwendungsbereichs'), { target: { value: 'Netzbetrieb' } });
+    fireEvent.click(within(main()).getByRole('button', { name: 'Anlegen' }));
+    await waitFor(() => expect(within(main()).getByRole('button', { name: 'Abbrechen' })).toBeDisabled());
+    fireEvent.keyDown(within(main()).getByLabelText('Name des Anwendungsbereichs'), { key: 'Escape' });
+    expect(within(main()).getByRole('heading', { level: 1, name: 'Anwendungsbereich anlegen' })).toBeInTheDocument();
+
+    void router.navigate('/about');
+    await waitFor(() => expect(router.state.location.pathname).toBe('/about'));
+    finish({ ok: true, value: SCOPE });
+    await waitFor(() => expect(createScope).toHaveBeenCalledTimes(1));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(router.state.location.pathname).toBe('/about');
+  });
+
+  it('erhält eine offene Umbenennung über einen Routenwechsel', async () => {
+    const { router } = renderWith(fakePort({ listScopes: () => ok([SCOPE]) }), buildScopeUrl(SCOPE.scopeId));
+    fireEvent.click(await within(main()).findByRole('button', { name: 'Umbenennen' }));
+    fireEvent.change(within(main()).getByLabelText('Neuer Name'), { target: { value: 'Halb getippt' } });
+    await router.navigate(buildWorkspaceIndexUrl());
+    await within(main()).findByRole('heading', { level: 1, name: 'Arbeitsbereich' });
+    await router.navigate(buildScopeUrl(SCOPE.scopeId));
+    expect(await within(main()).findByLabelText('Neuer Name')).toHaveValue('Halb getippt');
+    fireEvent.click(within(main()).getByRole('button', { name: 'Abbrechen' }));
+    await router.navigate(buildWorkspaceIndexUrl());
+    await within(main()).findByRole('heading', { level: 1, name: 'Arbeitsbereich' });
+    await router.navigate(buildScopeUrl(SCOPE.scopeId));
+    await within(main()).findByRole('heading', { level: 1, name: SCOPE.name });
+    expect(within(main()).queryByLabelText('Neuer Name')).toBeNull();
+  });
+
   it('sperrt Anlegen und Umbenennen bei Schreibsperre; Exporte bleiben bedienbar', async () => {
     downloads.length = 0;
     const port = fakePort({ schemaStatus: () => ok('newer' as const), listScopes: () => ok([SCOPE]) });

@@ -6,7 +6,7 @@ import { buildScopeUrl, buildVerbundUrl } from '@/app/routes';
 import { Button } from '@/components/Button';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useWorkspace } from '@/hooks/useWorkspace';
-import type { WorkspaceContextValue } from '@/state/WorkspaceContext';
+import { NEW_SCOPE_DRAFT, type WorkspaceContextValue } from '@/state/WorkspaceContext';
 import type { WorkspaceScope, WorkspaceVerbund } from '@/domain/workspaceModel';
 import { FOCUS_RING, OriginLabel } from '@/features/workspace/DocumentMarks';
 import { WorkspaceNotices, useBackupExport } from '@/features/workspace/WorkspaceNotices';
@@ -16,6 +16,7 @@ import { NameForm, ROW_BUTTON, SectionHead } from '@/features/workspace/Workspac
 import { ScopeCreateView } from '@/features/workspace/ScopeOverviewPage';
 
 const DELETED_TITLE = 'Lokale Daten gelöscht';
+const SCOPES_UNREADABLE = 'Anwendungsbereiche nicht lesbar';
 const DELETED_TEXT = 'Der gesamte Arbeitsbestand wurde aus diesem Browserprofil entfernt. Exportierte Dateien bleiben erhalten.';
 const ABORTED_TEXT = 'Löschung abgebrochen. Vorbereitend gespeicherte Eingaben bleiben erhalten.';
 
@@ -42,7 +43,7 @@ function ScopeRow({ scope, count }: Readonly<{ scope: WorkspaceScope; count: num
 
 function VerbundRow({ verbund, scopeName, writable, rowDrafts, onRowDraft, track, restored, exporting, onExport, onDelete }: Readonly<{
   verbund: WorkspaceVerbund;
-  /** Name des zugeordneten Anwendungsbereichs; `undefined` bei unzugeordneten Verbünden. */
+  /** Beschriftung der Zuordnung; `undefined` bei unzugeordneten Verbünden. */
   scopeName: string | undefined;
   writable: boolean;
   /** Offene Zeilenumbenennungen der Seite; ein Eintrag hält das Formular dieser Zeile offen. */
@@ -108,6 +109,48 @@ function VerbundRow({ verbund, scopeName, writable, rowDrafts, onRowDraft, track
   );
 }
 
+/** Abschnitt „Anwendungsbereiche“; ein Lesefehler erscheint als solcher, nie als leerer Bestand. */
+function ScopeSection({ ready, failed, scopes, verbuende, writable, onCreate }: Readonly<{
+  ready: boolean;
+  failed: boolean;
+  scopes: readonly WorkspaceScope[];
+  verbuende: readonly WorkspaceVerbund[];
+  writable: boolean;
+  onCreate: () => void;
+}>) {
+  let content;
+  if (failed) {
+    content = <p className="px-4 py-3 text-sm text-[var(--color-text-secondary)]">{SCOPES_UNREADABLE}</p>;
+  } else if (scopes.length === 0) {
+    content = (
+      <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2">
+        <p className="text-sm text-[var(--color-text-secondary)]">Kein Anwendungsbereich angelegt</p>
+        <Button variant="ghost" className={ROW_BUTTON} disabled={!writable} onClick={onCreate}>Anwendungsbereich anlegen</Button>
+      </div>
+    );
+  } else {
+    content = (
+      <ul className="divide-y divide-[var(--color-border-subtle)]">
+        {scopes.map((scope) => (
+          <ScopeRow key={scope.scopeId} scope={scope} count={verbuende.filter((verbund) => verbund.scopeId === scope.scopeId).length} />
+        ))}
+      </ul>
+    );
+  }
+  return (
+    <section aria-labelledby="scope-liste">
+      <SectionHead id="scope-liste" title="Anwendungsbereiche" count={ready && !failed ? scopes.length : null} />
+      {ready && <div className="rounded-md border border-[var(--color-border-default)] bg-[var(--color-surface-base)]">{content}</div>}
+    </section>
+  );
+}
+
+/** Zuordnungsspalte: Name, „Unzugeordnet“ oder bei nicht gelesenem Bestand „nicht lesbar“. */
+function scopeLabel(verbund: WorkspaceVerbund, names: ReadonlyMap<string, string>): string | undefined {
+  if (verbund.scopeId === undefined) return undefined;
+  return names.get(verbund.scopeId) ?? SCOPES_UNREADABLE;
+}
+
 function inventoryLabel(status: WorkspaceContextValue['status'], ready: boolean): string {
   if (status === 'unavailable') return 'Speicher nicht verfügbar';
   return ready ? '' : 'Speicher wird geöffnet…';
@@ -115,9 +158,10 @@ function inventoryLabel(status: WorkspaceContextValue['status'], ready: boolean)
 
 /** Arbeitsbereich: Anwendungsbereiche anlegen und öffnen; Verbünde anlegen, umbenennen, sichern, wiederherstellen und einzeln oder insgesamt mit Bestätigung löschen. */
 export function VerbundOverviewPage() {
-  const { status, verbuende, scopes, writable, deletion, createVerbund, deleteVerbund } = useWorkspace();
+  const { status, verbuende, scopes, scopesFailed, scopeDrafts, writable, deletion, createVerbund, deleteVerbund } = useWorkspace();
   // „Anwendungsbereich anlegen“ ist Ansichtszustand dieser Seite wie das Prüfblatt: keine Route, kein Name im Titel.
-  const [creatingScope, setCreatingScope] = useState(false);
+  // Eine offene Anlage aus dem Provider öffnet die Ansicht beim Zurückkehren wieder.
+  const [creatingScope, setCreatingScope] = useState(() => scopeDrafts.has(NEW_SCOPE_DRAFT));
   const { exporting, exportBackup, exportVerbund } = useBackupExport();
   const [pendingDelete, setPendingDelete] = useState<WorkspaceVerbund | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -289,25 +333,7 @@ export function VerbundOverviewPage() {
           </div>
         )}
 
-        <section aria-labelledby="scope-liste">
-          <SectionHead id="scope-liste" title="Anwendungsbereiche" count={ready ? scopes.length : null} />
-          {ready && (
-            <div className="rounded-md border border-[var(--color-border-default)] bg-[var(--color-surface-base)]">
-              {scopes.length === 0 ? (
-                <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2">
-                  <p className="text-sm text-[var(--color-text-secondary)]">Kein Anwendungsbereich angelegt</p>
-                  <Button variant="ghost" className={ROW_BUTTON} disabled={!writable} onClick={startScopeCreation}>Anwendungsbereich anlegen</Button>
-                </div>
-              ) : (
-                <ul className="divide-y divide-[var(--color-border-subtle)]">
-                  {scopes.map((scope) => (
-                    <ScopeRow key={scope.scopeId} scope={scope} count={verbuende.filter((verbund) => verbund.scopeId === scope.scopeId).length} />
-                  ))}
-                </ul>
-              )}
-            </div>
-          )}
-        </section>
+        <ScopeSection ready={ready} failed={scopesFailed} scopes={scopes ?? []} verbuende={verbuende ?? []} writable={writable} onCreate={startScopeCreation} />
 
         <section aria-labelledby="verbund-liste" className="space-y-4">
           <div>
@@ -322,7 +348,7 @@ export function VerbundOverviewPage() {
                       <VerbundRow
                         key={verbund.verbundId}
                         verbund={verbund}
-                        scopeName={verbund.scopeId === undefined ? undefined : scopeNames.get(verbund.scopeId)}
+                        scopeName={scopeLabel(verbund, scopeNames)}
                         writable={writable}
                         rowDrafts={rowDrafts}
                         onRowDraft={setRowDraft}

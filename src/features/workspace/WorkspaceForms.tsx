@@ -44,13 +44,14 @@ export function NameForm({ label, submitLabel, initial = '', disabled, onSubmit,
           disabled={disabled}
           autoFocus={onCancel !== undefined}
           onChange={(event) => { setName(event.target.value); onChange?.(event.target.value); }}
-          onKeyDown={(event) => { if (event.key === 'Escape' && onCancel) { event.preventDefault(); onCancel(); } }}
+          onKeyDown={(event) => { if (event.key === 'Escape' && onCancel && !saving) { event.preventDefault(); onCancel(); } }}
           className={`mt-1 ${INPUT}`}
         />
       </div>
       <div className="flex gap-2">
         <Button type="submit" className={ROW_BUTTON} disabled={disabled || saving || !isVerbundName(name)}>{submitLabel}</Button>
-        {onCancel && <Button variant="secondary" className={ROW_BUTTON} onClick={onCancel}>Abbrechen</Button>}
+        {/* Ein gestarteter Schreibvorgang lässt sich nicht zurücknehmen; Abbrechen wartet sein Ergebnis ab. */}
+        {onCancel && <Button variant="secondary" className={ROW_BUTTON} disabled={saving} onClick={onCancel}>Abbrechen</Button>}
       </div>
     </form>
   );
