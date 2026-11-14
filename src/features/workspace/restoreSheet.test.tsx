@@ -3,11 +3,12 @@ import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest';
 import { AppShell } from '@/app/AppShell';
 import { buildWorkspaceIndexUrl } from '@/app/routes';
-import type { LocalId, VerbundId, WorkspaceRestorePreview, WorkspaceVerbund, WorkspaceVerbundRestorePreview } from '@/domain/workspaceModel';
+import type { LocalId, ScopeId, VerbundId, WorkspaceRestorePreview, WorkspaceVerbund, WorkspaceVerbundRestorePreview } from '@/domain/workspaceModel';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { CatalogContext } from '@/state/CatalogContext';
 import { WorkspaceProvider, type WorkspaceContextValue } from '@/state/WorkspaceContext';
 import type { WorkspacePort } from '@/state/workspaceVerbundView';
+import { NEW_SCOPE_DRAFT } from '@/state/workspaceRestore';
 import { VERBUND, fail, fakePort, ok } from '@/test/fakeWorkspacePort';
 import { EMPTY_CATALOG_STATE, mainLandmark as main } from '@/test/renderWorkspaceArea';
 import { renderAppShell } from '@/test/renderAppShell';
@@ -286,6 +287,25 @@ describe('Sicherung wiederherstellen', () => {
     fireEvent.click(sheet.getByRole('button', { name: 'Verwerfen' }));
     expect(await sheet.findByRole('button', { name: 'Gesamten Bestand ersetzen' })).toBeInTheDocument();
     expect(workspace.documents.importTargets(orphan).size).toBe(0);
+  });
+
+  it('klärt beim Gesamt-Restore offene Namen der Anwendungsbereiche, bevor die Vorschau erscheint', async () => {
+    const scope = { scopeId: '3c2b1a00-5b3f-4c6d-8e9f-0a1b2c3d4e5f' as ScopeId, name: 'Netz', createdAt: TODAY, savedAt: '2026-11-14T00:00:00.000Z', items: [], evidence: [] } as const;
+    const renameScope = vi.fn(() => ok({ ...scope, name: 'Netz Nord' }));
+    renderWith(fakePort({ previewRestore: () => ok(workspacePreview), listScopes: () => ok([scope]), renameScope }));
+    await screen.findByRole('link', { name: VERBUND.name });
+    workspace.scopeDrafts.set(scope.scopeId, 'Netz Nord');
+    workspace.scopeDrafts.set(NEW_SCOPE_DRAFT, 'Anlage');
+    const sheet = await choose();
+    const rename = (await sheet.findByText(/Umbenennung Anwendungsbereich/)).closest('li')!;
+    expect(rename).toHaveTextContent('„Netz“ → „Netz Nord“');
+    fireEvent.click(within(rename).getByRole('button', { name: 'Speichern' }));
+    await waitFor(() => expect(renameScope).toHaveBeenCalledExactlyOnceWith(scope.scopeId, 'Netz Nord', scope.savedAt));
+    const created = (await sheet.findByText(/Neuer Anwendungsbereich/)).closest('li')!;
+    expect(within(created).getByRole('button', { name: 'Anlegen' })).toBeInTheDocument();
+    fireEvent.click(within(created).getByRole('button', { name: 'Verwerfen' }));
+    expect(await sheet.findByRole('button', { name: 'Gesamten Bestand ersetzen' })).toBeInTheDocument();
+    expect(workspace.scopeDrafts.size).toBe(0);
   });
 
   it('kehrt bei Abbrechen zum Einstieg zurück', async () => {

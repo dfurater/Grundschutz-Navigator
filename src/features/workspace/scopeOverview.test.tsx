@@ -209,6 +209,27 @@ describe('Speicherfehler, Konflikt und Schreibsperre', () => {
     expect(router.state.location.pathname).toBe('/about');
   });
 
+  it('legt nach Verlassen und Wiederöffnen der laufenden Anlage keinen zweiten Anwendungsbereich an', async () => {
+    let finish: (value: Awaited<ReturnType<WorkspacePort['createScope']>>) => void = () => undefined;
+    const createScope = vi.fn(() => new Promise<Awaited<ReturnType<WorkspacePort['createScope']>>>((resolve) => { finish = resolve; }));
+    const { router } = renderWith(fakePort({ createScope }));
+    const entry = await createEntry();
+    await waitFor(() => expect(entry).toBeEnabled());
+    fireEvent.click(entry);
+    fireEvent.change(within(main()).getByLabelText('Name des Anwendungsbereichs'), { target: { value: 'Netzbetrieb' } });
+    fireEvent.click(within(main()).getByRole('button', { name: 'Anlegen' }));
+    void router.navigate('/about');
+    await waitFor(() => expect(router.state.location.pathname).toBe('/about'));
+    void router.navigate(buildWorkspaceIndexUrl());
+    // Die offene Anlage öffnet die Anlageansicht mit der Eingabe wieder.
+    const input = await within(main()).findByLabelText('Name des Anwendungsbereichs');
+    expect(input).toHaveValue('Netzbetrieb');
+    fireEvent.click(within(main()).getByRole('button', { name: 'Anlegen' }));
+    finish({ ok: true, value: { ...SCOPE, name: 'Netzbetrieb' } });
+    await waitFor(() => expect(router.state.location.pathname).toBe(buildScopeUrl(SCOPE.scopeId)));
+    expect(createScope).toHaveBeenCalledTimes(1);
+  });
+
   it('erhält eine offene Umbenennung über einen Routenwechsel', async () => {
     const { router } = renderWith(fakePort({ listScopes: () => ok([SCOPE]) }), buildScopeUrl(SCOPE.scopeId));
     fireEvent.click(await within(main()).findByRole('button', { name: 'Umbenennen' }));

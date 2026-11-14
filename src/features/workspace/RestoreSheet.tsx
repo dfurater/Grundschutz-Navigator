@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router';
 import { buildWorkspaceDocumentUrl } from '@/app/routes';
 import { Button } from '@/components/Button';
 import { useWorkspace } from '@/hooks/useWorkspace';
-import type { RestoreInput, RestorePreview, RestoreScope } from '@/state/workspaceRestore';
+import { inputVerbundName, saveNamedInput, type NamedInput, type RestoreInput, type RestorePreview, type RestoreScope } from '@/state/workspaceRestore';
 import { OriginLabel } from '@/features/workspace/DocumentMarks';
 import { WORKSPACE_BACKUP_MAX_BYTES } from '@/domain/class2ImportLimits.mjs';
 import { useBackupExport } from '@/features/workspace/WorkspaceNotices';
@@ -37,7 +37,7 @@ export function RestoreSheet({ file: initialFile, rowDrafts, onCancel, onDone }:
   onDone: (done: RestoreDone) => void;
 }>) {
   const {
-    verbuende, writable, flushAutosaves, previewRestore, restoreBackup, pendingRestoreInputs, discardRestoreInput, renameVerbund,
+    verbuende, writable, flushAutosaves, previewRestore, restoreBackup, pendingRestoreInputs, discardRestoreInput, renameVerbund, renameScope, createScope,
   } = useWorkspace();
   const { exportBackup, exportVerbund } = useBackupExport();
   const navigate = useNavigate();
@@ -127,11 +127,10 @@ export function RestoreSheet({ file: initialFile, rowDrafts, onCancel, onDone }:
   };
 
 
-  const saveRename = async (entry: Extract<RestoreInput, { kind: 'rename' }>) => {
-    const name = entry.draft.trim();
-    const result = await renameVerbund(entry.verbundId, name);
-    if (result.ok) discardRestoreInput(entry, rowDrafts);
-    await afterClarify(result.ok ? undefined : entry);
+  const saveRename = async (entry: NamedInput) => {
+    const saved = await saveNamedInput(entry, { renameVerbund, renameScope, createScope });
+    if (saved) discardRestoreInput(entry, rowDrafts);
+    await afterClarify(saved ? undefined : entry);
   };
 
   const confirm = async (preview: RestorePreview) => {
@@ -241,8 +240,8 @@ export function RestoreSheet({ file: initialFile, rowDrafts, onCancel, onDone }:
                 <ClarifyRow
                   key={inputKey(entry)}
                   entry={entry}
-                  verbundName={entry.kind === 'orphan' ? '' : verbuende?.find((candidate) => candidate.verbundId === entry.verbundId)?.name ?? ''}
-                  failed={entry.kind === 'rename' && phase.failed?.kind === 'rename' && phase.failed.verbundId === entry.verbundId && phase.failed.row === entry.row}
+                  verbundName={inputVerbundName(entry, verbuende)}
+                  failed={phase.failed !== undefined && inputKey(phase.failed) === inputKey(entry)}
                   writable={writable}
                   onSave={saveRename}
                   onDiscard={() => { discardRestoreInput(entry, rowDrafts); void afterClarify(); }}

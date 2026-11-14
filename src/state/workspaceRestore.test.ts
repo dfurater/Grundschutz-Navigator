@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import type { LocalId, VerbundId, WorkspaceVerbund } from '@/domain/workspaceModel';
-import { collectRestoreInputs } from '@/state/workspaceRestore';
+import { NEW_SCOPE_DRAFT, collectRestoreInputs } from '@/state/workspaceRestore';
 
 const target = { verbundId: '11111111-1111-4111-8111-111111111111' as VerbundId, name: 'Ziel', createdAt: '', savedAt: '' } as WorkspaceVerbund;
 const other = { ...target, verbundId: '22222222-2222-4222-8222-222222222222' as VerbundId, name: 'Anderer' };
@@ -37,4 +37,19 @@ it('führt beim Gesamt-Restore Importziele ohne bekanntes Dokument als verwaiste
   const base = { renameDrafts: new Map(), importTargets: new Map([[removed, pending]]), verbuende: [target], documents: [] };
   expect(collectRestoreInputs({ ...base, scope: { kind: 'workspace', documents: [] } })).toEqual([{ kind: 'orphan', localId: removed, count: 1 }]);
   expect(collectRestoreInputs({ ...base, scope: { kind: 'verbund', verbundId: target.verbundId, documents: [] } })).toEqual([]);
+});
+
+it('führt offene Namen von Anwendungsbereichen nur beim Gesamt-Restore und nur bei Abweichung', () => {
+  const scope = { scopeId: '55555555-5555-4555-8555-555555555555', name: 'Netz', savedAt: 's1', createdAt: '', items: [], evidence: [] } as never;
+  const base = {
+    renameDrafts: new Map(), importTargets: new Map(), verbuende: [target], documents: [], scopes: [scope],
+    scopeDrafts: new Map([['55555555-5555-4555-8555-555555555555', 'Netz Nord'], [NEW_SCOPE_DRAFT, 'Anlage'], ['66666666-6666-4666-8666-666666666666', 'Verwaist']]),
+  };
+  expect(collectRestoreInputs({ ...base, scope: { kind: 'workspace', documents: [] } })).toEqual([
+    { kind: 'scope', scope: { scopeId: '55555555-5555-4555-8555-555555555555', name: 'Netz', savedAt: 's1' }, draft: 'Netz Nord' },
+    { kind: 'scope', scope: null, draft: 'Anlage' },
+  ]);
+  expect(collectRestoreInputs({ ...base, scope: { kind: 'verbund', verbundId: target.verbundId, documents: [] } })).toEqual([]);
+  const unchanged = new Map([['55555555-5555-4555-8555-555555555555', ' Netz '], [NEW_SCOPE_DRAFT, '  ']]);
+  expect(collectRestoreInputs({ ...base, scopeDrafts: unchanged, scope: { kind: 'workspace', documents: [] } })).toEqual([]);
 });

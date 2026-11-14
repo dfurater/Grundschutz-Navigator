@@ -11,7 +11,7 @@ import { relativeTime } from '@/features/workspace/StationCards';
 import { NameForm, SaveFailed, SectionHead } from '@/features/workspace/WorkspaceForms';
 import { WorkspaceNotices } from '@/features/workspace/WorkspaceNotices';
 import { WorkspaceStatePage } from '@/features/workspace/WorkspaceStatePage';
-import { NEW_SCOPE_DRAFT } from '@/state/WorkspaceContext';
+import { NEW_SCOPE_DRAFT } from '@/state/workspaceRestore';
 
 /** Ansicht „Anwendungsbereich anlegen“ (GSPP-669, Ansicht 7): erst nach bestätigtem Speichern öffnet sich die Übersicht. */
 export function ScopeCreateView({ writable, onCancel }: Readonly<{ writable: boolean; onCancel: () => void }>) {

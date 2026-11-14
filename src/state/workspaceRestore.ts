@@ -1,7 +1,12 @@
 import type { OscalRootKey } from '@/domain/oscalVersionMatrix';
 import type {
-  LocalId, VerbundId, WorkspaceDocumentSummary, WorkspaceRestorePreview, WorkspaceVerbund, WorkspaceVerbundRestorePreview,
+  LocalId, VerbundId, WorkspaceDocumentSummary, WorkspaceRestorePreview, WorkspaceScope, WorkspaceVerbund,
+  WorkspaceVerbundRestorePreview,
 } from '@/domain/workspaceModel';
+import type { WorkspaceContextValue } from '@/state/WorkspaceContext';
+
+/** Schlüssel der offenen Anlage eines Anwendungsbereichs unter den Namensentwürfen; keine `scopeId` hat diese Form. */
+export const NEW_SCOPE_DRAFT = 'neu';
 
 export type RestorePreview = WorkspaceRestorePreview | WorkspaceVerbundRestorePreview;
 
@@ -22,16 +27,26 @@ export type RestoreScope =
 export type RestoreInput =
   | { readonly kind: 'rename'; readonly verbundId: VerbundId; readonly name: string; readonly draft: string; readonly row?: true }
   | { readonly kind: 'import'; readonly verbundId: VerbundId; readonly localId: LocalId; readonly rootType: OscalRootKey; readonly count: number }
-  | { readonly kind: 'orphan'; readonly localId: LocalId; readonly count: number };
+  | { readonly kind: 'orphan'; readonly localId: LocalId; readonly count: number }
+  /** Offener Name eines Anwendungsbereichs: Umbenennung mit Vergleichsstand oder, ohne `scope`, eine Anlage. */
+  | { readonly kind: 'scope'; readonly scope: Pick<WorkspaceScope, 'scopeId' | 'name' | 'savedAt'> | null; readonly draft: string };
+
+/** Schlüssel eines Scope-Eintrags unter den Namensentwürfen. */
+export function scopeDraftKey(entry: Extract<RestoreInput, { kind: 'scope' }>): string {
+  return entry.scope?.scopeId ?? NEW_SCOPE_DRAFT;
+}
 
 /**
  * Offene Umbenennungen und Importziele im Zielbereich. Ein Umbenennungsentwurf mit dem gespeicherten Namen
  * ändert nichts; Eingaben unbeteiligter Verbünde gehören beim Verbund-Restore nicht dazu. Der Gesamt-Restore
  * ersetzt alle Importziele, auch solche, deren Dokument weder der Speicher noch die Sicherung kennt.
  */
-export function collectRestoreInputs({ scope, renameDrafts, rowDrafts = new Map(), importTargets, verbuende, documents }: Readonly<{
+export function collectRestoreInputs({ scope, renameDrafts, rowDrafts = new Map(), scopeDrafts = new Map(), scopes = [], importTargets, verbuende, documents }: Readonly<{
   scope: RestoreScope;
   renameDrafts: ReadonlyMap<string, string>;
+  /** Offene Namen zu Anwendungsbereichen; nur der Gesamt-Restore ersetzt Anwendungsbereiche. */
+  scopeDrafts?: ReadonlyMap<string, string>;
+  scopes?: readonly WorkspaceScope[];
   /** Offene Umbenennungen in den Zeilen der Übersicht, getrennt von `renameDrafts` geführt. */
   rowDrafts?: ReadonlyMap<string, string>;
   importTargets: ReadonlyMap<LocalId, ReadonlyMap<string, unknown>>;
@@ -49,6 +64,7 @@ export function collectRestoreInputs({ scope, renameDrafts, rowDrafts = new Map(
   };
   renames(renameDrafts, false);
   renames(rowDrafts, true);
+  if (scope.kind === 'workspace') inputs.push(...scopeInputs(scopeDrafts, scopes));
   // Gespeicherte Dokumente gehen vor; aus der Sicherung kommen nur die, die der Speicher nicht mehr kennt.
   const candidates = new Map<LocalId, ScopeDocument>(scope.documents.map((document) => [document.localId, document]));
   for (const document of documents) candidates.set(document.localId, document);
@@ -67,6 +83,21 @@ export function collectRestoreInputs({ scope, renameDrafts, rowDrafts = new Map(
   return inputs;
 }
 
+function scopeInputs(drafts: ReadonlyMap<string, string>, scopes: readonly WorkspaceScope[]): RestoreInput[] {
+  const inputs: RestoreInput[] = [];
+  for (const [key, draft] of drafts) {
+    if (key === NEW_SCOPE_DRAFT) {
+      if (draft.trim() !== '') inputs.push({ kind: 'scope', scope: null, draft });
+      continue;
+    }
+    const stored = scopes.find((candidate) => candidate.scopeId === key);
+    if (stored && draft.trim() !== stored.name) {
+      inputs.push({ kind: 'scope', scope: { scopeId: stored.scopeId, name: stored.name, savedAt: stored.savedAt }, draft });
+    }
+  }
+  return inputs;
+}
+
 /** Verwirft nach erfolgreichem Restore alle Sitzungseingaben des ersetzten Bereichs; unbeteiligte bleiben. */
 export function discardReplacedInputs(preview: RestorePreview, importTargets: Map<LocalId, unknown>, renameDrafts: Map<string, string>): void {
   if (preview.kind === 'workspace') {
@@ -76,4 +107,20 @@ export function discardReplacedInputs(preview: RestorePreview, importTargets: Ma
   }
   for (const { localId } of [...preview.target.documents, ...preview.backup.documents]) importTargets.delete(localId);
   renameDrafts.delete(preview.verbundId);
+}
+
+/** Offene Namenseingabe, die die Klärung speichern kann. */
+export type NamedInput = Extract<RestoreInput, { kind: 'rename' | 'scope' }>;
+
+/** Speichert eine offene Namenseingabe aus der Klärung; `true` erst nach bestätigtem Schreiben. */
+export async function saveNamedInput(entry: NamedInput, writers: Pick<WorkspaceContextValue, 'renameVerbund' | 'renameScope' | 'createScope'>): Promise<boolean> {
+  const name = entry.draft.trim();
+  if (entry.kind === 'rename') return (await writers.renameVerbund(entry.verbundId, name)).ok;
+  if (entry.scope) return (await writers.renameScope(entry.scope.scopeId, name, entry.scope.savedAt)).ok;
+  return (await writers.createScope(name)).ok;
+}
+
+/** Name des Verbunds, auf den sich eine Klärungszeile bezieht; leer ohne Verbundbezug. */
+export function inputVerbundName(entry: RestoreInput, verbuende: readonly { readonly verbundId: string; readonly name: string }[] | null): string {
+  return 'verbundId' in entry ? verbuende?.find((candidate) => candidate.verbundId === entry.verbundId)?.name ?? '' : '';
 }

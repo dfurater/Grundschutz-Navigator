@@ -8,7 +8,7 @@ import { catalogDelivery, verifiedCatalogArtifacts } from '@/state/workspaceCata
 import type { WorkspaceClass1Artifact } from '@/domain/workspaceGraphModel';
 import type { LocalId, VerbundId, VerbundWriteExpectation, WorkspaceResult, WorkspaceScope, WorkspaceVerbund } from '@/domain/workspaceModel';
 import {
-  collectRestoreInputs, discardReplacedInputs, type RestoreInput, type RestorePreview, type RestoreScope,
+  NEW_SCOPE_DRAFT, collectRestoreInputs, discardReplacedInputs, scopeDraftKey, type RestoreInput, type RestorePreview, type RestoreScope,
 } from '@/state/workspaceRestore';
 import { CatalogContext } from '@/state/CatalogContext';
 import {
@@ -105,8 +105,6 @@ export interface WorkspaceContextValue {
   readonly scopeDrafts: Map<string, string>;
 }
 
-/** Schlüssel der offenen Anlage in `scopeDrafts`; keine `scopeId` hat diese Form. */
-export const NEW_SCOPE_DRAFT = 'neu';
 
 const unavailable = () => Promise.resolve(storageFailed());
 const unavailableWrite = <T,>(): Promise<WorkspaceResult<T>> => Promise.resolve(storageFailed());
@@ -191,6 +189,7 @@ export function WorkspaceProvider({ open = openWorkspaceStore, session: provided
   const [renameDrafts] = useState(() => new Map<string, string>());
   const [scopeDrafts] = useState(() => new Map<string, string>());
   const [scopesFailed, setScopesFailed] = useState(false);
+  const pendingScope = useRef<{ readonly name: string; readonly run: Promise<WorkspaceResult<WorkspaceScope>> } | null>(null);
   const { catalogs, requestCatalog } = useContext(CatalogContext);
   const class1 = useMemo(() => verifiedCatalogArtifacts(catalogs), [catalogs]);
   const delivery = useMemo(() => catalogDelivery(catalogs), [catalogs]);
@@ -491,7 +490,17 @@ export function WorkspaceProvider({ open = openWorkspaceStore, session: provided
       }
     },
     listScopes: () => quiet((store) => store.listScopes()),
-    createScope: async (name) => keepScope(await writeTo(status === 'deleted' ? await openStore() : port, (store) => store.createScope(name))),
+    createScope: (name) => {
+      // Eine laufende Anlage mit demselben Namen, etwa nach Verlassen und Wiederöffnen der Anlageansicht, legt keinen zweiten Anwendungsbereich an.
+      if (pendingScope.current?.name === name) return pendingScope.current.run;
+      const entry = {
+        name,
+        run: (async () => keepScope(await writeTo(status === 'deleted' ? await openStore() : port, (store) => store.createScope(name))))(),
+      };
+      pendingScope.current = entry;
+      void entry.run.finally(() => { if (pendingScope.current === entry) pendingScope.current = null; });
+      return entry.run;
+    },
     renameScope: async (...args) => keepScope(await write((store) => store.renameScope(...args))),
     assignVerbuende: (...args) => write((store) => store.assignVerbuende(...args)),
     changeVerbundScope: (...args) => write((store) => store.changeVerbundScope(...args)),
@@ -569,12 +578,22 @@ export function WorkspaceProvider({ open = openWorkspaceStore, session: provided
       if (status === 'deleted') return { ok: true, value: [] };
       if (!port) return storageFailed();
       // Gespeicherte Namen frisch lesen: Eine während des Wartens abgeschlossene Umbenennung fehlt im gerenderten Stand.
-      const [stored, listed] = await Promise.all([port.listVerbuende().catch(storageFailed), port.listDocuments().catch(storageFailed)]);
+      const [stored, listed, storedScopes] = await Promise.all([
+        port.listVerbuende().catch(storageFailed), port.listDocuments().catch(storageFailed), port.listScopes().catch(storageFailed),
+      ]);
       if (!stored.ok) return stored;
       if (!listed.ok) return listed;
-      return { ok: true, value: collectRestoreInputs({ scope, renameDrafts, rowDrafts, importTargets, verbuende: stored.value, documents: listed.value }) };
+      if (!storedScopes.ok) return storedScopes;
+      return { ok: true, value: collectRestoreInputs({
+        scope, renameDrafts, rowDrafts, scopeDrafts, scopes: storedScopes.value, importTargets, verbuende: stored.value, documents: listed.value,
+      }) };
     },
     discardRestoreInput: (input, rowDrafts) => {
+      if (input.kind === 'scope') {
+        // Eine während des Speicherns weitergetippte Eingabe bleibt offen.
+        if (scopeDrafts.get(scopeDraftKey(input)) === input.draft) scopeDrafts.delete(scopeDraftKey(input));
+        return;
+      }
       if (input.kind !== 'rename') {
         importTargets.delete(input.localId);
         return;

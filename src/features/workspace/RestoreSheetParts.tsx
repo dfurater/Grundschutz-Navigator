@@ -2,7 +2,7 @@ import { useId, useState, type ReactNode } from 'react';
 import { Button } from '@/components/Button';
 import { ROOT_TYPE_LABELS } from '@/domain/workspaceStations';
 import { isVerbundName } from '@/domain/workspaceModel';
-import type { RestoreInput, RestorePreview, RestoreScope } from '@/state/workspaceRestore';
+import { scopeDraftKey, type NamedInput, type RestoreInput, type RestorePreview, type RestoreScope } from '@/state/workspaceRestore';
 
 /** Gelesene Angaben einer geprüften Sicherungsdatei. */
 export interface FileInfo {
@@ -44,6 +44,7 @@ export function fileInfo(preview: RestorePreview): FileInfo {
 
 /** Stabiler Schlüssel einer Klärungszeile; Zeilen- und Sitzungsumbenennung desselben Verbunds bleiben getrennt. */
 export function inputKey(entry: RestoreInput): string {
+  if (entry.kind === 'scope') return `scope-${scopeDraftKey(entry)}`;
   if (entry.kind !== 'rename') return `import-${entry.localId}`;
   return entry.row ? `rename-row-${entry.verbundId}` : `rename-${entry.verbundId}`;
 }
@@ -197,26 +198,23 @@ export function ClarifyRow({ entry, verbundName, failed, writable, onSave, onDis
   verbundName: string;
   failed: boolean;
   writable: boolean;
-  onSave: (entry: Extract<RestoreInput, { kind: 'rename' }>) => Promise<void>;
+  onSave: (entry: NamedInput) => Promise<void>;
   onDiscard: () => void;
   onOpen: (entry: Extract<RestoreInput, { kind: 'import' }>) => void;
 }>) {
   const [saving, setSaving] = useState(false);
+  const named = entry.kind === 'rename' || entry.kind === 'scope' ? entry : null;
   let label: ReactNode;
   if (entry.kind === 'rename') label = <><span className="font-semibold">Umbenennung</span> · „{entry.name}“ → „{entry.draft}“</>;
   else if (entry.kind === 'import') label = <><span className="font-semibold">Importzuordnung</span> · {ROOT_TYPE_LABELS[entry.rootType]} in „{verbundName}“ · {plural(entry.count, 'Verweis', 'Verweise')}</>;
-  else label = <><span className="font-semibold">Importzuordnung</span> · Dokument nicht mehr vorhanden · {plural(entry.count, 'Verweis', 'Verweise')}</>;
+  else if (entry.kind === 'orphan') label = <><span className="font-semibold">Importzuordnung</span> · Dokument nicht mehr vorhanden · {plural(entry.count, 'Verweis', 'Verweise')}</>;
+  else if (entry.scope) label = <><span className="font-semibold">Umbenennung Anwendungsbereich</span> · „{entry.scope.name}“ → „{entry.draft}“</>;
+  else label = <><span className="font-semibold">Neuer Anwendungsbereich</span> · „{entry.draft}“</>;
   return (
     <ClarifyItem label={label} failed={failed}>
-      {entry.kind === 'rename' && (
-        <Button
-          variant="secondary"
-          size="sm"
-          className={BUTTON}
-          disabled={!writable || saving || !isVerbundName(entry.draft)}
-          onClick={() => { setSaving(true); void onSave(entry).finally(() => setSaving(false)); }}
-        >
-          Speichern
+      {named && (
+        <Button variant="secondary" size="sm" className={BUTTON} disabled={!writable || saving || !isVerbundName(named.draft)} onClick={() => { setSaving(true); void onSave(named).finally(() => setSaving(false)); }}>
+          {named.kind === 'scope' && !named.scope ? 'Anlegen' : 'Speichern'}
         </Button>
       )}
       {entry.kind === 'import' && (
