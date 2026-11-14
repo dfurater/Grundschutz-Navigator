@@ -50,7 +50,7 @@ function findingState(finding: unknown): string | undefined {
 }
 
 /**
- * Ohne mindestens ein lesbares `result` ist „0 geprüft“ keine belegte Aussage;
+ * Ohne mindestens ein lesbares `result` ist „0 Findings“ keine belegte Aussage;
  * ebenso, wenn ein `findings` vorhanden, aber kein Array aus Objekten ist.
  * Ein fehlendes `findings` ist zulässig und zählt als keine Findings.
  */

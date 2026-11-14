@@ -36,8 +36,12 @@ const VALIDITY_TONE: Readonly<Record<DocumentValidity, string>> = {
   Gültig: 'border-document-valid-border bg-document-valid-bg text-document-valid-text',
 };
 
+function validityText(value: DocumentValidity): string {
+  return value === 'Gültig' ? 'Gültig · Schema' : value;
+}
+
 function Validity({ value }: Readonly<{ value: DocumentValidity }>) {
-  return <span data-validity={value} className={`${MARK} ${VALIDITY_TONE[value]}`}>{value}</span>;
+  return <span data-validity={value} className={`${MARK} ${VALIDITY_TONE[value]}`}>{validityText(value)}</span>;
 }
 
 /** Die Kennzahl der Station; mehrere Dokumente desselben Typs ergeben die Dokumentanzahl. */
@@ -53,10 +57,10 @@ function metricText(metric: DocumentMetric | number | undefined): string | undef
     case 'profile': return `${count.format(metric.included)} von ${count.format(metric.available)} aufgenommen`;
     case 'ssp': return `${count.format(metric.documented)} von ${count.format(metric.baseline)} dokumentiert`;
     case 'assessment-results': return [
-      `${count.format(metric.assessed)} geprüft`,
+      `${count.format(metric.assessed + metric.unknown)} Findings`,
       `${count.format(metric.notSatisfied)} nicht erfüllt`,
-      ...(metric.unknown > 0 ? [`${count.format(metric.unknown)} ohne auswertbaren Status`] : []),
-    ].join(' · ');
+      metric.unknown > 0 ? `${count.format(metric.unknown)} ohne auswertbaren Status` : undefined,
+    ].filter(Boolean).join(' · ');
     case 'poam': return `${count.format(metric.open)} ${metric.open === 1 ? 'Maßnahme' : 'Maßnahmen'} · Umsetzung nicht erklärt`;
     default: return undefined;
   }
@@ -127,7 +131,7 @@ function DocumentStationCard({ verbundId, station, documents, action, now, extra
       validity={validity}
       action={action}
       to={buildStationUrl(verbundId, station)}
-      label={label(action, title, [validity ?? NO_DOCUMENT, figure])}
+      label={label(action, title, [validity ? validityText(validity) : NO_DOCUMENT, figure])}
     >
       {members.length === 0 ? <p className={GAP}>{NO_DOCUMENT}</p> : (
         <>
@@ -148,7 +152,7 @@ function AssessmentRow({ title, documents, metric }: Readonly<{ title: string; d
         <span className="text-sm font-medium text-[var(--color-text-primary)]">{title}</span>
         {validity ? <Validity value={validity} /> : <span className={META}>{NO_DOCUMENT}</span>}
       </span>
-      {metric && <p className={META}>{metric}</p>}
+      {metric && <p className={META}>{metric.split(' · ').map((part, index) => <span key={part}>{index > 0 && ' · '}<span className="whitespace-nowrap">{part}</span></span>)}</p>}
     </div>
   );
 }
@@ -168,9 +172,11 @@ export function StationCards({ view, catalogHref, now }: Readonly<{
   const verbundId = verbund.verbundId;
   const plans = documents.filter((document) => document.rootType === 'assessment-plan');
   const results = documents.filter((document) => document.rootType === 'assessment-results');
+  const planValidity = stationValidity(plans);
+  const resultsValidity = stationValidity(results);
   const resultsMetric = results.length === 0 ? undefined : metricText(metricOf(results, 'assessment-results'));
   const assessment = STATION_DEFINITIONS.assessment;
-  const resultsIncomplete = results.length === 0 || stationValidity(results) === 'Entwurf';
+  const resultsIncomplete = results.length === 0 || resultsValidity === 'Entwurf';
   const catalogFigure = view.catalogControls === undefined ? undefined : `${count.format(view.catalogControls)} Anforderungen`;
   const poamMetric = metricOf(stationDocuments(documents, 'poam'), 'plan-of-action-and-milestones');
   const deadlines = typeof poamMetric === 'object' && poamMetric.kind === 'poam' ? poamMetric : undefined;
@@ -198,8 +204,8 @@ export function StationCards({ view, catalogHref, now }: Readonly<{
         action="Prüfung öffnen"
         to={buildStationUrl(verbundId, 'assessment')}
         label={label('Prüfung öffnen', assessment.title, [
-          `Prüfplan ${stationValidity(plans) ?? NO_DOCUMENT}`,
-          `Prüfergebnisse ${stationValidity(results) ?? NO_DOCUMENT}`,
+          `Prüfplan ${planValidity ? validityText(planValidity) : NO_DOCUMENT}`,
+          `Prüfergebnisse ${resultsValidity ? validityText(resultsValidity) : NO_DOCUMENT}`,
           resultsMetric,
         ])}
       >

@@ -53,23 +53,35 @@ describe('StationCards', () => {
       doc('m', 'plan-of-action-and-milestones', { kind: 'poam', open: 3, overdue: 1, unknownDeadline: 2 }),
     ]);
     expect(catalog).toHaveTextContent('1.234 Anforderungen');
-    expect(within(profile).getByRole('link')).toHaveAccessibleName('Anforderungspaket bearbeiten, Profile, Gültig, 12 von 40 aufgenommen');
-    expect(ssp).toHaveTextContent('7 von 12 dokumentiert');
-    expect(assessment).toHaveTextContent('5 geprüft · 2 nicht erfüllt · 1 ohne auswertbaren Status');
+    expect(within(profile).getByRole('link')).toHaveAccessibleName('Anforderungspaket bearbeiten, Profile, Gültig · Schema, 12 von 40 aufgenommen');
+    expect(within(ssp).getByRole('link')).toHaveAccessibleName('Umsetzung bearbeiten, SSP, Gültig · Schema, 7 von 12 dokumentiert');
+    expect(assessment).toHaveTextContent('6 Findings · 2 nicht erfüllt · 1 ohne auswertbaren Status');
+    expect(within(assessment).getByRole('link')).toHaveAccessibleName('Prüfung öffnen, Assessment, Prüfplan Noch kein Dokument, Prüfergebnisse Gültig · Schema, 6 Findings · 2 nicht erfüllt · 1 ohne auswertbaren Status');
     expect(poam).toHaveTextContent('3 Maßnahmen · Umsetzung nicht erklärt');
     expect(poam).toHaveTextContent('1 überschritten 2 Fristlage unbekannt · berechnet aus Frist und Systemzeit');
     // Gültige Prüfergebnisse: kein Reihenfolge-Hinweis.
     expect(poam).not.toHaveTextContent('keine erzwungene Reihenfolge');
   });
 
+  it('lässt das Statuslücken-Segment bei null weg und hält Kennzahlsegmente zusammen', () => {
+    const [, , , assessment] = cards([doc('r', 'assessment-results', { kind: 'assessment-results', assessed: 6, notSatisfied: 2, unknown: 0 })]);
+    expect(assessment).toHaveTextContent('6 Findings · 2 nicht erfüllt');
+    expect(assessment).not.toHaveTextContent('ohne auswertbaren Status');
+    expect(within(assessment).getByText('2 nicht erfüllt')).toHaveClass('whitespace-nowrap');
+  });
+
   it('zeigt bei mehreren Dokumenten einer Station die Dokumentanzahl und ohne Überfälliges keinen Hinweis', () => {
-    const [, profile, , , poam] = cards([
+    const [, profile, , assessment, poam] = cards([
       doc('p1', 'profile', { kind: 'profile', included: 1, available: 2 }),
       doc('p2', 'profile'),
+      doc('r1', 'assessment-results'),
+      doc('r2', 'assessment-results'),
       doc('m', 'plan-of-action-and-milestones', { kind: 'poam', open: 1, overdue: 0, unknownDeadline: 0 }),
     ]);
     expect(profile).toHaveTextContent('2 Dokumente');
     expect(profile).not.toHaveTextContent('aufgenommen');
+    expect(assessment).toHaveTextContent('2 Dokumente');
+    expect(within(assessment).getByRole('link')).toHaveAccessibleName(/Prüfergebnisse Gültig · Schema, 2 Dokumente/);
     expect(poam).toHaveTextContent('1 Maßnahme · Umsetzung nicht erklärt');
     expect(poam).not.toHaveTextContent(/überschritten|Fristlage unbekannt/);
     expect(poam).toHaveTextContent('Fristlage berechnet aus Frist und Systemzeit am');
