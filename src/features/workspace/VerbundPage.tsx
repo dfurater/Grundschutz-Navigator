@@ -10,7 +10,7 @@ import type { VerbundView, WorkspaceDocumentView } from '@/state/workspaceVerbun
 import { FOCUS_RING, OriginLabel, ValidityBadge } from '@/features/workspace/DocumentMarks';
 import { WorkspaceNotices } from '@/features/workspace/WorkspaceNotices';
 import { StationCards, latestSavedAt, relativeTime } from '@/features/workspace/StationCards';
-import { NameForm } from '@/features/workspace/VerbundOverviewPage';
+import { NameForm } from '@/features/workspace/WorkspaceForms';
 import { WorkspaceStatePage, useRoutedVerbund } from '@/features/workspace/WorkspaceStatePage';
 import { Button } from '@/components/Button';
 import { ConfirmDialog } from '@/components/ConfirmDialog';

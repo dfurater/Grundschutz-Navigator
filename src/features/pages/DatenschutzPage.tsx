@@ -182,7 +182,8 @@ export function DatenschutzPage() {
           Browser-Einstellungen entfernen.
         </p>
         <p className="catalog-prose-text text-sm text-slate-700 leading-relaxed">
-          Im Bereich Informationsverbünde können Sie einen Informationsverbund
+          Im Arbeitsbereich können Sie Anwendungsbereiche mit einem Namen
+          anlegen und umbenennen, einen Informationsverbund
           mit allen zugehörigen Dokumenten vollständig löschen, sämtliche in
           diesem Browserprofil gespeicherten Daten dieses Bereichs nach
           ausdrücklicher Bestätigung auf einmal löschen und eine
@@ -202,7 +203,7 @@ export function DatenschutzPage() {
           Schnittstelle lassen sich zudem andere einzelne Dokumente vollständig
           löschen; Bedienelemente dafür sind derzeit nicht verfügbar. Die
           Löschung sämtlicher Daten setzt voraus, dass kein weiterer Tab mit dem
-          Bereich Informationsverbünde geöffnet ist; vorher bietet die Anwendung eine
+          Arbeitsbereich geöffnet ist; vorher bietet die Anwendung eine
           Sicherungsdatei an. Hält eine andere Verbindung die Daten noch
           geöffnet, wartet die gestartete Löschung und lässt sich nicht
           zurücknehmen. Die Löschung entfernt die Daten aus dem Speicher des

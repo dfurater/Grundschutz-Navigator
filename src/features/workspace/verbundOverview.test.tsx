@@ -137,7 +137,7 @@ describe('Verbund-Übersicht', () => {
     fireEvent.change(within(main()).getByLabelText('Neuer Name'), { target: { value: 'Halb getippt' } });
     expect(drafts?.get(seeded.verbundId)).toBe('Halb getippt');
 
-    fireEvent.click(within(screen.getByRole('navigation', { name: 'Pfad' })).getByRole('link', { name: 'Informationsverbünde' }));
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Pfad' })).getByRole('link', { name: 'Arbeitsbereich' }));
     const row = (await within(main()).findByRole('link', { name: SENTINEL_VERBUND })).closest('li')!;
     fireEvent.click(within(row).getByRole('button', { name: 'Löschen…' }));
     fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Endgültig löschen' }));
@@ -151,7 +151,7 @@ describe('Verbund-Übersicht', () => {
     fireEvent.click(within(main()).getByRole('button', { name: 'Umbenennen' }));
     fireEvent.change(within(main()).getByLabelText('Neuer Name'), { target: { value: 'Halb getippt' } });
 
-    fireEvent.click(within(screen.getByRole('navigation', { name: 'Pfad' })).getByRole('link', { name: 'Informationsverbünde' }));
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Pfad' })).getByRole('link', { name: 'Arbeitsbereich' }));
     const row = (await within(main()).findByRole('link', { name: SENTINEL_VERBUND })).closest('li')!;
     fireEvent.click(within(row).getByRole('button', { name: 'Umbenennen' }));
     fireEvent.change(within(main()).getByLabelText('Neuer Name'), { target: { value: 'Rechenzentrum Nord' } });
@@ -204,7 +204,7 @@ describe('Verbundpfad in der Kopfzeile', () => {
   it('nennt den Verbund und wechselt per Tastatur auf einen anderen Verbund', async () => {
     const { router } = renderArea(buildStationUrl(seeded.verbundId, 'ssp'));
     const path = within(screen.getByTestId('header-bar')).getByRole('navigation', { name: 'Pfad' });
-    expect(within(path).getByRole('link', { name: 'Informationsverbünde' })).toHaveAttribute('href', buildWorkspaceIndexUrl());
+    expect(within(path).getByRole('link', { name: 'Arbeitsbereich' })).toHaveAttribute('href', buildWorkspaceIndexUrl());
     const trigger = await within(path).findByRole('button', { name: `Informationsverbund: ${SENTINEL_VERBUND}` });
     fireEvent.keyDown(trigger, { key: 'ArrowDown' });
     const items = within(path).getAllByRole('menuitemradio');

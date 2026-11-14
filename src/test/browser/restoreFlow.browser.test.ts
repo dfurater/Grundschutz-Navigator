@@ -66,7 +66,7 @@ describe.each([{ width: 1440, touch: false }, { width: 390, touch: true }])('Sic
     button(`„${SENTINEL_VERBUND}“ ersetzen`)!.focus();
     await userEvent.keyboard('{Enter}');
     await expect.poll(() => host!.querySelector('[data-restored]')?.textContent).toContain(SENTINEL_VERBUND);
-    await expect.poll(() => document.activeElement?.textContent).toBe('Informationsverbünde');
+    await expect.poll(() => document.activeElement?.textContent).toBe('Arbeitsbereich');
     expect([...host!.querySelectorAll('output')].some(entry => entry.textContent?.startsWith('Wiederhergestellt:'))).toBe(true);
     expect((await readStore(store => store.listVerbuende())).map(entry => entry.name).sort()).toEqual([SENTINEL_VERBUND, 'Zweiter Verbund'].sort());
     await assertNoAxeViolations(host!, `Ergebnis ${width}`);

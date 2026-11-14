@@ -308,7 +308,7 @@ function AppShellLayout() {
             tone="header"
           />
         )}
-        context={area === 'informationsverbuende' ? <VerbundPath verbundId={stations.verbundId} /> : undefined}
+        context={area === 'arbeitsbereich' ? <VerbundPath verbundId={stations.verbundId} /> : undefined}
         menuExpanded={mobileNavOpen}
         menuControls={sideNavId}
         menuButtonRef={menuButtonRef}
@@ -429,7 +429,7 @@ function AppShellLayout() {
 
         {/* Rechte Layoutspalte: Main und globaler Footer sind getrennte Landmarks. */}
         <div className="flex-1 min-w-0 flex flex-col bg-white md:overflow-hidden">
-          {area === 'informationsverbuende' && stations.verbundId !== null && (
+          {area === 'arbeitsbereich' && stations.verbundId !== null && (
             <div inert={mobileNavOpen} className="mobile-nav-push shrink-0">
               <StationStrip verbundId={stations.verbundId} active={stations.active} documents={stations.documents} />
             </div>

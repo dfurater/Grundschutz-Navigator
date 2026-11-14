@@ -206,11 +206,11 @@ export function WorkspaceDeleteDialog({ rowDrafts, createDraft, writes, track, c
 
             {deletion === 'idle' && (
               <>
-                <p id={descriptionId} className="mt-2">Alle Informationsverbünde und ihre Inhalte werden aus diesem Browserprofil gelöscht. Das lässt sich nicht rückgängig machen.</p>
+                <p id={descriptionId} className="mt-2">Alle Anwendungsbereiche, Informationsverbünde und ihre Inhalte werden aus diesem Browserprofil gelöscht. Das lässt sich nicht rückgängig machen.</p>
                 <div className="my-4 border-y border-[var(--color-border-default)] py-3">
                   <p className="font-semibold">Gesamter lokaler Arbeitsbestand</p>
                   <ul className="mt-2 list-disc space-y-1 pl-5">
-                    <li>Informationsverbünde, Dokumente und Entwürfe</li>
+                    <li>Anwendungsbereiche, Informationsverbünde, Dokumente und Entwürfe</li>
                     <li>Verknüpfungen, Prüfspuren und Vergleichsstände</li>
                     <li>Offene Eingaben und geladene Arbeitsstände</li>
                     <li>Metadaten des Arbeitsbereichs</li>

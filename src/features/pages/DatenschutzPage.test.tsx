@@ -211,7 +211,7 @@ describe('DatenschutzPage', () => {
       expect(container).toHaveTextContent(/einzelnes Profil samt Entwurf vollständig löschen/);
       expect(container).toHaveTextContent(/sämtliche in diesem Browserprofil gespeicherten Daten dieses Bereichs nach ausdrücklicher Bestätigung auf einmal löschen/);
       expect(container).toHaveTextContent(/andere einzelne Dokumente vollständig löschen; Bedienelemente dafür sind derzeit nicht verfügbar/);
-      expect(container).toHaveTextContent(/kein weiterer Tab mit dem Bereich Informationsverbünde geöffnet ist/);
+      expect(container).toHaveTextContent(/kein weiterer Tab mit dem Arbeitsbereich geöffnet ist/);
       expect(container).toHaveTextContent(/wartet die gestartete Löschung und lässt sich nicht zurücknehmen/);
       expect(container).toHaveTextContent(/eine sichere Bereinigung des Datenträgers ist damit nicht verbunden/);
       expect(container).toHaveTextContent(/Bereits exportierte Dateien werden dadurch nicht gelöscht/);
@@ -250,7 +250,7 @@ describe('DatenschutzPage', () => {
     it('verwendet keine internen Projektbegriffe und nummeriert die Abschnitte fortlaufend', () => {
       const { container } = render(<DatenschutzPage />);
 
-      expect(container.textContent).not.toMatch(/Klasse 1|Klasse 2|Arbeitsbereich/);
+      expect(container.textContent).not.toMatch(/Klasse 1|Klasse 2/);
       expect(screen.getAllByRole('heading', { level: 2 }).map((heading) => heading.textContent?.trim().split('.')[0]))
         .toEqual(['1', '2', '3', '4', '5', '6', '7', '8']);
     });
