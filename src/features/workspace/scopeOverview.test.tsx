@@ -203,6 +203,8 @@ describe('Speicherfehler, Konflikt und Schreibsperre', () => {
 
     void router.navigate('/about');
     await waitFor(() => expect(router.state.location.pathname).toBe('/about'));
+    // Die Route lädt lazy: Bis die Zielseite steht, bleibt die Anlageansicht montiert.
+    await waitFor(() => expect(screen.queryByRole('heading', { level: 1, name: 'Anwendungsbereich anlegen' })).toBeNull());
     finish({ ok: true, value: SCOPE });
     await waitFor(() => expect(createScope).toHaveBeenCalledTimes(1));
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -220,6 +222,8 @@ describe('Speicherfehler, Konflikt und Schreibsperre', () => {
     fireEvent.click(within(main()).getByRole('button', { name: 'Anlegen' }));
     void router.navigate('/about');
     await waitFor(() => expect(router.state.location.pathname).toBe('/about'));
+    // Die Route lädt lazy: Bis die Zielseite steht, bleibt die Anlageansicht montiert.
+    await waitFor(() => expect(screen.queryByRole('heading', { level: 1, name: 'Anwendungsbereich anlegen' })).toBeNull());
     void router.navigate(buildWorkspaceIndexUrl());
     // Die offene Anlage öffnet die Anlageansicht mit der Eingabe wieder.
     const input = await within(main()).findByLabelText('Name des Anwendungsbereichs');
