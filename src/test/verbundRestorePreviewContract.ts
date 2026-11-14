@@ -171,12 +171,12 @@ export function verbundRestorePreviewContract() {
     if (change === 'recreate') { await Dexie.delete(WORKSPACE_DATABASE_NAME); await open(); }
     if (change === 'native-version') {
       const upgraded = new Dexie(WORKSPACE_DATABASE_NAME);
-      upgraded.version(4).stores({ ...WORKSPACE_SCHEMA, future: 'id' });
+      upgraded.version(5).stores({ ...WORKSPACE_SCHEMA, future: 'id' });
       await upgraded.open(); upgraded.close();
     }
     const raw = new Dexie(WORKSPACE_DATABASE_NAME); await raw.open();
     try {
-      if (change === 'meta-version') await raw.table('workspaceMeta').update('workspace', { storageSchemaVersion: 4 });
+      if (change === 'meta-version') await raw.table('workspaceMeta').update('workspace', { storageSchemaVersion: 5 });
       if (change === 'identity') await raw.table('workspaceMeta').update('workspace', { databaseId: crypto.randomUUID() });
       const before = await raw.table('workspaceMeta').toArray();
       expect(await store.restoreVerbundBackup(preview)).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_SAVE_CONFLICT' } });

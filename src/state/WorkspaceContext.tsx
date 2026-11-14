@@ -6,7 +6,7 @@ import type { CatalogKey } from '@/domain/sourceRegistry';
 import type { CatalogDelivery } from '@/domain/workspaceCatalogPin';
 import { catalogDelivery, verifiedCatalogArtifacts } from '@/state/workspaceCatalogSession';
 import type { WorkspaceClass1Artifact } from '@/domain/workspaceGraphModel';
-import type { LocalId, VerbundId, WorkspaceResult, WorkspaceVerbund } from '@/domain/workspaceModel';
+import type { LocalId, ScopeSnapshot, VerbundId, VerbundWriteExpectation, WorkspaceResult, WorkspaceVerbund } from '@/domain/workspaceModel';
 import {
   collectRestoreInputs, discardReplacedInputs, type RestoreInput, type RestorePreview, type RestoreScope,
 } from '@/state/workspaceRestore';
@@ -55,9 +55,14 @@ export interface WorkspaceContextValue {
   readonly activate: () => void;
   readonly selectVerbund: (verbundId: string | null) => void;
   readonly reload: () => void;
-  readonly createVerbund: (name: string) => Promise<WorkspaceResult<WorkspaceVerbund>>;
-  readonly renameVerbund: (verbundId: VerbundId, name: string) => Promise<WorkspaceResult<WorkspaceVerbund>>;
-  readonly deleteVerbund: (verbundId: VerbundId) => Promise<WorkspaceResult<void>>;
+  readonly listScopes: WorkspacePort['listScopes'];
+  readonly createScope: WorkspacePort['createScope'];
+  readonly renameScope: WorkspacePort['renameScope'];
+  readonly assignVerbuende: WorkspacePort['assignVerbuende'];
+  readonly changeVerbundScope: WorkspacePort['changeVerbundScope'];
+  readonly createVerbund: WorkspacePort['createVerbund'];
+  readonly renameVerbund: WorkspacePort['renameVerbund'];
+  readonly deleteVerbund: WorkspacePort['deleteVerbund'];
   /** Stand der Gesamtlöschung; `pending` heißt: Der gestartete Löschrequest wartet auf eine andere Verbindung. */
   readonly deletion: 'idle' | 'deleting' | 'pending' | 'failed';
   /** Prüft unter exklusiver Koordination auf weitere Arbeitsbereich-Tabs; `granted` sperrt neue Sitzungen bis zum Verlassen. */
@@ -101,6 +106,11 @@ export const WorkspaceContext = createContext<WorkspaceContextValue>({
   activate: () => undefined,
   selectVerbund: () => undefined,
   reload: () => undefined,
+  listScopes: unavailable,
+  createScope: unavailable,
+  renameScope: unavailable,
+  assignVerbuende: unavailable,
+  changeVerbundScope: unavailable,
   createVerbund: unavailable,
   renameVerbund: unavailable,
   deleteVerbund: unavailable,
@@ -140,6 +150,7 @@ export function WorkspaceProvider({ open = openWorkspaceStore, session: provided
   const [port, setPort] = useState<WorkspacePort | null>(null);
   const [status, setStatus] = useState<WorkspaceContextValue['status']>('idle');
   const [verbuende, setVerbuende] = useState<readonly WorkspaceVerbund[] | null>(null);
+  const [scopeSnapshots, setScopeSnapshots] = useState<readonly ScopeSnapshot[]>([]);
   const [writable, setWritable] = useState(true);
   const [notices, setNotices] = useState<readonly WorkspaceNotice[]>([]);
   const [selectedVerbundId, setSelectedVerbundId] = useState<string | null>(null);
@@ -202,6 +213,7 @@ export function WorkspaceProvider({ open = openWorkspaceStore, session: provided
       if (!opened.value) {
         opening.current = null;
         setVerbuende([]);
+        setScopeSnapshots([]);
         setStatus('deleted');
         return null;
       }
@@ -237,9 +249,13 @@ export function WorkspaceProvider({ open = openWorkspaceStore, session: provided
   useEffect(() => {
     if (!port) return;
     let current = true;
-    void port.listVerbuende().then((result) => {
+    void port.listVerbuende().then(async (result) => {
       if (!current) return;
       if (!result.ok) { report(result.diagnostic); return; }
+      const scopes = result.value.some(row => row.scopeId) ? await port.listScopes().catch(storageFailed) : null;
+      if (!current) return;
+      if (scopes && !scopes.ok) report(scopes.diagnostic);
+      setScopeSnapshots(scopes?.ok ? scopes.value.map(({ scopeId, savedAt }) => ({ scopeId, savedAt })) : []);
       // Ein anderswo gelöschter Verbund hinterlässt keinen Namensentwurf im Tab.
       for (const verbundId of renameDrafts.keys()) {
         if (!result.value.some((entry) => entry.verbundId === verbundId)) renameDrafts.delete(verbundId);
@@ -349,6 +365,7 @@ export function WorkspaceProvider({ open = openWorkspaceStore, session: provided
           renameDrafts.clear();
           setLoaded(null);
           setVerbuende([]);
+          setScopeSnapshots([]);
           setNotices([]);
           setWritable(true);
           invalidateAnalysis();
@@ -396,6 +413,17 @@ export function WorkspaceProvider({ open = openWorkspaceStore, session: provided
     return failures.length === 0;
   }, [report]);
 
+  const verbundExpectation = useCallback((verbundId: VerbundId, expected?: VerbundWriteExpectation): WorkspaceResult<readonly [] | readonly [VerbundWriteExpectation]> => {
+    if (expected) return { ok: true, value: [expected] };
+    const row = verbuende?.find(entry => entry.verbundId === verbundId);
+    if (!row?.scopeId) return { ok: true, value: [] };
+    const scope = scopeSnapshots.find(entry => entry.scopeId === row.scopeId);
+    if (scope) return { ok: true, value: [{ savedAt: row.savedAt, scope }] };
+    const conflict = failure(new StorageFailure('WORKSPACE_SAVE_CONFLICT'));
+    if (!conflict.ok) report(conflict.diagnostic);
+    return conflict;
+  }, [verbuende, scopeSnapshots, report]);
+
   const value = useMemo<WorkspaceContextValue>(() => ({
     status,
     verbuende,
@@ -418,10 +446,20 @@ export function WorkspaceProvider({ open = openWorkspaceStore, session: provided
         void checkSchema(port);
       }
     },
-    // Nach einer Gesamtlöschung legt erst dieses ausdrückliche Anlegen einen neuen Speicher an.
-    createVerbund: async (name) => writeTo(status === 'deleted' ? await openStore() : port, (store) => store.createVerbund(name)),
-    renameVerbund: (verbundId, name) => write((store) => store.renameVerbund(verbundId, name)),
-    deleteVerbund: async (verbundId) => {
+    listScopes: () => quiet((store) => store.listScopes()),
+    createScope: async (name) => writeTo(status === 'deleted' ? await openStore() : port, (store) => store.createScope(name)),
+    renameScope: (...args) => write((store) => store.renameScope(...args)),
+    assignVerbuende: (...args) => write((store) => store.assignVerbuende(...args)),
+    changeVerbundScope: (...args) => write((store) => store.changeVerbundScope(...args)),
+    // Nach einer Gesamtlöschung kann eine ausdrückliche Neuanlage den Speicher wieder öffnen.
+    createVerbund: async (...args) => writeTo(status === 'deleted' ? await openStore() : port, (store) => store.createVerbund(...args)),
+    renameVerbund: async (verbundId, name, expected) => {
+      const snapshot = verbundExpectation(verbundId, expected);
+      return snapshot.ok ? write((store) => store.renameVerbund(verbundId, name, ...snapshot.value)) : snapshot;
+    },
+    deleteVerbund: async (verbundId, expected) => {
+      const snapshot = verbundExpectation(verbundId, expected);
+      if (!snapshot.ok) return snapshot;
       // Auch ungespeicherte Importziele sind Dokumentinhalt (`href`); sie fallen mit dem Verbund.
       // Ohne Mitgliederliste keine Löschung: Sonst blieben deren ungespeicherte Importziele im Tab zurück.
       const listed = port ? await port.listDocuments(verbundId) : storageFailed();
@@ -430,7 +468,7 @@ export function WorkspaceProvider({ open = openWorkspaceStore, session: provided
         return listed;
       }
       const members = listed.value;
-      const result = await write((store) => store.deleteVerbund(verbundId));
+      const result = await write((store) => store.deleteVerbund(verbundId, ...snapshot.value));
       // Keine Restkopie der gelöschten Inhalte im Tab, auch nicht für Browser-Zurück.
       if (result.ok) {
         setLoaded((current) => current?.verbundId === verbundId ? null : current);
@@ -504,7 +542,7 @@ export function WorkspaceProvider({ open = openWorkspaceStore, session: provided
     documents,
     analysisRevision,
     renameDrafts,
-  }), [status, verbuende, writable, delivery, notices, verbund, activate, openStore, checkSchema, write, writeTo, deletion, enterWorkspaceDeletion, leaveWorkspaceDeletion, deleteWorkspace, freeze, quiet, port, report, registerAutosave, flushAutosaves, documents, importTargets, invalidateAnalysis, analysisRevision, renameDrafts]);
+  }), [status, verbuende, verbundExpectation, writable, delivery, notices, verbund, activate, openStore, checkSchema, write, writeTo, deletion, enterWorkspaceDeletion, leaveWorkspaceDeletion, deleteWorkspace, freeze, quiet, port, report, registerAutosave, flushAutosaves, documents, importTargets, invalidateAnalysis, analysisRevision, renameDrafts]);
 
   return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>;
 }

@@ -4,9 +4,11 @@ import type { DocumentDiff } from '@/domain/documentDiff';
 
 declare const localIdBrand: unique symbol;
 declare const verbundIdBrand: unique symbol;
+declare const scopeIdBrand: unique symbol;
 export type LocalId = string & { readonly [localIdBrand]: 'LocalId' };
 export type VerbundId = string & { readonly [verbundIdBrand]: 'VerbundId' };
-export const STORAGE_SCHEMA_VERSION = 3;
+export type ScopeId = string & { readonly [scopeIdBrand]: 'ScopeId' };
+export const STORAGE_SCHEMA_VERSION = 4;
 export type DocumentState = 'imported' | 'draft' | 'export-ready';
 
 /** A verbund name carries at least one non-whitespace character. */
@@ -17,9 +19,32 @@ export function isVerbundName(value: unknown): value is string {
 export interface WorkspaceVerbund {
   readonly backupSavedAt?: string;
   readonly verbundId: VerbundId;
+  readonly scopeId?: ScopeId;
   readonly name: string;
   readonly createdAt: string;
   readonly savedAt: string;
+}
+
+export interface WorkspaceScope {
+  readonly scopeId: ScopeId;
+  readonly name: string;
+  readonly createdAt: string;
+  readonly savedAt: string;
+  readonly backupSavedAt?: string;
+  readonly items: readonly [];
+  readonly evidence: readonly [];
+}
+
+export type ScopeSnapshot = Pick<WorkspaceScope, 'scopeId' | 'savedAt'>;
+
+export interface VerbundWriteExpectation {
+  readonly savedAt: string;
+  readonly scope: ScopeSnapshot | null;
+}
+
+export interface AssignVerbuendeExpectation {
+  readonly scopeSavedAt: string;
+  readonly verbuende: readonly Pick<WorkspaceVerbund, 'verbundId' | 'savedAt'>[];
 }
 
 export interface WorkspaceEnvelope {
@@ -140,6 +165,7 @@ export interface WorkspaceBackup {
   readonly format: 'gspp-workspace';
   readonly storageSchemaVersion: number;
   readonly verbuende: WorkspaceVerbund[];
+  readonly methodikScopes: WorkspaceScope[];
   readonly documents: WorkspaceEnvelope[];
   readonly drafts: WorkspaceDraft[];
   readonly bindings: WorkspaceBinding[];
@@ -148,7 +174,12 @@ export interface WorkspaceBackup {
   readonly reviewBaseline: ReviewBaseline[];
 }
 
-export type WorkspaceVerbundBackup = Omit<WorkspaceBackup, 'format' | 'workspaceMeta' | 'verbuende'> & {
+export type WorkspaceBackupFile = Omit<WorkspaceBackup, 'methodikScopes' | 'workspaceMeta'> & {
+  readonly methodikScopes?: WorkspaceScope[];
+  readonly workspaceMeta: (Omit<WorkspaceMeta, 'databaseId'> & { readonly databaseId?: string })[];
+};
+
+export type WorkspaceVerbundBackup = Omit<WorkspaceBackup, 'format' | 'workspaceMeta' | 'verbuende' | 'methodikScopes'> & {
   readonly format: 'gspp-workspace-verbund';
   readonly verbuende: [WorkspaceVerbund];
 };

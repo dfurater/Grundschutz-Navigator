@@ -1,13 +1,15 @@
 import { hasRegistryKeyGrammar } from '@/domain/sourceRegistry';
+import { CLASS_2_IMPORT_LIMITS } from '@/domain/class2ImportLimits.mjs';
+import { serializeWorkspaceJson } from '@/domain/workspaceJson';
 import { OSCAL_ROOT_KEYS } from '@/domain/oscalVersionMatrix';
 import { CONTENT_HASH_ALGORITHM, CONTENT_HASH_VERSION } from '@/domain/reviewTrail';
 import { bindsEnvelopeSource, withinSourceLimits } from '@/adapters/workspaceDraftSource';
 import {
   STORAGE_SCHEMA_VERSION, isVerbundName,
-  type DocumentSnapshot, type WorkspaceBackup, type WorkspaceVerbundBackup,
+  type DocumentSnapshot, type WorkspaceBackup, type WorkspaceBackupFile, type WorkspaceScope, type WorkspaceVerbundBackup,
 } from '@/domain/workspaceModel';
 
-type StorageVersion = 1 | 2 | 3;
+type StorageVersion = 1 | 2 | 3 | 4;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SHA256 = /^[a-f0-9]{64}$/;
@@ -38,6 +40,8 @@ function times(value: Record<string, unknown>): boolean { return timestamp(value
 interface BundleContext {
   readonly version: StorageVersion;
   readonly verbuende: Set<string>;
+  readonly scopes: Set<string>;
+  readonly partitioned: boolean;
   readonly documents: Map<string, { verbundId: string; rootType: string; oscalVersion: string }>;
   readonly drafts: Set<string>;
   readonly bindings: Set<string>;
@@ -48,10 +52,12 @@ interface BundleContext {
   metaSeen: boolean;
 }
 
-function newContext(version: StorageVersion): BundleContext {
+function newContext(version: StorageVersion, partitioned = false): BundleContext {
   return {
     version,
     verbuende: new Set(),
+    scopes: new Set(),
+    partitioned,
     documents: new Map(),
     drafts: new Set(),
     bindings: new Set(),
@@ -63,10 +69,29 @@ function newContext(version: StorageVersion): BundleContext {
   };
 }
 
-function collectVerbuende(context: BundleContext, rows: readonly unknown[]): boolean {
+export function validWorkspaceScope(row: unknown): row is WorkspaceScope {
+  return fields(row, ['scopeId', 'name', 'createdAt', 'savedAt', 'items', 'evidence'], ['backupSavedAt'])
+    && uuid(row.scopeId) && isVerbundName(row.name) && times(row) && validBackupSavedAt(row.backupSavedAt)
+    && Array.isArray(row.items) && row.items.length === 0
+    && Array.isArray(row.evidence) && row.evidence.length === 0
+    && row.name.length <= CLASS_2_IMPORT_LIMITS.maxBytes
+    && new TextEncoder().encode(serializeWorkspaceJson(row)).byteLength <= CLASS_2_IMPORT_LIMITS.maxBytes;
+}
+
+function collectScopes(context: BundleContext, rows: readonly unknown[]): boolean {
   for (const row of rows) {
-    if (!fields(row, ['verbundId', 'name', 'createdAt', 'savedAt'], context.version >= 3 ? ['backupSavedAt'] : []) || !uuid(row.verbundId) || !isVerbundName(row.name)
+    if (!validWorkspaceScope(row) || context.scopes.has(row.scopeId)) return false;
+    context.scopes.add(row.scopeId);
+  }
+  return true;
+}
+
+function collectVerbuende(context: BundleContext, rows: readonly unknown[]): boolean {
+  const optional = [...(context.version >= 3 ? ['backupSavedAt'] : []), ...(context.version >= 4 ? ['scopeId'] : [])];
+  for (const row of rows) {
+    if (!fields(row, ['verbundId', 'name', 'createdAt', 'savedAt'], optional) || !uuid(row.verbundId) || !isVerbundName(row.name)
       || !times(row) || !validBackupSavedAt(row.backupSavedAt) || context.verbuende.has(row.verbundId)) return false;
+    if (Object.hasOwn(row, 'scopeId') && (!uuid(row.scopeId) || (!context.partitioned && !context.scopes.has(row.scopeId)))) return false;
     context.verbuende.add(row.verbundId);
   }
   return true;
@@ -259,6 +284,7 @@ function collectReviewBaseline(context: BundleContext, rows: readonly unknown[])
 export function createWorkspaceStructureValidator(version: StorageVersion = STORAGE_SCHEMA_VERSION) {
   const context = newContext(version);
   return {
+    methodikScopes: (row: unknown) => version === 4 && collectScopes(context, [row]),
     verbuende: (row: unknown) => collectVerbuende(context, [row]),
     documents: (row: unknown) => collectDocuments(context, [row]),
     drafts: (row: unknown) => validDrafts(context, [row]),
@@ -274,35 +300,46 @@ export function createWorkspaceStructureValidator(version: StorageVersion = STOR
   };
 }
 
-function validBackupStructure(value: unknown, format: 'gspp-workspace' | 'gspp-workspace-verbund'): boolean {
-  const required = ['format', 'storageSchemaVersion', 'verbuende', 'documents', 'drafts', 'bindings'];
-  if (format === 'gspp-workspace') required.push('workspaceMeta');
-  required.push('reviewTrail', 'reviewBaseline');
-  if (!fields(value, required) || value.format !== format || value.storageSchemaVersion !== STORAGE_SCHEMA_VERSION
-    || ![value.verbuende, value.documents, value.drafts, value.bindings].every(Array.isArray)) return false;
+function validBackupStructure(value: unknown, format: WorkspaceBackup['format'] | WorkspaceVerbundBackup['format'], version: 2 | 3 | 4): boolean {
+  const partitioned = format === 'gspp-workspace-verbund';
+  const required = ['format', 'storageSchemaVersion', 'verbuende', 'documents', 'drafts', 'bindings', 'reviewTrail', 'reviewBaseline'];
+  if (!partitioned) required.push('workspaceMeta');
+  if (!partitioned && version === 4) required.push('methodikScopes');
+  if (!fields(value, required) || value.format !== format || value.storageSchemaVersion !== version) return false;
   const backup = value as unknown as WorkspaceBackup;
-  if (!Array.isArray(backup.verbuende) || !Array.isArray(backup.documents)) return false;
-  if (format === 'gspp-workspace' && (!Array.isArray(backup.workspaceMeta) || !validWorkspaceMeta(backup.workspaceMeta, STORAGE_SCHEMA_VERSION))) return false;
-  if (format === 'gspp-workspace-verbund' && backup.verbuende.length !== 1) return false;
-  const context = newContext(STORAGE_SCHEMA_VERSION);
-  const trail = backup.reviewTrail;
-  const baseline = backup.reviewBaseline;
-  if (!Array.isArray(trail) || !Array.isArray(baseline)) return false;
+  if (![backup.verbuende, backup.documents, backup.drafts, backup.bindings, backup.reviewTrail, backup.reviewBaseline].every(Array.isArray)) return false;
+  if (!partitioned && (!Array.isArray(backup.workspaceMeta) || !validWorkspaceMeta(backup.workspaceMeta, version))) return false;
+  if (partitioned && backup.verbuende.length !== 1) return false;
+  const context = newContext(version, partitioned);
+  if (!partitioned && version === 4 && (!Array.isArray(backup.methodikScopes) || !collectScopes(context, backup.methodikScopes))) return false;
   return collectVerbuende(context, backup.verbuende) && collectDocuments(context, backup.documents)
     && validDrafts(context, backup.drafts) && collectBindings(context, backup.bindings)
-    && collectReviewTrail(context, trail) && collectReviewBaseline(context, baseline);
+    && collectReviewTrail(context, backup.reviewTrail) && collectReviewBaseline(context, backup.reviewBaseline);
 }
 
 export function validWorkspaceBackupStructure(value: unknown): value is WorkspaceBackup {
-  return validBackupStructure(value, 'gspp-workspace');
+  return validBackupStructure(value, 'gspp-workspace', STORAGE_SCHEMA_VERSION);
 }
 export function validVerbundBackupStructure(value: unknown): value is WorkspaceVerbundBackup {
-  return validBackupStructure(value, 'gspp-workspace-verbund');
+  return validBackupStructure(value, 'gspp-workspace-verbund', STORAGE_SCHEMA_VERSION);
 }
+
+export function adoptWorkspaceBackup(value: unknown): WorkspaceBackupFile | null {
+  if (validWorkspaceBackupStructure(value)) return value;
+  const version = record(value) ? value.storageSchemaVersion : undefined;
+  return (version === 2 || version === 3) && validBackupStructure(value, 'gspp-workspace', version)
+    ? value as WorkspaceBackupFile : null;
+}
+
+export function adoptVerbundBackup(value: unknown): WorkspaceVerbundBackup | null {
+  return validVerbundBackupStructure(value) || validBackupStructure(value, 'gspp-workspace-verbund', 3)
+    ? value as WorkspaceVerbundBackup : null;
+}
+
 /** Wählt den geschlossenen Validator nach `format`; jede andere Art ist keine wiederherstellbare Sicherung. */
-export function adoptAnyBackup(value: unknown): WorkspaceBackup | WorkspaceVerbundBackup | null {
+export function adoptAnyBackup(value: unknown): WorkspaceBackupFile | WorkspaceVerbundBackup | null {
   const format = record(value) ? value.format : undefined;
-  if (format === 'gspp-workspace') return validWorkspaceBackupStructure(value) ? value : null;
-  if (format === 'gspp-workspace-verbund') return validVerbundBackupStructure(value) ? value : null;
+  if (format === 'gspp-workspace') return adoptWorkspaceBackup(value);
+  if (format === 'gspp-workspace-verbund') return adoptVerbundBackup(value);
   return null;
 }

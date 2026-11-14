@@ -3,13 +3,13 @@ import { processClass2OscalBytes } from '@/domain/oscalClass2Import';
 import { parseWorkspaceBackupInput } from '@/domain/oscalImportProcessing';
 import { enforceWorkspaceBackupGraphInvariants } from '@/domain/oscalObjectGraph';
 import { bindsEnvelopeSource, withinSourceLimits } from '@/adapters/workspaceDraftSource';
-import { adoptAnyBackup, validWorkspaceBackupStructure, validVerbundBackupStructure } from '@/adapters/workspaceBackupStructure';
+import { adoptAnyBackup, adoptWorkspaceBackup, adoptVerbundBackup } from '@/adapters/workspaceBackupStructure';
 import { rejectWorkspaceBackup } from '@/adapters/workspaceBackupContract';
 import { documentSnapshot, sameStand } from '@/domain/reviewTrail';
-import { type WorkspaceBackup, type WorkspaceVerbundBackup, type WorkspaceResult } from '@/domain/workspaceModel';
+import { type WorkspaceBackupFile, type WorkspaceVerbundBackup, type WorkspaceResult } from '@/domain/workspaceModel';
 
 /** Die Vergleichsbasis muss den Stand aus ihrer eigenen Quelle belegen; sonst wäre der nächste Diff falsch. */
-async function verifyBaselines(backup: WorkspaceBackup | WorkspaceVerbundBackup): Promise<'ok' | 'invalid' | 'failed'> {
+async function verifyBaselines(backup: WorkspaceBackupFile | WorkspaceVerbundBackup): Promise<'ok' | 'invalid' | 'failed'> {
   const documents = new Map(backup.documents.map(entry => [entry.localId, entry]));
   for (const row of backup.reviewBaseline) {
     const document = documents.get(row.localId);
@@ -23,7 +23,7 @@ async function verifyBaselines(backup: WorkspaceBackup | WorkspaceVerbundBackup)
 }
 
 /** Entwürfe binden nur Root und Version; jedes andere Dokument durchläuft die Klasse-2-Kette des Import-Workers. */
-async function documentsAdmissible(backup: WorkspaceBackup | WorkspaceVerbundBackup): Promise<boolean> {
+async function documentsAdmissible(backup: WorkspaceBackupFile | WorkspaceVerbundBackup): Promise<boolean> {
   for (const envelope of backup.documents) {
     if (envelope.documentState === 'draft') {
       if (!bindsEnvelopeSource(envelope.source, envelope.rootType, envelope.oscalVersion)) return false;
@@ -40,7 +40,7 @@ async function documentsAdmissible(backup: WorkspaceBackup | WorkspaceVerbundBac
  * traverses the class-2 chain of the import worker in this worker, so compiled schema cells serve all documents of one
  * bundle. A draft document keeps only the source limits and its root binding.
  */
-async function processBackupBytes<T extends WorkspaceBackup | WorkspaceVerbundBackup>(bytes: Uint8Array, adopt: (value: unknown) => T | null): Promise<WorkspaceResult<T>> {
+async function processBackupBytes<T extends WorkspaceBackupFile | WorkspaceVerbundBackup>(bytes: Uint8Array, adopt: (value: unknown) => T | null): Promise<WorkspaceResult<T>> {
   try {
     const parsed = parseWorkspaceBackupInput(bytes);
     if (!parsed.ok) return rejectWorkspaceBackup('WORKSPACE_BACKUP_INPUT_REJECTED');
@@ -57,13 +57,13 @@ async function processBackupBytes<T extends WorkspaceBackup | WorkspaceVerbundBa
   } catch { return rejectWorkspaceBackup('WORKSPACE_BACKUP_INPUT_REJECTED'); }
 }
 
-export function processWorkspaceBackupBytes(bytes: Uint8Array): Promise<WorkspaceResult<WorkspaceBackup>> {
-  return processBackupBytes(bytes, value => validWorkspaceBackupStructure(value) ? value : null);
+export function processWorkspaceBackupBytes(bytes: Uint8Array): Promise<WorkspaceResult<WorkspaceBackupFile>> {
+  return processBackupBytes(bytes, adoptWorkspaceBackup);
 }
 export function processVerbundBackupBytes(bytes: Uint8Array): Promise<WorkspaceResult<WorkspaceVerbundBackup>> {
-  return processBackupBytes(bytes, value => validVerbundBackupStructure(value) ? value : null);
+  return processBackupBytes(bytes, adoptVerbundBackup);
 }
 /** Die Art kommt aus `format` des begrenzt geparsten Objekts; danach prüft der geschlossene Validator dieser Art. */
-export function processAnyBackupBytes(bytes: Uint8Array): Promise<WorkspaceResult<WorkspaceBackup | WorkspaceVerbundBackup>> {
+export function processAnyBackupBytes(bytes: Uint8Array): Promise<WorkspaceResult<WorkspaceBackupFile | WorkspaceVerbundBackup>> {
   return processBackupBytes(bytes, adoptAnyBackup);
 }

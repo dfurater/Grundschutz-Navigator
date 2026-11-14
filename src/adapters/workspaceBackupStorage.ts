@@ -166,17 +166,18 @@ export async function restoreWorkspaceBackupSnapshot(db: Dexie, backup: Workspac
   // After auto-reopen db.verno can lag; native IndexedDB uses ten times the Dexie version.
   if (db.backendDB().version !== target.storageSchemaVersion * 10 || meta?.databaseId !== target.databaseId || meta.storageSchemaVersion !== target.storageSchemaVersion || meta.savedAt !== target.savedAt) reject('WORKSPACE_SAVE_CONFLICT');
   const stamp = await restoredStamp(db, [
-    ...backup.verbuende, ...backup.documents, ...backup.drafts,
+    ...backup.verbuende, ...backup.methodikScopes, ...backup.documents, ...backup.drafts,
     ...backup.reviewTrail.map(row => ({ savedAt: row.createdAt })),
   ]);
   for (const table of db.tables) await table.clear();
   await db.table('verbuende').bulkAdd(backup.verbuende.map(row => restoredRow(row, stamp)));
-  await db.table('documents').bulkAdd(backup.documents.map(row => restoredRow(row, stamp)));
+  await db.table('methodikScopes').bulkAdd(backup.methodikScopes.map(row => restoredRow(row, stamp)));
+  await db.table('documents').bulkAdd(backup.documents.map(row => restoredRow({ ...row, storageSchemaVersion: STORAGE_SCHEMA_VERSION }, stamp)));
   await db.table('drafts').bulkAdd(backup.drafts.map(row => restoredRow(row, stamp)));
   await db.table('bindings').bulkAdd(backup.bindings);
   await db.table('reviewTrail').bulkAdd(backup.reviewTrail);
   await db.table('reviewBaseline').bulkAdd(backup.reviewBaseline);
-  await db.table('workspaceMeta').bulkAdd(backup.workspaceMeta.map(row => ({ ...row, databaseId: meta.databaseId, savedAt: stamp })));
+  await db.table('workspaceMeta').bulkAdd(backup.workspaceMeta.map(row => ({ ...row, databaseId: meta.databaseId, storageSchemaVersion: STORAGE_SCHEMA_VERSION, savedAt: stamp })));
 }
 
 /** Caller owns one transaction covering all workspace stores, in preview and before replacement. */
@@ -229,6 +230,7 @@ export async function restoreVerbundBackupSnapshot(db: Dexie, backup: WorkspaceV
   if (db.backendDB().version !== target.nativeDatabaseVersion || meta?.databaseId !== target.databaseId || meta.storageSchemaVersion !== target.storageSchemaVersion) reject('WORKSPACE_SAVE_CONFLICT');
   const current = await readVerbundRestorePreviewSnapshot(db, backup);
   if (JSON.stringify(current.target) !== JSON.stringify(target)) reject('WORKSPACE_SAVE_CONFLICT');
+  if (backup.verbuende[0].scopeId || current.existingVerbund?.scopeId) reject('WORKSPACE_BACKUP_CONFLICT');
   const verbundId = backup.verbuende[0].verbundId;
   const documents = db.table<WorkspaceEnvelope, LocalId>('documents');
   const stamp = await restoredStamp(db, [
@@ -242,7 +244,7 @@ export async function restoreVerbundBackupSnapshot(db: Dexie, backup: WorkspaceV
   await db.table('reviewBaseline').bulkDelete([...oldIds]);
   await documents.bulkDelete([...oldIds]);
   await db.table('verbuende').put(restoredRow(backup.verbuende[0], stamp));
-  await documents.bulkAdd(backup.documents.map(row => restoredRow(row, stamp)));
+  await documents.bulkAdd(backup.documents.map(row => restoredRow({ ...row, storageSchemaVersion: STORAGE_SCHEMA_VERSION }, stamp)));
   await db.table('drafts').bulkAdd(backup.drafts.map(row => restoredRow(row, stamp)));
   await db.table('bindings').bulkAdd(backup.bindings);
   await db.table('reviewTrail').bulkAdd(backup.reviewTrail);

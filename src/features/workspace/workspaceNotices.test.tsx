@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { AppShell } from '@/app/AppShell';
 import { buildVerbundUrl, buildWorkspaceIndexUrl } from '@/app/routes';
 import { StorageFailure, failure } from '@/adapters/workspaceStorageFailure';
-import type { VerbundId, WorkspaceResult, WorkspaceVerbund } from '@/domain/workspaceModel';
+import type { ScopeId, VerbundId, WorkspaceResult, WorkspaceVerbund } from '@/domain/workspaceModel';
 import { CatalogContext } from '@/state/CatalogContext';
 import { WorkspaceProvider } from '@/state/WorkspaceContext';
 import type { WorkspacePort } from '@/state/workspaceVerbundView';
@@ -129,6 +129,26 @@ describe('Speichermeldungen', () => {
     fireEvent.click(within(conflict).getByRole('button', { name: 'Neu laden' }));
     await waitFor(() => expect(screen.queryByText('In einem anderen Tab geändert')).not.toBeInTheDocument());
     expect(listVerbuende.mock.calls.length).toBeGreaterThan(reads);
+  });
+
+  it('verwendet beim Umbenennen und Löschen eines zugeordneten Verbunds die geladenen Vergleichswerte', async () => {
+    const scope = { scopeId: crypto.randomUUID() as ScopeId, name: 'Bereich', createdAt: VERBUND.createdAt, savedAt: VERBUND.savedAt, items: [] as const, evidence: [] as const };
+    let member = { ...VERBUND, scopeId: scope.scopeId };
+    const renameVerbund = vi.fn((_id, name: string) => {
+      member = { ...member, name, savedAt: '2026-10-19T00:00:01.000Z' };
+      return ok(member);
+    });
+    const deleteVerbund = vi.fn(() => ok(undefined));
+    renderWith(fakePort({ listVerbuende: () => ok([member]), listScopes: () => ok([scope]), renameVerbund, deleteVerbund }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Umbenennen' }));
+    fireEvent.change(screen.getByLabelText('Neuer Name'), { target: { value: 'Anders' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+    await screen.findByRole('link', { name: 'Anders' });
+    const scopeStand = { scopeId: scope.scopeId, savedAt: scope.savedAt };
+    expect(renameVerbund).toHaveBeenCalledExactlyOnceWith(VERBUND.verbundId, 'Anders', { savedAt: VERBUND.savedAt, scope: scopeStand });
+    fireEvent.click(screen.getByRole('button', { name: 'Löschen…' }));
+    fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Endgültig löschen' }));
+    await waitFor(() => expect(deleteVerbund).toHaveBeenCalledExactlyOnceWith(VERBUND.verbundId, { savedAt: member.savedAt, scope: scopeStand }));
   });
 
   it('bietet nach gescheiterter Migration einen Rettungsexport ohne normalen Store', async () => {

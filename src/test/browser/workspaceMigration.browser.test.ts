@@ -1,7 +1,7 @@
 import Dexie from 'dexie';
 import { afterEach, expect, test, vi } from 'vitest';
 import { migrateWorkspaceStorage } from '@/adapters/workspaceMigration';
-import { WORKSPACE_DATABASE_NAME, WORKSPACE_SCHEMA, WORKSPACE_SCHEMA_V1, WorkspaceStore } from '@/adapters/workspaceStore';
+import { WORKSPACE_DATABASE_NAME, WORKSPACE_SCHEMA_V3, WORKSPACE_SCHEMA_V1, WorkspaceStore } from '@/adapters/workspaceStore';
 import { makeSchemaValidOscalDocument } from '@/test/fixtures/oscalSchemaFixtures';
 import type { LocalId, VerbundId, WorkspaceBackup } from '@/domain/workspaceModel';
 import { documentSnapshot } from '@/domain/reviewTrail';
@@ -10,7 +10,7 @@ import { createWorkspaceStructureValidator } from '@/adapters/workspaceBackupStr
 const databases: Dexie[] = [];
 const names: string[] = [];
 const now = '2026-10-16T10:00:00.000Z';
-type V1Backup = Omit<WorkspaceBackup, 'storageSchemaVersion' | 'reviewTrail' | 'reviewBaseline' | 'workspaceMeta'> & { storageSchemaVersion: 1; workspaceMeta: Omit<WorkspaceBackup['workspaceMeta'][number], 'databaseId'>[] };
+type V1Backup = Omit<WorkspaceBackup, 'storageSchemaVersion' | 'methodikScopes' | 'reviewTrail' | 'reviewBaseline' | 'workspaceMeta'> & { storageSchemaVersion: 1; workspaceMeta: Omit<WorkspaceBackup['workspaceMeta'][number], 'databaseId'>[] };
 function fixture(): V1Backup {
   const verbundId = crypto.randomUUID() as VerbundId;
   const documents = [0, 1].map(() => ({
@@ -46,7 +46,7 @@ function upgrade(name: string, from = 1, to = 2) {
   const db = new Dexie(name);
   databases.push(db);
   db.version(1).stores(WORKSPACE_SCHEMA_V1);
-  db.version(2).stores(WORKSPACE_SCHEMA).upgrade(tx => migrateWorkspaceStorage(tx, from, to));
+  db.version(2).stores(WORKSPACE_SCHEMA_V3).upgrade(tx => migrateWorkspaceStorage(tx, from, to));
   return db;
 }
 async function rows(db: Dexie) {
@@ -108,7 +108,7 @@ test('ändert in einer Vorwärtsmigration nur Envelope- und Metaversionen', asyn
   const result = await rows(db);
   const expected = { ...data, documents: data.documents.map(row => ({ ...row, storageSchemaVersion: 2 })), workspaceMeta: data.workspaceMeta.map(row => ({ ...row, storageSchemaVersion: 2 })), reviewTrail: [], reviewBaseline: [] };
   for (const table of db.tables) {
-    const expectedRows = expected[table.name as keyof WorkspaceBackup] as object[];
+    const expectedRows = expected[table.name as keyof typeof expected] as object[];
     expect(canonical(result[table.name])).toBe(canonical([...expectedRows].sort((a, b) => String((a as Record<string, unknown>)[String(table.schema.primKey.keyPath)]).localeCompare(String((b as Record<string, unknown>)[String(table.schema.primKey.keyPath)])))));
   }
 });
@@ -245,12 +245,12 @@ test('verweigert Migration in einer gewöhnlichen Schreibtransaktion', async () 
   expect(await rows(db)).toEqual(before);
 });
 
-test.each([1, 2] as const)('öffnet v%i atomar als v3 mit neuer Datenbank-ID und unveränderten Quellen', async version => {
+test.each([1, 2, 3] as const)('öffnet v%i atomar als v4 mit Datenbank-ID und unveränderten Quellen', async version => {
   const legacy = fixture();
   const data = version === 1 ? legacy : {
-    ...legacy, storageSchemaVersion: 2,
-    documents: legacy.documents.map(row => ({ ...row, storageSchemaVersion: 2 })),
-    workspaceMeta: legacy.workspaceMeta.map(row => ({ ...row, storageSchemaVersion: 2 })),
+    ...legacy, storageSchemaVersion: version,
+    documents: legacy.documents.map(row => ({ ...row, storageSchemaVersion: version })),
+    workspaceMeta: legacy.workspaceMeta.map(row => ({ ...row, storageSchemaVersion: version, ...(version === 3 && { databaseId: crypto.randomUUID() }) })),
     reviewTrail: [] as WorkspaceBackup['reviewTrail'], reviewBaseline: [] as WorkspaceBackup['reviewBaseline'],
   };
   if ('reviewTrail' in data) {
@@ -262,7 +262,7 @@ test.each([1, 2] as const)('öffnet v%i atomar als v3 mit neuer Datenbank-ID und
   }
   names.push(WORKSPACE_DATABASE_NAME);
   const seedDb = new Dexie(WORKSPACE_DATABASE_NAME);
-  seedDb.version(version).stores(version === 1 ? WORKSPACE_SCHEMA_V1 : WORKSPACE_SCHEMA);
+  seedDb.version(version).stores(version === 1 ? WORKSPACE_SCHEMA_V1 : WORKSPACE_SCHEMA_V3);
   await seedDb.open();
   for (const table of seedDb.tables) await table.bulkAdd(data[table.name as keyof typeof data] as object[]);
   seedDb.close();
@@ -272,9 +272,12 @@ test.each([1, 2] as const)('öffnet v%i atomar als v3 mit neuer Datenbank-ID und
     const exported = await opened.value.exportBackup();
     if (!exported.ok) throw new Error(exported.diagnostic.code);
     const result = JSON.parse(exported.value);
-    expect(result.storageSchemaVersion).toBe(3);
-    expect(result.workspaceMeta[0]).toEqual({ ...legacy.workspaceMeta[0], storageSchemaVersion: 3, databaseId: expect.stringMatching(/^[0-9a-f-]{36}$/) });
-    expect(result.documents).toEqual([...legacy.documents].sort((a, b) => a.localId.localeCompare(b.localId)).map(row => ({ ...row, storageSchemaVersion: 3 })));
+    expect(result.storageSchemaVersion).toBe(4);
+    expect(result.methodikScopes).toEqual([]);
+    expect(result.verbuende).toEqual(legacy.verbuende);
+    expect(result.bindings).toEqual(legacy.bindings);
+    expect(result.workspaceMeta[0]).toEqual({ ...legacy.workspaceMeta[0], storageSchemaVersion: 4, databaseId: version === 3 && 'databaseId' in data.workspaceMeta[0] ? data.workspaceMeta[0].databaseId : expect.stringMatching(/^[0-9a-f-]{36}$/) });
+    expect(result.documents).toEqual([...legacy.documents].sort((a, b) => a.localId.localeCompare(b.localId)).map(row => ({ ...row, storageSchemaVersion: 4 })));
     expect(result.drafts).toEqual(legacy.drafts);
     expect(result.reviewTrail).toEqual('reviewTrail' in data ? data.reviewTrail : []);
     expect(result.reviewBaseline).toEqual('reviewBaseline' in data ? data.reviewBaseline : []);
@@ -294,7 +297,7 @@ test.each([1, 2] as const)('rollt einen Fehler im v3-Schritt bis zum ursprüngli
   const data = fixture();
   names.push(WORKSPACE_DATABASE_NAME);
   const seedDb = new Dexie(WORKSPACE_DATABASE_NAME);
-  seedDb.version(version).stores(version === 1 ? WORKSPACE_SCHEMA_V1 : WORKSPACE_SCHEMA);
+  seedDb.version(version).stores(version === 1 ? WORKSPACE_SCHEMA_V1 : WORKSPACE_SCHEMA_V3);
   await seedDb.open();
   for (const table of seedDb.tables) {
     const rows = (data[table.name as keyof V1Backup] ?? []) as object[];
@@ -318,5 +321,33 @@ test.each([1, 2] as const)('rollt einen Fehler im v3-Schritt bis zum ursprüngli
   databases.push(raw);
   await raw.open();
   expect(raw.verno).toBe(version);
+  expect(await rows(raw)).toEqual(before);
+});
+
+test('ein defekter Datensatz lässt v3 samt Rettungsexport bestehen', async () => {
+  const data = fixture();
+  names.push(WORKSPACE_DATABASE_NAME);
+  const db = new Dexie(WORKSPACE_DATABASE_NAME);
+  db.version(3).stores(WORKSPACE_SCHEMA_V3);
+  await db.open();
+  for (const table of db.tables) {
+    const legacy = (data[table.name as keyof V1Backup] ?? []) as object[];
+    const seeded = table.name === 'workspaceMeta'
+      ? legacy.map(row => ({ ...row, storageSchemaVersion: 3, databaseId: crypto.randomUUID() }))
+      : legacy.map(row => table.name === 'documents' ? { ...row, storageSchemaVersion: 3 } : row);
+    await table.bulkAdd(seeded);
+  }
+  await db.table('verbuende').update(data.verbuende[0].verbundId, { name: '   ' });
+  const before = await rows(db);
+  db.close();
+
+  expect(await WorkspaceStore.open()).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_MIGRATION_FAILED' } });
+  const rescue = await WorkspaceStore.exportRecoveryBackup();
+  if (!rescue.ok) throw new Error(rescue.diagnostic.code);
+  expect(JSON.parse(rescue.value)).toMatchObject({ storageSchemaVersion: 3, verbuende: [{ name: '   ' }] });
+  const raw = new Dexie(WORKSPACE_DATABASE_NAME);
+  databases.push(raw);
+  await raw.open();
+  expect(raw.verno).toBe(3);
   expect(await rows(raw)).toEqual(before);
 });
