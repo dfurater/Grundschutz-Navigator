@@ -33,11 +33,15 @@ function visitRows(transaction: Transaction, store: string, visit: (cursor: IDBC
 /** Each declared step validates its input inside the shared versionchange transaction. */
 export async function migrateWorkspaceStorage(transaction: Transaction, fromVersion: number, toVersion: number): Promise<void> {
   try {
-    if (!((fromVersion === 1 && toVersion === 2) || (fromVersion === 2 && toVersion === 3)) || transaction.idbtrans.mode !== 'versionchange') invalid();
-    // Both target versions contain the five base stores and the review stores.
-    const stores = ['verbuende', 'documents', 'drafts', 'bindings', 'workspaceMeta', 'reviewTrail', 'reviewBaseline'] as const;
-    if (transaction.storeNames.length !== stores.length || stores.some(name => !transaction.storeNames.includes(name))) invalid();
-    const validate = createWorkspaceStructureValidator(fromVersion as 1 | 2);
+    if ((fromVersion !== 1 && fromVersion !== 2 && fromVersion !== 3) || toVersion !== fromVersion + 1 || transaction.idbtrans.mode !== 'versionchange') invalid();
+    const stores = ['verbuende', 'documents', 'drafts', 'bindings', 'workspaceMeta', 'reviewTrail', 'reviewBaseline'];
+    if (toVersion === 4) stores.push('methodikScopes');
+    // The native list reflects intermediate steps. At the final step Dexie's list also detects planned removals.
+    const names = toVersion === transaction.db.verno ? transaction.storeNames : transaction.idbtrans.objectStoreNames;
+    const present = Array.from(names).filter(name => name !== '$meta');
+    if (present.length !== stores.length || stores.some(name => !present.includes(name))) invalid();
+    if (toVersion === 4) await visitRows(transaction, 'methodikScopes', () => invalid());
+    const validate = createWorkspaceStructureValidator(fromVersion);
     await visitRows(transaction, 'verbuende', cursor => { if (!validate.verbuende(cursor.value)) invalid(); });
     await visitRows(transaction, 'documents', cursor => {
       const row = cursor.value;

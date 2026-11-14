@@ -118,9 +118,10 @@ test('ohne Web Locks bleibt die Löschung mit stabiler Diagnose gesperrt; der Ge
   expect(await databases()).toContain(WORKSPACE_DATABASE_NAME);
 });
 
-test('Gesamtlöschung entfernt alle sieben Stores einschließlich Prüfspur und Baseline', async () => {
+test('Gesamtlöschung entfernt alle acht Stores einschließlich Anwendungsbereichen', async () => {
   const store = await open();
-  const verbund = value(await store.createVerbund('One'));
+  const scope = value(await store.createScope('Testbereich'));
+  const verbund = value(await store.createVerbund('One', scope));
   const a = value(await store.addDocument(verbund.verbundId, await oscalDocument('A')));
   const b = value(await store.addDocument(verbund.verbundId, await oscalDocument('B')));
   value(await store.appendCheckpoint(a.localId, a.savedAt, null, 0));
@@ -129,7 +130,7 @@ test('Gesamtlöschung entfernt alle sieben Stores einschließlich Prüfspur und 
   const db = new Dexie(WORKSPACE_DATABASE_NAME);
   await db.open();
   try {
-    expect(db.tables).toHaveLength(7);
+    expect(db.tables).toHaveLength(8);
     for (const table of db.tables) expect(await table.count(), table.name).toBeGreaterThan(0);
   } finally { db.close(); }
   value(await store.deleteAll('delete-workspace'));

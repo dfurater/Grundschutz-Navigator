@@ -7,7 +7,8 @@ import {
   type DocumentState, type LocalId, type VerbundId, type WorkspaceBinding,
   type WorkspaceDraft, type WorkspaceEnvelope, type WorkspaceMeta, type WorkspaceDocumentSummary,
   type WorkspaceResult, type WorkspaceVerbund, type WorkspaceRestorePreview, type WorkspaceVerbundRestorePreview,
-  type WorkspaceBackup, type WorkspaceVerbundBackup,
+  type WorkspaceBackupFile, type WorkspaceVerbundBackup,
+  type ScopeId, type ScopeSnapshot, type WorkspaceScope, type VerbundWriteExpectation, type AssignVerbuendeExpectation,
   type ReviewBaseline, type ReviewCheckpoint, type ReviewDecision, type ReviewDecisionKind, type ReviewTrailRow,
   type ReviewTrailView, type DocumentSnapshot,
 } from '@/domain/workspaceModel';
@@ -20,6 +21,7 @@ import { exportWorkspaceBackupSnapshot, restoreWorkspaceBackupSnapshot, exportVe
 import { StorageFailure, failure, reject, timestamp } from '@/adapters/workspaceStorageFailure';
 import { deleteDatabase, storedDatabaseShape, withinDeadline } from '@/adapters/workspaceDatabaseLifecycle';
 import { migrateWorkspaceStorage } from '@/adapters/workspaceMigration';
+import { validWorkspaceScope } from '@/adapters/workspaceBackupStructure';
 import { reviewTrailInWorker } from '@/adapters/reviewTrailWork';
 import { appendDecisionError, deriveReviewState, resolveActionReferences, REVIEW_ACTIONS_SYSTEM, REVIEW_ACTION_TYPE_APPROVED } from '@/domain/reviewTrail';
 import { documentBody } from '@/domain/documentContent';
@@ -34,8 +36,8 @@ export const WORKSPACE_DATABASE_NAME = 'gspp-workspace';
 export const WORKSPACE_DELETE_BLOCKED_TIMEOUT_MS = 2_000;
 export const WORKSPACE_OPEN_TIMEOUT_MS = 2_000;
 
-/** Schema of the current version; the v1 shape stays available for the migration step. */
-export const WORKSPACE_SCHEMA = Object.freeze({
+/** Shared layout of v2 and v3. */
+export const WORKSPACE_SCHEMA_V3 = Object.freeze({
   verbuende: 'verbundId',
   documents: 'localId, verbundId, rootType, oscalVersion, savedAt',
   drafts: 'localId',
@@ -44,6 +46,8 @@ export const WORKSPACE_SCHEMA = Object.freeze({
   reviewBaseline: 'localId',
   workspaceMeta: 'id',
 });
+
+export const WORKSPACE_SCHEMA = Object.freeze({ ...WORKSPACE_SCHEMA_V3, methodikScopes: 'scopeId' });
 
 export const WORKSPACE_SCHEMA_V1 = Object.freeze({
   verbuende: 'verbundId',
@@ -54,6 +58,11 @@ export const WORKSPACE_SCHEMA_V1 = Object.freeze({
 });
 
 /** Die native Freigabe wird mit dem Dokumentenschreibvorgang atomar geschrieben. */
+function schemaForVersion(version: number) {
+  if (version >= STORAGE_SCHEMA_VERSION) return WORKSPACE_SCHEMA;
+  return version >= 2 ? WORKSPACE_SCHEMA_V3 : WORKSPACE_SCHEMA_V1;
+}
+
 export interface ReviewApprovalRequest {
   /** UUID der Aktion, die der Aufrufer bereits in `metadata.actions` eingetragen hat. */
   readonly actionUuid: string;
@@ -129,6 +138,7 @@ export class WorkspaceStore {
   // Bound on use: a newer schema without one of these stores still opens for the global export.
   private get documents(): Table<WorkspaceEnvelope, LocalId> { return this.db.table('documents'); }
   private get verbuende(): Table<WorkspaceVerbund, VerbundId> { return this.db.table('verbuende'); }
+  private get scopes(): Table<WorkspaceScope, ScopeId> { return this.db.table('methodikScopes'); }
   private get drafts(): Table<WorkspaceDraft, LocalId> { return this.db.table('drafts'); }
   private get bindings(): Table<WorkspaceBinding, [LocalId, string]> { return this.db.table('bindings'); }
   private get reviewTrail(): Table<ReviewTrailRow, [LocalId, number]> { return this.db.table('reviewTrail'); }
@@ -176,7 +186,7 @@ export class WorkspaceStore {
       } else {
         // Declared versions would reconcile and rewrite an unknown schema, so the stored shape decides the path.
         newerSchema = stored.version > STORAGE_SCHEMA_VERSION;
-        const known = Object.keys(stored.version >= 2 ? WORKSPACE_SCHEMA : WORKSPACE_SCHEMA_V1);
+        const known = Object.keys(schemaForVersion(stored.version));
         if (newerSchema || known.some(store => !stored.stores.includes(store))) {
           if (expired()) reject('WORKSPACE_OPEN_TIMEOUT');
           db = new Dexie(WORKSPACE_DATABASE_NAME);
@@ -190,11 +200,11 @@ export class WorkspaceStore {
     } catch (error) { db.close(); return failure(error); }
   }
 
-  /** Declared steps share one atomic versionchange transaction for v1 → v2 → v3. */
+  /** Declared steps share one atomic versionchange transaction. */
   private static declareVersions(db: Dexie): void {
     db.version(1).stores(WORKSPACE_SCHEMA_V1);
-    for (const version of [2, 3]) {
-      db.version(version).stores(WORKSPACE_SCHEMA).upgrade(async transaction => {
+    for (const version of [2, 3, STORAGE_SCHEMA_VERSION]) {
+      db.version(version).stores(schemaForVersion(version)).upgrade(async transaction => {
         try { await migrateWorkspaceStorage(transaction, version - 1, version); }
         catch { reject('WORKSPACE_MIGRATION_FAILED'); }
       });
@@ -255,6 +265,7 @@ export class WorkspaceStore {
   }
 
   listVerbuende(): Promise<WorkspaceResult<WorkspaceVerbund[]>> { return this.read(['verbuende'], () => this.verbuende.toArray()); }
+  listScopes(): Promise<WorkspaceResult<WorkspaceScope[]>> { return this.read(['methodikScopes'], () => this.scopes.toArray()); }
   listDocuments(verbundId?: VerbundId): Promise<WorkspaceResult<WorkspaceDocumentSummary[]>> {
     return this.read(['documents'], async () => {
       const summaries: WorkspaceDocumentSummary[] = [];
@@ -271,20 +282,89 @@ export class WorkspaceStore {
   getDraft(localId: LocalId): Promise<WorkspaceResult<WorkspaceDraft | undefined>> { return this.read(['drafts'], () => this.drafts.get(localId)); }
   listBindings(): Promise<WorkspaceResult<WorkspaceBinding[]>> { return this.read(['bindings'], () => this.bindings.toArray()); }
 
-  createVerbund(name: string): Promise<WorkspaceResult<WorkspaceVerbund>> {
+  createScope(name: string): Promise<WorkspaceResult<WorkspaceScope>> {
+    return this.write(async stamp => {
+      const scope: WorkspaceScope = { scopeId: crypto.randomUUID() as ScopeId, name, createdAt: stamp, savedAt: stamp, items: [], evidence: [] };
+      if (!validWorkspaceScope(scope)) reject('WORKSPACE_SCOPE_INVALID');
+      await this.scopes.add(scope);
+      return scope;
+    });
+  }
+
+  renameScope(scopeId: ScopeId, name: string, expectedSavedAt: string): Promise<WorkspaceResult<WorkspaceScope>> {
+    return this.write(async stamp => {
+      const scope = await this.expectedScope({ scopeId, savedAt: expectedSavedAt });
+      if (scope.name === name) return scope;
+      const updated = { ...writtenRow(scope), name, savedAt: stamp };
+      if (!validWorkspaceScope(updated)) reject('WORKSPACE_SCOPE_INVALID');
+      await this.scopes.put(updated);
+      return updated;
+    });
+  }
+
+  private async expectedScope(expected: ScopeSnapshot): Promise<WorkspaceScope> {
+    const scope = await this.scopes.get(expected.scopeId);
+    if (!scope) reject('WORKSPACE_SCOPE_NOT_FOUND');
+    if (scope.savedAt !== expected.savedAt) reject('WORKSPACE_SAVE_CONFLICT');
+    return scope;
+  }
+
+  private async expectedVerbund(verbundId: VerbundId, expected?: VerbundWriteExpectation): Promise<WorkspaceVerbund> {
+    const verbund = await this.verbuende.get(verbundId);
+    if (!verbund) reject(expected ? 'WORKSPACE_SAVE_CONFLICT' : 'WORKSPACE_VERBUND_NOT_FOUND');
+    // Legacy callers operate on unassigned rows. Assigned rows require both snapshots.
+    if (verbund.scopeId !== expected?.scope?.scopeId || (expected && verbund.savedAt !== expected.savedAt)) reject('WORKSPACE_SAVE_CONFLICT');
+    return verbund;
+  }
+
+  assignVerbuende(scopeId: ScopeId, expected: AssignVerbuendeExpectation): Promise<WorkspaceResult<void>> {
+    return this.write(async stamp => {
+      const scope = await this.expectedScope({ scopeId, savedAt: expected.scopeSavedAt });
+      if (new Set(expected.verbuende.map(row => row.verbundId)).size !== expected.verbuende.length) reject('WORKSPACE_VERBUND_INVALID');
+      const updates: WorkspaceVerbund[] = [];
+      for (const row of expected.verbuende) {
+        const verbund = await this.expectedVerbund(row.verbundId, { savedAt: row.savedAt, scope: null });
+        updates.push({ ...writtenRow(verbund), scopeId, savedAt: stamp });
+      }
+      if (updates.length === 0) return;
+      await this.verbuende.bulkPut(updates);
+      await this.scopes.put({ ...writtenRow(scope), savedAt: stamp });
+    });
+  }
+
+  changeVerbundScope(verbundId: VerbundId, expectedFrom: ScopeSnapshot | null, to: ScopeSnapshot | null, expectedSavedAt: string): Promise<WorkspaceResult<WorkspaceVerbund>> {
+    return this.write(async stamp => {
+      const verbund = await this.expectedVerbund(verbundId, { savedAt: expectedSavedAt, scope: expectedFrom });
+      const oldScope = expectedFrom && await this.expectedScope(expectedFrom);
+      const newScope = to && await this.expectedScope(to);
+      if (oldScope?.scopeId === newScope?.scopeId) return verbund;
+      const updated = writtenRow({ ...verbund, savedAt: stamp, scopeId: newScope?.scopeId });
+      if (!newScope) delete updated.scopeId;
+      await this.verbuende.put(updated);
+      for (const scope of [oldScope, newScope]) {
+        if (scope) await this.scopes.put({ ...writtenRow(scope), savedAt: stamp });
+      }
+      return updated;
+    });
+  }
+
+  createVerbund(name: string, scope?: ScopeSnapshot): Promise<WorkspaceResult<WorkspaceVerbund>> {
     return this.write(async stamp => {
       if (!isVerbundName(name)) reject('WORKSPACE_VERBUND_INVALID');
-      const verbund = { verbundId: crypto.randomUUID() as VerbundId, name, createdAt: stamp, savedAt: stamp };
+      const current = scope && await this.expectedScope(scope);
+      const verbund = { verbundId: crypto.randomUUID() as VerbundId, name, createdAt: stamp, savedAt: stamp, ...(current && { scopeId: current.scopeId }) };
       await this.verbuende.add(verbund);
+      if (current) await this.scopes.put({ ...writtenRow(current), savedAt: stamp });
       return verbund;
     });
   }
 
-  renameVerbund(verbundId: VerbundId, name: string): Promise<WorkspaceResult<WorkspaceVerbund>> {
+  renameVerbund(verbundId: VerbundId, name: string, expected?: VerbundWriteExpectation): Promise<WorkspaceResult<WorkspaceVerbund>> {
     return this.write(async stamp => {
-      const verbund = await this.verbuende.get(verbundId);
-      if (!verbund) reject('WORKSPACE_VERBUND_NOT_FOUND');
+      const verbund = await this.expectedVerbund(verbundId, expected);
+      if (expected?.scope) await this.expectedScope(expected.scope);
       if (!isVerbundName(name)) reject('WORKSPACE_VERBUND_INVALID');
+      if (verbund.name === name) return verbund;
       const updated = { ...writtenRow(verbund), name, savedAt: stamp };
       await this.verbuende.put(updated);
       return updated;
@@ -601,12 +681,14 @@ export class WorkspaceStore {
   deleteDocument(localId: LocalId): Promise<WorkspaceResult<void>> {
     return this.write(async stamp => { await this.current(localId); await this.removeDocument(localId, stamp); });
   }
-  deleteVerbund(verbundId: VerbundId): Promise<WorkspaceResult<void>> {
+  deleteVerbund(verbundId: VerbundId, expected?: VerbundWriteExpectation): Promise<WorkspaceResult<void>> {
     return this.write(async stamp => {
-      if (!await this.verbuende.get(verbundId)) reject('WORKSPACE_VERBUND_NOT_FOUND');
+      await this.expectedVerbund(verbundId, expected);
+      const scope = expected?.scope && await this.expectedScope(expected.scope);
       const ids = await this.documents.where('verbundId').equals(verbundId).primaryKeys();
       for (const id of ids) await this.removeDocument(id, stamp);
       await this.verbuende.delete(verbundId);
+      if (scope) await this.scopes.put({ ...writtenRow(scope), savedAt: stamp });
     });
   }
 
@@ -627,11 +709,16 @@ export class WorkspaceStore {
     return parsed.value.format === 'gspp-workspace' ? this.readRestorePreview(parsed.value) : this.readVerbundRestorePreview(parsed.value);
   }
 
-  private readRestorePreview(backup: WorkspaceBackup): Promise<WorkspaceResult<WorkspaceRestorePreview>> {
+  private readRestorePreview(file: WorkspaceBackupFile): Promise<WorkspaceResult<WorkspaceRestorePreview>> {
     return this.read(Object.keys(WORKSPACE_SCHEMA), async () => {
       if (this.newerSchema || this.db.backendDB().version > STORAGE_SCHEMA_VERSION * 10) reject('WORKSPACE_SCHEMA_NEWER');
       const meta = await this.meta.get('workspace');
       if (meta?.storageSchemaVersion !== STORAGE_SCHEMA_VERSION || typeof meta.databaseId !== 'string') reject('WORKSPACE_SCHEMA_INVALID');
+      const backup = {
+        ...file,
+        methodikScopes: file.methodikScopes ?? [],
+        workspaceMeta: file.workspaceMeta.map(row => ({ ...row, databaseId: row.databaseId ?? meta.databaseId })),
+      };
       const counts = {} as Record<keyof typeof WORKSPACE_SCHEMA, { file: number; target: number }>;
       for (const name of Object.keys(WORKSPACE_SCHEMA) as (keyof typeof WORKSPACE_SCHEMA)[]) {
         counts[name] = { file: backup[name].length, target: await this.db.table(name).count() };
@@ -674,6 +761,7 @@ export class WorkspaceStore {
     return this.read(Object.keys(WORKSPACE_SCHEMA), async () => {
       if (this.newerSchema) reject('WORKSPACE_SCHEMA_NEWER');
       const preview = await readVerbundRestorePreviewSnapshot(this.db, backup);
+      if (preview.backup.verbuende[0].scopeId || preview.existingVerbund?.scopeId) reject('WORKSPACE_BACKUP_CONFLICT');
       this.bindRestorePreview(preview);
       return preview;
     });

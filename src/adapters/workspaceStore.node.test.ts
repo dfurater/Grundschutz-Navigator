@@ -11,13 +11,14 @@ vi.mock('@/adapters/oscalImportGate', async () => {
   return { importClass2OscalDocument: processClass2OscalBytes };
 });
 vi.mock('@/adapters/workspaceBackup', async () => {
-  const { processWorkspaceBackupBytes } = await import('@/adapters/workspaceBackupProcessing');
-  return { parseWorkspaceBackup: processWorkspaceBackupBytes };
+  const { processWorkspaceBackupBytes, processVerbundBackupBytes } = await import('@/adapters/workspaceBackupProcessing');
+  return { parseWorkspaceBackup: processWorkspaceBackupBytes, parseVerbundBackup: processVerbundBackupBytes };
 });
 
 await import('@/test/browser/workspaceStore.browser.test');
 await import('@/test/browser/workspaceStore.transactions.browser.test');
 await import('@/test/browser/workspaceRecovery.browser.test');
+await import('@/test/browser/workspaceScopes.browser.test');
 it('classifies nested quota causes and terminates on cyclic error chains', async () => {
   const opened = await WorkspaceStore.open();
   expect(opened.ok).toBe(true);

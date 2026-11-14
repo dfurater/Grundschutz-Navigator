@@ -8,11 +8,11 @@ const id = '11111111-1111-4111-8111-111111111111' as VerbundId;
 const localId = '22222222-2222-4222-8222-222222222222' as LocalId;
 const timestamp = '2026-10-16T12:00:00.000Z';
 export function backupFixture(): WorkspaceBackup {
-  return { format: 'gspp-workspace', storageSchemaVersion: 3,
+  return { format: 'gspp-workspace', methodikScopes: [], storageSchemaVersion: 4,
     verbuende: [{ verbundId: id, name: 'Test', createdAt: timestamp, savedAt: timestamp }],
-    documents: [{ localId, verbundId: id, storageSchemaVersion: 3, rootType: 'catalog', oscalVersion: '1.1.3', trustClass: 'class-2-local-user', documentState: 'imported', createdAt: timestamp, savedAt: timestamp, source: makeSchemaValidOscalDocument('catalog', '1.1.3') }],
+    documents: [{ localId, verbundId: id, storageSchemaVersion: 4, rootType: 'catalog', oscalVersion: '1.1.3', trustClass: 'class-2-local-user', documentState: 'imported', createdAt: timestamp, savedAt: timestamp, source: makeSchemaValidOscalDocument('catalog', '1.1.3') }],
     drafts: [{ localId, savedAt: timestamp, source: { incomplete: true } }], bindings: [],
-    workspaceMeta: [{ id: 'workspace', databaseId: crypto.randomUUID(), storageSchemaVersion: 3, createdAt: timestamp, savedAt: timestamp }], reviewTrail: [], reviewBaseline: [] };
+    workspaceMeta: [{ id: 'workspace', databaseId: crypto.randomUUID(), storageSchemaVersion: 4, createdAt: timestamp, savedAt: timestamp }], reviewTrail: [], reviewBaseline: [] };
 }
 const encode = (value: unknown) => new TextEncoder().encode(JSON.stringify(value));
 describe('workspace backup validation', () => {
@@ -25,11 +25,11 @@ describe('workspace backup validation', () => {
     const stand = await documentSnapshot(source, 'catalog');
     if (!stand) throw new Error('fixture has no document stand');
     const backup: WorkspaceBackup = {
-      format: 'gspp-workspace', storageSchemaVersion: 3,
+      format: 'gspp-workspace', methodikScopes: [], storageSchemaVersion: 4,
       verbuende: [{ verbundId: id, name: 'Test', createdAt: timestamp, savedAt: timestamp }],
-      documents: [{ localId, verbundId: id, storageSchemaVersion: 3, rootType: 'catalog', oscalVersion: '1.1.3', trustClass: 'class-2-local-user', documentState: 'imported', createdAt: timestamp, savedAt: timestamp, source }],
+      documents: [{ localId, verbundId: id, storageSchemaVersion: 4, rootType: 'catalog', oscalVersion: '1.1.3', trustClass: 'class-2-local-user', documentState: 'imported', createdAt: timestamp, savedAt: timestamp, source }],
       drafts: [], bindings: [],
-      workspaceMeta: [{ id: 'workspace', databaseId: crypto.randomUUID(), storageSchemaVersion: 3, createdAt: timestamp, savedAt: timestamp }],
+      workspaceMeta: [{ id: 'workspace', databaseId: crypto.randomUUID(), storageSchemaVersion: 4, createdAt: timestamp, savedAt: timestamp }],
       reviewTrail: [{ localId, sequence: 1, kind: 'checkpoint', createdAt: timestamp, documentState: 'imported', stand, diff: { version: 1, baseSequence: null, entries: [], truncated: false } }],
       reviewBaseline: [{ localId, sequence: 1, stand, source: structuredClone(source) }],
     };
@@ -40,7 +40,7 @@ describe('workspace backup validation', () => {
   });
   it.each([
     (b: WorkspaceBackup) => ({ ...b, extra: 'secret' }),
-    (b: WorkspaceBackup) => ({ ...b, storageSchemaVersion: 4 }),
+    (b: WorkspaceBackup) => ({ ...b, storageSchemaVersion: 5 }),
     (b: WorkspaceBackup) => ({ ...b, documents: [...b.documents, b.documents[0]] }),
     (b: WorkspaceBackup) => ({ ...b, documents: [{ ...b.documents[0], localId: 'secret' }] }),
     (b: WorkspaceBackup) => ({ ...b, documents: [{ ...b.documents[0], trustClass: 'class-1-verified-public' }] }),

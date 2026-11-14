@@ -3,7 +3,7 @@ import 'fake-indexeddb/auto';
 import Dexie from 'dexie';
 import { expect, it } from 'vitest';
 import { migrateWorkspaceStorage } from './workspaceMigration';
-import { WORKSPACE_SCHEMA, WORKSPACE_SCHEMA_V1 } from './workspaceStore';
+import { WORKSPACE_SCHEMA_V3, WORKSPACE_SCHEMA_V1 } from './workspaceStore';
 import { createWorkspaceStructureValidator } from './workspaceBackupStructure';
 
 await import('@/test/browser/workspaceMigration.browser.test');
@@ -29,7 +29,7 @@ it.each(['added', 'removed', 'renamed'] as const)('rolls back an upgrade with a 
   seed.close();
   const next = new Dexie(name);
   next.version(1).stores(WORKSPACE_SCHEMA_V1);
-  const schema: Record<string, string | null> = { ...WORKSPACE_SCHEMA };
+  const schema: Record<string, string | null> = { ...WORKSPACE_SCHEMA_V3 };
   if (change !== 'added') schema.drafts = null;
   if (change !== 'removed') schema.extra = 'id';
   next.version(2).stores(schema).upgrade(tx => migrateWorkspaceStorage(tx, 1, 2));

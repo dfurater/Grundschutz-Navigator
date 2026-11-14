@@ -55,7 +55,9 @@ export function scopeOf(preview: RestorePreview): RestoreScope {
 
 /** Ein bestehender Zielbereich wird ersetzt; ein fehlender Verbund wird nur angelegt. */
 export function replacesTarget(preview: RestorePreview): boolean {
-  return preview.kind === 'workspace' ? preview.counts.verbuende.target > 0 : preview.existingVerbund !== null;
+  return preview.kind === 'workspace'
+    ? preview.counts.verbuende.target > 0 || preview.counts.methodikScopes.target > 0
+    : preview.existingVerbund !== null;
 }
 
 export function doneText(preview: RestorePreview): string {
@@ -79,6 +81,8 @@ export function replacementText(preview: RestorePreview): string {
       : `Legt „${preview.name}“ neu an. Kein vorhandener Bestand wird ersetzt.`;
   }
   if (!replacesTarget(preview)) return 'Der lokale Bestand ist leer. Nichts wird ersetzt.';
+  const scopes = preview.counts.methodikScopes.target;
+  if (scopes > 0) return `Ersetzt den gesamten Bestand einschließlich ${plural(scopes, 'Anwendungsbereich', 'Anwendungsbereichen')}.`;
   const verbuende = preview.counts.verbuende.target === 1 ? 'den einen Informationsverbund' : `alle ${preview.counts.verbuende.target} Informationsverbünde`;
   return `Ersetzt ${verbuende} mit ${documents} und ${drafts}.`;
 }
@@ -154,6 +158,13 @@ export function PreviewTable({ preview }: Readonly<{ preview: RestorePreview }>)
         </tr>
       </thead>
       <tbody className="divide-y divide-[var(--color-border-subtle)]">
+        {preview.kind === 'workspace' && preview.counts.methodikScopes.file + preview.counts.methodikScopes.target > 0 && (
+          <tr>
+            <th scope="row" className="py-2 text-left font-normal">Anwendungsbereiche</th>
+            <td className="py-2 pl-3 text-right tabular-nums">{preview.counts.methodikScopes.file}</td>
+            <td className="py-2 pl-3 text-right font-semibold tabular-nums">{preview.counts.methodikScopes.target}</td>
+          </tr>
+        )}
         {parts.map((part) => (
           <tr key={part}>
             <th scope="row" className="py-2 text-left font-normal">{PART_LABELS[part]}</th>
@@ -219,6 +230,17 @@ export function ClarifyRow({ entry, verbundName, failed, writable, onSave, onDis
 /** Stand von „Vorher sichern“; erst eine übergebene Datei zählt als gestarteter Download. */
 export type BackupState = 'idle' | 'running' | 'started' | 'failed';
 
+function targetText(preview: RestorePreview): string {
+  if (preview.kind === 'verbund') {
+    return preview.existingVerbund ? `Vorhanden · geändert ${formatDate(preview.existingVerbund.savedAt)}` : 'Fehlt · wird neu angelegt';
+  }
+  if (!replacesTarget(preview)) return 'Leer · kein Informationsverbund';
+  const scopes = preview.counts.methodikScopes.target;
+  const verbuende = plural(preview.counts.verbuende.target, 'Informationsverbund', 'Informationsverbünde');
+  const stand = `Stand ${formatDate(preview.target.savedAt)}`;
+  return scopes > 0 ? [plural(scopes, 'Anwendungsbereich', 'Anwendungsbereiche'), verbuende, stand].join(' · ') : `${verbuende} · ${stand}`;
+}
+
 export function PreviewBody({ preview, verbundCount, phase, quota, writable, backup, cancel, onBackup, onConfirm }: Readonly<{
   preview: RestorePreview;
   verbundCount: number;
@@ -235,11 +257,11 @@ export function PreviewBody({ preview, verbundCount, phase, quota, writable, bac
   const facts: (readonly [string, string])[] = preview.kind === 'workspace'
     ? [
       ['Umfang', 'Gesamter lokaler Bestand'],
-      ['Ziel', replaces ? `${plural(preview.counts.verbuende.target, 'Informationsverbund', 'Informationsverbünde')} · Stand ${formatDate(preview.target.savedAt)}` : 'Leer · kein Informationsverbund'],
+      ['Ziel', targetText(preview)],
     ]
     : [
       ['Umfang', `Verbund „${preview.name}“`],
-      ['Ziel', preview.existingVerbund ? `Vorhanden · geändert ${formatDate(preview.existingVerbund.savedAt)}` : 'Fehlt · wird neu angelegt'],
+      ['Ziel', targetText(preview)],
       ['Andere Verbünde', `${verbundCount - (preview.existingVerbund ? 1 : 0)} · bleiben unverändert`],
     ];
   const target = preview.kind === 'workspace' ? 'gesamter Bestand' : preview.existingVerbund?.name ?? preview.name;

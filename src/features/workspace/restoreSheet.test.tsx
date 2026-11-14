@@ -23,17 +23,17 @@ const TODAY = new Date().toISOString().slice(0, 10);
 function verbundPreview(existing = true): WorkspaceVerbundRestorePreview {
   return {
     kind: 'verbund', verbundId: VERBUND.verbundId, name: VERBUND.name, existingVerbund: existing ? VERBUND : null,
-    backup: { format: 'gspp-workspace-verbund', storageSchemaVersion: 3, verbuende: [VERBUND], documents: [], drafts: [], bindings: [], reviewTrail: [], reviewBaseline: [] },
-    target: { databaseId: 'db', storageSchemaVersion: 3, nativeDatabaseVersion: 30, verbundSavedAt: existing ? VERBUND.savedAt : null, documents: [] },
+    backup: { format: 'gspp-workspace-verbund', storageSchemaVersion: 4, verbuende: [VERBUND], documents: [], drafts: [], bindings: [], reviewTrail: [], reviewBaseline: [] },
+    target: { databaseId: 'db', storageSchemaVersion: 4, nativeDatabaseVersion: 40, verbundSavedAt: existing ? VERBUND.savedAt : null, documents: [] },
     counts: { verbuende: counts(1, 1), documents: counts(5, existing ? 4 : 0), drafts: counts(3, existing ? 2 : 0), bindings: counts(0, 0), reviewTrail: counts(0, 0), reviewBaseline: counts(0, 0) },
   } as WorkspaceVerbundRestorePreview;
 }
 
 const workspacePreview = {
   kind: 'workspace',
-  backup: { format: 'gspp-workspace', storageSchemaVersion: 3, verbuende: [VERBUND], documents: [], drafts: [], bindings: [], reviewTrail: [], reviewBaseline: [], workspaceMeta: [{ id: 'workspace', databaseId: 'db', storageSchemaVersion: 3, createdAt: VERBUND.createdAt, savedAt: VERBUND.savedAt }] },
-  target: { databaseId: 'db', storageSchemaVersion: 3, savedAt: VERBUND.savedAt },
-  counts: { verbuende: counts(1, 2), documents: counts(0, 3), drafts: counts(0, 1), bindings: counts(0, 0), reviewTrail: counts(0, 0), reviewBaseline: counts(0, 0), workspaceMeta: counts(1, 1) },
+  backup: { format: 'gspp-workspace', methodikScopes: [], storageSchemaVersion: 4, verbuende: [VERBUND], documents: [], drafts: [], bindings: [], reviewTrail: [], reviewBaseline: [], workspaceMeta: [{ id: 'workspace', databaseId: 'db', storageSchemaVersion: 4, createdAt: VERBUND.createdAt, savedAt: VERBUND.savedAt }] },
+  target: { databaseId: 'db', storageSchemaVersion: 4, savedAt: VERBUND.savedAt },
+  counts: { verbuende: counts(1, 2), documents: counts(0, 3), drafts: counts(0, 1), bindings: counts(0, 0), reviewTrail: counts(0, 0), reviewBaseline: counts(0, 0), workspaceMeta: counts(1, 1), methodikScopes: counts(0, 0) },
 } as unknown as WorkspaceRestorePreview;
 
 let workspace: WorkspaceContextValue;
@@ -104,10 +104,19 @@ describe('Sicherung wiederherstellen', () => {
     await waitFor(() => expect(downloads).toEqual([`informationsverbuende-sicherung-${TODAY}.json`]));
   });
 
+  it('zeigt einen Anwendungsbereich ohne Verbünde als bestehenden Zielbestand an', async () => {
+    const preview = { ...workspacePreview, counts: { ...workspacePreview.counts, verbuende: counts(1, 0), methodikScopes: counts(0, 1) } };
+    renderWith(fakePort({ previewRestore: () => ok(preview) }));
+    const sheet = await choose();
+    expect(await sheet.findByRole('rowheader', { name: 'Anwendungsbereiche' })).toBeInTheDocument();
+    expect(sheet.getByText('Ersetzt den gesamten Bestand einschließlich 1 Anwendungsbereich.')).toBeInTheDocument();
+    expect(sheet.getByRole('button', { name: 'Vorher sichern: gesamter Bestand' })).toBeEnabled();
+  });
+
   it.each([
     ['WORKSPACE_BACKUP_INVALID', 'Datei abgelehnt', 'Die Datei ist keine Sicherung, die diese Version wiederherstellen kann.'],
     ['WORKSPACE_BACKUP_WORKER_FAILURE', 'Prüfung abgebrochen', 'Die Datei wurde nicht geprüft.'],
-    ['WORKSPACE_BACKUP_CONFLICT', 'Kollision', 'Dokumente der Datei gehören zu einem anderen Verbund in diesem Browser. Nichts wird überschrieben.'],
+    ['WORKSPACE_BACKUP_CONFLICT', 'Kollision', 'Dokumente der Datei gehören zu einem anderen Verbund, oder Datei und Ziel sind wegen einer Anwendungsbereichszuordnung nicht als Verbund wiederherstellbar. Nichts wird überschrieben.'],
   ])('zeigt %s als feste Meldung ohne Restoreaktion', async (code, title, text) => {
     renderWith(fakePort({ previewRestore: () => fail(code) }));
     const sheet = await choose();

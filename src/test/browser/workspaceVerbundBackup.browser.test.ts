@@ -68,7 +68,7 @@ test('Verbund-Wiederherstellung lehnt Kollisionen, falsche Formate und ungültig
   const invalid = JSON.parse(selected); invalid.documents[0].source = { catalog: {} };
   const multiple = JSON.parse(selected); multiple.verbuende.push({ ...multiple.verbuende[0], verbundId: b.verbundId });
   const metadata = { ...JSON.parse(selected), workspaceMeta: JSON.parse(before).workspaceMeta };
-  for (const input of [bytes(before), bytes(JSON.stringify(invalid)), bytes(JSON.stringify(multiple)), bytes(JSON.stringify(metadata)), bytes(selected.replace('"storageSchemaVersion":3', '"storageSchemaVersion":4')), new Uint8Array(WORKSPACE_BACKUP_MAX_BYTES + 1)]) {
+  for (const input of [bytes(before), bytes(JSON.stringify(invalid)), bytes(JSON.stringify(multiple)), bytes(JSON.stringify(metadata)), bytes(selected.replace('"storageSchemaVersion":4', '"storageSchemaVersion":5')), new Uint8Array(WORKSPACE_BACKUP_MAX_BYTES + 1)]) {
     expect(await restoreVerbundBackup(store, input)).toMatchObject({ ok: false });
     expect(value(await store.exportBackup())).toBe(before);
   }

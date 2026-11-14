@@ -23,14 +23,14 @@ const stand = {
   contentHash: { version: 1, algorithm: 'sha-256', value: 'a'.repeat(64) },
 };
 
-/** v3-Bündel mit Prüfpunkt, Entscheidungen und Vergleichsbasis. */
+/** v4-Bündel mit Prüfpunkt, Entscheidungen und Vergleichsbasis. */
 function bundle(): WorkspaceBackup {
   return {
-    format: 'gspp-workspace',
-    storageSchemaVersion: 3,
+    format: 'gspp-workspace', methodikScopes: [],
+    storageSchemaVersion: 4,
     verbuende: [{ verbundId, name: 'Test', createdAt: timestamp, savedAt: timestamp }],
     documents: [{
-      localId, verbundId, storageSchemaVersion: 3, rootType: 'catalog', oscalVersion: '1.1.3',
+      localId, verbundId, storageSchemaVersion: 4, rootType: 'catalog', oscalVersion: '1.1.3',
       trustClass: 'class-2-local-user', documentState: 'export-ready', createdAt: timestamp, savedAt: timestamp, source,
     }],
     drafts: [],
@@ -45,7 +45,7 @@ function bundle(): WorkspaceBackup {
       { localId, sequence: 4, kind: 'decision', createdAt: timestamp, decision: 'withdrawn', stand, withdraws: { sequence: 3, actionUuid } },
     ],
     reviewBaseline: [{ localId, sequence: 1, stand, source }],
-    workspaceMeta: [{ id: 'workspace', databaseId: '66666666-6666-4666-8666-666666666666', storageSchemaVersion: 3, createdAt: timestamp, savedAt: timestamp }],
+    workspaceMeta: [{ id: 'workspace', databaseId: '66666666-6666-4666-8666-666666666666', storageSchemaVersion: 4, createdAt: timestamp, savedAt: timestamp }],
   };
 }
 
@@ -75,7 +75,7 @@ const rejected: readonly (readonly [string, Mutation])[] = [
   ['baseline-fehlt', (b) => ({ ...b, reviewBaseline: undefined })],
 ];
 
-describe('workspace backup structure v3', () => {
+describe('workspace backup structure v4', () => {
   it('akzeptiert Trail, Entscheidungen und Vergleichsbasis in Dokumentreihenfolge', () => {
     expect(validWorkspaceBackupStructure(bundle())).toBe(true);
   });
@@ -84,11 +84,12 @@ describe('workspace backup structure v3', () => {
     const whole = bundle();
     const single: Record<string, unknown> = { ...whole, format: 'gspp-workspace-verbund' };
     delete single.workspaceMeta;
+    delete single.methodikScopes;
     expect(adoptAnyBackup(whole)).toBe(whole);
     expect(adoptAnyBackup(single)).toBe(single);
     // Eine Verbundsicherung mit Metadaten ist weder die eine noch die andere Art.
     expect(adoptAnyBackup({ ...whole, format: 'gspp-workspace-verbund' })).toBeNull();
-    for (const value of [{ ...whole, format: 'gspp-other' }, { ...whole, storageSchemaVersion: 4 }, null, []]) expect(adoptAnyBackup(value)).toBeNull();
+    for (const value of [{ ...whole, format: 'gspp-other' }, { ...whole, storageSchemaVersion: 5 }, null, []]) expect(adoptAnyBackup(value)).toBeNull();
   });
 
   it.each(rejected)('weist %s ab', (_name, mutate) => {
@@ -107,7 +108,7 @@ describe('workspace backup structure v3', () => {
   });
 
   it('validiert inkrementell in Abhängigkeitsreihenfolge', () => {
-    const validator = createWorkspaceStructureValidator(3);
+    const validator = createWorkspaceStructureValidator(4);
     const backup = bundle();
     for (const row of backup.verbuende) expect(validator.verbuende(row)).toBe(true);
     for (const row of backup.documents) expect(validator.documents(row)).toBe(true);

@@ -260,7 +260,7 @@ export function RestoreSheet({ file: initialFile, rowDrafts, onCancel, onDone }:
             {phase.step === 'reading' && <output className="block text-sm text-[var(--color-text-secondary)]">Vorschau wird gelesen…</output>}
             {phase.step === 'collision' && (
               <>
-                <Message tone="alert" title="Kollision">Dokumente der Datei gehören zu einem anderen Verbund in diesem Browser. Nichts wird überschrieben.</Message>
+                <Message tone="alert" title="Kollision">Dokumente der Datei gehören zu einem anderen Verbund, oder Datei und Ziel sind wegen einer Anwendungsbereichszuordnung nicht als Verbund wiederherstellbar. Nichts wird überschrieben.</Message>
                 <Actions>{cancel}{otherFile}</Actions>
               </>
             )}
