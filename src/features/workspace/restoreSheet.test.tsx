@@ -435,6 +435,31 @@ describe('Sicherung wiederherstellen', () => {
     expect(await screen.findByText('Download gestartet', { selector: 'output' })).toBeInTheDocument();
   });
 
+  it('nennt auch bei „Vorher sichern“ im Prüfblatt den mitgesicherten Anwendungsbereich vor dem Download', async () => {
+    downloads.length = 0;
+    const file = JSON.stringify({ format: 'gspp-workspace-verbund', verbuende: [{ ...VERBUND, scopeId: SCOPE.scopeId }], methodikScopes: [SCOPE], documents: [{}] });
+    const restoreVerbundBackup = vi.fn(() => ok(undefined));
+    renderWith(fakePort({ previewRestore: () => ok(verbundPreview(true, { kind: 'kept', current: SCOPE, file: SCOPE, assigns: false })), exportVerbundBackup: () => ok(file), restoreVerbundBackup }));
+    const sheet = await choose();
+    const trigger = await sheet.findByRole('button', { name: `Vorher sichern: ${VERBUND.name}` });
+
+    fireEvent.click(trigger);
+    const dialog = within(await screen.findByRole('dialog', { name: `„${VERBUND.name}“ sichern` }));
+    expect(dialog.getByText(`${SCOPE.name} · gemeinsame Daten werden mitgesichert`)).toBeInTheDocument();
+    expect(dialog.getByRole('button', { name: 'Sicherung herunterladen' })).toHaveFocus();
+    fireEvent.click(dialog.getByRole('button', { name: 'Abbrechen' }));
+    await waitFor(() => expect(trigger).toHaveFocus());
+    expect(downloads).toEqual([]);
+    expect(sheet.queryByText('Download gestartet')).not.toBeInTheDocument();
+
+    fireEvent.click(trigger);
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Sicherung herunterladen' }));
+    expect(await sheet.findByText('Download gestartet', { selector: 'output' })).toBeInTheDocument();
+    expect(downloads).toEqual([`informationsverbund-sicherung-${TODAY}.json`]);
+    await waitFor(() => expect(trigger).toHaveFocus());
+    expect(restoreVerbundBackup).not.toHaveBeenCalled();
+  });
+
   it.each([
     ['öffnet den Dialog, wenn die Datei eines angezeigt unzugeordneten Verbunds einen Bereich mitführt', VERBUND, [SCOPE], 'Sichern'],
     ['lädt ohne Dialog, wenn die Datei eines angezeigt zugeordneten Verbunds keinen Bereich mitführt', { ...VERBUND, scopeId: SCOPE.scopeId }, [], 'Sichern…'],

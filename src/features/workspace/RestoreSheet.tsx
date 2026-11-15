@@ -7,6 +7,7 @@ import { inputVerbundName, saveNamedInput, type NamedInput, type RestoreInput, t
 import { OriginLabel } from '@/features/workspace/DocumentMarks';
 import { WORKSPACE_BACKUP_MAX_BYTES } from '@/domain/class2ImportLimits.mjs';
 import { useBackupExport } from '@/features/workspace/WorkspaceNotices';
+import { useVerbundExport } from '@/features/workspace/VerbundExportDialog';
 import {
   Actions, BUTTON, ClarifyRow, Facts, Mark, Message, PreviewBody, REJECTION_TEXT, Section, doneText, fileInfo, fileSize, formatDate, plural,
   inputKey, scopeOf, type BackupState, type FileInfo,
@@ -39,7 +40,8 @@ export function RestoreSheet({ file: initialFile, rowDrafts, onCancel, onDone }:
   const {
     verbuende, writable, flushAutosaves, previewRestore, restoreBackup, pendingRestoreInputs, discardRestoreInput, renameVerbund, renameScope, createScope,
   } = useWorkspace();
-  const { exportBackup, exportVerbund } = useBackupExport();
+  const backupExport = useBackupExport();
+  const { exportVerbund, exportDialog } = useVerbundExport(backupExport);
   const navigate = useNavigate();
   const heading = useRef<HTMLHeadingElement>(null);
   const input = useRef<HTMLInputElement>(null);
@@ -126,7 +128,6 @@ export function RestoreSheet({ file: initialFile, rowDrafts, onCancel, onDone }:
     await readPreview(run, false);
   };
 
-
   const saveRename = async (entry: NamedInput) => {
     const saved = await saveNamedInput(entry, { renameVerbund, renameScope, createScope });
     if (saved) discardRestoreInput(entry, rowDrafts);
@@ -156,12 +157,13 @@ export function RestoreSheet({ file: initialFile, rowDrafts, onCancel, onDone }:
     else setPhase({ step: 'write-failed', preview, quota: code === 'WORKSPACE_QUOTA_EXCEEDED' });
   };
 
-  /** „Vorher sichern“: Das Ergebnis gehört nur zu dieser Prüfung; nach einem Dateiwechsel wird es verworfen. */
-  const backupFirst = (preview: RestorePreview) => {
+  /** „Vorher sichern“; eine Verbundsicherung läuft wie die Zeilenaktion. Nach einem Dateiwechsel wird die erstellte Datei verworfen. */
+  const backupFirst = (preview: RestorePreview, trigger: HTMLElement) => {
     const run = generation.current;
-    setBackup('running');
-    void (preview.kind === 'workspace' ? exportBackup() : exportVerbund(preview.verbundId))
-      .then((started) => { if (run === generation.current) setBackup(started ? 'started' : 'failed'); });
+    const current = () => run === generation.current;
+    setBackup('idle');
+    void (preview.kind === 'workspace' ? backupExport.exportBackup(current).then((started) => (started ? 'started' : 'failed')) : exportVerbund(preview.verbundId, trigger, current))
+      .then((outcome) => { if (current()) setBackup(outcome === 'canceled' ? 'idle' : outcome); });
   };
 
   const chooseFile = (event: ChangeEvent<HTMLInputElement>) => {
@@ -282,16 +284,17 @@ export function RestoreSheet({ file: initialFile, rowDrafts, onCancel, onDone }:
                 phase={shown.step}
                 quota={shown.step === 'write-failed' && shown.quota}
                 writable={writable}
-                backup={backup}
+                backup={backupExport.exporting ? 'running' : backup}
                 cancel={cancel}
                 otherFile={otherFile}
-                onBackup={() => backupFirst(shown.preview)}
+                onBackup={(trigger) => backupFirst(shown.preview, trigger)}
                 onConfirm={() => void confirm(shown.preview)}
               />
             )}
           </Section>
         )}
       </div>
+      {exportDialog}
     </div>
   );
 }

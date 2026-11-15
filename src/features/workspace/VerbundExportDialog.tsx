@@ -1,12 +1,12 @@
-import { useId, useRef } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { BackdropTint } from '@/components/BackdropTint';
 import { Button } from '@/components/Button';
 import { ModalPortal } from '@/components/ModalPortal';
 import { useGlobalEventListener } from '@/hooks/useGlobalEventListener';
 import { useModalDialog } from '@/hooks/useModalDialog';
 import { useScrollLock } from '@/hooks/useScrollLock';
-import type { WorkspaceVerbundBackup } from '@/domain/workspaceModel';
-import type { PreparedBackup } from '@/features/workspace/WorkspaceNotices';
+import type { VerbundId, WorkspaceVerbundBackup } from '@/domain/workspaceModel';
+import type { PreparedBackup, useBackupExport } from '@/features/workspace/WorkspaceNotices';
 import { ROW_BUTTON } from '@/features/workspace/WorkspaceForms';
 import { Facts, plural } from '@/features/workspace/RestoreSheetParts';
 
@@ -22,6 +22,45 @@ export function scopedVerbundBackup(prepared: PreparedBackup): PreparedVerbundBa
   const file = JSON.parse(prepared.text) as WorkspaceVerbundBackup;
   const scope = file.methodikScopes?.[0];
   return scope ? { ...prepared, verbundName: file.verbuende[0].name, scopeName: scope.name, documents: file.documents.length } : null;
+}
+
+/** Ausgang einer Verbundsicherung: Download übergeben, im Dialog abgebrochen oder verworfen, Sicherung nicht erstellt. */
+export type VerbundExportOutcome = 'started' | 'canceled' | 'failed';
+
+/**
+ * Sichert einen Verbund für jeden Einstieg gleich: Die erstellte Datei entscheidet, ob vor dem Download der Dialog
+ * ihren Umfang nennt. Nach dem Dialog erhält der Auslöser den Fokus zurück. `wanted` wird nach dem Erstellen gelesen;
+ * `false` verwirft die Datei ohne Dialog und Download.
+ */
+export function useVerbundExport({ prepareVerbund, saveBackup }: Pick<ReturnType<typeof useBackupExport>, 'prepareVerbund' | 'saveBackup'>): {
+  readonly exportVerbund: (verbundId: VerbundId, trigger: HTMLElement, wanted?: () => boolean) => Promise<VerbundExportOutcome>;
+  readonly exportDialog: ReactNode;
+} {
+  const [pending, setPending] = useState<{ readonly backup: PreparedVerbundBackup; readonly settle: (download: boolean) => void } | null>(null);
+  const trigger = useRef<HTMLElement | null>(null);
+  // Erst nach dem Abbau des Dialogs ist der Hintergrund nicht mehr inert und der Auslöser fokussierbar.
+  useEffect(() => {
+    if (pending || !trigger.current) return;
+    trigger.current.focus();
+    trigger.current = null;
+  }, [pending]);
+  const exportVerbund = async (verbundId: VerbundId, from: HTMLElement, wanted: () => boolean = () => true): Promise<VerbundExportOutcome> => {
+    const created = await prepareVerbund(verbundId);
+    if (!created) return 'failed';
+    if (!wanted()) return 'canceled';
+    const scoped = scopedVerbundBackup(created);
+    const download = scoped === null || await new Promise<boolean>((settle) => {
+      trigger.current = from;
+      setPending({ backup: scoped, settle });
+    });
+    if (!download) return 'canceled';
+    saveBackup(created);
+    return 'started';
+  };
+  const exportDialog = pending && (
+    <VerbundExportDialog backup={pending.backup} onClose={(download) => { setPending(null); pending.settle(download); }} />
+  );
+  return { exportVerbund, exportDialog };
 }
 
 /**

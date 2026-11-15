@@ -261,7 +261,7 @@ export function PreviewBody({ preview, verbundCount, phase, quota, writable, bac
   backup: BackupState;
   cancel: ReactNode;
   otherFile: ReactNode;
-  onBackup: () => void;
+  onBackup: (trigger: HTMLButtonElement) => void;
   onConfirm: () => void;
 }>) {
   const running = phase === 'running';
@@ -312,7 +312,7 @@ export function PreviewBody({ preview, verbundCount, phase, quota, writable, bac
       <Actions>
         {cancel}
         {replaces && (
-          <Button variant="secondary" className={BUTTON} disabled={running || backup === 'running'} aria-label={`Vorher sichern: ${target}`} onClick={onBackup}>Vorher sichern</Button>
+          <Button variant="secondary" className={BUTTON} disabled={running || backup === 'running'} aria-label={`Vorher sichern: ${target}`} onClick={(event) => onBackup(event.currentTarget)}>Vorher sichern</Button>
         )}
         {/* Auch die Wiederholung nennt den Umfang im zugänglichen Namen. */}
         <Button

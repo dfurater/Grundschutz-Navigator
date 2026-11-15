@@ -3,7 +3,7 @@ import { flushSync } from 'react-dom';
 import { createRoot, type Root } from 'react-dom/client';
 import { createMemoryRouter } from 'react-router';
 import { RouterProvider } from 'react-router/dom';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { commands, page, userEvent } from 'vitest/browser';
 import { AppShell } from '@/app/AppShell';
 import { createAppRoutes } from '@/app/appRoutes';
@@ -108,6 +108,22 @@ describe.each([{ width: 1440, touch: false }, { width: 390, touch: true }])('Sic
     expect(document.title).not.toContain('Bereich');
     expect(JSON.stringify(router!.state.location)).not.toContain('Bereich');
     await assertNoAxeViolations(host!, `Vorschau Anwendungsbereich ${width}`);
+
+    // „Vorher sichern“ nennt den mitgesicherten Anwendungsbereich vor der Übergabe der Datei an den Download.
+    const downloads = vi.spyOn(URL, 'createObjectURL');
+    const backupFirst = button('Vorher sichern')!;
+    backupFirst.focus();
+    await userEvent.keyboard('{Enter}');
+    await expect.poll(() => document.activeElement?.textContent).toBe('Sicherung herunterladen');
+    expect(document.querySelector('[data-modal-layer] dialog')!.textContent).toContain('Bereich heute · gemeinsame Daten werden mitgesichert');
+    expect(downloads).not.toHaveBeenCalled();
+    await userEvent.keyboard('{Enter}');
+    await expect.poll(() => downloads.mock.calls.length).toBe(1);
+    const saved = JSON.parse(await (downloads.mock.calls[0][0] as Blob).text()) as { methodikScopes: { name: string }[] };
+    expect(saved.methodikScopes.map(entry => entry.name)).toEqual(['Bereich heute']);
+    await expect.poll(() => document.activeElement).toBe(backupFirst);
+    downloads.mockRestore();
+
     button(`„${SENTINEL_VERBUND}“ ersetzen`)!.focus();
     await userEvent.keyboard('{Enter}');
     await expect.poll(() => host!.querySelector('[data-restored]')?.textContent).toContain(SENTINEL_VERBUND);

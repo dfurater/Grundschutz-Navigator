@@ -103,8 +103,11 @@ it('rejects a differing assignment as a whole before any change (R2 c)', async (
     expect(value(await store.exportBackup())).toBe(before);
   }
   value(await store.changeVerbundScope(assigned.verbundId, null, { scopeId: target.scopeId, savedAt: (await scopeRow(target.scopeId))!.savedAt }, moved.savedAt));
+  const before = value(await store.exportBackup());
   const preview = value(await store.previewRestoreVerbundBackup(bytes(assignedFile)));
   expect(preview.scope).toMatchObject({ kind: 'conflict', current: { scopeId: target.scopeId }, file: { scopeId: scope.scopeId } });
+  expect(await store.restoreVerbundBackup(preview)).toMatchObject(backupConflict);
+  expect(value(await store.exportBackup())).toBe(before);
 });
 
 it('invalidates the preview when a scope row or its membership changes before confirmation (R2 d)', async () => {

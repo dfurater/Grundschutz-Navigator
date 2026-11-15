@@ -401,7 +401,7 @@ src/                              # Anwendungsquellcode
 │       ├── StationCards.tsx              # Fünf Stationskarten der Verbund-Übersicht mit Statuswort und Kennzahl
 │       ├── ScopeOverviewPage.tsx         # Anlage und Übersicht eines Anwendungsbereichs mit Umbenennen und zugeordneten Verbünden
 │       ├── StationStrip.tsx              # Stationsreiter unter der Kopfzeile mit Statuspunkt, alle Layoutstufen
-│       ├── VerbundExportDialog.tsx       # Umfang einer Verbundsicherung mit mitgeführtem Anwendungsbereich vor dem Download, Angaben aus der erstellten Datei
+│       ├── VerbundExportDialog.tsx       # Verbundsicherung aller Einstiege (useVerbundExport) und Umfangsdialog bei mitgeführtem Anwendungsbereich, Angaben aus der erstellten Datei
 │       ├── VerbundOverviewPage.tsx       # Arbeitsbereich: Anwendungsbereiche und alle Verbünde; Verbünde anlegen, umbenennen, mit Bestätigung löschen, sichern, wiederherstellen
 │       ├── VerbundPage.tsx               # Verbund-Übersicht mit Kopf und Stationskarten; Stationsrouten mit Dokumentliste und Diagnosen
 │       ├── WorkspaceFileImport.tsx       # Klasse-2-Dateiaufnahme für Profile, SSP und Assessment Results

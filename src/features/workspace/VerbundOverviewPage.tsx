@@ -10,9 +10,9 @@ import type { WorkspaceContextValue } from '@/state/WorkspaceContext';
 import { NEW_SCOPE_DRAFT } from '@/state/workspaceRestore';
 import type { WorkspaceScope, WorkspaceVerbund } from '@/domain/workspaceModel';
 import { FOCUS_RING, OriginLabel } from '@/features/workspace/DocumentMarks';
-import { WorkspaceNotices, useBackupExport, type PreparedBackup } from '@/features/workspace/WorkspaceNotices';
+import { WorkspaceNotices, useBackupExport } from '@/features/workspace/WorkspaceNotices';
 import { RestoreSheet, type RestoreDone } from '@/features/workspace/RestoreSheet';
-import { VerbundExportDialog, scopedVerbundBackup, type PreparedVerbundBackup } from '@/features/workspace/VerbundExportDialog';
+import { useVerbundExport } from '@/features/workspace/VerbundExportDialog';
 import { WorkspaceDeleteDialog } from '@/features/workspace/WorkspaceDeleteDialog';
 import { NameForm, ROW_BUTTON, SectionHead } from '@/features/workspace/WorkspaceForms';
 import { ScopeCreateView } from '@/features/workspace/ScopeOverviewPage';
@@ -182,12 +182,11 @@ export function VerbundOverviewPage() {
   // „Anwendungsbereich anlegen“ ist Ansichtszustand dieser Seite wie das Prüfblatt: keine Route, kein Name im Titel.
   // Eine offene Anlage aus dem Provider öffnet die Ansicht beim Zurückkehren wieder.
   const [creatingScope, setCreatingScope] = useState(() => !scopeDeleted && scopeDrafts.has(NEW_SCOPE_DRAFT));
-  const { exporting, exportBackup, prepareVerbund, saveBackup } = useBackupExport();
+  const backupExport = useBackupExport();
+  const { exporting, exportBackup } = backupExport;
+  const { exportVerbund: exportScoped, exportDialog } = useVerbundExport(backupExport);
   const [pendingDelete, setPendingDelete] = useState<WorkspaceVerbund | null>(null);
-  const [pendingExport, setPendingExport] = useState<PreparedVerbundBackup | null>(null);
   const [exportStarted, setExportStarted] = useState(false);
-  // Während der Export läuft, ist der Zeilenknopf gesperrt und verliert den Fokus; nach dem Dialog erhält er ihn zurück.
-  const exportTrigger = useRef<HTMLButtonElement | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   // „Vorher sichern“ hat eine Eingabe gespeichert und die Löschung wurde nicht bestätigt.
   const [prepared, setPrepared] = useState(false);
@@ -290,26 +289,10 @@ export function VerbundOverviewPage() {
     heading.current?.focus();
   }, [deleted, rowDrafts]);
 
-  // Erst nach dem Abbau des Dialogs ist der Hintergrund nicht mehr inert und der Zeilenknopf fokussierbar.
-  useEffect(() => {
-    if (pendingExport || !exportTrigger.current) return;
-    exportTrigger.current.focus();
-    exportTrigger.current = null;
-  }, [pendingExport]);
-  const downloadStarted = (created: PreparedBackup) => {
-    saveBackup(created);
-    setExportStarted(true);
-  };
-  /** Die erstellte Datei entscheidet: Führt sie eine Scopezeile mit, nennt der Dialog sie vor dem Download. */
   const exportVerbund = async (verbund: WorkspaceVerbund, trigger: HTMLButtonElement) => {
     // Die vor jedem Export geleerte Statusregion sagt auch eine wiederholte Meldung erneut an.
     setExportStarted(false);
-    const created = await prepareVerbund(verbund.verbundId);
-    if (!created) return;
-    const scoped = scopedVerbundBackup(created);
-    if (!scoped) { downloadStarted(created); return; }
-    exportTrigger.current = trigger;
-    setPendingExport(scoped);
+    if (await exportScoped(verbund.verbundId, trigger) === 'started') setExportStarted(true);
   };
 
   const chooseFile = (event: ChangeEvent<HTMLInputElement>) => {
@@ -486,15 +469,7 @@ export function VerbundOverviewPage() {
         />
       )}
 
-      {pendingExport && (
-        <VerbundExportDialog
-          backup={pendingExport}
-          onClose={(download) => {
-            if (download) downloadStarted(pendingExport);
-            setPendingExport(null);
-          }}
-        />
-      )}
+      {exportDialog}
 
       <ConfirmDialog
         open={pendingDelete !== null}
