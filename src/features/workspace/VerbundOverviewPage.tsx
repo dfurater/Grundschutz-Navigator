@@ -117,7 +117,7 @@ function ScopeSection({ ready, failed, scopes, verbuende, writable, onCreate }: 
   scopes: readonly WorkspaceScope[];
   verbuende: readonly WorkspaceVerbund[];
   writable: boolean;
-  onCreate: () => void;
+  onCreate: (trigger: HTMLButtonElement) => void;
 }>) {
   let content;
   if (failed) {
@@ -126,7 +126,7 @@ function ScopeSection({ ready, failed, scopes, verbuende, writable, onCreate }: 
     content = (
       <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2">
         <p className="text-sm text-[var(--color-text-secondary)]">Kein Anwendungsbereich angelegt</p>
-        <Button variant="ghost" className={ROW_BUTTON} disabled={!writable} onClick={onCreate}>Anwendungsbereich anlegen</Button>
+        <Button variant="ghost" className={ROW_BUTTON} disabled={!writable} onClick={(event) => onCreate(event.currentTarget)}>Anwendungsbereich anlegen</Button>
       </div>
     );
   } else {
@@ -223,7 +223,9 @@ export function VerbundOverviewPage() {
   const statusId = useId();
   const ready = (status === 'ready' || deleted) && verbuende !== null && scopes !== null;
   const scopeNames = new Map((scopes ?? []).map((scope) => [scope.scopeId as string, scope.name]));
-  const startScopeCreation = () => { setCreatingScope(true); };
+  // Der Abbruch gibt den Fokus an den auslösenden Einstieg zurück (Kopf oder Leerzustand).
+  const createTrigger = useRef<HTMLButtonElement | null>(null);
+  const startScopeCreation = (trigger: HTMLButtonElement) => { createTrigger.current = trigger; setCreatingScope(true); };
   // Mit der Gesamtlöschung fallen auch die Eingaben und Meldungen der Seite zum gelöschten Bestand.
   if (deleted !== wasDeleted) {
     setWasDeleted(deleted);
@@ -243,9 +245,14 @@ export function VerbundOverviewPage() {
   useEffect(() => {
     if (restoreFile || deleteShown || creatingScope || !focusTarget.current) return;
     if (focusTarget.current === 'reload') page.current?.querySelector<HTMLButtonElement>('[data-notice="storage-failed"] button')?.focus();
-    else ({ heading, restore: restoreButton, delete: deleteButton, 'create-scope': createScopeButton })[focusTarget.current].current?.focus();
+    else if (focusTarget.current === 'create-scope') (createTrigger.current ?? createScopeButton.current)?.focus();
+    else ({ heading, restore: restoreButton, delete: deleteButton })[focusTarget.current].current?.focus();
     focusTarget.current = null;
   }, [restoreFile, deleteShown, creatingScope]);
+
+  // Betreten der Seite setzt den Fokus auf die Überschrift, außer eine wiedergeöffnete Anlage oder Löschung führt ihn.
+  const [focusOnEntry] = useState(!creatingScope && !deleteShown);
+  useEffect(() => { if (focusOnEntry) heading.current?.focus(); }, [focusOnEntry]);
 
   // Nach der Gesamtlöschung: keine Zeilenentwürfe des gelöschten Bestands, Fokus auf der Überschrift.
   useEffect(() => {
@@ -305,7 +312,7 @@ export function VerbundOverviewPage() {
             <Button ref={restoreButton} variant="secondary" className={ROW_BUTTON} onClick={() => fileInput.current?.click()} disabled={!ready || !writable}>
               Sicherung wiederherstellen…
             </Button>
-            <Button ref={createScopeButton} className={ROW_BUTTON} onClick={startScopeCreation} disabled={!ready || !writable}>
+            <Button ref={createScopeButton} className={ROW_BUTTON} onClick={(event) => startScopeCreation(event.currentTarget)} disabled={!ready || !writable}>
               Anwendungsbereich anlegen
             </Button>
           </div>

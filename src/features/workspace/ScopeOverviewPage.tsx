@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router';
+import { Link, useNavigate, useNavigation, useParams } from 'react-router';
 import { PageTitle } from '@/app/PageTitle';
 import { PAGE_TITLES } from '@/app/pageTitles';
 import { buildScopeUrl, buildVerbundUrl, buildWorkspaceIndexUrl, isLocalIdentity } from '@/app/routes';
 import { Button } from '@/components/Button';
-import type { WorkspaceScope } from '@/domain/workspaceModel';
+import type { WorkspaceResult, WorkspaceScope } from '@/domain/workspaceModel';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { FOCUS_RING, OriginLabel } from '@/features/workspace/DocumentMarks';
 import { relativeTime } from '@/features/workspace/StationCards';
@@ -27,10 +27,15 @@ export function ScopeCreateView({ writable, onCancel }: Readonly<{ writable: boo
     heading.current?.focus();
     return () => { mounted.current = false; };
   }, []);
-  const busy = usePendingWrite(() => pendingScopeWrite(NEW_SCOPE_DRAFT), (result) => {
+  // Eine schon gewählte Navigation (etwa auf eine noch ladende Lazy-Route) behält Vorrang vor dem Öffnen der Übersicht.
+  const navigationState = useNavigation().state;
+  const leaving = useRef(false);
+  useEffect(() => { leaving.current = navigationState !== 'idle'; }, [navigationState]);
+  const openScope = (result: WorkspaceResult<WorkspaceScope>) => {
     setFailed(!result.ok);
-    if (result.ok) void navigate(buildScopeUrl(result.value.scopeId));
-  });
+    if (result.ok && !leaving.current) void navigate(buildScopeUrl(result.value.scopeId));
+  };
+  const busy = usePendingWrite(() => pendingScopeWrite(NEW_SCOPE_DRAFT), openScope);
   return (
     <div className="mx-auto w-full max-w-screen-2xl space-y-4 p-4 desktop:px-7 desktop:py-6">
       <h1 ref={heading} tabIndex={-1} className="type-page-title focus:outline-none">Anwendungsbereich anlegen</h1>
@@ -47,9 +52,7 @@ export function ScopeCreateView({ writable, onCancel }: Readonly<{ writable: boo
           onSubmit={async (name) => {
             const result = await createScope(name);
             if (result.ok && scopeDrafts.get(NEW_SCOPE_DRAFT)?.trim() === name) scopeDrafts.delete(NEW_SCOPE_DRAFT);
-            if (!mounted.current) return result.ok;
-            setFailed(!result.ok);
-            if (result.ok) void navigate(buildScopeUrl(result.value.scopeId));
+            if (mounted.current) openScope(result);
             return result.ok;
           }}
           onCancel={() => {
