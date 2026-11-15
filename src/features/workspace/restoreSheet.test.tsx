@@ -326,6 +326,23 @@ describe('Sicherung wiederherstellen', () => {
     expect(sheet.queryByText(/Neuer Anwendungsbereich/)).toBeNull();
   });
 
+  it('klärt eine Verbund-Umbenennung, deren Speichern noch läuft, erst mit deren Ergebnis', async () => {
+    let finish: (value: Awaited<ReturnType<WorkspacePort['renameVerbund']>>) => void = () => undefined;
+    const renameVerbund = vi.fn(() => new Promise<Awaited<ReturnType<WorkspacePort['renameVerbund']>>>((resolve) => { finish = resolve; }));
+    renderWith(fakePort({ previewRestore: () => ok(workspacePreview), renameVerbund }));
+    await screen.findByRole('link', { name: VERBUND.name });
+    // Wie die Verbund-Kopfzeile: Der bestätigte Name verlässt die offenen Eingaben.
+    workspace.renameDrafts.set(VERBUND.verbundId, 'Neuer Name');
+    void workspace.renameVerbund(VERBUND.verbundId, 'Neuer Name').then((result) => { if (result.ok) workspace.renameDrafts.delete(VERBUND.verbundId); });
+    const sheet = await choose();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(sheet.queryByText(/„Neuer Name“/)).toBeNull();
+    expect(sheet.queryByRole('button', { name: 'Gesamten Bestand ersetzen' })).toBeNull();
+    await act(async () => { finish({ ok: true, value: { ...VERBUND, name: 'Neuer Name', savedAt: TODAY } }); });
+    expect(await sheet.findByRole('button', { name: 'Gesamten Bestand ersetzen' })).toBeInTheDocument();
+    expect(sheet.queryByText(/„Neuer Name“/)).toBeNull();
+  });
+
   it('kehrt bei Abbrechen zum Einstieg zurück', async () => {
     renderWith(fakePort({ previewRestore: () => ok(verbundPreview()) }));
     const sheet = await choose();

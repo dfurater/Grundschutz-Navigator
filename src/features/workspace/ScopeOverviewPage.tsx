@@ -4,41 +4,19 @@ import { PageTitle } from '@/app/PageTitle';
 import { PAGE_TITLES } from '@/app/pageTitles';
 import { buildScopeUrl, buildVerbundUrl, buildWorkspaceIndexUrl, isLocalIdentity } from '@/app/routes';
 import { Button } from '@/components/Button';
-import type { WorkspaceResult, WorkspaceScope } from '@/domain/workspaceModel';
+import type { WorkspaceScope } from '@/domain/workspaceModel';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { FOCUS_RING, OriginLabel } from '@/features/workspace/DocumentMarks';
 import { relativeTime } from '@/features/workspace/StationCards';
 import { NameForm, SaveFailed, SectionHead } from '@/features/workspace/WorkspaceForms';
+import { usePendingWrite } from '@/features/workspace/usePendingWrite';
 import { WorkspaceNotices } from '@/features/workspace/WorkspaceNotices';
 import { WorkspaceStatePage } from '@/features/workspace/WorkspaceStatePage';
 import { NEW_SCOPE_DRAFT } from '@/state/workspaceRestore';
 
-/**
- * Ein vor dem Aufbau des Formulars gestarteter Schreibvorgang zu `key` (etwa vor einem Routenwechsel)
- * sperrt das Formular, bis sein Ergebnis da ist; `onResult` erhält dieses Ergebnis.
- */
-function usePendingScopeWrite(key: string, onResult: (result: WorkspaceResult<WorkspaceScope>) => void): boolean {
-  const { pendingScopeWrite } = useWorkspace();
-  const [pending] = useState(() => pendingScopeWrite(key));
-  const [busy, setBusy] = useState(pending !== undefined);
-  const handle = useRef(onResult);
-  useEffect(() => { handle.current = onResult; });
-  useEffect(() => {
-    if (!pending) return;
-    let active = true;
-    void pending.then((result) => {
-      if (!active) return;
-      setBusy(false);
-      handle.current(result);
-    });
-    return () => { active = false; };
-  }, [pending]);
-  return busy;
-}
-
 /** Ansicht „Anwendungsbereich anlegen“ (GSPP-669, Ansicht 7): erst nach bestätigtem Speichern öffnet sich die Übersicht. */
 export function ScopeCreateView({ writable, onCancel }: Readonly<{ writable: boolean; onCancel: () => void }>) {
-  const { createScope, scopeDrafts } = useWorkspace();
+  const { createScope, scopeDrafts, pendingScopeWrite } = useWorkspace();
   const navigate = useNavigate();
   const [failed, setFailed] = useState(false);
   const heading = useRef<HTMLHeadingElement>(null);
@@ -49,7 +27,7 @@ export function ScopeCreateView({ writable, onCancel }: Readonly<{ writable: boo
     heading.current?.focus();
     return () => { mounted.current = false; };
   }, []);
-  const busy = usePendingScopeWrite(NEW_SCOPE_DRAFT, (result) => {
+  const busy = usePendingWrite(() => pendingScopeWrite(NEW_SCOPE_DRAFT), (result) => {
     setFailed(!result.ok);
     if (result.ok) void navigate(buildScopeUrl(result.value.scopeId));
   });
@@ -88,7 +66,7 @@ export function ScopeCreateView({ writable, onCancel }: Readonly<{ writable: boo
 /** Kopf des Anwendungsbereichs (GSPP-669, Ansichten 3 und 8): Name, Umbenennen, Herkunft und Speicherstand. */
 function ScopeHeader({ scope, now }: Readonly<{ scope: WorkspaceScope; now: number }>) {
   // Eine offene Umbenennung überdauert Routen- und Bereichswechsel (`scopeDrafts` im Provider).
-  const { writable, renameScope, scopeDrafts } = useWorkspace();
+  const { writable, renameScope, scopeDrafts, pendingScopeWrite } = useWorkspace();
   const [renaming, setRenaming] = useState(() => scopeDrafts.has(scope.scopeId));
   const [failed, setFailed] = useState(false);
   const heading = useRef<HTMLHeadingElement>(null);
@@ -108,7 +86,7 @@ function ScopeHeader({ scope, now }: Readonly<{ scope: WorkspaceScope; now: numb
     setRenaming(false);
   };
   // Die abgeschlossene Umbenennung hat den Entwurf entfernt, wenn nicht weitergetippt wurde; dann schließt das Formular.
-  const busy = usePendingScopeWrite(scope.scopeId, (result) => {
+  const busy = usePendingWrite(() => pendingScopeWrite(scope.scopeId), (result) => {
     setFailed(!result.ok);
     if (result.ok && !scopeDrafts.has(scope.scopeId)) {
       restoreFocus.current = true;

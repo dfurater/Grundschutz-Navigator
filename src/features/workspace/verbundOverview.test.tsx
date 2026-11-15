@@ -2,6 +2,7 @@
 import 'fake-indexeddb/auto';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { WorkspaceStore } from '@/adapters/workspaceStore';
 import { AppShell } from '@/app/AppShell';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { CatalogContext } from '@/state/CatalogContext';
@@ -29,6 +30,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   await resetWorkspace();
 });
 
@@ -117,6 +119,34 @@ describe('Verbund-Übersicht', () => {
 
     expect(await within(main()).findByRole('heading', { level: 1, name: 'A' })).toBeInTheDocument();
     expect(within(main()).getByLabelText('Neuer Name')).toHaveValue('AB');
+  });
+
+  it('sperrt die nach Routenwechsel wiedergeöffnete Umbenennung bis zum Ergebnis des laufenden Speicherns', async () => {
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const original = WorkspaceStore.prototype.renameVerbund;
+    const renameVerbund = vi.spyOn(WorkspaceStore.prototype, 'renameVerbund').mockImplementation(async function (this: WorkspaceStore, ...args) {
+      await gate;
+      return original.apply(this, args);
+    });
+    const { router } = renderArea(buildVerbundUrl(seeded.verbundId));
+    await within(main()).findByRole('heading', { level: 1, name: SENTINEL_VERBUND });
+    fireEvent.click(within(main()).getByRole('button', { name: 'Umbenennen' }));
+    fireEvent.change(within(main()).getByLabelText('Neuer Name'), { target: { value: 'Netz Süd' } });
+    fireEvent.click(within(main()).getByRole('button', { name: 'Speichern' }));
+    await router.navigate(buildWorkspaceIndexUrl());
+    await within(main()).findByRole('heading', { level: 1, name: 'Arbeitsbereich' });
+    await router.navigate(buildVerbundUrl(seeded.verbundId));
+    const input = await within(main()).findByLabelText('Neuer Name');
+    expect(input).toHaveValue('Netz Süd');
+    expect(within(main()).getByRole('button', { name: 'Abbrechen' })).toBeDisabled();
+    expect(within(main()).getByRole('button', { name: 'Speichern' })).toBeDisabled();
+    fireEvent.keyDown(input, { key: 'Escape' });
+    expect(within(main()).getByLabelText('Neuer Name')).toBeInTheDocument();
+    release();
+    expect(await within(main()).findByRole('heading', { level: 1, name: 'Netz Süd' })).toBeInTheDocument();
+    await waitFor(() => expect(within(main()).queryByLabelText('Neuer Name')).toBeNull());
+    expect(renameVerbund).toHaveBeenCalledTimes(1);
   });
 
   it('verwirft eine offene Umbenennung, wenn der Verbund über die Übersicht aller Verbünde gelöscht wird', async () => {

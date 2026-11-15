@@ -108,6 +108,8 @@ export interface WorkspaceContextValue {
    * damit ein nach Routenwechsel neu aufgebautes Formular bis zu seinem Ergebnis gesperrt bleibt.
    */
   readonly pendingScopeWrite: (key: string) => Promise<WorkspaceResult<WorkspaceScope>> | undefined;
+  /** Laufende Umbenennung je `verbundId` aus `renameDrafts`, mit derselben Aufgabe wie `pendingScopeWrite`. */
+  readonly pendingVerbundWrite: (verbundId: string) => Promise<WorkspaceResult<WorkspaceVerbund>> | undefined;
 }
 
 
@@ -148,11 +150,25 @@ export const WorkspaceContext = createContext<WorkspaceContextValue>({
   renameDrafts: new Map(),
   scopeDrafts: new Map(),
   pendingScopeWrite: () => undefined,
+  pendingVerbundWrite: () => undefined,
   registerAutosave: () => () => undefined,
   flushAutosaves: () => Promise.resolve(true),
   documents: createWorkspaceDocuments({ port: null, write: unavailableWrite, quiet: unavailableWrite, class1: [], delivery: new Map(), targets: new Map() }),
   analysisRevision: 0,
 });
+
+interface PendingWrite<T> {
+  readonly name: string;
+  readonly run: Promise<WorkspaceResult<T>>;
+}
+
+/** Hält `run` unter `key` in `pending`, bis sein Ergebnis da ist; ein später gestarteter Vorgang zum selben Schlüssel bleibt stehen. */
+function track<T>(pending: Map<string, PendingWrite<T>>, key: string, name: string, run: Promise<WorkspaceResult<T>>): Promise<WorkspaceResult<T>> {
+  const entry = { name, run };
+  pending.set(key, entry);
+  void run.finally(() => { if (pending.get(key) === entry) pending.delete(key); });
+  return run;
+}
 
 export function WorkspaceProvider({ open = openWorkspaceStore, session: providedSession, children }: Readonly<{
   open?: OpenWorkspace;
@@ -195,7 +211,9 @@ export function WorkspaceProvider({ open = openWorkspaceStore, session: provided
   const [renameDrafts] = useState(() => new Map<string, string>());
   const [scopeDrafts] = useState(() => new Map<string, string>());
   const [scopesFailed, setScopesFailed] = useState(false);
-  const pendingScopes = useRef(new Map<string, { readonly name: string; readonly run: Promise<WorkspaceResult<WorkspaceScope>> }>());
+  // Laufende Namensschreibvorgänge bis zu ihrem Ergebnis: je `NEW_SCOPE_DRAFT` oder `scopeId`, je `verbundId`.
+  const pendingScopes = useRef(new Map<string, PendingWrite<WorkspaceScope>>());
+  const pendingVerbuende = useRef(new Map<string, PendingWrite<WorkspaceVerbund>>());
   const { catalogs, requestCatalog } = useContext(CatalogContext);
   const class1 = useMemo(() => verifiedCatalogArtifacts(catalogs), [catalogs]);
   const delivery = useMemo(() => catalogDelivery(catalogs), [catalogs]);
@@ -471,14 +489,6 @@ export function WorkspaceProvider({ open = openWorkspaceStore, session: provided
     return result;
   }, []);
 
-  // Laufende Schreibvorgänge je Entwurfsschlüssel (`NEW_SCOPE_DRAFT` oder `scopeId`), bis zu ihrem Ergebnis.
-  const trackScope = useCallback((key: string, name: string, run: Promise<WorkspaceResult<WorkspaceScope>>) => {
-    const entry = { name, run };
-    pendingScopes.current.set(key, entry);
-    void run.finally(() => { if (pendingScopes.current.get(key) === entry) pendingScopes.current.delete(key); });
-    return run;
-  }, []);
-
   const value = useMemo<WorkspaceContextValue>(() => ({
     status,
     verbuende,
@@ -508,18 +518,18 @@ export function WorkspaceProvider({ open = openWorkspaceStore, session: provided
       // Eine laufende Anlage mit demselben Namen, etwa nach Verlassen und Wiederöffnen der Anlageansicht, legt keinen zweiten Anwendungsbereich an.
       const pending = pendingScopes.current.get(NEW_SCOPE_DRAFT);
       if (pending?.name === name) return pending.run;
-      return trackScope(NEW_SCOPE_DRAFT, name, (async () => keepScope(await writeTo(status === 'deleted' ? await openStore() : port, (store) => store.createScope(name))))());
+      return track(pendingScopes.current, NEW_SCOPE_DRAFT, name, (async () => keepScope(await writeTo(status === 'deleted' ? await openStore() : port, (store) => store.createScope(name))))());
     },
     renameScope: (scopeId, name, expected) =>
-      trackScope(scopeId, name, (async () => keepScope(await write((store) => store.renameScope(scopeId, name, expected))))()),
+      track(pendingScopes.current, scopeId, name, (async () => keepScope(await write((store) => store.renameScope(scopeId, name, expected))))()),
     assignVerbuende: (...args) => write((store) => store.assignVerbuende(...args)),
     changeVerbundScope: (...args) => write((store) => store.changeVerbundScope(...args)),
     // Nach einer Gesamtlöschung kann eine ausdrückliche Neuanlage den Speicher wieder öffnen.
     createVerbund: async (...args) => writeTo(status === 'deleted' ? await openStore() : port, (store) => store.createVerbund(...args)),
-    renameVerbund: async (verbundId, name, expected) => {
+    renameVerbund: (verbundId, name, expected) => track(pendingVerbuende.current, verbundId, name, (async () => {
       const snapshot = verbundExpectation(verbundId, expected);
       return snapshot.ok ? write((store) => store.renameVerbund(verbundId, name, ...snapshot.value)) : snapshot;
-    },
+    })()),
     deleteVerbund: async (verbundId, expected) => {
       const snapshot = verbundExpectation(verbundId, expected);
       if (!snapshot.ok) return snapshot;
@@ -588,7 +598,7 @@ export function WorkspaceProvider({ open = openWorkspaceStore, session: provided
       if (status === 'deleted') return { ok: true, value: [] };
       if (!port) return storageFailed();
       // Ein laufender Namensschreibvorgang entscheidet erst mit seinem Ergebnis, ob seine Eingabe offen bleibt.
-      await Promise.all([...pendingScopes.current.values()].map((entry) => entry.run));
+      await Promise.all([...pendingScopes.current.values(), ...pendingVerbuende.current.values()].map((entry) => entry.run));
       // Gespeicherte Namen frisch lesen: Eine während des Wartens abgeschlossene Umbenennung fehlt im gerenderten Stand.
       const [stored, listed, storedScopes] = await Promise.all([
         port.listVerbuende().catch(storageFailed), port.listDocuments().catch(storageFailed), port.listScopes().catch(storageFailed),
@@ -621,7 +631,8 @@ export function WorkspaceProvider({ open = openWorkspaceStore, session: provided
     renameDrafts,
     scopeDrafts,
     pendingScopeWrite: (key) => pendingScopes.current.get(key)?.run,
-  }), [status, verbuende, scopes, scopesFailed, scopeDrafts, keepScope, trackScope, verbundExpectation, writable, delivery, notices, verbund, activate, openStore, checkSchema, write, writeTo, deletion, enterWorkspaceDeletion, leaveWorkspaceDeletion, deleteWorkspace, freeze, quiet, port, report, registerAutosave, flushAutosaves, documents, importTargets, invalidateAnalysis, analysisRevision, renameDrafts]);
+    pendingVerbundWrite: (verbundId) => pendingVerbuende.current.get(verbundId)?.run,
+  }), [status, verbuende, scopes, scopesFailed, scopeDrafts, keepScope, verbundExpectation, writable, delivery, notices, verbund, activate, openStore, checkSchema, write, writeTo, deletion, enterWorkspaceDeletion, leaveWorkspaceDeletion, deleteWorkspace, freeze, quiet, port, report, registerAutosave, flushAutosaves, documents, importTargets, invalidateAnalysis, analysisRevision, renameDrafts]);
 
   return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>;
 }
