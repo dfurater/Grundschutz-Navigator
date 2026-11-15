@@ -210,12 +210,15 @@ it('rejects invalid scope payloads and leaves the target unchanged', async () =>
     { ...partition, methodikScopes: [{ ...row, scopeId: crypto.randomUUID() }] },
     { ...partition, methodikScopes: [row, { ...row, scopeId: crypto.randomUUID() }] },
     { ...unassigned, methodikScopes: [row] },
+    { ...unassigned, methodikScopes: null },
     { ...partition, storageSchemaVersion: 3 },
   ]) {
     const result = await store.previewRestoreVerbundBackup(bytes(JSON.stringify(invalid)));
     expect(result).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_BACKUP_INVALID' } });
     expect(JSON.stringify(result)).not.toContain(scope.scopeId);
   }
+  const withoutMembers = { ...file, verbuende: file.verbuende.map((entry: object) => ({ ...entry, scopeId: undefined })), methodikScopes: null };
+  expect(await store.previewRestoreBackup(bytes(JSON.stringify(withoutMembers)))).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_BACKUP_INVALID' } });
   expect(value(await store.exportBackup())).toBe(before);
   value(await store.deleteAll('delete-workspace'));
   store = value(await WorkspaceStore.open());

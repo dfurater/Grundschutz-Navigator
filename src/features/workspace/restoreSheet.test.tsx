@@ -394,7 +394,7 @@ describe('Sicherung wiederherstellen', () => {
   it('nennt vor der Sicherung eines zugeordneten Verbunds den mitgesicherten Anwendungsbereich', async () => {
     downloads.length = 0;
     const assigned = { ...VERBUND, scopeId: SCOPE.scopeId };
-    const file = JSON.stringify({ format: 'gspp-workspace-verbund', documents: [{}, {}] });
+    const file = JSON.stringify({ format: 'gspp-workspace-verbund', verbuende: [assigned], methodikScopes: [SCOPE], documents: [{}, {}] });
     const exportVerbundBackup = vi.fn(() => ok(file));
     renderWith(fakePort({ listVerbuende: () => ok([assigned, OTHER]), listScopes: () => ok([SCOPE]), exportVerbundBackup }));
     const row = (await screen.findByRole('link', { name: VERBUND.name })).closest('li')!;
@@ -427,6 +427,31 @@ describe('Sicherung wiederherstellen', () => {
     await waitFor(() => expect(trigger).toHaveFocus());
     expect(screen.getByText('Download gestartet', { selector: 'output' })).toBeInTheDocument();
     expect(exportVerbundBackup).toHaveBeenCalledWith(VERBUND.verbundId);
+
+    // Jeder weitere Download leert die Statusregion zuerst, damit sie erneut angesagt wird.
+    fireEvent.click(trigger);
+    expect(screen.queryByText('Download gestartet', { selector: 'output' })).not.toBeInTheDocument();
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Sicherung herunterladen' }));
+    expect(await screen.findByText('Download gestartet', { selector: 'output' })).toBeInTheDocument();
+  });
+
+  it.each([
+    ['öffnet den Dialog, wenn die Datei eines angezeigt unzugeordneten Verbunds einen Bereich mitführt', VERBUND, [SCOPE], 'Sichern'],
+    ['lädt ohne Dialog, wenn die Datei eines angezeigt zugeordneten Verbunds keinen Bereich mitführt', { ...VERBUND, scopeId: SCOPE.scopeId }, [], 'Sichern…'],
+  ] as const)('%s', async (_case, shown, fileScopes, label) => {
+    downloads.length = 0;
+    const file = JSON.stringify({ format: 'gspp-workspace-verbund', verbuende: [VERBUND], methodikScopes: fileScopes, documents: [] });
+    renderWith(fakePort({ listVerbuende: () => ok([shown]), listScopes: () => ok([SCOPE]), exportVerbundBackup: () => ok(file) }));
+    const row = (await screen.findByRole('link', { name: VERBUND.name })).closest('li')!;
+    fireEvent.click(within(row).getByRole('button', { name: `${VERBUND.name} sichern${label === 'Sichern' ? '' : '…'}` }));
+    if (fileScopes.length > 0) {
+      const dialog = within(await screen.findByRole('dialog', { name: `„${VERBUND.name}“ sichern` }));
+      expect(dialog.getByText(`${SCOPE.name} · gemeinsame Daten werden mitgesichert`)).toBeInTheDocument();
+      expect(downloads).toEqual([]);
+    } else {
+      await waitFor(() => expect(downloads).toEqual([`informationsverbund-sicherung-${TODAY}.json`]));
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    }
   });
 
   it('sperrt den Einstieg unter Schreibsperre; beide Exporte bleiben bedienbar', async () => {

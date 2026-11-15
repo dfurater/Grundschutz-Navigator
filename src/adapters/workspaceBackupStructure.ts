@@ -317,7 +317,8 @@ function validBackupStructure(value: unknown, format: WorkspaceBackup['format'] 
   if (!partitioned && (!Array.isArray(backup.workspaceMeta) || !validWorkspaceMeta(backup.workspaceMeta, version))) return false;
   if (partitioned && backup.verbuende.length !== 1) return false;
   const context = newContext(version);
-  return collectBundleScopes(context, value.methodikScopes ?? [], backup.verbuende, partitioned)
+  // Nur ein fehlendes optionales Feld gilt als leere Liste; ein vorhandener Wert muss ein Array sein.
+  return collectBundleScopes(context, Object.hasOwn(value, 'methodikScopes') ? value.methodikScopes : [], backup.verbuende, partitioned)
     && collectDocuments(context, backup.documents)
     && validDrafts(context, backup.drafts) && collectBindings(context, backup.bindings)
     && collectReviewTrail(context, backup.reviewTrail) && collectReviewBaseline(context, backup.reviewBaseline);
