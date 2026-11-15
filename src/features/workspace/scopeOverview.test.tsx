@@ -2,15 +2,10 @@ import 'fake-indexeddb/auto';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { matchPath } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { AppShell } from '@/app/AppShell';
 import { SCOPE_ROUTE_PATTERN, buildScopeUrl, buildVerbundUrl, buildWorkspaceIndexUrl } from '@/app/routes';
-import type { ScopeId, WorkspaceScope } from '@/domain/workspaceModel';
-import { CatalogContext } from '@/state/CatalogContext';
-import { WorkspaceProvider } from '@/state/WorkspaceContext';
 import type { WorkspacePort } from '@/state/workspaceVerbundView';
-import { VERBUND, fail, fakePort, findNotice, ok } from '@/test/fakeWorkspacePort';
-import { renderAppShell } from '@/test/renderAppShell';
-import { EMPTY_CATALOG_STATE, mainLandmark as main, renderWorkspaceArea as renderArea } from '@/test/renderWorkspaceArea';
+import { SCOPE, VERBUND, fail, fakePort, findNotice, ok } from '@/test/fakeWorkspacePort';
+import { mainLandmark as main, renderWorkspaceArea as renderArea, renderWorkspaceWithPort } from '@/test/renderWorkspaceArea';
 import { SENTINEL, SENTINEL_VERBUND, readStore, resetWorkspace, seedWorkspace } from '@/test/workspaceAreaFixture';
 
 vi.mock('@/adapters/oscalImportGate', async () => {
@@ -27,24 +22,7 @@ vi.mock('@/adapters/browserDownload', () => ({
   downloadBlob: (_blob: Blob, filename: string) => { downloads.push(filename); },
 }));
 
-const SCOPE: WorkspaceScope = {
-  scopeId: '3c2b1a00-5b3f-4c6d-8e9f-0a1b2c3d4e5f' as ScopeId,
-  name: 'Netzbetrieb Stadtwerke',
-  createdAt: '2026-11-14T00:00:00.000Z',
-  savedAt: '2026-11-14T00:00:00.000Z',
-  items: [],
-  evidence: [],
-};
-
-function renderWith(port: WorkspacePort, path = buildWorkspaceIndexUrl()) {
-  return renderAppShell([path], {
-    shell: () => (
-      <CatalogContext.Provider value={EMPTY_CATALOG_STATE}>
-        <WorkspaceProvider open={() => ok(port)}><AppShell /></WorkspaceProvider>
-      </CatalogContext.Provider>
-    ),
-  });
-}
+const renderWith = (port: WorkspacePort, path = buildWorkspaceIndexUrl()) => renderWorkspaceWithPort(port, path);
 
 const region = (name: string) => within(within(main()).getByRole('region', { name }));
 /** Primary im Kopf; der Leerzustand bietet denselben Einstieg ein zweites Mal an. */

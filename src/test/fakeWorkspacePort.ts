@@ -1,6 +1,6 @@
 import { screen } from '@testing-library/react';
 import { StorageFailure, failure } from '@/adapters/workspaceStorageFailure';
-import type { VerbundId, WorkspaceResult, WorkspaceVerbund } from '@/domain/workspaceModel';
+import type { ScopeId, VerbundId, WorkspaceResult, WorkspaceScope, WorkspaceVerbund } from '@/domain/workspaceModel';
 import type { WorkspacePort } from '@/state/workspaceVerbundView';
 
 /** Speicher-Fakes für Shell-Tests des Bereichs Informationsverbünde. */
@@ -9,6 +9,15 @@ export const VERBUND: WorkspaceVerbund = {
   name: 'Lesbarer Verbund',
   createdAt: '2026-10-19T00:00:00.000Z',
   savedAt: '2026-10-19T00:00:00.000Z',
+};
+
+export const SCOPE: WorkspaceScope = {
+  scopeId: '3c2b1a00-5b3f-4c6d-8e9f-0a1b2c3d4e5f' as ScopeId,
+  name: 'Netzbetrieb Stadtwerke',
+  createdAt: '2026-11-14T00:00:00.000Z',
+  savedAt: '2026-11-14T00:00:00.000Z',
+  items: [],
+  evidence: [],
 };
 
 export const ok = <T,>(value: T): Promise<WorkspaceResult<T>> => Promise.resolve({ ok: true, value });

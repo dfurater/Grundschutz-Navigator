@@ -1,15 +1,10 @@
 import 'fake-indexeddb/auto';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { AppShell } from '@/app/AppShell';
 import { buildScopeUrl, buildWorkspaceIndexUrl } from '@/app/routes';
-import type { ScopeId, WorkspaceScope } from '@/domain/workspaceModel';
-import { CatalogContext } from '@/state/CatalogContext';
-import { WorkspaceProvider } from '@/state/WorkspaceContext';
 import type { WorkspacePort } from '@/state/workspaceVerbundView';
-import { fakePort, ok } from '@/test/fakeWorkspacePort';
-import { renderAppShell } from '@/test/renderAppShell';
-import { EMPTY_CATALOG_STATE, mainLandmark as main, renderWorkspaceArea as renderArea } from '@/test/renderWorkspaceArea';
+import { SCOPE, fakePort, ok } from '@/test/fakeWorkspacePort';
+import { mainLandmark as main, renderWorkspaceArea as renderArea, renderWorkspaceWithPort } from '@/test/renderWorkspaceArea';
 import { resetWorkspace } from '@/test/workspaceAreaFixture';
 
 // Der Impressum-Chunk trifft erst auf `impressumChunk.release()` ein: Die Navigation dorthin bleibt so lange `loading`.
@@ -23,24 +18,7 @@ vi.mock('@/features/pages/ImpressumPage', async () => {
   return { ImpressumPage: () => <h1>Impressum</h1> };
 });
 
-const SCOPE: WorkspaceScope = {
-  scopeId: '3c2b1a00-5b3f-4c6d-8e9f-0a1b2c3d4e5f' as ScopeId,
-  name: 'Netzbetrieb Stadtwerke',
-  createdAt: '2026-11-14T00:00:00.000Z',
-  savedAt: '2026-11-14T00:00:00.000Z',
-  items: [],
-  evidence: [],
-};
-
-function renderWith(port: WorkspacePort, path = buildWorkspaceIndexUrl()) {
-  return renderAppShell([path], {
-    shell: () => (
-      <CatalogContext.Provider value={EMPTY_CATALOG_STATE}>
-        <WorkspaceProvider open={() => ok(port)}><AppShell /></WorkspaceProvider>
-      </CatalogContext.Provider>
-    ),
-  });
-}
+const renderWith = (port: WorkspacePort, path = buildWorkspaceIndexUrl()) => renderWorkspaceWithPort(port, path);
 
 const region = (name: string) => within(within(main()).getByRole('region', { name }));
 const createEntry = async () => (await within(main()).findAllByRole('button', { name: 'Anwendungsbereich anlegen' }))[0];
