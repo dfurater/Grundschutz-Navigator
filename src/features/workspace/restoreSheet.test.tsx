@@ -184,6 +184,21 @@ describe('Sicherung wiederherstellen', () => {
     expect(downloads).toEqual([]);
   });
 
+  it('sperrt die Bestätigung, bis die Vorabsicherung erstellt ist', async () => {
+    downloads.length = 0;
+    let finish: (value: Awaited<ReturnType<WorkspacePort['exportVerbundBackup']>>) => void = () => undefined;
+    const exportVerbundBackup = () => new Promise<Awaited<ReturnType<WorkspacePort['exportVerbundBackup']>>>((resolve) => { finish = resolve; });
+    renderWith(fakePort({ previewRestore: () => ok(verbundPreview()), exportVerbundBackup }));
+    const sheet = await choose();
+    const confirm = await sheet.findByRole('button', { name: `„${VERBUND.name}“ ersetzen` });
+    fireEvent.click(sheet.getByRole('button', { name: `Vorher sichern: ${VERBUND.name}` }));
+    await waitFor(() => expect(confirm).toBeDisabled());
+    finish({ ok: true, value: '{"format":"gspp-workspace-verbund"}' });
+    expect(await sheet.findByText('Download gestartet', { selector: 'output' })).toBeInTheDocument();
+    expect(confirm).toBeEnabled();
+    expect(downloads).toEqual([`informationsverbund-sicherung-${TODAY}.json`]);
+  });
+
   it('verwirft das Ergebnis einer Vorabsicherung nach einem Dateiwechsel', async () => {
     let finish: (value: Awaited<ReturnType<WorkspacePort['exportVerbundBackup']>>) => void = () => undefined;
     const exportVerbundBackup = () => new Promise<Awaited<ReturnType<WorkspacePort['exportVerbundBackup']>>>((resolve) => { finish = resolve; });

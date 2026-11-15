@@ -318,7 +318,7 @@ export function PreviewBody({ preview, verbundCount, phase, quota, writable, bac
         <Button
           variant={replaces ? 'danger' : 'primary'}
           className={`${BUTTON} max-w-full wrap-anywhere`}
-          disabled={running || !writable}
+          disabled={running || !writable || backup === 'running'}
           aria-label={phase === 'write-failed' ? `Erneut versuchen: ${confirmLabel}` : undefined}
           onClick={onConfirm}
         >
