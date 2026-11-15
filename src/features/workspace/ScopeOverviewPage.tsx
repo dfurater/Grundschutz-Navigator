@@ -27,16 +27,25 @@ export function ScopeCreateView({ writable, onCancel }: Readonly<{ writable: boo
     heading.current?.focus();
     return () => { mounted.current = false; };
   }, []);
-  // Eine schon gewählte oder bereits abgeschlossene Navigation behält Vorrang vor dem Öffnen der Übersicht.
+  // Eine schon gewählte, angehaltene oder bereits abgeschlossene Navigation behält Vorrang vor dem Öffnen der Übersicht.
   // Der Router-Zustand wird beim Abschluss gelesen, weil React `useNavigation()` und `useLocation()` erst nach dem nächsten Rendern nachführt.
   const router = useContext(DataRouterContext)?.router;
   const { key } = useLocation();
   const shownKey = useRef(key);
   useEffect(() => { shownKey.current = key; }, [key]);
+  // Ein angehaltener Bereichswechsel (Autosave, `useShellArea`) meldet `idle` auf der bisherigen Route; nur sein Blocker zeigt ihn an.
   const openScope = (result: WorkspaceResult<WorkspaceScope>) => {
     setFailed(!result.ok);
-    const stays = router === undefined || (router.state.navigation.state === 'idle' && router.state.location.key === shownKey.current);
-    if (result.ok && stays) void navigate(buildScopeUrl(result.value.scopeId));
+    if (!result.ok) return;
+    const state = router?.state;
+    const stays = state === undefined || (
+      state.navigation.state === 'idle'
+      && state.location.key === shownKey.current
+      && [...state.blockers.values()].every((blocker) => blocker.state === 'unblocked')
+    );
+    if (stays) void navigate(buildScopeUrl(result.value.scopeId));
+    // Ohne Weiterleitung schließt die gespeicherte Anlage, damit derselbe Name nicht erneut absendbar bleibt; eine neuere Eingabe bleibt offen.
+    else if (!scopeDrafts.has(NEW_SCOPE_DRAFT)) onCancel();
   };
   const busy = usePendingWrite(() => pendingScopeWrite(NEW_SCOPE_DRAFT), openScope);
   return (

@@ -38,6 +38,31 @@ const submitWithPendingSave = async () => {
   return { router, createScope, finish: () => resolveSave({ ok: true, value: { ...SCOPE, name: 'Netzbetrieb' } }) };
 };
 
+type TestRouter = ReturnType<typeof renderWith>['router'];
+type RouterState = TestRouter['state'];
+
+/** Bestätigt das Speichern direkt im Router-Subscriber, sobald `when` zutrifft, noch bevor React neu rendert. */
+const finishWhen = (router: TestRouter, finish: () => void, when: (state: RouterState) => boolean) => {
+  const unsubscribe = router.subscribe((state) => {
+    if (!when(state)) return;
+    unsubscribe();
+    finish();
+  });
+};
+const blockedFor = (pathname: string) => (state: RouterState) =>
+  [...state.blockers.values()].some((blocker) => blocker.state === 'blocked' && blocker.location.pathname === pathname);
+/** Erneuter Aufruf des Arbeitsbereichs: dieselbe URL mit neuem Schlüssel, ohne die Anlageansicht abzubauen. */
+const revisitedFrom = (shownKey: string) => (state: RouterState) =>
+  state.navigation.state === 'idle' && state.location.pathname === buildWorkspaceIndexUrl() && state.location.key !== shownKey;
+/** Verlässt den Arbeitsbereich und kehrt zurück; die offene Anlage öffnet sich mit gesperrtem Speichern wieder. */
+const reopen = async (router: TestRouter) => {
+  void router.navigate('/about');
+  await waitFor(() => expect(screen.queryByRole('heading', { level: 1, name: 'Anwendungsbereich anlegen' })).toBeNull());
+  void router.navigate(buildWorkspaceIndexUrl());
+  await waitFor(() => expect(within(main()).getByRole('button', { name: 'Anlegen' })).toBeDisabled());
+};
+const nameInput = () => within(main()).getByLabelText('Name des Anwendungsbereichs');
+
 afterEach(async () => {
   await resetWorkspace();
 });
@@ -46,15 +71,15 @@ describe('Navigation und Fokus rund um Anwendungsbereiche', () => {
   it('lässt eine während des Speicherns gewählte Navigation auf eine noch ladende Seite bestehen', async () => {
     const { router, createScope, finish } = await submitWithPendingSave();
     // Das Speichern endet, sobald der Router `loading` meldet, noch bevor React neu rendert.
-    const unsubscribe = router.subscribe((state) => {
-      if (state.navigation.state !== 'loading') return;
-      unsubscribe();
+    let formShown = false;
+    finishWhen(router, () => {
+      // Der Ziel-Chunk lädt noch: Die Anlageansicht ist montiert, wenn das Speichern bestätigt wird.
+      formShown = within(main()).queryByRole('heading', { level: 1, name: 'Anwendungsbereich anlegen' }) !== null;
       finish();
-    });
+    }, (state) => state.navigation.state === 'loading');
     void router.navigate('/impressum');
     await waitFor(() => expect(router.state.navigation.state).toBe('loading'));
-    // Der Ziel-Chunk lädt noch: Die Anlageansicht ist montiert, wenn das Speichern bestätigt wird.
-    expect(within(main()).getByRole('heading', { level: 1, name: 'Anwendungsbereich anlegen' })).toBeInTheDocument();
+    expect(formShown).toBe(true);
     expect(createScope).toHaveBeenCalledTimes(1);
     await new Promise((resolve) => setTimeout(resolve, 0));
     impressumChunk.release();
@@ -79,6 +104,52 @@ describe('Navigation und Fokus rund um Anwendungsbereiche', () => {
     expect(formShown).toBe(true);
     expect(createScope).toHaveBeenCalledTimes(1);
     expect(router.state.location.pathname).toBe('/impressum');
+  });
+
+  it.each([
+    ['in der geöffneten Anlage', false],
+    ['in der wiedergeöffneten Anlage', true],
+  ])('lässt einen für Autosave angehaltenen Bereichswechsel %s Vorrang vor der Übersicht', async (_case, reopened) => {
+    impressumChunk.release();
+    const { router, createScope, finish } = await submitWithPendingSave();
+    if (reopened) await reopen(router);
+    fireEvent.change(nameInput(), { target: { value: 'Netzbetrieb Nord' } });
+    // Der Blocker meldet `blocked`, der Router noch `idle` auf der Route der Anlage.
+    finishWhen(router, finish, blockedFor('/impressum'));
+    void router.navigate('/impressum');
+    expect(await screen.findByRole('heading', { level: 1, name: 'Impressum' })).toBeInTheDocument();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(router.state.location.pathname).toBe('/impressum');
+    expect(createScope).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['in der geöffneten Anlage', false],
+    ['in der wiedergeöffneten Anlage', true],
+  ])('schließt die gespeicherte Anlage %s, wenn der Arbeitsbereich während des Speicherns erneut aufgerufen wird', async (_case, reopened) => {
+    const { router, createScope, finish } = await submitWithPendingSave();
+    if (reopened) await reopen(router);
+    finishWhen(router, finish, revisitedFrom(router.state.location.key));
+    void router.navigate(buildWorkspaceIndexUrl());
+    expect(await within(main()).findByRole('heading', { level: 1, name: 'Arbeitsbereich' })).toBeVisible();
+    expect(within(main()).queryByLabelText('Name des Anwendungsbereichs')).toBeNull();
+    expect(router.state.location.pathname).toBe(buildWorkspaceIndexUrl());
+    expect(createScope).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['in der geöffneten Anlage', false],
+    ['in der wiedergeöffneten Anlage', true],
+  ])('lässt eine während des Speicherns getippte Eingabe %s beim erneuten Aufruf offen', async (_case, reopened) => {
+    const { router, createScope, finish } = await submitWithPendingSave();
+    if (reopened) await reopen(router);
+    fireEvent.change(nameInput(), { target: { value: 'Netzbetrieb Nord' } });
+    finishWhen(router, finish, revisitedFrom(router.state.location.key));
+    void router.navigate(buildWorkspaceIndexUrl());
+    await waitFor(() => expect(within(main()).getByRole('button', { name: 'Anlegen' })).toBeEnabled());
+    expect(nameInput()).toHaveValue('Netzbetrieb Nord');
+    expect(router.state.location.pathname).toBe(buildWorkspaceIndexUrl());
+    expect(createScope).toHaveBeenCalledTimes(1);
   });
 
   it('gibt den Fokus bei Escape an den Einstieg im Leerzustand zurück', async () => {
