@@ -505,7 +505,7 @@ describe('AppShell', () => {
     expect(screen.queryByRole('link', { name: 'Suche' })).not.toBeInTheDocument();
     const areas = within(aside).getByRole('navigation', { name: 'Bereiche' });
     expect(within(areas).getByRole('link', { name: 'Katalog' })).toHaveAttribute('aria-current', 'true');
-    expect(within(areas).getByRole('link', { name: 'Informationsverbünde' })).not.toHaveAttribute('aria-current');
+    expect(within(areas).getByRole('link', { name: 'Arbeitsbereich' })).not.toHaveAttribute('aria-current');
     expect(screen.queryByRole('link', { name: 'Datenschutz' })).not.toBeInTheDocument();
     expect(aside.querySelectorAll('svg')).toHaveLength(2);
   });

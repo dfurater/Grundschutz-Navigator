@@ -5,6 +5,8 @@ import type { CatalogKey } from '@/domain/sourceRegistry';
 import { makeSchemaValidOscalDocument } from '@/test/fixtures/oscalSchemaFixtures';
 import { CatalogContext } from '@/state/CatalogContext';
 import { WorkspaceProvider } from '@/state/WorkspaceContext';
+import type { WorkspacePort } from '@/state/workspaceVerbundView';
+import { ok } from '@/test/fakeWorkspacePort';
 import { catalogCollectionDefaults } from '@/test/catalogState';
 import { renderAppShell } from '@/test/renderAppShell';
 
@@ -42,6 +44,17 @@ export function renderWorkspaceArea(path: string, catalogs: CatalogState | (() =
     shell: () => (
       <CatalogContext.Provider value={typeof catalogs === 'function' ? catalogs() : catalogs}>
         <WorkspaceProvider><AppShell /></WorkspaceProvider>
+      </CatalogContext.Provider>
+    ),
+  });
+}
+
+/** Shell wie `renderWorkspaceArea`, aber mit `port` als Speicher (etwa einem verzögerten oder scheiternden `fakePort`). */
+export function renderWorkspaceWithPort(port: WorkspacePort, path: string) {
+  return renderAppShell([path], {
+    shell: () => (
+      <CatalogContext.Provider value={EMPTY_CATALOG_STATE}>
+        <WorkspaceProvider open={() => ok(port)}><AppShell /></WorkspaceProvider>
       </CatalogContext.Provider>
     ),
   });

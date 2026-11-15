@@ -9,7 +9,7 @@ import { useModalDialog } from '@/hooks/useModalDialog';
 import { useScrollLock } from '@/hooks/useScrollLock';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import type { ExclusiveEntry } from '@/state/workspaceSession';
-import type { RestoreInput, RestoreScope } from '@/state/workspaceRestore';
+import { inputVerbundName, saveNamedInput, type NamedInput, type RestoreInput, type RestoreScope } from '@/state/workspaceRestore';
 import { isVerbundName } from '@/domain/workspaceModel';
 import { BUTTON, ClarifyItem, ClarifyRow, Message, inputKey } from '@/features/workspace/RestoreSheetParts';
 import { useBackupExport } from '@/features/workspace/WorkspaceNotices';
@@ -66,7 +66,7 @@ export function WorkspaceDeleteDialog({ rowDrafts, createDraft, writes, track, c
 }>) {
   const {
     status, verbuende, writable, deletion, enterWorkspaceDeletion, leaveWorkspaceDeletion, deleteWorkspace, dismissDeletionFailure,
-    flushAutosaves, pendingRestoreInputs, discardRestoreInput, renameVerbund,
+    flushAutosaves, pendingRestoreInputs, discardRestoreInput, renameVerbund, renameScope, createScope,
   } = useWorkspace();
   const { exportBackup } = useBackupExport();
   const navigate = useNavigate();
@@ -135,9 +135,9 @@ export function WorkspaceDeleteDialog({ rowDrafts, createDraft, writes, track, c
   };
 
   // Jede Klärungsaktion blendet die Liste bis zum erneuten Lesen aus: Sie setzt die Sicherung genau einmal fort.
-  const saveRename = async (entry: Extract<RestoreInput, { kind: 'rename' }>) => {
+  const saveRename = async (entry: NamedInput) => {
     setBackup({ step: 'saving' });
-    const saved = await track(renameVerbund(entry.verbundId, entry.draft.trim()).then(({ ok }) => {
+    const saved = await track(saveNamedInput(entry, { renameVerbund, renameScope, createScope }).then((ok) => {
       if (ok) { onPrepared(); discardRestoreInput(entry, rowDrafts); }
       return ok;
     }));
@@ -206,11 +206,11 @@ export function WorkspaceDeleteDialog({ rowDrafts, createDraft, writes, track, c
 
             {deletion === 'idle' && (
               <>
-                <p id={descriptionId} className="mt-2">Alle Informationsverbünde und ihre Inhalte werden aus diesem Browserprofil gelöscht. Das lässt sich nicht rückgängig machen.</p>
+                <p id={descriptionId} className="mt-2">Alle Anwendungsbereiche, Informationsverbünde und ihre Inhalte werden aus diesem Browserprofil gelöscht. Das lässt sich nicht rückgängig machen.</p>
                 <div className="my-4 border-y border-[var(--color-border-default)] py-3">
                   <p className="font-semibold">Gesamter lokaler Arbeitsbestand</p>
                   <ul className="mt-2 list-disc space-y-1 pl-5">
-                    <li>Informationsverbünde, Dokumente und Entwürfe</li>
+                    <li>Anwendungsbereiche, Informationsverbünde, Dokumente und Entwürfe</li>
                     <li>Verknüpfungen, Prüfspuren und Vergleichsstände</li>
                     <li>Offene Eingaben und geladene Arbeitsstände</li>
                     <li>Metadaten des Arbeitsbereichs</li>
@@ -257,8 +257,8 @@ export function WorkspaceDeleteDialog({ rowDrafts, createDraft, writes, track, c
                         <ClarifyRow
                           key={inputKey(entry)}
                           entry={entry}
-                          verbundName={entry.kind === 'orphan' ? '' : verbuende?.find((candidate) => candidate.verbundId === entry.verbundId)?.name ?? ''}
-                          failed={entry.kind === 'rename' && backup.failed?.kind === 'rename' && backup.failed.verbundId === entry.verbundId && backup.failed.row === entry.row}
+                          verbundName={inputVerbundName(entry, verbuende)}
+                          failed={backup.failed !== undefined && backup.failed.kind !== NEW_NAME.kind && inputKey(backup.failed) === inputKey(entry)}
                           writable={writable}
                           onSave={saveRename}
                           onDiscard={() => { setBackup({ step: 'saving' }); discardRestoreInput(entry, rowDrafts); void continueBackup(); }}

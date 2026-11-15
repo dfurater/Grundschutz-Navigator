@@ -10,7 +10,8 @@ import type { VerbundView, WorkspaceDocumentView } from '@/state/workspaceVerbun
 import { FOCUS_RING, OriginLabel, ValidityBadge } from '@/features/workspace/DocumentMarks';
 import { WorkspaceNotices } from '@/features/workspace/WorkspaceNotices';
 import { StationCards, latestSavedAt, relativeTime } from '@/features/workspace/StationCards';
-import { NameForm } from '@/features/workspace/VerbundOverviewPage';
+import { NameForm } from '@/features/workspace/WorkspaceForms';
+import { usePendingWrite } from '@/features/workspace/usePendingWrite';
 import { WorkspaceStatePage, useRoutedVerbund } from '@/features/workspace/WorkspaceStatePage';
 import { Button } from '@/components/Button';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
@@ -127,7 +128,7 @@ function DocumentList({ verbundId, documents, empty }: Readonly<{ verbundId: str
 /** Kopf der Verbund-Übersicht (Bild 2): Name, Umbenennen, Löschen mit Bestätigung, Herkunft und Speicherstand. */
 function VerbundHeader({ view, now }: Readonly<{ view: VerbundView; now: number }>) {
   // Eine offene Umbenennung überdauert Stations- und Verbundwechsel (`renameDrafts` im Provider).
-  const { writable, renameVerbund, deleteVerbund, renameDrafts } = useWorkspace();
+  const { writable, renameVerbund, deleteVerbund, renameDrafts, pendingVerbundWrite } = useWorkspace();
   const navigate = useNavigate();
   const { verbund, documents } = view;
   const [renaming, setRenaming] = useState(() => renameDrafts.has(verbund.verbundId));
@@ -136,6 +137,10 @@ function VerbundHeader({ view, now }: Readonly<{ view: VerbundView; now: number 
     renameDrafts.delete(verbund.verbundId);
     setRenaming(false);
   };
+  // Die abgeschlossene Umbenennung hat den Entwurf entfernt, wenn nicht weitergetippt wurde; dann schließt das Formular.
+  const busy = usePendingWrite(() => pendingVerbundWrite(verbund.verbundId), (result) => {
+    if (result.ok && !renameDrafts.has(verbund.verbundId)) setRenaming(false);
+  });
   const saved = relativeTime(latestSavedAt([verbund.savedAt, ...documents.map((document) => document.savedAt)]), now);
   return (
     <header className="space-y-3 border-b border-[var(--color-border-default)] pb-4">
@@ -174,6 +179,7 @@ function VerbundHeader({ view, now }: Readonly<{ view: VerbundView; now: number 
           submitLabel="Speichern"
           initial={renameDrafts.get(verbund.verbundId) ?? verbund.name}
           disabled={!writable}
+          busy={busy}
           onChange={(name) => renameDrafts.set(verbund.verbundId, name)}
           onSubmit={async (name) => {
             const result = await renameVerbund(verbund.verbundId as VerbundId, name);
@@ -224,7 +230,7 @@ function VerbundOverview({ view }: Readonly<{ view: VerbundView }>) {
   const { verbund, documents, diagnostics } = view;
   return (
     <div className="mx-auto w-full max-w-screen-2xl space-y-4 p-4 desktop:px-7 desktop:py-6">
-      <VerbundHeader view={view} now={now} />
+      <VerbundHeader key={verbund.verbundId} view={view} now={now} />
       <WorkspaceNotices />
       <section aria-labelledby="verbund-stationen" className="space-y-3">
         <h2 id="verbund-stationen" className="sr-only">Stationen</h2>

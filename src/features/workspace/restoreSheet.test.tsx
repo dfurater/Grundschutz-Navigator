@@ -3,11 +3,12 @@ import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest';
 import { AppShell } from '@/app/AppShell';
 import { buildWorkspaceIndexUrl } from '@/app/routes';
-import type { LocalId, VerbundId, WorkspaceRestorePreview, WorkspaceVerbund, WorkspaceVerbundRestorePreview } from '@/domain/workspaceModel';
+import type { LocalId, ScopeId, VerbundId, WorkspaceRestorePreview, WorkspaceVerbund, WorkspaceVerbundRestorePreview } from '@/domain/workspaceModel';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { CatalogContext } from '@/state/CatalogContext';
 import { WorkspaceProvider, type WorkspaceContextValue } from '@/state/WorkspaceContext';
 import type { WorkspacePort } from '@/state/workspaceVerbundView';
+import { NEW_SCOPE_DRAFT } from '@/state/workspaceRestore';
 import { VERBUND, fail, fakePort, ok } from '@/test/fakeWorkspacePort';
 import { EMPTY_CATALOG_STATE, mainLandmark as main } from '@/test/renderWorkspaceArea';
 import { renderAppShell } from '@/test/renderAppShell';
@@ -77,7 +78,7 @@ describe('Sicherung wiederherstellen', () => {
     const confirm = sheet.getByRole('button', { name: `„${VERBUND.name}“ ersetzen` });
     fireEvent.click(confirm);
     fireEvent.click(confirm);
-    const heading = await within(main()).findByRole('heading', { level: 1, name: 'Informationsverbünde' });
+    const heading = await within(main()).findByRole('heading', { level: 1, name: 'Arbeitsbereich' });
     expect(restoreVerbundBackup).toHaveBeenCalledExactlyOnceWith(preview);
     await waitFor(() => expect(heading).toHaveFocus());
     expect(screen.getAllByRole('status').some((entry) => entry.textContent?.startsWith(`Wiederhergestellt: „${VERBUND.name}“ · 5 Dokumente · 3 Entwürfe`))).toBe(true);
@@ -271,7 +272,7 @@ describe('Sicherung wiederherstellen', () => {
     fireEvent.change(within(other).getByLabelText('Neuer Name'), { target: { value: 'Anderer Entwurf' } });
     const sheet = await choose();
     fireEvent.click(await sheet.findByRole('button', { name: `„${VERBUND.name}“ ersetzen` }));
-    await within(main()).findByRole('heading', { level: 1, name: 'Informationsverbünde' });
+    await within(main()).findByRole('heading', { level: 1, name: 'Arbeitsbereich' });
     expect(screen.getAllByLabelText('Neuer Name').map((input) => (input as HTMLInputElement).value)).toEqual(['Anderer Entwurf']);
   });
 
@@ -286,6 +287,60 @@ describe('Sicherung wiederherstellen', () => {
     fireEvent.click(sheet.getByRole('button', { name: 'Verwerfen' }));
     expect(await sheet.findByRole('button', { name: 'Gesamten Bestand ersetzen' })).toBeInTheDocument();
     expect(workspace.documents.importTargets(orphan).size).toBe(0);
+  });
+
+  it('klärt beim Gesamt-Restore offene Namen der Anwendungsbereiche, bevor die Vorschau erscheint', async () => {
+    const scope = { scopeId: '3c2b1a00-5b3f-4c6d-8e9f-0a1b2c3d4e5f' as ScopeId, name: 'Netz', createdAt: TODAY, savedAt: '2026-11-14T00:00:00.000Z', items: [], evidence: [] } as const;
+    const renameScope = vi.fn(() => ok({ ...scope, name: 'Netz Nord' }));
+    renderWith(fakePort({ previewRestore: () => ok(workspacePreview), listScopes: () => ok([scope]), renameScope }));
+    await screen.findByRole('link', { name: VERBUND.name });
+    workspace.scopeDrafts.set(scope.scopeId, 'Netz Nord');
+    workspace.scopeDrafts.set(NEW_SCOPE_DRAFT, 'Anlage');
+    const sheet = await choose();
+    const rename = (await sheet.findByText(/Umbenennung Anwendungsbereich/)).closest('li')!;
+    expect(rename).toHaveTextContent('„Netz“ → „Netz Nord“');
+    fireEvent.click(within(rename).getByRole('button', { name: 'Speichern' }));
+    await waitFor(() => expect(renameScope).toHaveBeenCalledExactlyOnceWith(scope.scopeId, 'Netz Nord', scope.savedAt));
+    const created = (await sheet.findByText(/Neuer Anwendungsbereich/)).closest('li')!;
+    expect(within(created).getByRole('button', { name: 'Anlegen' })).toBeInTheDocument();
+    fireEvent.click(within(created).getByRole('button', { name: 'Verwerfen' }));
+    expect(await sheet.findByRole('button', { name: 'Gesamten Bestand ersetzen' })).toBeInTheDocument();
+    expect(workspace.scopeDrafts.size).toBe(0);
+  });
+
+  it('klärt eine Anlage, deren Speichern noch läuft, erst mit deren Ergebnis', async () => {
+    let finish: (value: Awaited<ReturnType<WorkspacePort['createScope']>>) => void = () => undefined;
+    const createScope = vi.fn(() => new Promise<Awaited<ReturnType<WorkspacePort['createScope']>>>((resolve) => { finish = resolve; }));
+    const scope = { scopeId: '3c2b1a00-5b3f-4c6d-8e9f-0a1b2c3d4e5f' as ScopeId, name: 'Anlage', createdAt: TODAY, savedAt: TODAY, items: [], evidence: [] } as const;
+    renderWith(fakePort({ previewRestore: () => ok(workspacePreview), createScope }));
+    await screen.findByRole('link', { name: VERBUND.name });
+    // Wie die Anlageansicht: Der bestätigte Name verlässt die offenen Eingaben.
+    workspace.scopeDrafts.set(NEW_SCOPE_DRAFT, 'Anlage');
+    void workspace.createScope('Anlage').then((result) => { if (result.ok) workspace.scopeDrafts.delete(NEW_SCOPE_DRAFT); });
+    const sheet = await choose();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(sheet.queryByText(/Neuer Anwendungsbereich/)).toBeNull();
+    expect(sheet.queryByRole('button', { name: 'Gesamten Bestand ersetzen' })).toBeNull();
+    await act(async () => { finish({ ok: true, value: scope }); });
+    expect(await sheet.findByRole('button', { name: 'Gesamten Bestand ersetzen' })).toBeInTheDocument();
+    expect(sheet.queryByText(/Neuer Anwendungsbereich/)).toBeNull();
+  });
+
+  it('klärt eine Verbund-Umbenennung, deren Speichern noch läuft, erst mit deren Ergebnis', async () => {
+    let finish: (value: Awaited<ReturnType<WorkspacePort['renameVerbund']>>) => void = () => undefined;
+    const renameVerbund = vi.fn(() => new Promise<Awaited<ReturnType<WorkspacePort['renameVerbund']>>>((resolve) => { finish = resolve; }));
+    renderWith(fakePort({ previewRestore: () => ok(workspacePreview), renameVerbund }));
+    await screen.findByRole('link', { name: VERBUND.name });
+    // Wie die Verbund-Kopfzeile: Der bestätigte Name verlässt die offenen Eingaben.
+    workspace.renameDrafts.set(VERBUND.verbundId, 'Neuer Name');
+    void workspace.renameVerbund(VERBUND.verbundId, 'Neuer Name').then((result) => { if (result.ok) workspace.renameDrafts.delete(VERBUND.verbundId); });
+    const sheet = await choose();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(sheet.queryByText(/„Neuer Name“/)).toBeNull();
+    expect(sheet.queryByRole('button', { name: 'Gesamten Bestand ersetzen' })).toBeNull();
+    await act(async () => { finish({ ok: true, value: { ...VERBUND, name: 'Neuer Name', savedAt: TODAY } }); });
+    expect(await sheet.findByRole('button', { name: 'Gesamten Bestand ersetzen' })).toBeInTheDocument();
+    expect(sheet.queryByText(/„Neuer Name“/)).toBeNull();
   });
 
   it('kehrt bei Abbrechen zum Einstieg zurück', async () => {

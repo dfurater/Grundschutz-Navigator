@@ -14,6 +14,7 @@ import {
   VERBUND_ROUTE_PATTERN,
   WORKSPACE_DOCUMENT_ROUTE_PATTERN,
   areaForPath,
+  buildScopeUrl,
   buildStationUrl,
   buildVerbundUrl,
   buildWorkspaceDocumentUrl,
@@ -130,6 +131,7 @@ describe('Arbeitsroutenraum (ADR-11 §2)', () => {
     expect(VERBUND_ROUTE_PATTERN).toBe('/informationsverbuende/:verbundId');
     expect(STATION_ROUTE_PATTERN).toBe('/informationsverbuende/:verbundId/station/:station');
     expect(WORKSPACE_DOCUMENT_ROUTE_PATTERN).toBe('/informationsverbuende/:verbundId/dokument/:localId');
+    expect(buildScopeUrl(DOCUMENT)).toBe(`/informationsverbuende/anwendungsbereiche/${DOCUMENT}`);
   });
 
   it.each([
@@ -137,6 +139,7 @@ describe('Arbeitsroutenraum (ADR-11 §2)', () => {
     ['leere verbundId', () => buildVerbundUrl('')],
     ['Pfadsegment in der verbundId', () => buildVerbundUrl(`${VERBUND}/x`)],
     ['Dokumenttitel als localId', () => buildWorkspaceDocumentUrl(VERBUND, 'Mein SSP')],
+    ['Name als scopeId', () => buildScopeUrl('Mein SSP')],
     ['Station außerhalb der Menge', () => buildStationUrl(VERBUND, 'catalog' as never)],
     ['ungültige verbundId vor gültiger Station', () => buildStationUrl('x', 'ssp')],
   ])('wirft bei %s, ohne den Wert zu nennen', (_label, build) => {
@@ -147,8 +150,9 @@ describe('Arbeitsroutenraum (ADR-11 §2)', () => {
   });
 
   it('ordnet jeden Pfad genau einem Bereich zu', () => {
-    expect(areaForPath('/informationsverbuende')).toBe('informationsverbuende');
-    expect(areaForPath(`/informationsverbuende/${VERBUND}/station/ssp`)).toBe('informationsverbuende');
+    expect(areaForPath('/informationsverbuende')).toBe('arbeitsbereich');
+    expect(areaForPath(`/informationsverbuende/${VERBUND}/station/ssp`)).toBe('arbeitsbereich');
+    expect(areaForPath(buildScopeUrl(DOCUMENT))).toBe('arbeitsbereich');
     expect(areaForPath('/informationsverbuendeX')).toBe('katalog');
     expect(areaForPath('/katalog/gspp')).toBe('katalog');
     expect(areaForPath('/')).toBe('katalog');

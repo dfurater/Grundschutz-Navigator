@@ -40,18 +40,29 @@ const STATES = {
     heading: 'Informationsverbund nicht lesbar',
     text: 'Der lokale Speicher konnte nicht gelesen werden.',
   },
+  'scope-loading': { title: PAGE_TITLES.scope, heading: 'Anwendungsbereich wird geladen…', text: undefined },
+  'scope-not-found': {
+    title: PAGE_TITLES.scopeNotFound,
+    heading: PAGE_TITLES.scopeNotFound,
+    text: 'Unter dieser Adresse ist in diesem Browser kein Anwendungsbereich gespeichert.',
+  },
+  'scope-failed': {
+    title: PAGE_TITLES.scope,
+    heading: 'Anwendungsbereich nicht lesbar',
+    text: 'Der lokale Speicher konnte nicht gelesen werden.',
+  },
 } as const;
 
-/** Lade-, Nicht-gefunden- und Fehlerzustand im Bereich; fällt nie auf einen anderen Verbund zurück. */
+/** Lade-, Nicht-gefunden- und Fehlerzustand im Bereich; fällt nie auf einen anderen Verbund oder Anwendungsbereich zurück. */
 export function WorkspaceStatePage({ state }: Readonly<{ state: keyof typeof STATES }>) {
   const { title, heading, text } = STATES[state];
   return (
     <>
       <PageTitle title={title} />
       <div className="space-y-4 p-4" data-workspace-state={state}>
-        {state === 'loading' ? (
+        {text === undefined ? (
           <>
-            <h1 className="sr-only">{PAGE_TITLES.verbund}</h1>
+            <h1 className="sr-only">{title}</h1>
             <output className="block text-sm text-[var(--color-text-secondary)]">{heading}</output>
           </>
         ) : (
@@ -61,7 +72,7 @@ export function WorkspaceStatePage({ state }: Readonly<{ state: keyof typeof STA
             <p className="text-sm text-[var(--color-text-secondary)]">
               {text}{' '}
               <Link to={buildWorkspaceIndexUrl()} className={`rounded catalog-prose-link ${FOCUS_RING}`}>
-                Zur Übersicht der Informationsverbünde
+                Zum Arbeitsbereich
               </Link>
             </p>
           </>

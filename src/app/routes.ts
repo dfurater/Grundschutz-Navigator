@@ -108,10 +108,10 @@ export function buildVocabularyEntryPath(
 }
 
 // =============================================================================
-// Arbeitsroutenraum (ADR-11 §2) — Bereich Informationsverbünde
+// Arbeitsroutenraum (ADR-11 §2) — Arbeitsbereich
 //
 // Arbeitsrouten tragen ausschließlich die vom Speicher vergebenen lokalen
-// Identitäten (`verbundId`, `localId`, docs/PERSISTENCE.md §5) und einen
+// Identitäten (`verbundId`, `scopeId`, `localId`, docs/PERSISTENCE.md §5) und einen
 // Stationswert aus einer geschlossenen Menge. Dokumentinhalte, Namen und
 // Dokument-UUIDs erreichen weder Pfad noch Query.
 // =============================================================================
@@ -120,6 +120,7 @@ export const WORKSPACE_INDEX_PATH = '/informationsverbuende';
 export const VERBUND_ROUTE_PATTERN = '/informationsverbuende/:verbundId';
 export const STATION_ROUTE_PATTERN = '/informationsverbuende/:verbundId/station/:station';
 export const WORKSPACE_DOCUMENT_ROUTE_PATTERN = '/informationsverbuende/:verbundId/dokument/:localId';
+export const SCOPE_ROUTE_PATTERN = '/informationsverbuende/anwendungsbereiche/:scopeId';
 
 // Die Form, die `crypto.randomUUID()` im Speicher und die Backup-Prüfung vergeben.
 const LOCAL_IDENTITY = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -132,12 +133,12 @@ function assertLocalIdentity(value: string, label: string): void {
   if (!isLocalIdentity(value)) throw new Error(`${label} is not a local identity`);
 }
 
-/** Der Bereich zu einem Pfad: alles unterhalb des Arbeitsroutenraums gehört zu den Informationsverbünden. */
-export type ProductArea = 'katalog' | 'informationsverbuende';
+/** Der Bereich zu einem Pfad: alles unterhalb des Arbeitsroutenraums gehört zum Arbeitsbereich. */
+export type ProductArea = 'katalog' | 'arbeitsbereich';
 
 export function areaForPath(pathname: string): ProductArea {
   return pathname === WORKSPACE_INDEX_PATH || pathname.startsWith(`${WORKSPACE_INDEX_PATH}/`)
-    ? 'informationsverbuende'
+    ? 'arbeitsbereich'
     : 'katalog';
 }
 
@@ -148,6 +149,11 @@ export function buildWorkspaceIndexUrl(): string {
 export function buildVerbundUrl(verbundId: string): string {
   assertLocalIdentity(verbundId, 'verbundId');
   return `${WORKSPACE_INDEX_PATH}/${verbundId}`;
+}
+
+export function buildScopeUrl(scopeId: string): string {
+  assertLocalIdentity(scopeId, 'scopeId');
+  return `${WORKSPACE_INDEX_PATH}/anwendungsbereiche/${scopeId}`;
 }
 
 export function buildStationUrl(verbundId: string, station: WorkspaceStation): string {

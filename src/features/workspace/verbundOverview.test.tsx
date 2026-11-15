@@ -2,6 +2,7 @@
 import 'fake-indexeddb/auto';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { WorkspaceStore } from '@/adapters/workspaceStore';
 import { AppShell } from '@/app/AppShell';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { CatalogContext } from '@/state/CatalogContext';
@@ -29,6 +30,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   await resetWorkspace();
 });
 
@@ -119,6 +121,34 @@ describe('Verbund-Übersicht', () => {
     expect(within(main()).getByLabelText('Neuer Name')).toHaveValue('AB');
   });
 
+  it('sperrt die nach Routenwechsel wiedergeöffnete Umbenennung bis zum Ergebnis des laufenden Speicherns', async () => {
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const original = WorkspaceStore.prototype.renameVerbund;
+    const renameVerbund = vi.spyOn(WorkspaceStore.prototype, 'renameVerbund').mockImplementation(async function (this: WorkspaceStore, ...args) {
+      await gate;
+      return original.apply(this, args);
+    });
+    const { router } = renderArea(buildVerbundUrl(seeded.verbundId));
+    await within(main()).findByRole('heading', { level: 1, name: SENTINEL_VERBUND });
+    fireEvent.click(within(main()).getByRole('button', { name: 'Umbenennen' }));
+    fireEvent.change(within(main()).getByLabelText('Neuer Name'), { target: { value: 'Netz Süd' } });
+    fireEvent.click(within(main()).getByRole('button', { name: 'Speichern' }));
+    await router.navigate(buildWorkspaceIndexUrl());
+    await within(main()).findByRole('heading', { level: 1, name: 'Arbeitsbereich' });
+    await router.navigate(buildVerbundUrl(seeded.verbundId));
+    const input = await within(main()).findByLabelText('Neuer Name');
+    expect(input).toHaveValue('Netz Süd');
+    expect(within(main()).getByRole('button', { name: 'Abbrechen' })).toBeDisabled();
+    expect(within(main()).getByRole('button', { name: 'Speichern' })).toBeDisabled();
+    fireEvent.keyDown(input, { key: 'Escape' });
+    expect(within(main()).getByLabelText('Neuer Name')).toBeInTheDocument();
+    release();
+    expect(await within(main()).findByRole('heading', { level: 1, name: 'Netz Süd' })).toBeInTheDocument();
+    await waitFor(() => expect(within(main()).queryByLabelText('Neuer Name')).toBeNull());
+    expect(renameVerbund).toHaveBeenCalledTimes(1);
+  });
+
   it('verwirft eine offene Umbenennung, wenn der Verbund über die Übersicht aller Verbünde gelöscht wird', async () => {
     let drafts: Map<string, string> | undefined;
     function Probe() {
@@ -137,7 +167,7 @@ describe('Verbund-Übersicht', () => {
     fireEvent.change(within(main()).getByLabelText('Neuer Name'), { target: { value: 'Halb getippt' } });
     expect(drafts?.get(seeded.verbundId)).toBe('Halb getippt');
 
-    fireEvent.click(within(screen.getByRole('navigation', { name: 'Pfad' })).getByRole('link', { name: 'Informationsverbünde' }));
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Pfad' })).getByRole('link', { name: 'Arbeitsbereich' }));
     const row = (await within(main()).findByRole('link', { name: SENTINEL_VERBUND })).closest('li')!;
     fireEvent.click(within(row).getByRole('button', { name: 'Löschen…' }));
     fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Endgültig löschen' }));
@@ -151,7 +181,7 @@ describe('Verbund-Übersicht', () => {
     fireEvent.click(within(main()).getByRole('button', { name: 'Umbenennen' }));
     fireEvent.change(within(main()).getByLabelText('Neuer Name'), { target: { value: 'Halb getippt' } });
 
-    fireEvent.click(within(screen.getByRole('navigation', { name: 'Pfad' })).getByRole('link', { name: 'Informationsverbünde' }));
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Pfad' })).getByRole('link', { name: 'Arbeitsbereich' }));
     const row = (await within(main()).findByRole('link', { name: SENTINEL_VERBUND })).closest('li')!;
     fireEvent.click(within(row).getByRole('button', { name: 'Umbenennen' }));
     fireEvent.change(within(main()).getByLabelText('Neuer Name'), { target: { value: 'Rechenzentrum Nord' } });
@@ -204,7 +234,7 @@ describe('Verbundpfad in der Kopfzeile', () => {
   it('nennt den Verbund und wechselt per Tastatur auf einen anderen Verbund', async () => {
     const { router } = renderArea(buildStationUrl(seeded.verbundId, 'ssp'));
     const path = within(screen.getByTestId('header-bar')).getByRole('navigation', { name: 'Pfad' });
-    expect(within(path).getByRole('link', { name: 'Informationsverbünde' })).toHaveAttribute('href', buildWorkspaceIndexUrl());
+    expect(within(path).getByRole('link', { name: 'Arbeitsbereich' })).toHaveAttribute('href', buildWorkspaceIndexUrl());
     const trigger = await within(path).findByRole('button', { name: `Informationsverbund: ${SENTINEL_VERBUND}` });
     fireEvent.keyDown(trigger, { key: 'ArrowDown' });
     const items = within(path).getAllByRole('menuitemradio');

@@ -19,7 +19,7 @@ import { SENTINEL_VERBUND, resetWorkspace, seedWorkspace, value } from '@/test/w
 import '@/index.css';
 
 /*
- * Bereich Informationsverbünde in Chromium (GSPP-577, GSPP-616): Bereichswechsel
+ * Arbeitsbereich in Chromium (GSPP-577, GSPP-616): Bereichswechsel
  * und Stationsreiter auf den drei Layoutstufen, Autosave vor dem Wechsel in den
  * Katalog, Axe und Touchziele. Der Speicher ist die echte IndexedDB des Browsers.
  */
@@ -84,7 +84,7 @@ describe.each(LAYOUTS)('$name ($width px)', ({ name, width, height, touch }) => 
       expect(shell.querySelector('aside nav[aria-label="Bereiche"]')).toBeNull();
     }
     expect(areas.checkVisibility()).toBe(true);
-    const workspaceLink = [...areas.querySelectorAll('a')].find((link) => link.textContent === 'Informationsverbünde')!;
+    const workspaceLink = [...areas.querySelectorAll('a')].find((link) => link.textContent === 'Arbeitsbereich')!;
     const catalogLink = [...areas.querySelectorAll('a')].find((link) => link.textContent === 'Katalog')!;
     expect(workspaceLink.getAttribute('aria-current')).toBe('true');
     expect(catalogLink.hasAttribute('aria-current')).toBe(false);
