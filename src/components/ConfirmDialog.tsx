@@ -12,26 +12,28 @@ export interface ConfirmDialogProps {
   /** Benennt den nicht umkehrbaren Teil der Aktion. */
   readonly children: ReactNode;
   readonly confirmLabel: string;
+  readonly busy?: boolean;
   readonly onConfirm: () => void;
   readonly onCancel: () => void;
 }
 
 /** Ausdrückliche Bestätigung einer zerstörenden Aktion; Abbrechen ist der Standard. */
-export function ConfirmDialog({ open, title, children, confirmLabel, onConfirm, onCancel }: ConfirmDialogProps) {
+export function ConfirmDialog({ open, title, children, confirmLabel, busy = false, onConfirm, onCancel }: ConfirmDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const titleId = useId();
   const descriptionId = useId();
-  useModalDialog(dialogRef, open, onCancel);
+  const cancel = () => { if (!busy) onCancel(); };
+  useModalDialog(dialogRef, open, cancel);
   useScrollLock(open);
   useGlobalEventListener('document', 'keydown', (event) => {
-    if (event.key === 'Escape') onCancel();
+    if (event.key === 'Escape') cancel();
   }, open);
 
   if (!open) return null;
 
   return (
     <ModalPortal>
-      <div className="fixed inset-0 z-40" style={{ opacity: 0.3 }} onClick={onCancel} aria-hidden="true">
+      <div className="fixed inset-0 z-40" style={{ opacity: 0.3 }} onClick={cancel} aria-hidden="true">
         <BackdropTint className="bg-black" />
       </div>
       <div className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center px-4">
@@ -40,6 +42,7 @@ export function ConfirmDialog({ open, title, children, confirmLabel, onConfirm, 
           ref={dialogRef}
           role="alertdialog"
           aria-modal="true"
+          aria-busy={busy || undefined}
           aria-labelledby={titleId}
           aria-describedby={descriptionId}
           className="pointer-events-auto static m-0 flex max-h-[calc(100dvh-2rem)] w-full max-w-md flex-col rounded-lg border border-[var(--color-border-default)] bg-[var(--color-surface-overlay)] p-4 text-inherit shadow-overlay"
@@ -49,8 +52,8 @@ export function ConfirmDialog({ open, title, children, confirmLabel, onConfirm, 
           <div id={descriptionId} className="mt-2 min-h-0 overflow-y-auto break-words text-sm leading-relaxed text-[var(--color-text-secondary)]">{children}</div>
           <div className="mt-4 flex shrink-0 flex-wrap justify-end gap-2">
             {/* Abbrechen steht zuerst und erhält den Fokus: Enter löscht nichts. */}
-            <Button variant="secondary" className="min-h-touch desktop:min-h-0" onClick={onCancel} autoFocus>Abbrechen</Button>
-            <Button variant="danger" className="min-h-touch desktop:min-h-0" onClick={onConfirm}>{confirmLabel}</Button>
+            <Button variant="secondary" className="min-h-touch aria-disabled:cursor-not-allowed aria-disabled:opacity-50 desktop:min-h-0" aria-disabled={busy || undefined} onClick={cancel}>Abbrechen</Button>
+            <Button variant="danger" className="min-h-touch aria-disabled:cursor-not-allowed aria-disabled:opacity-50 desktop:min-h-0" aria-disabled={busy || undefined} onClick={() => { if (!busy) onConfirm(); }}>{confirmLabel}</Button>
           </div>
         </dialog>
       </div>

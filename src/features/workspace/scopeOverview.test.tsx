@@ -271,5 +271,6 @@ describe('Speicherfehler, Konflikt und Schreibsperre', () => {
     renderWith(port, buildScopeUrl(SCOPE.scopeId));
     await findNotice('Schreibsperre');
     expect(await within(main()).findByRole('button', { name: 'Umbenennen' })).toBeDisabled();
+    expect(within(main()).getByRole('button', { name: 'Löschen…' })).toBeDisabled();
   });
 });

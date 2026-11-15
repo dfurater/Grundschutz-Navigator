@@ -4,7 +4,8 @@ import { PageTitle } from '@/app/PageTitle';
 import { PAGE_TITLES } from '@/app/pageTitles';
 import { buildScopeUrl, buildVerbundUrl, buildWorkspaceIndexUrl, isLocalIdentity } from '@/app/routes';
 import { Button } from '@/components/Button';
-import type { WorkspaceResult, WorkspaceScope } from '@/domain/workspaceModel';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
+import type { ScopeMembershipExpectation, WorkspaceResult, WorkspaceScope, WorkspaceVerbund } from '@/domain/workspaceModel';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { FOCUS_RING, OriginLabel } from '@/features/workspace/DocumentMarks';
 import { relativeTime } from '@/features/workspace/StationCards';
@@ -79,9 +80,15 @@ export function ScopeCreateView({ writable, onCancel }: Readonly<{ writable: boo
 }
 
 /** Kopf des Anwendungsbereichs (GSPP-669, Ansichten 3 und 8): Name, Umbenennen, Herkunft und Speicherstand. */
-function ScopeHeader({ scope, now }: Readonly<{ scope: WorkspaceScope; now: number }>) {
+function ScopeHeader({ scope, members, now }: Readonly<{ scope: WorkspaceScope; members: readonly WorkspaceVerbund[]; now: number }>) {
   // Eine offene Umbenennung überdauert Routen- und Bereichswechsel (`scopeDrafts` im Provider).
-  const { writable, renameScope, scopeDrafts, pendingScopeWrite } = useWorkspace();
+  const { writable, renameScope, deleteScope, scopeDrafts, pendingScopeWrite } = useWorkspace();
+  const router = useContext(DataRouterContext)?.router;
+  const { key } = useLocation();
+  const navigate = useNavigate();
+  const [deletion, setDeletion] = useState<{ name: string; expected: ScopeMembershipExpectation } | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const memberCount = deletion?.expected.verbuende.length ?? 0;
   const [renaming, setRenaming] = useState(() => scopeDrafts.has(scope.scopeId));
   const [failed, setFailed] = useState(false);
   const heading = useRef<HTMLHeadingElement>(null);
@@ -108,6 +115,20 @@ function ScopeHeader({ scope, now }: Readonly<{ scope: WorkspaceScope; now: numb
       setRenaming(false);
     }
   });
+  const confirmDelete = async () => {
+    if (!deletion || deleting || !writable) return;
+    setDeleting(true);
+    const result = await deleteScope(scope.scopeId, deletion.expected, 'delete-scope');
+    setDeletion(null);
+    setDeleting(false);
+    const state = router?.state;
+    if (result.ok && (state === undefined || (
+      state.location.key === key && state.navigation.state === 'idle'
+      && [...state.blockers.values()].every(blocker => blocker.state === 'unblocked')
+    ))) {
+      void navigate(buildWorkspaceIndexUrl(), { replace: true, state: { scopeDeleted: true } });
+    }
+  };
   return (
     <header className="space-y-3 border-b border-[var(--color-border-default)] pb-4">
       <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
@@ -116,12 +137,20 @@ function ScopeHeader({ scope, now }: Readonly<{ scope: WorkspaceScope; now: numb
           <h1 ref={heading} tabIndex={-1} className="type-page-title break-words focus:outline-none">{scope.name}</h1>
         </div>
         {!renaming && (
-          <Button ref={renameButton} variant="secondary" className="min-h-touch desktop:min-h-0" disabled={!writable} onClick={() => {
-            if (!scopeDrafts.has(scope.scopeId)) scopeDrafts.set(scope.scopeId, scope.name);
-            setRenaming(true);
-          }}>
-            Umbenennen
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button ref={renameButton} variant="secondary" className="min-h-touch desktop:min-h-0" disabled={!writable} onClick={() => {
+              if (!scopeDrafts.has(scope.scopeId)) scopeDrafts.set(scope.scopeId, scope.name);
+              setRenaming(true);
+            }}>
+              Umbenennen
+            </Button>
+            <Button variant="danger" className="min-h-touch desktop:min-h-0" disabled={!writable} onClick={() => setDeletion({
+              name: scope.name,
+              expected: { scopeSavedAt: scope.savedAt, verbuende: members.map(({ verbundId, savedAt }) => ({ verbundId, savedAt })) },
+            })}>
+              Löschen…
+            </Button>
+          </div>
         )}
       </div>
       {renaming && (
@@ -152,6 +181,22 @@ function ScopeHeader({ scope, now }: Readonly<{ scope: WorkspaceScope; now: numb
           Automatisch gespeichert · {relativeTime(scope.savedAt, now)}
         </span>
       </div>
+      <ConfirmDialog
+        open={deletion !== null}
+        title="Anwendungsbereich löschen?"
+        confirmLabel="Endgültig löschen"
+        busy={deleting}
+        onConfirm={() => void confirmDelete()}
+        onCancel={() => setDeletion(null)}
+      >
+        <p>„{deletion?.name}“ wird mit seinen gemeinsamen Grundlagen und Entscheidungsvorlagen gelöscht.</p>
+        <dl className="mt-3 grid gap-x-3 gap-y-0.5 sm:grid-cols-[auto_1fr] sm:gap-y-2">
+          <dt>Werden unzugeordnet</dt>
+          <dd className="mb-2 tabular-nums text-[var(--color-text-primary)] sm:mb-0">{memberCount} {memberCount === 1 ? 'Informationsverbund' : 'Informationsverbünde'}</dd>
+          <dt>Bleibt erhalten</dt>
+          <dd className="text-[var(--color-text-primary)]">Verbünde, Dokumente und Pakete</dd>
+        </dl>
+      </ConfirmDialog>
     </header>
   );
 }
@@ -181,7 +226,7 @@ export function ScopeOverviewPage() {
         <span aria-hidden="true">‹</span> Arbeitsbereich
       </Link>
       <div className="mx-auto w-full max-w-screen-2xl space-y-4 p-4 desktop:px-7 desktop:py-6">
-        <ScopeHeader key={scope.scopeId} scope={scope} now={now} />
+        <ScopeHeader key={scope.scopeId} scope={scope} members={members} now={now} />
         <WorkspaceNotices />
         <section aria-labelledby="scope-verbuende">
           <SectionHead id="scope-verbuende" title="Informationsverbünde" count={members.length} />

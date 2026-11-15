@@ -1,5 +1,5 @@
 import { useEffect, useId, useReducer, useRef, useState, type ChangeEvent } from 'react';
-import { Link } from 'react-router';
+import { Link, useLocation, useNavigate } from 'react-router';
 import { PageTitle } from '@/app/PageTitle';
 import { PAGE_TITLES } from '@/app/pageTitles';
 import { buildScopeUrl, buildVerbundUrl } from '@/app/routes';
@@ -20,6 +20,14 @@ const DELETED_TITLE = 'Lokale Daten gelöscht';
 const SCOPES_UNREADABLE = 'Anwendungsbereiche nicht lesbar';
 const DELETED_TEXT = 'Der gesamte Arbeitsbestand wurde aus diesem Browserprofil entfernt. Exportierte Dateien bleiben erhalten.';
 const ABORTED_TEXT = 'Löschung abgebrochen. Vorbereitend gespeicherte Eingaben bleiben erhalten.';
+const SCOPE_DELETED_TEXT = 'Anwendungsbereich gelöscht.';
+
+function workspaceStatusText(deleted: boolean, aborted: boolean, restored: RestoreDone | null, scopeDeleted: boolean): string {
+  if (deleted) return `${DELETED_TITLE}. ${DELETED_TEXT}`;
+  if (aborted) return ABORTED_TEXT;
+  if (restored) return `Wiederhergestellt: ${restored.text}`;
+  return scopeDeleted ? SCOPE_DELETED_TEXT : '';
+}
 
 /** Laufende Anlage eines Namens aus Anlegeformular oder Klärungszeile; `run` liefert, ob er angelegt ist. */
 type CreateRun = { readonly name: string; readonly run: Promise<boolean> };
@@ -160,9 +168,16 @@ function inventoryLabel(status: WorkspaceContextValue['status'], ready: boolean)
 /** Arbeitsbereich: Anwendungsbereiche anlegen und öffnen; Verbünde anlegen, umbenennen, sichern, wiederherstellen und einzeln oder insgesamt mit Bestätigung löschen. */
 export function VerbundOverviewPage() {
   const { status, verbuende, scopes, scopesFailed, scopeDrafts, writable, deletion, createVerbund, deleteVerbund } = useWorkspace();
+  const { state: locationState } = useLocation();
+  const navigate = useNavigate();
+  const [scopeDeleted, setScopeDeleted] = useState(() => locationState?.scopeDeleted === true);
+  // Die Meldung gilt für die aktuelle Rückkehr. Reload und Browser-Zurück lesen einen Eintrag ohne Löschmarkierung.
+  useEffect(() => {
+    if (locationState?.scopeDeleted === true) void navigate('.', { replace: true, state: null, preventScrollReset: true });
+  }, [locationState, navigate]);
   // „Anwendungsbereich anlegen“ ist Ansichtszustand dieser Seite wie das Prüfblatt: keine Route, kein Name im Titel.
   // Eine offene Anlage aus dem Provider öffnet die Ansicht beim Zurückkehren wieder.
-  const [creatingScope, setCreatingScope] = useState(() => scopeDrafts.has(NEW_SCOPE_DRAFT));
+  const [creatingScope, setCreatingScope] = useState(() => !scopeDeleted && scopeDrafts.has(NEW_SCOPE_DRAFT));
   const { exporting, exportBackup, exportVerbund } = useBackupExport();
   const [pendingDelete, setPendingDelete] = useState<WorkspaceVerbund | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -198,7 +213,10 @@ export function VerbundOverviewPage() {
       run: (async () => {
         if (previous?.name === name && await previous.run) return true;
         const created = (await createVerbund(name)).ok;
-        if (created) onCreated();
+        if (created) {
+          setScopeDeleted(false);
+          onCreated();
+        }
         return created;
       })(),
     };
@@ -225,11 +243,16 @@ export function VerbundOverviewPage() {
   const scopeNames = new Map((scopes ?? []).map((scope) => [scope.scopeId as string, scope.name]));
   // Der Abbruch gibt den Fokus an den auslösenden Einstieg zurück (Kopf oder Leerzustand).
   const createTrigger = useRef<HTMLButtonElement | null>(null);
-  const startScopeCreation = (trigger: HTMLButtonElement) => { createTrigger.current = trigger; setCreatingScope(true); };
+  const startScopeCreation = (trigger: HTMLButtonElement) => {
+    createTrigger.current = trigger;
+    setScopeDeleted(false);
+    setCreatingScope(true);
+  };
   // Mit der Gesamtlöschung fallen auch die Eingaben und Meldungen der Seite zum gelöschten Bestand.
   if (deleted !== wasDeleted) {
     setWasDeleted(deleted);
     if (deleted) {
+      setScopeDeleted(false);
       setRestored(null);
       setPrepared(false);
       setFormRun((run) => run + 1);
@@ -237,10 +260,7 @@ export function VerbundOverviewPage() {
   }
   const count = verbuende?.length ?? 0;
   const aborted = prepared && !deleteShown && !deleted;
-  let statusText = '';
-  if (deleted) statusText = `${DELETED_TITLE}. ${DELETED_TEXT}`;
-  else if (aborted) statusText = ABORTED_TEXT;
-  else if (restored) statusText = `Wiederhergestellt: ${restored.text}`;
+  const statusText = workspaceStatusText(deleted, aborted, restored, scopeDeleted);
 
   useEffect(() => {
     if (restoreFile || deleteShown || creatingScope || !focusTarget.current) return;
@@ -283,6 +303,7 @@ export function VerbundOverviewPage() {
             if (done.verbundId) rowDrafts.delete(done.verbundId);
             else rowDrafts.clear();
             // Das neuere Ergebnis ersetzt den Abbruchhinweis einer früheren Löschvorbereitung in der Statusregion.
+            setScopeDeleted(false);
             setPrepared(false);
             focusTarget.current = 'heading'; setRestored(done); setRestoreFile(null);
           }}
@@ -323,6 +344,11 @@ export function VerbundOverviewPage() {
         {/* S6819: <output> trägt die implizite Rolle "status". Die eine Region steht vorab und außerhalb des Layoutflusses
             und sagt Lösch-, Abbruch- und Wiederherstellungsmeldung an; die sichtbaren Flächen sind aria-hidden-Spiegel. */}
         <output id={statusId} className="sr-only">{statusText}</output>
+        {statusText === SCOPE_DELETED_TEXT && (
+          <p aria-hidden="true" className="rounded-md border border-[var(--color-border-strong)] bg-[var(--color-surface-base)] p-4 text-sm text-[var(--color-text-primary)]">
+            {SCOPE_DELETED_TEXT}
+          </p>
+        )}
         {deleted && (
           <div aria-hidden="true" className="block rounded-md border border-[var(--color-border-strong)] bg-[var(--color-surface-base)] p-4">
             <span className="block text-sm font-semibold text-[var(--color-text-primary)]">{DELETED_TITLE}</span>

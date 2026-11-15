@@ -2,6 +2,7 @@ import Dexie from 'dexie';
 import { afterEach, expect, it } from 'vitest';
 import { WorkspaceStore, WORKSPACE_DATABASE_NAME } from '@/adapters/workspaceStore';
 import type { WorkspaceResult } from '@/domain/workspaceModel';
+import { seedWorkspace } from '@/test/workspaceAreaFixture';
 
 function value<T>(result: WorkspaceResult<T>): T {
   if (!result.ok) throw new Error(result.diagnostic.code);
@@ -107,6 +108,70 @@ it('compares all involved rows before assigning, moving, or deleting a member', 
   value(await store.deleteVerbund(renamed.verbundId, { ...expected, savedAt: renamed.savedAt }));
   expect(await store.renameScope(b.scopeId, 'Veraltet', reassigned.savedAt)).toMatchObject(conflict);
   expect(value(await store.listScopes()).find(row => row.scopeId === b.scopeId)?.name).toBe(b.name);
+});
+
+it('deletes a scope and detaches its members while preserving their stored contents across reopen', async () => {
+  const seeded = await seedWorkspace();
+  store = value(await WorkspaceStore.open());
+  value(await store.autosaveDraft(seeded.ssp.localId, seeded.ssp.savedAt, null, { text: 'Entwurf' }));
+  value(await store.appendCheckpoint(seeded.component.localId, seeded.component.savedAt, null, 0));
+  const scope = value(await store.createScope('Bereich'));
+  const otherScope = value(await store.createScope('Anderer Bereich'));
+  value(await store.assignVerbuende(scope.scopeId, { scopeSavedAt: scope.savedAt, verbuende: value(await store.listVerbuende()) }));
+  const current = value(await store.listScopes()).find(row => row.scopeId === scope.scopeId)!;
+  const members = value(await store.listVerbuende());
+  const file = value(await store.exportBackup());
+  const before = JSON.parse(file);
+  const partition = JSON.parse(value(await store.exportVerbundBackup(seeded.verbundId)));
+  value(await store.deleteScope(scope.scopeId, { scopeSavedAt: current.savedAt, verbuende: members }, 'delete-scope'));
+
+  store.close();
+  store = value(await WorkspaceStore.open());
+  expect(value(await store.listScopes())).toEqual([otherScope]);
+  const remaining = value(await store.listVerbuende());
+  const after = JSON.parse(value(await store.exportBackup()));
+  const stamp = after.workspaceMeta[0].savedAt;
+  expect(stamp > before.workspaceMeta[0].savedAt).toBe(true);
+  expect(remaining).toEqual(members.map(({ verbundId, name, createdAt }) => ({ verbundId, name, createdAt, savedAt: stamp })));
+  expect(after.methodikScopes).toEqual([otherScope]);
+  for (const key of ['documents', 'drafts', 'bindings', 'reviewTrail', 'reviewBaseline']) {
+    expect(before[key].length).toBeGreaterThan(0);
+    expect(JSON.stringify(after[key]), key).toBe(JSON.stringify(before[key]));
+  }
+  const exported = JSON.parse(value(await store.exportVerbundBackup(seeded.verbundId)));
+  expect(exported).toEqual({ ...partition, verbuende: remaining.filter(row => row.verbundId === seeded.verbundId) });
+  expect(JSON.parse(file).methodikScopes).toContainEqual(current);
+});
+
+it('rejects wrong confirmation, stale scope and added, removed or changed member snapshots without writing', async () => {
+  store = value(await WorkspaceStore.open());
+  const scope = value(await store.createScope('Bereich'));
+  const a = value(await store.createVerbund('A', scope));
+  const b = value(await store.createVerbund('B', { ...scope, savedAt: a.savedAt }));
+  const current = { ...scope, savedAt: b.savedAt };
+  const renamed = value(await store.renameVerbund(b.verbundId, 'B neu', { scope: current, savedAt: b.savedAt }));
+  const expected = { scopeSavedAt: current.savedAt, verbuende: [a, renamed] };
+  const before = value(await store.exportBackup());
+  expect(await store.deleteScope(scope.scopeId, expected, '' as 'delete-scope')).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_CONFIRMATION_REQUIRED' } });
+  const c = { ...a, verbundId: crypto.randomUUID() as typeof a.verbundId };
+  for (const stale of [
+    { ...expected, scopeSavedAt: scope.savedAt },
+    { ...expected, verbuende: [a] },
+    { ...expected, verbuende: [a, renamed, c] },
+    { ...expected, verbuende: [a, a] },
+    { ...expected, verbuende: [a, b] },
+  ]) {
+    expect(await store.deleteScope(scope.scopeId, stale, 'delete-scope')).toMatchObject(conflict);
+    expect(value(await store.exportBackup())).toBe(before);
+  }
+
+  const otherTab = value(await WorkspaceStore.open());
+  try {
+    value(await otherTab.createVerbund('C', current));
+    const withNewMember = value(await store.exportBackup());
+    expect(await store.deleteScope(scope.scopeId, expected, 'delete-scope')).toMatchObject(conflict);
+    expect(value(await store.exportBackup())).toBe(withNewMember);
+  } finally { otherTab.close(); }
 });
 
 it.each([2, 3])('restores v%i without inventing a scope', async version => {
