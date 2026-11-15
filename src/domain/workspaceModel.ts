@@ -182,6 +182,8 @@ export type WorkspaceBackupFile = Omit<WorkspaceBackup, 'methodikScopes' | 'work
 export type WorkspaceVerbundBackup = Omit<WorkspaceBackup, 'format' | 'workspaceMeta' | 'verbuende' | 'methodikScopes'> & {
   readonly format: 'gspp-workspace-verbund';
   readonly verbuende: [WorkspaceVerbund];
+  /** Die Scopezeile eines zugeordneten Verbunds, sonst leer; v3-Bündel tragen das Feld nicht. */
+  readonly methodikScopes?: [] | [WorkspaceScope];
 };
 
 export type WorkspaceRestoreTarget = Pick<WorkspaceMeta, 'databaseId' | 'storageSchemaVersion' | 'savedAt'>;
@@ -205,7 +207,19 @@ export interface WorkspaceVerbundRestoreTarget {
     readonly trailSequence: number | null;
     readonly baselineSequence: number | null;
   }[];
+  /** Zielzeile des Anwendungsbereichs aus der Datei oder `null`; ihr `savedAt` bindet auch die Mitgliedschaft. */
+  readonly scope: WorkspaceScope | null;
 }
+
+/**
+ * Restoreregel R2 für den Anwendungsbereich: `kept` behält die Zielzeile und ordnet bei `assigns` den
+ * fehlenden Verbund zu, `created` übernimmt die Dateizeile, `conflict` sperrt den Restore.
+ */
+export type VerbundRestoreScope =
+  | { readonly kind: 'none' }
+  | { readonly kind: 'kept'; readonly current: WorkspaceScope; readonly file: WorkspaceScope; readonly assigns: boolean }
+  | { readonly kind: 'created'; readonly file: WorkspaceScope }
+  | { readonly kind: 'conflict'; readonly current: WorkspaceScope | null; readonly file: WorkspaceScope | null };
 
 export interface WorkspaceVerbundRestorePreview {
   readonly kind: 'verbund';
@@ -214,7 +228,8 @@ export interface WorkspaceVerbundRestorePreview {
   readonly verbundId: VerbundId;
   readonly name: string;
   readonly existingVerbund: WorkspaceVerbund | null;
-  readonly counts: Readonly<Record<Exclude<keyof WorkspaceVerbundBackup, 'format' | 'storageSchemaVersion'>, { readonly file: number; readonly target: number }>>;
+  readonly scope: VerbundRestoreScope;
+  readonly counts: Readonly<Record<Exclude<keyof WorkspaceVerbundBackup, 'format' | 'storageSchemaVersion' | 'methodikScopes'>, { readonly file: number; readonly target: number }>>;
 }
 
 export type WorkspaceResult<T> =

@@ -39,7 +39,9 @@ const NOTICE_TEXT: Readonly<Record<WorkspaceNotice, { readonly title: string; re
   },
 };
 
-function backupFilename(prefix: string): string {
+export const VERBUND_BACKUP_PREFIX = 'informationsverbund';
+
+export function backupFilename(prefix: string): string {
   return `${prefix}-sicherung-${new Date().toISOString().slice(0, 10)}.json`;
 }
 
@@ -69,7 +71,7 @@ export function useBackupExport(): {
   return {
     exporting,
     exportBackup: (wanted) => download(workspace.exportBackup(), 'informationsverbuende', wanted),
-    exportVerbund: (verbundId) => download(workspace.exportVerbundBackup(verbundId), 'informationsverbund'),
+    exportVerbund: (verbundId) => download(workspace.exportVerbundBackup(verbundId), VERBUND_BACKUP_PREFIX),
   };
 }
 

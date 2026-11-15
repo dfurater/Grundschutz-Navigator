@@ -139,7 +139,8 @@ it('deletes a scope and detaches its members while preserving their stored conte
     expect(JSON.stringify(after[key]), key).toBe(JSON.stringify(before[key]));
   }
   const exported = JSON.parse(value(await store.exportVerbundBackup(seeded.verbundId)));
-  expect(exported).toEqual({ ...partition, verbuende: remaining.filter(row => row.verbundId === seeded.verbundId) });
+  expect(partition.methodikScopes).toEqual([current]);
+  expect(exported).toEqual({ ...partition, methodikScopes: [], verbuende: remaining.filter(row => row.verbundId === seeded.verbundId) });
   expect(JSON.parse(file).methodikScopes).toContainEqual(current);
 });
 
@@ -201,8 +202,20 @@ it('rejects invalid scope payloads and leaves the target unchanged', async () =>
     expect(result).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_BACKUP_INVALID' } });
     expect(JSON.stringify(result)).not.toContain(scope.scopeId);
   }
-  const partition = value(await store.exportVerbundBackup(member.verbundId));
-  expect(await store.previewRestoreVerbundBackup(bytes(partition))).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_BACKUP_CONFLICT' } });
+  const partition = JSON.parse(value(await store.exportVerbundBackup(member.verbundId)));
+  const unassigned = { ...partition, verbuende: [{ ...partition.verbuende[0], scopeId: undefined }] };
+  for (const invalid of [
+    { ...partition, methodikScopes: undefined },
+    { ...partition, methodikScopes: [] },
+    { ...partition, methodikScopes: [{ ...row, scopeId: crypto.randomUUID() }] },
+    { ...partition, methodikScopes: [row, { ...row, scopeId: crypto.randomUUID() }] },
+    { ...unassigned, methodikScopes: [row] },
+    { ...partition, storageSchemaVersion: 3 },
+  ]) {
+    const result = await store.previewRestoreVerbundBackup(bytes(JSON.stringify(invalid)));
+    expect(result).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_BACKUP_INVALID' } });
+    expect(JSON.stringify(result)).not.toContain(scope.scopeId);
+  }
   expect(value(await store.exportBackup())).toBe(before);
   value(await store.deleteAll('delete-workspace'));
   store = value(await WorkspaceStore.open());

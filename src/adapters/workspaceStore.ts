@@ -780,7 +780,6 @@ export class WorkspaceStore {
     return this.read(Object.keys(WORKSPACE_SCHEMA), async () => {
       if (this.newerSchema) reject('WORKSPACE_SCHEMA_NEWER');
       const preview = await readVerbundRestorePreviewSnapshot(this.db, backup);
-      if (preview.backup.verbuende[0].scopeId || preview.existingVerbund?.scopeId) reject('WORKSPACE_BACKUP_CONFLICT');
       this.bindRestorePreview(preview);
       return preview;
     });

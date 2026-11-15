@@ -12,6 +12,7 @@ import type { WorkspaceScope, WorkspaceVerbund } from '@/domain/workspaceModel';
 import { FOCUS_RING, OriginLabel } from '@/features/workspace/DocumentMarks';
 import { WorkspaceNotices, useBackupExport } from '@/features/workspace/WorkspaceNotices';
 import { RestoreSheet, type RestoreDone } from '@/features/workspace/RestoreSheet';
+import { VerbundExportDialog } from '@/features/workspace/VerbundExportDialog';
 import { WorkspaceDeleteDialog } from '@/features/workspace/WorkspaceDeleteDialog';
 import { NameForm, ROW_BUTTON, SectionHead } from '@/features/workspace/WorkspaceForms';
 import { ScopeCreateView } from '@/features/workspace/ScopeOverviewPage';
@@ -104,7 +105,10 @@ function VerbundRow({ verbund, scopeName, writable, rowDrafts, onRowDraft, track
       </span>
       <div className="flex gap-1">
         <Button variant="ghost" size="sm" className={ROW_BUTTON} disabled={!writable} onClick={() => onRowDraft(verbund.verbundId, verbund.name)}>Umbenennen</Button>
-        <Button variant="ghost" size="sm" className={ROW_BUTTON} disabled={exporting} aria-label={`${verbund.name} sichern`} onClick={() => onExport(verbund)}>Sichern</Button>
+        {/* Ein zugeordneter Verbund nennt vor dem Download die mitgesicherte Scopezeile. */}
+        <Button variant="ghost" size="sm" className={ROW_BUTTON} disabled={exporting} aria-label={`${verbund.name} sichern${verbund.scopeId === undefined ? '' : '…'}`} onClick={() => onExport(verbund)}>
+          {verbund.scopeId === undefined ? 'Sichern' : 'Sichern…'}
+        </Button>
         <button
           type="button"
           disabled={!writable}
@@ -180,6 +184,8 @@ export function VerbundOverviewPage() {
   const [creatingScope, setCreatingScope] = useState(() => !scopeDeleted && scopeDrafts.has(NEW_SCOPE_DRAFT));
   const { exporting, exportBackup, exportVerbund } = useBackupExport();
   const [pendingDelete, setPendingDelete] = useState<WorkspaceVerbund | null>(null);
+  const [pendingExport, setPendingExport] = useState<WorkspaceVerbund | null>(null);
+  const [exportStarted, setExportStarted] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   // „Vorher sichern“ hat eine Eingabe gespeichert und die Löschung wurde nicht bestätigt.
   const [prepared, setPrepared] = useState(false);
@@ -341,9 +347,11 @@ export function VerbundOverviewPage() {
 
         <WorkspaceNotices />
 
-        {/* S6819: <output> trägt die implizite Rolle "status". Die eine Region steht vorab und außerhalb des Layoutflusses
-            und sagt Lösch-, Abbruch- und Wiederherstellungsmeldung an; die sichtbaren Flächen sind aria-hidden-Spiegel. */}
+        {/* S6819: <output> trägt die implizite Rolle "status". Die erste Region steht vorab und außerhalb des Layoutflusses
+            und sagt Lösch-, Abbruch- und Wiederherstellungsmeldung an; die sichtbaren Flächen sind aria-hidden-Spiegel.
+            Die zweite meldet den Start eines Verbund-Downloads, ohne die Seitenüberschrift zu beschreiben. */}
         <output id={statusId} className="sr-only">{statusText}</output>
+        <output className="sr-only">{exportStarted ? 'Download gestartet' : ''}</output>
         {statusText === SCOPE_DELETED_TEXT && (
           <p aria-hidden="true" className="rounded-md border border-[var(--color-border-strong)] bg-[var(--color-surface-base)] p-4 text-sm text-[var(--color-text-primary)]">
             {SCOPE_DELETED_TEXT}
@@ -389,7 +397,10 @@ export function VerbundOverviewPage() {
                         track={track}
                         restored={restored?.verbundId === verbund.verbundId}
                         exporting={exporting}
-                        onExport={(entry) => void exportVerbund(entry.verbundId)}
+                        onExport={(entry) => {
+                          if (entry.scopeId !== undefined) setPendingExport(entry);
+                          else void exportVerbund(entry.verbundId).then((started) => { if (started) setExportStarted(true); });
+                        }}
                         onDelete={setPendingDelete}
                       />
                     ))}
@@ -450,6 +461,17 @@ export function VerbundOverviewPage() {
             // nach einem Löschfehler zu „Neu laden“, weil der Einstieg dann gesperrt ist.
             else focusTarget.current = deletion === 'failed' ? 'reload' : 'delete';
             setDeleteOpen(false);
+          }}
+        />
+      )}
+
+      {pendingExport && (
+        <VerbundExportDialog
+          verbund={pendingExport}
+          scopeName={scopeLabel(pendingExport, scopeNames) ?? SCOPES_UNREADABLE}
+          onClose={(started) => {
+            setPendingExport(null);
+            if (started) setExportStarted(true);
           }}
         />
       )}

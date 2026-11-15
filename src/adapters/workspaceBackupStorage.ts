@@ -1,6 +1,6 @@
 import type Dexie from 'dexie';
 import type { Collection } from 'dexie';
-import { STORAGE_SCHEMA_VERSION, type LocalId, type VerbundId, type WorkspaceBackup, type WorkspaceVerbundBackup, type WorkspaceRestoreTarget, type WorkspaceVerbundRestoreTarget, type WorkspaceVerbundRestorePreview, type WorkspaceMeta, type WorkspaceEnvelope, type WorkspaceDraft, type WorkspaceBinding, type WorkspaceVerbund, type ReviewTrailRow, type ReviewBaseline } from '@/domain/workspaceModel';
+import { STORAGE_SCHEMA_VERSION, type LocalId, type VerbundId, type WorkspaceBackup, type WorkspaceVerbundBackup, type WorkspaceRestoreTarget, type WorkspaceVerbundRestoreTarget, type WorkspaceVerbundRestorePreview, type WorkspaceMeta, type WorkspaceEnvelope, type WorkspaceDraft, type WorkspaceBinding, type WorkspaceVerbund, type ReviewTrailRow, type ReviewBaseline, type ScopeId, type WorkspaceScope, type VerbundRestoreScope } from '@/domain/workspaceModel';
 import { CLASS_2_IMPORT_LIMITS, WORKSPACE_BACKUP_MAX_BYTES } from '@/domain/class2ImportLimits.mjs';
 import { countObjectGraphNodesCapped, enforceClass2ObjectGraphInvariants, enforceWorkspaceBackupGraphInvariants } from '@/domain/oscalObjectGraph';
 import { serializeWorkspaceJson } from '@/domain/workspaceJson';
@@ -120,18 +120,20 @@ export async function exportVerbundBackupSnapshot(db: Dexie, verbundId: VerbundI
   const meta = await db.table<WorkspaceMeta>('workspaceMeta').get('workspace');
   if (!meta || !Number.isInteger(meta.storageSchemaVersion) || meta.storageSchemaVersion < 1) reject('WORKSPACE_SCHEMA_INVALID');
   if (meta.storageSchemaVersion > STORAGE_SCHEMA_VERSION) reject('WORKSPACE_SCHEMA_NEWER');
-  // Frame of this export — root, `format`, `storageSchemaVersion`, six lists — plus the verbund row itself.
+  // Frame of this export — root, `format`, `storageSchemaVersion`, seven lists — plus the verbund row itself.
   const budget: BackupBudget = {
     bytes: new TextEncoder().encode(serializeWorkspaceJson(verbund)).byteLength,
-    nodes: frameNodes(6) + countObjectGraphNodesCapped(verbund, CLASS_2_IMPORT_LIMITS.maxNodes),
+    nodes: frameNodes(7) + countObjectGraphNodesCapped(verbund, CLASS_2_IMPORT_LIMITS.maxNodes),
   };
+  // Only the own scope row travels; other members of the scope are neither copied nor read.
+  const methodikScopes = verbund.scopeId === undefined ? [] : await readRows(db.table<WorkspaceScope>('methodikScopes').where('scopeId').equals(verbund.scopeId), budget);
   const documents = await readRows(db.table<WorkspaceEnvelope>('documents').where('verbundId').equals(verbundId), budget);
   const ids = new Set(documents.map(row => row.localId));
   const drafts = await readRows(db.table<WorkspaceDraft>('drafts').where('localId').anyOf([...ids]), budget);
   const bindings = await readRows(db.table<WorkspaceBinding>('bindings').filter(row => ids.has(row.fromLocalId)), budget);
   const reviewTrail = await readRows(db.table<ReviewTrailRow>('reviewTrail').filter(row => ids.has(row.localId)), budget);
   const reviewBaseline = await readRows(db.table<ReviewBaseline>('reviewBaseline').filter(row => ids.has(row.localId)), budget);
-  return serializeBackup({ format: 'gspp-workspace-verbund', storageSchemaVersion: meta.storageSchemaVersion, verbuende: [verbund], documents, drafts, bindings, reviewTrail, reviewBaseline });
+  return serializeBackup({ format: 'gspp-workspace-verbund', storageSchemaVersion: meta.storageSchemaVersion, verbuende: [verbund], methodikScopes, documents, drafts, bindings, reviewTrail, reviewBaseline });
 }
 
 /**
@@ -180,6 +182,19 @@ export async function restoreWorkspaceBackupSnapshot(db: Dexie, backup: Workspac
   await db.table('workspaceMeta').bulkAdd(backup.workspaceMeta.map(row => ({ ...row, databaseId: meta.databaseId, storageSchemaVersion: STORAGE_SCHEMA_VERSION, savedAt: stamp })));
 }
 
+/** Restore rule R2: the scope state plus the target scope row whose stamp binds the preview. */
+async function readRestoreScope(db: Dexie, fileScope: WorkspaceScope | null, existingVerbund: WorkspaceVerbund | null): Promise<{ scope: VerbundRestoreScope; targetScope: WorkspaceScope | null }> {
+  const scopes = db.table<WorkspaceScope, ScopeId>('methodikScopes');
+  const targetScope = fileScope && (await scopes.get(fileScope.scopeId) ?? null);
+  if (existingVerbund && existingVerbund.scopeId !== fileScope?.scopeId) {
+    const current = existingVerbund.scopeId === undefined ? null : await scopes.get(existingVerbund.scopeId) ?? null;
+    return { scope: { kind: 'conflict', current, file: fileScope }, targetScope };
+  }
+  if (!fileScope) return { scope: { kind: 'none' }, targetScope };
+  if (targetScope) return { scope: { kind: 'kept', current: targetScope, file: fileScope, assigns: existingVerbund === null }, targetScope };
+  return { scope: { kind: 'created', file: fileScope }, targetScope };
+}
+
 /** Caller owns one transaction covering all workspace stores, in preview and before replacement. */
 export async function readVerbundRestorePreviewSnapshot(db: Dexie, backup: WorkspaceVerbundBackup): Promise<WorkspaceVerbundRestorePreview> {
   if (db.backendDB().version > STORAGE_SCHEMA_VERSION * 10) reject('WORKSPACE_SCHEMA_NEWER');
@@ -192,6 +207,7 @@ export async function readVerbundRestorePreviewSnapshot(db: Dexie, backup: Works
     if (existing && existing.verbundId !== verbundId) reject('WORKSPACE_BACKUP_CONFLICT');
   }
   const existingVerbund = await db.table<WorkspaceVerbund>('verbuende').get(verbundId) ?? null;
+  const { scope, targetScope } = await readRestoreScope(db, backup.methodikScopes?.[0] ?? null, existingVerbund);
   const members: Pick<WorkspaceEnvelope, 'localId' | 'savedAt'>[] = [];
   await documents.where('verbundId').equals(verbundId).each(row => { members.push({ localId: row.localId, savedAt: row.savedAt }); });
   members.sort((a, b) => a.localId < b.localId ? -1 : 1);
@@ -211,8 +227,8 @@ export async function readVerbundRestorePreviewSnapshot(db: Dexie, backup: Works
     targetDocuments.push({ localId: row.localId, savedAt: row.savedAt, draftSavedAt: draft?.savedAt ?? null, trailSequence: last?.sequence ?? null, baselineSequence: baseline?.sequence ?? null });
   }
   return {
-    kind: 'verbund', backup, verbundId, name: backup.verbuende[0].name, existingVerbund,
-    target: { databaseId: meta.databaseId, storageSchemaVersion: meta.storageSchemaVersion, nativeDatabaseVersion: db.backendDB().version, verbundSavedAt: existingVerbund?.savedAt ?? null, documents: targetDocuments },
+    kind: 'verbund', backup, verbundId, name: backup.verbuende[0].name, existingVerbund, scope,
+    target: { databaseId: meta.databaseId, storageSchemaVersion: meta.storageSchemaVersion, nativeDatabaseVersion: db.backendDB().version, verbundSavedAt: existingVerbund?.savedAt ?? null, documents: targetDocuments, scope: targetScope },
     counts: {
       verbuende: { file: 1, target: existingVerbund ? 1 : 0 },
       documents: { file: backup.documents.length, target: members.length },
@@ -230,11 +246,11 @@ export async function restoreVerbundBackupSnapshot(db: Dexie, backup: WorkspaceV
   if (db.backendDB().version !== target.nativeDatabaseVersion || meta?.databaseId !== target.databaseId || meta.storageSchemaVersion !== target.storageSchemaVersion) reject('WORKSPACE_SAVE_CONFLICT');
   const current = await readVerbundRestorePreviewSnapshot(db, backup);
   if (JSON.stringify(current.target) !== JSON.stringify(target)) reject('WORKSPACE_SAVE_CONFLICT');
-  if (backup.verbuende[0].scopeId || current.existingVerbund?.scopeId) reject('WORKSPACE_BACKUP_CONFLICT');
+  if (current.scope.kind === 'conflict') reject('WORKSPACE_BACKUP_CONFLICT');
   const verbundId = backup.verbuende[0].verbundId;
   const documents = db.table<WorkspaceEnvelope, LocalId>('documents');
   const stamp = await restoredStamp(db, [
-    ...backup.verbuende, ...backup.documents, ...backup.drafts,
+    ...backup.verbuende, ...backup.methodikScopes ?? [], ...backup.documents, ...backup.drafts,
     ...backup.reviewTrail.map(row => ({ savedAt: row.createdAt })),
   ]);
   const oldIds = new Set(await documents.where('verbundId').equals(verbundId).primaryKeys());
@@ -244,6 +260,9 @@ export async function restoreVerbundBackupSnapshot(db: Dexie, backup: WorkspaceV
   await db.table('reviewBaseline').bulkDelete([...oldIds]);
   await documents.bulkDelete([...oldIds]);
   await db.table('verbuende').put(restoredRow(backup.verbuende[0], stamp));
+  // R2: an existing scope row stays as it is unless its membership grows; a missing one is taken from the file.
+  if (current.scope.kind === 'created') await db.table('methodikScopes').add(restoredRow(current.scope.file, stamp));
+  if (current.scope.kind === 'kept' && current.scope.assigns) await db.table('methodikScopes').put({ ...writtenRow(current.scope.current), savedAt: stamp });
   await documents.bulkAdd(backup.documents.map(row => restoredRow({ ...row, storageSchemaVersion: STORAGE_SCHEMA_VERSION }, stamp)));
   await db.table('drafts').bulkAdd(backup.drafts.map(row => restoredRow(row, stamp)));
   await db.table('bindings').bulkAdd(backup.bindings);
