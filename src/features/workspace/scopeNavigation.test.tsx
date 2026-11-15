@@ -37,12 +37,17 @@ describe('Navigation und Fokus rund um Anwendungsbereiche', () => {
     fireEvent.click(entry);
     fireEvent.change(within(main()).getByLabelText('Name des Anwendungsbereichs'), { target: { value: 'Netzbetrieb' } });
     fireEvent.click(within(main()).getByRole('button', { name: 'Anlegen' }));
+    // Das Speichern endet, sobald der Router `loading` meldet, noch bevor React neu rendert.
+    const unsubscribe = router.subscribe((state) => {
+      if (state.navigation.state !== 'loading') return;
+      unsubscribe();
+      finish({ ok: true, value: { ...SCOPE, name: 'Netzbetrieb' } });
+    });
     void router.navigate('/impressum');
     await waitFor(() => expect(router.state.navigation.state).toBe('loading'));
     // Der Ziel-Chunk lädt noch: Die Anlageansicht ist montiert, wenn das Speichern bestätigt wird.
     expect(within(main()).getByRole('heading', { level: 1, name: 'Anwendungsbereich anlegen' })).toBeInTheDocument();
-    finish({ ok: true, value: { ...SCOPE, name: 'Netzbetrieb' } });
-    await waitFor(() => expect(createScope).toHaveBeenCalledTimes(1));
+    expect(createScope).toHaveBeenCalledTimes(1);
     await new Promise((resolve) => setTimeout(resolve, 0));
     impressumChunk.release();
     expect(await screen.findByRole('heading', { level: 1, name: 'Impressum' })).toBeInTheDocument();

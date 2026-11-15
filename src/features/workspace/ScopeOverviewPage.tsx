@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { Link, useNavigate, useNavigation, useParams } from 'react-router';
+import { useContext, useEffect, useRef, useState } from 'react';
+import { Link, UNSAFE_DataRouterContext as DataRouterContext, useNavigate, useParams } from 'react-router';
 import { PageTitle } from '@/app/PageTitle';
 import { PAGE_TITLES } from '@/app/pageTitles';
 import { buildScopeUrl, buildVerbundUrl, buildWorkspaceIndexUrl, isLocalIdentity } from '@/app/routes';
@@ -28,12 +28,11 @@ export function ScopeCreateView({ writable, onCancel }: Readonly<{ writable: boo
     return () => { mounted.current = false; };
   }, []);
   // Eine schon gewählte Navigation (etwa auf eine noch ladende Lazy-Route) behält Vorrang vor dem Öffnen der Übersicht.
-  const navigationState = useNavigation().state;
-  const leaving = useRef(false);
-  useEffect(() => { leaving.current = navigationState !== 'idle'; }, [navigationState]);
+  // Der Router-Zustand wird beim Abschluss gelesen: `useNavigation()` meldet `loading` erst nach dem nächsten Rendern.
+  const router = useContext(DataRouterContext)?.router;
   const openScope = (result: WorkspaceResult<WorkspaceScope>) => {
     setFailed(!result.ok);
-    if (result.ok && !leaving.current) void navigate(buildScopeUrl(result.value.scopeId));
+    if (result.ok && (router?.state.navigation.state ?? 'idle') === 'idle') void navigate(buildScopeUrl(result.value.scopeId));
   };
   const busy = usePendingWrite(() => pendingScopeWrite(NEW_SCOPE_DRAFT), openScope);
   return (
