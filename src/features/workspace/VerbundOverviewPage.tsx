@@ -184,7 +184,7 @@ export function VerbundOverviewPage() {
   const [creatingScope, setCreatingScope] = useState(() => !scopeDeleted && scopeDrafts.has(NEW_SCOPE_DRAFT));
   const backupExport = useBackupExport();
   const { exporting, exportBackup } = backupExport;
-  const { exportVerbund: exportScoped, exportDialog } = useVerbundExport(backupExport);
+  const { exportVerbund: exportScoped, exportDialog, dismissExport } = useVerbundExport(backupExport);
   const [pendingDelete, setPendingDelete] = useState<WorkspaceVerbund | null>(null);
   const [exportStarted, setExportStarted] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -301,6 +301,8 @@ export function VerbundOverviewPage() {
     const file = event.target.files?.[0];
     event.target.value = '';
     if (!file || !writable) return;
+    // Das Prüfblatt ersetzt die Übersicht; ein noch offener Umfangsdialog einer Zeilensicherung verwirft seine Datei.
+    dismissExport();
     setRestored(null);
     setRestoreFile(file);
   };

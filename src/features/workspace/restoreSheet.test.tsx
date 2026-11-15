@@ -526,6 +526,22 @@ describe('Sicherung wiederherstellen', () => {
     expect(downloads).toEqual([]);
   });
 
+  it('schließt den Umfangsdialog einer Zeilensicherung, sobald in der Übersicht eine Wiederherstellungsdatei gewählt ist', async () => {
+    downloads.length = 0;
+    const assigned = { ...VERBUND, scopeId: SCOPE.scopeId };
+    const file = JSON.stringify({ format: 'gspp-workspace-verbund', verbuende: [assigned], methodikScopes: [SCOPE], documents: [] });
+    renderWith(fakePort({ listVerbuende: () => ok([assigned]), listScopes: () => ok([SCOPE]), previewRestore: () => ok(verbundPreview()), exportVerbundBackup: () => ok(file) }));
+    const row = (await screen.findByRole('link', { name: VERBUND.name })).closest('li')!;
+    fireEvent.click(within(row).getByRole('button', { name: `${VERBUND.name} sichern…` }));
+    await screen.findByRole('dialog', { name: `„${VERBUND.name}“ sichern` });
+    // Die Dateiauswahl war vor dem Dialog geöffnet und liefert die Datei erst jetzt.
+    const sheet = await choose();
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(await sheet.findByRole('heading', { level: 1, name: 'Sicherung wiederherstellen' })).toHaveFocus();
+    expect(await sheet.findByRole('button', { name: `„${VERBUND.name}“ ersetzen` })).toBeEnabled();
+    expect(downloads).toEqual([]);
+  });
+
   it('zeigt den Umfangsdialog nicht über einer inzwischen geöffneten Löschbestätigung', async () => {
     downloads.length = 0;
     const assigned = { ...VERBUND, scopeId: SCOPE.scopeId };
