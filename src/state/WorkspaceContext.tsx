@@ -64,6 +64,7 @@ export interface WorkspaceContextValue {
   readonly listScopes: WorkspacePort['listScopes'];
   readonly createScope: WorkspacePort['createScope'];
   readonly renameScope: WorkspacePort['renameScope'];
+  readonly deleteScope: WorkspacePort['deleteScope'];
   readonly assignVerbuende: WorkspacePort['assignVerbuende'];
   readonly changeVerbundScope: WorkspacePort['changeVerbundScope'];
   readonly createVerbund: WorkspacePort['createVerbund'];
@@ -131,6 +132,7 @@ export const WorkspaceContext = createContext<WorkspaceContextValue>({
   listScopes: unavailable,
   createScope: unavailable,
   renameScope: unavailable,
+  deleteScope: unavailable,
   assignVerbuende: unavailable,
   changeVerbundScope: unavailable,
   createVerbund: unavailable,
@@ -522,6 +524,12 @@ export function WorkspaceProvider({ open = openWorkspaceStore, session: provided
     },
     renameScope: (scopeId, name, expected) =>
       track(pendingScopes.current, scopeId, name, (async () => keepScope(await write((store) => store.renameScope(scopeId, name, expected))))()),
+    deleteScope: async (scopeId, expected, confirmation) => {
+      const result = await write(store => store.deleteScope(scopeId, expected, confirmation).catch(storageFailed));
+      if (result.ok) scopeDrafts.delete(scopeId);
+      else if (result.diagnostic.code === 'WORKSPACE_SAVE_CONFLICT') setRevision(current => current + 1);
+      return result;
+    },
     assignVerbuende: (...args) => write((store) => store.assignVerbuende(...args)),
     changeVerbundScope: (...args) => write((store) => store.changeVerbundScope(...args)),
     // Nach einer Gesamtlöschung kann eine ausdrückliche Neuanlage den Speicher wieder öffnen.

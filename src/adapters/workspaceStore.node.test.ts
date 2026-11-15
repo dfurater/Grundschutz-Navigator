@@ -10,6 +10,7 @@ vi.mock('@/adapters/oscalImportGate', async () => {
   const { processClass2OscalBytes } = await import('@/domain/oscalClass2Import');
   return { importClass2OscalDocument: processClass2OscalBytes };
 });
+vi.mock('@/adapters/reviewTrailWork', async () => (await import('@/test/reviewTrailFixtures')).reviewTrailWorkMock());
 vi.mock('@/adapters/workspaceBackup', async () => {
   const { processWorkspaceBackupBytes, processVerbundBackupBytes } = await import('@/adapters/workspaceBackupProcessing');
   return { parseWorkspaceBackup: processWorkspaceBackupBytes, parseVerbundBackup: processVerbundBackupBytes };

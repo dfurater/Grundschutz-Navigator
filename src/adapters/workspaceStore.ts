@@ -8,7 +8,7 @@ import {
   type WorkspaceDraft, type WorkspaceEnvelope, type WorkspaceMeta, type WorkspaceDocumentSummary,
   type WorkspaceResult, type WorkspaceVerbund, type WorkspaceRestorePreview, type WorkspaceVerbundRestorePreview,
   type WorkspaceBackupFile, type WorkspaceVerbundBackup,
-  type ScopeId, type ScopeSnapshot, type WorkspaceScope, type VerbundWriteExpectation, type AssignVerbuendeExpectation,
+  type ScopeId, type ScopeSnapshot, type WorkspaceScope, type VerbundWriteExpectation, type ScopeMembershipExpectation,
   type ReviewBaseline, type ReviewCheckpoint, type ReviewDecision, type ReviewDecisionKind, type ReviewTrailRow,
   type ReviewTrailView, type DocumentSnapshot,
 } from '@/domain/workspaceModel';
@@ -317,7 +317,26 @@ export class WorkspaceStore {
     return verbund;
   }
 
-  assignVerbuende(scopeId: ScopeId, expected: AssignVerbuendeExpectation): Promise<WorkspaceResult<void>> {
+  deleteScope(scopeId: ScopeId, expected: ScopeMembershipExpectation, confirmation: 'delete-scope'): Promise<WorkspaceResult<void>> {
+    if (confirmation !== 'delete-scope') return Promise.resolve(failure(new StorageFailure('WORKSPACE_CONFIRMATION_REQUIRED')));
+    return this.write(async stamp => {
+      const scope = await this.scopes.get(scopeId);
+      if (!scope || scope.savedAt !== expected.scopeSavedAt) reject('WORKSPACE_SAVE_CONFLICT');
+      const members = await this.verbuende.filter(row => row.scopeId === scopeId).toArray();
+      const expectedStamps = new Map(expected.verbuende.map(row => [row.verbundId, row.savedAt]));
+      if (expectedStamps.size !== expected.verbuende.length || members.length !== expectedStamps.size
+        || members.some(row => expectedStamps.get(row.verbundId) !== row.savedAt)) reject('WORKSPACE_SAVE_CONFLICT');
+
+      await this.verbuende.bulkPut(members.map(member => {
+        const updated = writtenRow({ ...member, savedAt: stamp });
+        delete updated.scopeId;
+        return updated;
+      }));
+      await this.scopes.delete(scopeId);
+    });
+  }
+
+  assignVerbuende(scopeId: ScopeId, expected: ScopeMembershipExpectation): Promise<WorkspaceResult<void>> {
     return this.write(async stamp => {
       const scope = await this.expectedScope({ scopeId, savedAt: expected.scopeSavedAt });
       if (new Set(expected.verbuende.map(row => row.verbundId)).size !== expected.verbuende.length) reject('WORKSPACE_VERBUND_INVALID');

@@ -42,7 +42,7 @@ export interface VerbundWriteExpectation {
   readonly scope: ScopeSnapshot | null;
 }
 
-export interface AssignVerbuendeExpectation {
+export interface ScopeMembershipExpectation {
   readonly scopeSavedAt: string;
   readonly verbuende: readonly Pick<WorkspaceVerbund, 'verbundId' | 'savedAt'>[];
 }
