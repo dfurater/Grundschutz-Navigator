@@ -292,7 +292,9 @@ export function VerbundOverviewPage() {
   const exportVerbund = async (verbund: WorkspaceVerbund, trigger: HTMLButtonElement) => {
     // Die vor jedem Export geleerte Statusregion sagt auch eine wiederholte Meldung erneut an.
     setExportStarted(false);
-    if (await exportScoped(verbund.verbundId, trigger) === 'started') setExportStarted(true);
+    // Eine inzwischen geöffnete modale Ebene oder Ansicht macht den Zeilenknopf unbedienbar; die erstellte Datei wird dann verworfen.
+    const operable = () => trigger.isConnected && !trigger.closest('[inert],[hidden]');
+    if (await exportScoped(verbund.verbundId, trigger, operable) === 'started') setExportStarted(true);
   };
 
   const chooseFile = (event: ChangeEvent<HTMLInputElement>) => {

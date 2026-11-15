@@ -17,7 +17,7 @@ import { parseAnyBackup, parseWorkspaceBackup, parseVerbundBackup } from '@/adap
 import { CLASS_2_IMPORT_LIMITS } from '@/domain/oscalImportContract';
 import { serializeWorkspaceJson } from '@/domain/workspaceJson';
 import { exportNewerWorkspaceBackup } from '@/adapters/workspaceRecoveryStorage';
-import { exportWorkspaceBackupSnapshot, restoreWorkspaceBackupSnapshot, exportVerbundBackupSnapshot, restoreVerbundBackupSnapshot, readVerbundRestorePreviewSnapshot, writtenRow } from '@/adapters/workspaceBackupStorage';
+import { exportWorkspaceBackupSnapshot, restoreWorkspaceBackupSnapshot, exportVerbundBackupSnapshot, restoreVerbundBackupSnapshot, readVerbundRestorePreviewSnapshot, touchedScope, writtenRow } from '@/adapters/workspaceBackupStorage';
 import { StorageFailure, failure, reject, timestamp } from '@/adapters/workspaceStorageFailure';
 import { deleteDatabase, storedDatabaseShape, withinDeadline } from '@/adapters/workspaceDatabaseLifecycle';
 import { migrateWorkspaceStorage } from '@/adapters/workspaceMigration';
@@ -347,7 +347,7 @@ export class WorkspaceStore {
       }
       if (updates.length === 0) return;
       await this.verbuende.bulkPut(updates);
-      await this.scopes.put({ ...writtenRow(scope), savedAt: stamp });
+      await this.scopes.put(touchedScope(scope, stamp));
     });
   }
 
@@ -361,7 +361,7 @@ export class WorkspaceStore {
       if (!newScope) delete updated.scopeId;
       await this.verbuende.put(updated);
       for (const scope of [oldScope, newScope]) {
-        if (scope) await this.scopes.put({ ...writtenRow(scope), savedAt: stamp });
+        if (scope) await this.scopes.put(touchedScope(scope, stamp));
       }
       return updated;
     });
@@ -373,7 +373,7 @@ export class WorkspaceStore {
       const current = scope && await this.expectedScope(scope);
       const verbund = { verbundId: crypto.randomUUID() as VerbundId, name, createdAt: stamp, savedAt: stamp, ...(current && { scopeId: current.scopeId }) };
       await this.verbuende.add(verbund);
-      if (current) await this.scopes.put({ ...writtenRow(current), savedAt: stamp });
+      if (current) await this.scopes.put(touchedScope(current, stamp));
       return verbund;
     });
   }
@@ -707,7 +707,7 @@ export class WorkspaceStore {
       const ids = await this.documents.where('verbundId').equals(verbundId).primaryKeys();
       for (const id of ids) await this.removeDocument(id, stamp);
       await this.verbuende.delete(verbundId);
-      if (scope) await this.scopes.put({ ...writtenRow(scope), savedAt: stamp });
+      if (scope) await this.scopes.put(touchedScope(scope, stamp));
     });
   }
 

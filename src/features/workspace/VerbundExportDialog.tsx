@@ -30,11 +30,13 @@ export type VerbundExportOutcome = 'started' | 'canceled' | 'failed';
 /**
  * Sichert einen Verbund für jeden Einstieg gleich: Die erstellte Datei entscheidet, ob vor dem Download der Dialog
  * ihren Umfang nennt. Nach dem Dialog erhält der Auslöser den Fokus zurück. `wanted` wird nach dem Erstellen gelesen;
- * `false` verwirft die Datei ohne Dialog und Download.
+ * `false` verwirft die Datei ohne Dialog und Download. `dismissExport` schließt einen offenen Dialog ohne Download und
+ * ohne Fokusrückgabe.
  */
 export function useVerbundExport({ prepareVerbund, saveBackup }: Pick<ReturnType<typeof useBackupExport>, 'prepareVerbund' | 'saveBackup'>): {
   readonly exportVerbund: (verbundId: VerbundId, trigger: HTMLElement, wanted?: () => boolean) => Promise<VerbundExportOutcome>;
   readonly exportDialog: ReactNode;
+  readonly dismissExport: () => void;
 } {
   const [pending, setPending] = useState<{ readonly backup: PreparedVerbundBackup; readonly settle: (download: boolean) => void } | null>(null);
   const trigger = useRef<HTMLElement | null>(null);
@@ -60,7 +62,13 @@ export function useVerbundExport({ prepareVerbund, saveBackup }: Pick<ReturnType
   const exportDialog = pending && (
     <VerbundExportDialog backup={pending.backup} onClose={(download) => { setPending(null); pending.settle(download); }} />
   );
-  return { exportVerbund, exportDialog };
+  const dismissExport = () => {
+    if (!pending) return;
+    trigger.current = null;
+    setPending(null);
+    pending.settle(false);
+  };
+  return { exportVerbund, exportDialog, dismissExport };
 }
 
 /**

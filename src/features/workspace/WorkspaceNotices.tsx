@@ -64,7 +64,6 @@ export function useBackupExport(): {
    * `wanted` wird nach dem Export gelesen: `false` verwirft die Datei, ohne einen Download zu starten.
    */
   readonly exportBackup: (wanted?: () => boolean) => Promise<boolean>;
-  readonly exportVerbund: (verbundId: VerbundId) => Promise<boolean>;
   /** Erstellt die Verbundsicherung ohne Download; `null` nach einem Fehlschlag, den der Bereich als Speichermeldung zeigt. */
   readonly prepareVerbund: (verbundId: VerbundId) => Promise<PreparedBackup | null>;
   readonly saveBackup: (prepared: PreparedBackup) => void;
@@ -88,7 +87,6 @@ export function useBackupExport(): {
   return {
     exporting,
     exportBackup: (wanted) => download(workspace.exportBackup(), 'informationsverbuende', wanted),
-    exportVerbund: (verbundId) => download(workspace.exportVerbundBackup(verbundId), 'informationsverbund'),
     prepareVerbund,
     saveBackup: save,
   };

@@ -511,6 +511,39 @@ describe('Sicherung wiederherstellen', () => {
     expect(restoreVerbundBackup).not.toHaveBeenCalled();
   });
 
+  it('schließt den Umfangsdialog einer Vorabsicherung, sobald eine andere Datei gewählt ist', async () => {
+    downloads.length = 0;
+    const file = JSON.stringify({ format: 'gspp-workspace-verbund', verbuende: [{ ...VERBUND, scopeId: SCOPE.scopeId }], methodikScopes: [SCOPE], documents: [{}] });
+    renderWith(fakePort({ previewRestore: () => ok(verbundPreview()), exportVerbundBackup: () => ok(file) }));
+    const sheet = await choose();
+    fireEvent.click(await sheet.findByRole('button', { name: `Vorher sichern: ${VERBUND.name}` }));
+    await screen.findByRole('dialog', { name: `„${VERBUND.name}“ sichern` });
+    // Die Dateiauswahl war vor dem Dialog geöffnet und liefert die neue Datei erst jetzt.
+    fireEvent.change(screen.getAllByLabelText('Sicherungsdatei')[0], { target: { files: [new File(['{}'], 'neu.json', { type: 'application/json' })] } });
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(await sheet.findByText('neu.json')).toBeInTheDocument();
+    expect(await sheet.findByRole('button', { name: `„${VERBUND.name}“ ersetzen` })).toBeEnabled();
+    expect(downloads).toEqual([]);
+  });
+
+  it('zeigt den Umfangsdialog nicht über einer inzwischen geöffneten Löschbestätigung', async () => {
+    downloads.length = 0;
+    const assigned = { ...VERBUND, scopeId: SCOPE.scopeId };
+    let finish: (value: Awaited<ReturnType<WorkspacePort['exportVerbundBackup']>>) => void = () => undefined;
+    const exportVerbundBackup = () => new Promise<Awaited<ReturnType<WorkspacePort['exportVerbundBackup']>>>((resolve) => { finish = resolve; });
+    renderWith(fakePort({ listVerbuende: () => ok([assigned]), listScopes: () => ok([SCOPE]), exportVerbundBackup }));
+    const row = (await screen.findByRole('link', { name: VERBUND.name })).closest('li')!;
+    fireEvent.click(within(row).getByRole('button', { name: `${VERBUND.name} sichern…` }));
+    fireEvent.click(within(row).getByRole('button', { name: 'Löschen…' }));
+    const confirm = await screen.findByRole('alertdialog');
+    finish({ ok: true, value: JSON.stringify({ format: 'gspp-workspace-verbund', verbuende: [assigned], methodikScopes: [SCOPE], documents: [] }) });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(downloads).toEqual([]);
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(confirm).not.toBeInTheDocument());
+  });
+
   it.each([
     ['öffnet den Dialog, wenn die Datei eines angezeigt unzugeordneten Verbunds einen Bereich mitführt', VERBUND, [SCOPE], 'Sichern'],
     ['lädt ohne Dialog, wenn die Datei eines angezeigt zugeordneten Verbunds keinen Bereich mitführt', { ...VERBUND, scopeId: SCOPE.scopeId }, [], 'Sichern…'],

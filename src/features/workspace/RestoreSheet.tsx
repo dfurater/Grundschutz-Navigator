@@ -41,7 +41,7 @@ export function RestoreSheet({ file: initialFile, rowDrafts, onCancel, onDone }:
     verbuende, writable, flushAutosaves, previewRestore, restoreBackup, pendingRestoreInputs, discardRestoreInput, renameVerbund, renameScope, createScope,
   } = useWorkspace();
   const backupExport = useBackupExport();
-  const { exportVerbund, exportDialog } = useVerbundExport(backupExport);
+  const { exportVerbund, exportDialog, dismissExport } = useVerbundExport(backupExport);
   const navigate = useNavigate();
   const heading = useRef<HTMLHeadingElement>(null);
   const input = useRef<HTMLInputElement>(null);
@@ -157,7 +157,7 @@ export function RestoreSheet({ file: initialFile, rowDrafts, onCancel, onDone }:
     else setPhase({ step: 'write-failed', preview, quota: code === 'WORKSPACE_QUOTA_EXCEEDED' });
   };
 
-  /** „Vorher sichern“; eine Verbundsicherung läuft wie die Zeilenaktion. Nach einem Dateiwechsel wird die erstellte Datei verworfen. */
+  /** „Vorher sichern“; eine Verbundsicherung läuft wie die Zeilenaktion. Ein Dateiwechsel verwirft die erstellte Datei und schließt ihren offenen Umfangsdialog. */
   const backupFirst = (preview: RestorePreview, trigger: HTMLElement) => {
     const run = generation.current;
     const current = () => run === generation.current;
@@ -170,6 +170,7 @@ export function RestoreSheet({ file: initialFile, rowDrafts, onCancel, onDone }:
     const next = event.target.files?.[0];
     event.target.value = '';
     if (!next || running.current) return;
+    dismissExport();
     setFile(next);
     check(next);
   };
@@ -285,8 +286,7 @@ export function RestoreSheet({ file: initialFile, rowDrafts, onCancel, onDone }:
                 quota={shown.step === 'write-failed' && shown.quota}
                 writable={writable}
                 backup={backupExport.exporting ? 'running' : backup}
-                cancel={cancel}
-                otherFile={otherFile}
+                cancel={cancel} otherFile={otherFile}
                 onBackup={(trigger) => backupFirst(shown.preview, trigger)}
                 onConfirm={() => void confirm(shown.preview)}
               />

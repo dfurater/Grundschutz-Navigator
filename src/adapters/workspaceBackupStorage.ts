@@ -5,7 +5,7 @@ import { CLASS_2_IMPORT_LIMITS, WORKSPACE_BACKUP_MAX_BYTES } from '@/domain/clas
 import { countObjectGraphNodesCapped, enforceClass2ObjectGraphInvariants, enforceWorkspaceBackupGraphInvariants } from '@/domain/oscalObjectGraph';
 import { serializeWorkspaceJson } from '@/domain/workspaceJson';
 import { serializeWorkspaceRecoveryJson } from '@/adapters/workspaceRecoveryJson';
-import { validWorkspaceBackupStructure, validVerbundBackupStructure } from '@/adapters/workspaceBackupStructure';
+import { validWorkspaceBackupStructure, validVerbundBackupStructure, validWorkspaceScope } from '@/adapters/workspaceBackupStructure';
 import { LAST_TIMESTAMP_MS, reject, timestamp } from '@/adapters/workspaceStorageFailure';
 
 /** Root members of the global bundle; a store with one of these names cannot be exported without loss. */
@@ -162,6 +162,13 @@ export function writtenRow<T extends { backupSavedAt?: string }>(row: T): T {
   return written;
 }
 
+/** Scope row after a membership change; it must keep the bundle form, or neither export could carry it. */
+export function touchedScope(scope: WorkspaceScope, stamp: string): WorkspaceScope {
+  const touched = { ...writtenRow(scope), savedAt: stamp };
+  if (!validWorkspaceScope(touched)) reject('WORKSPACE_SCOPE_INVALID');
+  return touched;
+}
+
 /** Caller owns the single write transaction and has validated the whole bundle. */
 export async function restoreWorkspaceBackupSnapshot(db: Dexie, backup: WorkspaceBackup, target: WorkspaceRestoreTarget): Promise<void> {
   const meta = await db.table<WorkspaceMeta>('workspaceMeta').get('workspace');
@@ -253,6 +260,10 @@ export async function restoreVerbundBackupSnapshot(db: Dexie, backup: WorkspaceV
     ...backup.verbuende, ...backup.methodikScopes ?? [], ...backup.documents, ...backup.drafts,
     ...backup.reviewTrail.map(row => ({ savedAt: row.createdAt })),
   ]);
+  // A join really writes the kept row: its export carries `V` itself, which only a restore stamp may hold.
+  const joins = current.scope.kind === 'kept' && current.scope.assigns;
+  if (joins && Date.parse(stamp) >= LAST_TIMESTAMP_MS) reject('WORKSPACE_TIMESTAMP_EXHAUSTED');
+  const joined = joins ? touchedScope(current.scope.current, stamp) : null;
   const oldIds = new Set(await documents.where('verbundId').equals(verbundId).primaryKeys());
   await db.table<WorkspaceBinding>('bindings').filter(row => oldIds.has(row.fromLocalId) || (row.target.kind === 'local' && oldIds.has(row.target.localId))).delete();
   await db.table('drafts').bulkDelete([...oldIds]);
@@ -262,7 +273,7 @@ export async function restoreVerbundBackupSnapshot(db: Dexie, backup: WorkspaceV
   await db.table('verbuende').put(restoredRow(backup.verbuende[0], stamp));
   // R2: an existing scope row stays as it is unless its membership grows; a missing one is taken from the file.
   if (current.scope.kind === 'created') await db.table('methodikScopes').add(restoredRow(current.scope.file, stamp));
-  if (current.scope.kind === 'kept' && current.scope.assigns) await db.table('methodikScopes').put({ ...writtenRow(current.scope.current), savedAt: stamp });
+  if (joined) await db.table('methodikScopes').put(joined);
   await documents.bulkAdd(backup.documents.map(row => restoredRow({ ...row, storageSchemaVersion: STORAGE_SCHEMA_VERSION }, stamp)));
   await db.table('drafts').bulkAdd(backup.drafts.map(row => restoredRow(row, stamp)));
   await db.table('bindings').bulkAdd(backup.bindings);
