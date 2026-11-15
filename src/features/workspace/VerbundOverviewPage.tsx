@@ -1,5 +1,5 @@
 import { useEffect, useId, useReducer, useRef, useState, type ChangeEvent } from 'react';
-import { Link, useLocation } from 'react-router';
+import { Link, useLocation, useNavigate } from 'react-router';
 import { PageTitle } from '@/app/PageTitle';
 import { PAGE_TITLES } from '@/app/pageTitles';
 import { buildScopeUrl, buildVerbundUrl } from '@/app/routes';
@@ -169,7 +169,12 @@ function inventoryLabel(status: WorkspaceContextValue['status'], ready: boolean)
 export function VerbundOverviewPage() {
   const { status, verbuende, scopes, scopesFailed, scopeDrafts, writable, deletion, createVerbund, deleteVerbund } = useWorkspace();
   const { state: locationState } = useLocation();
-  const scopeDeleted = locationState?.scopeDeleted === true;
+  const navigate = useNavigate();
+  const [scopeDeleted, setScopeDeleted] = useState(() => locationState?.scopeDeleted === true);
+  // Die Meldung gilt für die aktuelle Rückkehr. Reload und Browser-Zurück lesen einen Eintrag ohne Löschmarkierung.
+  useEffect(() => {
+    if (locationState?.scopeDeleted === true) void navigate('.', { replace: true, state: null, preventScrollReset: true });
+  }, [locationState, navigate]);
   // „Anwendungsbereich anlegen“ ist Ansichtszustand dieser Seite wie das Prüfblatt: keine Route, kein Name im Titel.
   // Eine offene Anlage aus dem Provider öffnet die Ansicht beim Zurückkehren wieder.
   const [creatingScope, setCreatingScope] = useState(() => !scopeDeleted && scopeDrafts.has(NEW_SCOPE_DRAFT));
@@ -208,7 +213,10 @@ export function VerbundOverviewPage() {
       run: (async () => {
         if (previous?.name === name && await previous.run) return true;
         const created = (await createVerbund(name)).ok;
-        if (created) onCreated();
+        if (created) {
+          setScopeDeleted(false);
+          onCreated();
+        }
         return created;
       })(),
     };
@@ -235,11 +243,16 @@ export function VerbundOverviewPage() {
   const scopeNames = new Map((scopes ?? []).map((scope) => [scope.scopeId as string, scope.name]));
   // Der Abbruch gibt den Fokus an den auslösenden Einstieg zurück (Kopf oder Leerzustand).
   const createTrigger = useRef<HTMLButtonElement | null>(null);
-  const startScopeCreation = (trigger: HTMLButtonElement) => { createTrigger.current = trigger; setCreatingScope(true); };
+  const startScopeCreation = (trigger: HTMLButtonElement) => {
+    createTrigger.current = trigger;
+    setScopeDeleted(false);
+    setCreatingScope(true);
+  };
   // Mit der Gesamtlöschung fallen auch die Eingaben und Meldungen der Seite zum gelöschten Bestand.
   if (deleted !== wasDeleted) {
     setWasDeleted(deleted);
     if (deleted) {
+      setScopeDeleted(false);
       setRestored(null);
       setPrepared(false);
       setFormRun((run) => run + 1);
@@ -290,6 +303,7 @@ export function VerbundOverviewPage() {
             if (done.verbundId) rowDrafts.delete(done.verbundId);
             else rowDrafts.clear();
             // Das neuere Ergebnis ersetzt den Abbruchhinweis einer früheren Löschvorbereitung in der Statusregion.
+            setScopeDeleted(false);
             setPrepared(false);
             focusTarget.current = 'heading'; setRestored(done); setRestoreFile(null);
           }}

@@ -320,8 +320,8 @@ export class WorkspaceStore {
   deleteScope(scopeId: ScopeId, expected: ScopeMembershipExpectation, confirmation: 'delete-scope'): Promise<WorkspaceResult<void>> {
     if (confirmation !== 'delete-scope') return Promise.resolve(failure(new StorageFailure('WORKSPACE_CONFIRMATION_REQUIRED')));
     return this.write(async stamp => {
-      const scope = await this.scopes.get(scopeId);
-      if (!scope || scope.savedAt !== expected.scopeSavedAt) reject('WORKSPACE_SAVE_CONFLICT');
+      const savedAt = (await this.scopes.get(scopeId))?.savedAt;
+      if (!savedAt || savedAt !== expected.scopeSavedAt) reject('WORKSPACE_SAVE_CONFLICT');
       const members = await this.verbuende.filter(row => row.scopeId === scopeId).toArray();
       const expectedStamps = new Map(expected.verbuende.map(row => [row.verbundId, row.savedAt]));
       if (expectedStamps.size !== expected.verbuende.length || members.length !== expectedStamps.size

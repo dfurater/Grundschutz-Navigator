@@ -1,5 +1,5 @@
 import 'fake-indexeddb/auto';
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { buildScopeUrl, buildVerbundUrl, buildWorkspaceIndexUrl } from '@/app/routes';
 import { SCOPE, VERBUND, fail, fakePort, findNotice, ok } from '@/test/fakeWorkspacePort';
@@ -71,6 +71,12 @@ describe('Anwendungsbereich löschen', () => {
     expect(await within(main()).findByRole('heading', { level: 1, name: 'Arbeitsbereich' })).toHaveFocus();
     expect(within(main()).getByRole('status', { name: '' })).toHaveTextContent('Anwendungsbereich gelöscht.');
     await within(main()).findByText('Kein Anwendungsbereich angelegt');
+
+    await act(() => first.router.navigate('/about'));
+    await within(main()).findByRole('heading', { level: 1, name: 'Über das Projekt' });
+    await act(() => first.router.navigate(-1));
+    await within(main()).findByRole('heading', { level: 1, name: 'Arbeitsbereich' });
+    expect(within(main()).queryAllByText('Anwendungsbereich gelöscht.')).toHaveLength(0);
     first.unmount();
 
     renderArea(buildWorkspaceIndexUrl());
