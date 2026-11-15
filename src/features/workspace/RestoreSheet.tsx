@@ -10,7 +10,7 @@ import { useBackupExport } from '@/features/workspace/WorkspaceNotices';
 import { useVerbundExport } from '@/features/workspace/VerbundExportDialog';
 import {
   Actions, BUTTON, ClarifyRow, Facts, Mark, Message, PreviewBody, REJECTION_TEXT, Section, doneText, fileInfo, fileSize, formatDate, plural,
-  inputKey, scopeOf, type BackupState, type FileInfo,
+  inputKey, scopeConflict, scopeOf, type BackupState, type FileInfo,
 } from '@/features/workspace/RestoreSheetParts';
 
 /** Ergebnis einer Wiederherstellung für die Statusmeldung der Übersicht. */
@@ -56,7 +56,7 @@ export function RestoreSheet({ file: initialFile, rowDrafts, onCancel, onDone }:
   const [backup, setBackup] = useState<BackupState>('idle');
   useEffect(() => { heading.current?.focus(); }, []);
 
-  /** Liest die Vorschau zu den aktuellen Bytes; offene Eingaben im Zielbereich halten sie zurück. */
+  /** Liest die Vorschau zu den aktuellen Bytes; offene Eingaben im Zielbereich halten sie zurück, außer ein Zuordnungskonflikt blockiert jeden Restore. */
   const readPreview = async (run: number, clarify: boolean): Promise<void> => {
     const current = bytes.current;
     if (!current) return;
@@ -72,7 +72,7 @@ export function RestoreSheet({ file: initialFile, rowDrafts, onCancel, onDone }:
     const preview = result.value;
     setInfo(fileInfo(preview));
     scope.current = scopeOf(preview);
-    if (clarify) {
+    if (clarify && !scopeConflict(preview)) {
       const inputs = await pendingRestoreInputs(scope.current, rowDrafts);
       if (run !== generation.current) return;
       if (!inputs.ok) { setPhase({ step: 'read-failed' }); return; }
@@ -138,7 +138,8 @@ export function RestoreSheet({ file: initialFile, rowDrafts, onCancel, onDone }:
     if (running.current) return;
     running.current = true;
     const run = generation.current;
-    // Eine nach der Vorschau entstandene Eingabe im Zielbereich verwirft die Vorschau.
+    // Ab der Bestätigung ist alles gesperrt; eine nach der Vorschau entstandene Eingabe im Zielbereich verwirft die Vorschau.
+    setPhase({ step: 'running', preview });
     const inputs = await pendingRestoreInputs(scopeOf(preview), rowDrafts);
     if (run !== generation.current) { running.current = false; return; }
     if (!inputs.ok || inputs.value.length > 0) {
@@ -146,7 +147,6 @@ export function RestoreSheet({ file: initialFile, rowDrafts, onCancel, onDone }:
       setPhase(inputs.ok ? { step: 'clarify', inputs: inputs.value } : { step: 'read-failed' });
       return;
     }
-    setPhase({ step: 'running', preview });
     const result = await restoreBackup(preview);
     running.current = false;
     if (run !== generation.current) return;

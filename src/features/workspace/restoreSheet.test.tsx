@@ -398,6 +398,42 @@ describe('Sicherung wiederherstellen', () => {
     expect(restoreVerbundBackup).not.toHaveBeenCalled();
   });
 
+  it('zeigt die abweichende Zuordnung vor offenen Eingaben und erhält den Entwurf', async () => {
+    const renameVerbund = vi.fn(() => ok(VERBUND));
+    renderWith(fakePort({ previewRestore: () => ok(verbundPreview(true, { kind: 'conflict', current: null, file: SCOPE })), renameVerbund }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Umbenennen' }));
+    fireEvent.change(screen.getByLabelText('Neuer Name'), { target: { value: 'Halb getippt' } });
+    const sheet = await choose();
+    expect(await sheet.findByText('Zuordnung weicht ab')).toBeInTheDocument();
+    expect(sheet.getByText('Zuordnung heute', { selector: 'dt' }).nextElementSibling).toHaveTextContent('keiner');
+    expect(sheet.getByText('Zuordnung in der Datei', { selector: 'dt' }).nextElementSibling).toHaveTextContent(SCOPE.name);
+    expect(sheet.queryByRole('heading', { name: /Offene Eingaben/ })).not.toBeInTheDocument();
+    expect(sheet.queryByRole('button', { name: /Speichern|Verwerfen|ersetzen|Vorher sichern/ })).not.toBeInTheDocument();
+    fireEvent.click(sheet.getByRole('button', { name: 'Abbrechen' }));
+    expect(await screen.findByLabelText('Neuer Name')).toHaveValue('Halb getippt');
+    expect(renameVerbund).not.toHaveBeenCalled();
+  });
+
+  it('sperrt „Vorher sichern“ ab dem Klick auf „Ersetzen“, auch während der Eingabeprüfung', async () => {
+    const waiting: (() => void)[] = [];
+    let gated = false;
+    const listScopes = () => (gated ? new Promise<Awaited<ReturnType<WorkspacePort['listScopes']>>>((resolve) => { waiting.push(() => resolve({ ok: true, value: [] })); }) : ok([]));
+    const exportVerbundBackup = vi.fn(() => ok('{}'));
+    const restoreVerbundBackup = vi.fn(() => ok(undefined));
+    renderWith(fakePort({ previewRestore: () => ok(verbundPreview()), listScopes, exportVerbundBackup, restoreVerbundBackup }));
+    const sheet = await choose();
+    const confirm = await sheet.findByRole('button', { name: `„${VERBUND.name}“ ersetzen` });
+    gated = true;
+    fireEvent.click(confirm);
+    const backup = sheet.getByRole('button', { name: `Vorher sichern: ${VERBUND.name}` });
+    expect(backup).toBeDisabled();
+    fireEvent.click(backup);
+    gated = false;
+    waiting.forEach((resolve) => resolve());
+    await waitFor(() => expect(restoreVerbundBackup).toHaveBeenCalledTimes(1));
+    expect(exportVerbundBackup).not.toHaveBeenCalled();
+  });
+
   it('nennt einen angelegten Anwendungsbereich im Ergebnis', async () => {
     renderWith(fakePort({ previewRestore: () => ok(verbundPreview(false, { kind: 'created', file: FILE_SCOPE })), restoreVerbundBackup: () => ok(undefined) }));
     const sheet = await choose();

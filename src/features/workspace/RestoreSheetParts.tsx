@@ -54,6 +54,9 @@ export function scopeOf(preview: RestorePreview): RestoreScope {
   return preview.kind === 'workspace' ? { kind: 'workspace', documents } : { kind: 'verbund', verbundId: preview.verbundId, documents };
 }
 
+/** Eine abweichende Zuordnung blockiert jeden Verbund-Restore; die Vorschau zeigt dann nur den Konflikt. */
+export const scopeConflict = (preview: RestorePreview): boolean => preview.kind === 'verbund' && preview.scope.kind === 'conflict';
+
 /** Ein bestehender Zielbereich wird ersetzt; ein fehlender Verbund wird nur angelegt. */
 export function replacesTarget(preview: RestorePreview): boolean {
   return preview.kind === 'workspace'
