@@ -1,7 +1,7 @@
 import { useId, useState, type ReactNode } from 'react';
 import { Button } from '@/components/Button';
 import { ROOT_TYPE_LABELS } from '@/domain/workspaceStations';
-import { isVerbundName } from '@/domain/workspaceModel';
+import { isVerbundName, type VerbundRestoreScope } from '@/domain/workspaceModel';
 import { scopeDraftKey, type NamedInput, type RestoreInput, type RestorePreview, type RestoreScope } from '@/state/workspaceRestore';
 
 /** Gelesene Angaben einer geprüften Sicherungsdatei. */
@@ -54,6 +54,9 @@ export function scopeOf(preview: RestorePreview): RestoreScope {
   return preview.kind === 'workspace' ? { kind: 'workspace', documents } : { kind: 'verbund', verbundId: preview.verbundId, documents };
 }
 
+/** Eine abweichende Zuordnung blockiert jeden Verbund-Restore; die Vorschau zeigt dann nur den Konflikt. */
+export const scopeConflict = (preview: RestorePreview): boolean => preview.kind === 'verbund' && preview.scope.kind === 'conflict';
+
 /** Ein bestehender Zielbereich wird ersetzt; ein fehlender Verbund wird nur angelegt. */
 export function replacesTarget(preview: RestorePreview): boolean {
   return preview.kind === 'workspace'
@@ -70,7 +73,8 @@ export function doneText(preview: RestorePreview): string {
   const scope = preview.kind === 'workspace'
     ? ['Gesamter Bestand', plural(preview.counts.verbuende.file, 'Informationsverbund', 'Informationsverbünde')]
     : [`„${preview.name}“`];
-  return [...scope, ...parts].join(' · ');
+  const created = preview.kind === 'verbund' && preview.scope.kind === 'created' ? [`Anwendungsbereich „${preview.scope.file.name}“ angelegt`] : [];
+  return [...scope, ...parts, ...created].join(' · ');
 }
 
 export function replacementText(preview: RestorePreview): string {
@@ -100,7 +104,7 @@ export function Section({ number, title, children }: Readonly<{ number: number; 
   );
 }
 
-export function Facts({ rows }: Readonly<{ rows: readonly (readonly [string, string])[] }>) {
+export function Facts({ rows }: Readonly<{ rows: readonly (readonly [string, ReactNode])[] }>) {
   return (
     <dl className="space-y-2 text-sm md:grid md:grid-cols-[minmax(0,10rem)_minmax(0,1fr)] md:gap-x-4 md:gap-y-1.5 md:space-y-0">
       {rows.map(([term, value]) => (
@@ -228,6 +232,18 @@ export function ClarifyRow({ entry, verbundName, failed, writable, onSave, onDis
 /** Stand von „Vorher sichern“; erst eine übergebene Datei zählt als gestarteter Download. */
 export type BackupState = 'idle' | 'running' | 'started' | 'failed';
 
+/** Wert der Vorschauzeile „Anwendungsbereich“ nach Restoreregel R2; `conflict` zeigt die Vorschau ohne diese Zeile. */
+function scopeFact(scope: Exclude<VerbundRestoreScope, { kind: 'conflict' }>): ReactNode {
+  if (scope.kind === 'none') return 'keiner';
+  if (scope.kind === 'created') return `${scope.file.name} · wird angelegt`;
+  return (
+    <>
+      {scope.current.name} · bleibt unverändert{scope.assigns && ' · Verbund wird zugeordnet'}
+      <span className="block text-xs text-[var(--color-text-secondary)]">In der Datei: „{scope.file.name}“ · Stand {formatDate(scope.file.savedAt)} · wird nicht übernommen</span>
+    </>
+  );
+}
+
 function targetText(preview: RestorePreview): string {
   if (preview.kind === 'verbund') {
     return preview.existingVerbund ? `Vorhanden · geändert ${formatDate(preview.existingVerbund.savedAt)}` : 'Fehlt · wird neu angelegt';
@@ -239,7 +255,7 @@ function targetText(preview: RestorePreview): string {
   return scopes > 0 ? [plural(scopes, 'Anwendungsbereich', 'Anwendungsbereiche'), verbuende, stand].join(' · ') : `${verbuende} · ${stand}`;
 }
 
-export function PreviewBody({ preview, verbundCount, phase, quota, writable, backup, cancel, onBackup, onConfirm }: Readonly<{
+export function PreviewBody({ preview, verbundCount, phase, quota, writable, backup, cancel, otherFile, onBackup, onConfirm }: Readonly<{
   preview: RestorePreview;
   verbundCount: number;
   phase: 'preview' | 'running' | 'write-failed';
@@ -247,12 +263,30 @@ export function PreviewBody({ preview, verbundCount, phase, quota, writable, bac
   writable: boolean;
   backup: BackupState;
   cancel: ReactNode;
-  onBackup: () => void;
+  otherFile: ReactNode;
+  onBackup: (trigger: HTMLButtonElement) => void;
   onConfirm: () => void;
 }>) {
   const running = phase === 'running';
   const replaces = replacesTarget(preview);
-  const facts: (readonly [string, string])[] = preview.kind === 'workspace'
+  if (preview.kind === 'verbund' && preview.scope.kind === 'conflict') {
+    // Ein Verbund-Restore ändert keine Zuordnung; ohne Bestätigung bleiben nur Abbruch und Dateiwechsel.
+    return (
+      <>
+        <Facts rows={[
+          ['Umfang', `Verbund „${preview.name}“`],
+          ['Ziel', targetText(preview)],
+          ['Zuordnung heute', preview.scope.current?.name ?? 'keiner'],
+          ['Zuordnung in der Datei', preview.scope.file?.name ?? 'keiner'],
+        ]}
+        />
+        <Message tone="alert" title="Zuordnung weicht ab">Nichts wird überschrieben. Eine Wiederherstellung ändert keine Zuordnung.</Message>
+        <Actions>{cancel}{otherFile}</Actions>
+      </>
+    );
+  }
+  const scopeRow = preview.kind === 'verbund' && preview.scope.kind !== 'conflict' ? scopeFact(preview.scope) : null;
+  const facts: (readonly [string, ReactNode])[] = preview.kind === 'workspace'
     ? [
       ['Umfang', 'Gesamter lokaler Bestand'],
       ['Ziel', targetText(preview)],
@@ -260,6 +294,7 @@ export function PreviewBody({ preview, verbundCount, phase, quota, writable, bac
     : [
       ['Umfang', `Verbund „${preview.name}“`],
       ['Ziel', targetText(preview)],
+      ['Anwendungsbereich', scopeRow],
       ['Andere Verbünde', `${verbundCount - (preview.existingVerbund ? 1 : 0)} · bleiben unverändert`],
     ];
   const target = preview.kind === 'workspace' ? 'gesamter Bestand' : preview.existingVerbund?.name ?? preview.name;
@@ -280,13 +315,13 @@ export function PreviewBody({ preview, verbundCount, phase, quota, writable, bac
       <Actions>
         {cancel}
         {replaces && (
-          <Button variant="secondary" className={BUTTON} disabled={running || backup === 'running'} aria-label={`Vorher sichern: ${target}`} onClick={onBackup}>Vorher sichern</Button>
+          <Button variant="secondary" className={BUTTON} disabled={running || backup === 'running'} aria-label={`Vorher sichern: ${target}`} onClick={(event) => onBackup(event.currentTarget)}>Vorher sichern</Button>
         )}
         {/* Auch die Wiederholung nennt den Umfang im zugänglichen Namen. */}
         <Button
           variant={replaces ? 'danger' : 'primary'}
           className={`${BUTTON} max-w-full wrap-anywhere`}
-          disabled={running || !writable}
+          disabled={running || !writable || backup === 'running'}
           aria-label={phase === 'write-failed' ? `Erneut versuchen: ${confirmLabel}` : undefined}
           onClick={onConfirm}
         >

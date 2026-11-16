@@ -3,7 +3,7 @@ import { flushSync } from 'react-dom';
 import { createRoot, type Root } from 'react-dom/client';
 import { createMemoryRouter } from 'react-router';
 import { RouterProvider } from 'react-router/dom';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { commands, page, userEvent } from 'vitest/browser';
 import { AppShell } from '@/app/AppShell';
 import { createAppRoutes } from '@/app/appRoutes';
@@ -70,6 +70,65 @@ describe.each([{ width: 1440, touch: false }, { width: 390, touch: true }])('Sic
     expect([...host!.querySelectorAll('output')].some(entry => entry.textContent?.startsWith('Wiederhergestellt:'))).toBe(true);
     expect((await readStore(store => store.listVerbuende())).map(entry => entry.name).sort()).toEqual([SENTINEL_VERBUND, 'Zweiter Verbund'].sort());
     await assertNoAxeViolations(host!, `Ergebnis ${width}`);
+  });
+
+  test('sichert einen zugeordneten Verbund mit Umfangsdialog und behält beim Restore den umbenannten Anwendungsbereich', async () => {
+    const seeded = await seedWorkspace();
+    const scope = await readStore(store => store.createScope('Bereich alt'));
+    const member = (await readStore(store => store.listVerbuende())).find(entry => entry.verbundId === seeded.verbundId)!;
+    await readStore(store => store.assignVerbuende(scope.scopeId, { scopeSavedAt: scope.savedAt, verbuende: [member] }));
+    const file = await readStore(store => store.exportVerbundBackup(seeded.verbundId));
+    const fileScope = JSON.parse(file).methodikScopes[0];
+    await readStore(store => store.renameScope(scope.scopeId, 'Bereich heute', fileScope.savedAt));
+    await renderOverview(width, touch);
+
+    const selector = `button[aria-label="${SENTINEL_VERBUND} sichern…"]`;
+    await expect.poll(() => host!.querySelector(selector)).toBeTruthy();
+    const trigger = host!.querySelector<HTMLButtonElement>(selector)!;
+    expect(trigger.textContent).toBe('Sichern…');
+    trigger.focus();
+    await userEvent.keyboard('{Enter}');
+    await expect.poll(() => document.activeElement?.textContent).toBe('Sicherung herunterladen');
+    const dialog = document.querySelector<HTMLElement>('[data-modal-layer] dialog')!;
+    await expect.poll(() => dialog.textContent).toMatch(/ · \d+ Dokumente?/);
+    expect(dialog.textContent).toContain('Bereich heute · gemeinsame Daten werden mitgesichert');
+    expect(dialog.textContent).toContain('Andere Informationsverbünde');
+    expect(dialog.textContent).toMatch(/informationsverbund-sicherung-\d{4}-\d{2}-\d{2}\.json/);
+    expect(noHorizontalOverflow()).toBe(true);
+    for (const action of dialog.querySelectorAll('button')) expect(action.scrollWidth).toBeLessThanOrEqual(action.clientWidth);
+    await assertNoAxeViolations(dialog, `Verbund sichern ${width}`);
+    await userEvent.keyboard('{Escape}');
+    await expect.poll(() => document.activeElement).toBe(trigger);
+
+    upload(file);
+    await expect.poll(() => host!.textContent, { timeout: 15000 }).toContain('Bereich heute · bleibt unverändert');
+    expect(host!.textContent).toContain('In der Datei: „Bereich alt“ · Stand');
+    expect(host!.textContent).toContain('wird nicht übernommen');
+    expect(noHorizontalOverflow()).toBe(true);
+    expect(document.title).not.toContain('Bereich');
+    expect(JSON.stringify(router!.state.location)).not.toContain('Bereich');
+    await assertNoAxeViolations(host!, `Vorschau Anwendungsbereich ${width}`);
+
+    // „Vorher sichern“ nennt den mitgesicherten Anwendungsbereich vor der Übergabe der Datei an den Download.
+    const downloads = vi.spyOn(URL, 'createObjectURL');
+    const backupFirst = button('Vorher sichern')!;
+    backupFirst.focus();
+    await userEvent.keyboard('{Enter}');
+    await expect.poll(() => document.activeElement?.textContent).toBe('Sicherung herunterladen');
+    expect(document.querySelector('[data-modal-layer] dialog')!.textContent).toContain('Bereich heute · gemeinsame Daten werden mitgesichert');
+    expect(downloads).not.toHaveBeenCalled();
+    await userEvent.keyboard('{Enter}');
+    await expect.poll(() => downloads.mock.calls.length).toBe(1);
+    const saved = JSON.parse(await (downloads.mock.calls[0][0] as Blob).text()) as { methodikScopes: { name: string }[] };
+    expect(saved.methodikScopes.map(entry => entry.name)).toEqual(['Bereich heute']);
+    await expect.poll(() => document.activeElement).toBe(backupFirst);
+    downloads.mockRestore();
+
+    button(`„${SENTINEL_VERBUND}“ ersetzen`)!.focus();
+    await userEvent.keyboard('{Enter}');
+    await expect.poll(() => host!.querySelector('[data-restored]')?.textContent).toContain(SENTINEL_VERBUND);
+    expect((await readStore(store => store.listScopes())).map(entry => entry.name)).toEqual(['Bereich heute']);
+    expect((await readStore(store => store.listVerbuende())).find(entry => entry.verbundId === seeded.verbundId)?.scopeId).toBe(scope.scopeId);
   });
 
   test('bricht einen langen zulässigen Verbundnamen in Ersetzungssatz und Bestätigung um', async () => {

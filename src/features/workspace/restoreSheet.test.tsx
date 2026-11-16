@@ -9,7 +9,7 @@ import { CatalogContext } from '@/state/CatalogContext';
 import { WorkspaceProvider, type WorkspaceContextValue } from '@/state/WorkspaceContext';
 import type { WorkspacePort } from '@/state/workspaceVerbundView';
 import { NEW_SCOPE_DRAFT } from '@/state/workspaceRestore';
-import { VERBUND, fail, fakePort, ok } from '@/test/fakeWorkspacePort';
+import { SCOPE, VERBUND, fail, fakePort, ok } from '@/test/fakeWorkspacePort';
 import { EMPTY_CATALOG_STATE, mainLandmark as main } from '@/test/renderWorkspaceArea';
 import { renderAppShell } from '@/test/renderAppShell';
 
@@ -21,11 +21,11 @@ const OTHER: WorkspaceVerbund = { ...VERBUND, verbundId: '8b2e1d3f-6c4a-4d7e-9f0
 const counts = (file: number, target: number) => ({ file, target });
 const TODAY = new Date().toISOString().slice(0, 10);
 
-function verbundPreview(existing = true): WorkspaceVerbundRestorePreview {
+function verbundPreview(existing = true, scope: WorkspaceVerbundRestorePreview['scope'] = { kind: 'none' }): WorkspaceVerbundRestorePreview {
   return {
-    kind: 'verbund', verbundId: VERBUND.verbundId, name: VERBUND.name, existingVerbund: existing ? VERBUND : null,
+    kind: 'verbund', verbundId: VERBUND.verbundId, name: VERBUND.name, existingVerbund: existing ? VERBUND : null, scope,
     backup: { format: 'gspp-workspace-verbund', storageSchemaVersion: 4, verbuende: [VERBUND], documents: [], drafts: [], bindings: [], reviewTrail: [], reviewBaseline: [] },
-    target: { databaseId: 'db', storageSchemaVersion: 4, nativeDatabaseVersion: 40, verbundSavedAt: existing ? VERBUND.savedAt : null, documents: [] },
+    target: { databaseId: 'db', storageSchemaVersion: 4, nativeDatabaseVersion: 40, verbundSavedAt: existing ? VERBUND.savedAt : null, documents: [], scope: null },
     counts: { verbuende: counts(1, 1), documents: counts(5, existing ? 4 : 0), drafts: counts(3, existing ? 2 : 0), bindings: counts(0, 0), reviewTrail: counts(0, 0), reviewBaseline: counts(0, 0) },
   } as WorkspaceVerbundRestorePreview;
 }
@@ -117,7 +117,7 @@ describe('Sicherung wiederherstellen', () => {
   it.each([
     ['WORKSPACE_BACKUP_INVALID', 'Datei abgelehnt', 'Die Datei ist keine Sicherung, die diese Version wiederherstellen kann.'],
     ['WORKSPACE_BACKUP_WORKER_FAILURE', 'Prüfung abgebrochen', 'Die Datei wurde nicht geprüft.'],
-    ['WORKSPACE_BACKUP_CONFLICT', 'Kollision', 'Dokumente der Datei gehören zu einem anderen Verbund, oder Datei und Ziel sind wegen einer Anwendungsbereichszuordnung nicht als Verbund wiederherstellbar. Nichts wird überschrieben.'],
+    ['WORKSPACE_BACKUP_CONFLICT', 'Kollision', 'Dokumente der Datei gehören zu einem anderen Verbund in diesem Browser. Nichts wird überschrieben.'],
   ])('zeigt %s als feste Meldung ohne Restoreaktion', async (code, title, text) => {
     renderWith(fakePort({ previewRestore: () => fail(code) }));
     const sheet = await choose();
@@ -182,6 +182,21 @@ describe('Sicherung wiederherstellen', () => {
     expect((await sheet.findByText('Sicherung nicht erstellt')).closest('[role="alert"]')).toHaveTextContent('Es wurde keine Datei heruntergeladen.');
     expect(sheet.queryByText('Download gestartet')).not.toBeInTheDocument();
     expect(downloads).toEqual([]);
+  });
+
+  it('sperrt die Bestätigung, bis die Vorabsicherung erstellt ist', async () => {
+    downloads.length = 0;
+    let finish: (value: Awaited<ReturnType<WorkspacePort['exportVerbundBackup']>>) => void = () => undefined;
+    const exportVerbundBackup = () => new Promise<Awaited<ReturnType<WorkspacePort['exportVerbundBackup']>>>((resolve) => { finish = resolve; });
+    renderWith(fakePort({ previewRestore: () => ok(verbundPreview()), exportVerbundBackup }));
+    const sheet = await choose();
+    const confirm = await sheet.findByRole('button', { name: `„${VERBUND.name}“ ersetzen` });
+    fireEvent.click(sheet.getByRole('button', { name: `Vorher sichern: ${VERBUND.name}` }));
+    await waitFor(() => expect(confirm).toBeDisabled());
+    finish({ ok: true, value: '{"format":"gspp-workspace-verbund"}' });
+    expect(await sheet.findByText('Download gestartet', { selector: 'output' })).toBeInTheDocument();
+    expect(confirm).toBeEnabled();
+    expect(downloads).toEqual([`informationsverbund-sicherung-${TODAY}.json`]);
   });
 
   it('verwirft das Ergebnis einer Vorabsicherung nach einem Dateiwechsel', async () => {
@@ -348,6 +363,220 @@ describe('Sicherung wiederherstellen', () => {
     const sheet = await choose();
     fireEvent.click(await sheet.findByRole('button', { name: 'Abbrechen' }));
     await waitFor(() => expect(screen.getByRole('button', { name: 'Sicherung wiederherstellen…' })).toHaveFocus());
+  });
+
+  const FILE_SCOPE = { ...SCOPE, name: 'Netzbetrieb', savedAt: '2026-11-12T15:40:00.000Z' };
+  const fileDate = new Intl.DateTimeFormat('de-DE', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(FILE_SCOPE.savedAt));
+  it.each([
+    ['bleibt unverändert', true, { kind: 'kept', current: SCOPE, file: FILE_SCOPE, assigns: false }, `${SCOPE.name} · bleibt unverändert`],
+    ['ordnet einen fehlenden Verbund zu', false, { kind: 'kept', current: SCOPE, file: FILE_SCOPE, assigns: true }, `${SCOPE.name} · bleibt unverändert · Verbund wird zugeordnet`],
+    ['legt einen fehlenden Bereich an', false, { kind: 'created', file: FILE_SCOPE }, `${FILE_SCOPE.name} · wird angelegt`],
+    ['nennt keinen Bereich ohne Zuordnung', true, { kind: 'none' }, 'keiner'],
+  ] as const)('zeigt den Anwendungsbereich vor der Bestätigung: %s', async (_case, existing, scope, text) => {
+    renderWith(fakePort({ previewRestore: () => ok(verbundPreview(existing, scope)) }));
+    const sheet = await choose();
+    const term = await sheet.findByText('Anwendungsbereich', { selector: 'dt' });
+    const value = term.nextElementSibling!;
+    expect(value.textContent!.split('In der Datei')[0]).toBe(text);
+    if (scope.kind === 'kept') expect(value).toHaveTextContent(`In der Datei: „${FILE_SCOPE.name}“ · Stand ${fileDate} · wird nicht übernommen`);
+    else expect(value).not.toHaveTextContent('In der Datei');
+    expect(sheet.getByRole('button', { name: existing ? `„${VERBUND.name}“ ersetzen` : `„${VERBUND.name}“ wiederherstellen` })).toBeEnabled();
+  });
+
+  it('bietet bei abweichender Zuordnung nur Abbruch und Dateiwechsel', async () => {
+    const restoreVerbundBackup = vi.fn(() => ok(undefined));
+    renderWith(fakePort({ previewRestore: () => ok(verbundPreview(true, { kind: 'conflict', current: SCOPE, file: null })), restoreVerbundBackup }));
+    const sheet = await choose();
+    const message = (await sheet.findByText('Zuordnung weicht ab')).closest('[role="alert"]');
+    expect(message).toHaveTextContent('Nichts wird überschrieben. Eine Wiederherstellung ändert keine Zuordnung.');
+    expect(sheet.getByText('Zuordnung heute', { selector: 'dt' }).nextElementSibling).toHaveTextContent(SCOPE.name);
+    expect(sheet.getByText('Zuordnung in der Datei', { selector: 'dt' }).nextElementSibling).toHaveTextContent('keiner');
+    expect(sheet.queryByText('Anwendungsbereich', { selector: 'dt' })).not.toBeInTheDocument();
+    expect(sheet.queryByRole('button', { name: /ersetzen|wiederherstellen|Vorher sichern/ })).not.toBeInTheDocument();
+    expect(sheet.getAllByRole('button', { name: 'Andere Datei…' })).toHaveLength(2);
+    expect(sheet.getByRole('button', { name: 'Abbrechen' })).toBeEnabled();
+    expect(restoreVerbundBackup).not.toHaveBeenCalled();
+  });
+
+  it('zeigt die abweichende Zuordnung vor offenen Eingaben und erhält den Entwurf', async () => {
+    const renameVerbund = vi.fn(() => ok(VERBUND));
+    renderWith(fakePort({ previewRestore: () => ok(verbundPreview(true, { kind: 'conflict', current: null, file: SCOPE })), renameVerbund }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Umbenennen' }));
+    fireEvent.change(screen.getByLabelText('Neuer Name'), { target: { value: 'Halb getippt' } });
+    const sheet = await choose();
+    expect(await sheet.findByText('Zuordnung weicht ab')).toBeInTheDocument();
+    expect(sheet.getByText('Zuordnung heute', { selector: 'dt' }).nextElementSibling).toHaveTextContent('keiner');
+    expect(sheet.getByText('Zuordnung in der Datei', { selector: 'dt' }).nextElementSibling).toHaveTextContent(SCOPE.name);
+    expect(sheet.queryByRole('heading', { name: /Offene Eingaben/ })).not.toBeInTheDocument();
+    expect(sheet.queryByRole('button', { name: /Speichern|Verwerfen|ersetzen|Vorher sichern/ })).not.toBeInTheDocument();
+    fireEvent.click(sheet.getByRole('button', { name: 'Abbrechen' }));
+    expect(await screen.findByLabelText('Neuer Name')).toHaveValue('Halb getippt');
+    expect(renameVerbund).not.toHaveBeenCalled();
+  });
+
+  it('sperrt „Vorher sichern“ ab dem Klick auf „Ersetzen“, auch während der Eingabeprüfung', async () => {
+    const waiting: (() => void)[] = [];
+    let gated = false;
+    const listScopes = () => (gated ? new Promise<Awaited<ReturnType<WorkspacePort['listScopes']>>>((resolve) => { waiting.push(() => resolve({ ok: true, value: [] })); }) : ok([]));
+    const exportVerbundBackup = vi.fn(() => ok('{}'));
+    const restoreVerbundBackup = vi.fn(() => ok(undefined));
+    renderWith(fakePort({ previewRestore: () => ok(verbundPreview()), listScopes, exportVerbundBackup, restoreVerbundBackup }));
+    const sheet = await choose();
+    const confirm = await sheet.findByRole('button', { name: `„${VERBUND.name}“ ersetzen` });
+    gated = true;
+    fireEvent.click(confirm);
+    const backup = sheet.getByRole('button', { name: `Vorher sichern: ${VERBUND.name}` });
+    expect(backup).toBeDisabled();
+    fireEvent.click(backup);
+    gated = false;
+    waiting.forEach((resolve) => resolve());
+    await waitFor(() => expect(restoreVerbundBackup).toHaveBeenCalledTimes(1));
+    expect(exportVerbundBackup).not.toHaveBeenCalled();
+  });
+
+  it('nennt einen angelegten Anwendungsbereich im Ergebnis', async () => {
+    renderWith(fakePort({ previewRestore: () => ok(verbundPreview(false, { kind: 'created', file: FILE_SCOPE })), restoreVerbundBackup: () => ok(undefined) }));
+    const sheet = await choose();
+    fireEvent.click(await sheet.findByRole('button', { name: `„${VERBUND.name}“ wiederherstellen` }));
+    await within(main()).findByRole('heading', { level: 1, name: 'Arbeitsbereich' });
+    expect(screen.getAllByRole('status').some((entry) => entry.textContent?.endsWith(`Anwendungsbereich „${FILE_SCOPE.name}“ angelegt`))).toBe(true);
+  });
+
+  it('nennt vor der Sicherung eines zugeordneten Verbunds den mitgesicherten Anwendungsbereich', async () => {
+    downloads.length = 0;
+    const assigned = { ...VERBUND, scopeId: SCOPE.scopeId };
+    const file = JSON.stringify({ format: 'gspp-workspace-verbund', verbuende: [assigned], methodikScopes: [SCOPE], documents: [{}, {}] });
+    const exportVerbundBackup = vi.fn(() => ok(file));
+    renderWith(fakePort({ listVerbuende: () => ok([assigned, OTHER]), listScopes: () => ok([SCOPE]), exportVerbundBackup }));
+    const row = (await screen.findByRole('link', { name: VERBUND.name })).closest('li')!;
+    expect(within((await screen.findByRole('link', { name: OTHER.name })).closest('li')!).getByRole('button', { name: `${OTHER.name} sichern` })).toHaveTextContent(/^Sichern$/);
+    const trigger = within(row).getByRole('button', { name: `${VERBUND.name} sichern…` });
+    expect(trigger).toHaveTextContent('Sichern…');
+
+    trigger.focus();
+    fireEvent.click(trigger);
+    const dialog = within(await screen.findByRole('dialog', { name: `„${VERBUND.name}“ sichern` }));
+    expect(dialog.getByRole('button', { name: 'Sicherung herunterladen' })).toHaveFocus();
+    expect(await dialog.findByText(`${VERBUND.name} · 2 Dokumente`)).toBeInTheDocument();
+    expect(dialog.getByText(`${SCOPE.name} · gemeinsame Daten werden mitgesichert`)).toBeInTheDocument();
+    expect(dialog.getByText('Nicht enthalten').nextElementSibling).toHaveTextContent('Andere Informationsverbünde');
+    expect(dialog.getByText(`informationsverbund-sicherung-${TODAY}.json`)).toBeInTheDocument();
+    expect(document.title).not.toContain(SCOPE.name);
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(trigger).toHaveFocus();
+
+    fireEvent.click(trigger);
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Abbrechen' }));
+    await waitFor(() => expect(trigger).toHaveFocus());
+    expect(downloads).toEqual([]);
+
+    fireEvent.click(trigger);
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Sicherung herunterladen' }));
+    await waitFor(() => expect(downloads).toEqual([`informationsverbund-sicherung-${TODAY}.json`]));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    await waitFor(() => expect(trigger).toHaveFocus());
+    expect(screen.getByText('Download gestartet', { selector: 'output' })).toBeInTheDocument();
+    expect(exportVerbundBackup).toHaveBeenCalledWith(VERBUND.verbundId);
+
+    // Jeder weitere Download leert die Statusregion zuerst, damit sie erneut angesagt wird.
+    fireEvent.click(trigger);
+    expect(screen.queryByText('Download gestartet', { selector: 'output' })).not.toBeInTheDocument();
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Sicherung herunterladen' }));
+    expect(await screen.findByText('Download gestartet', { selector: 'output' })).toBeInTheDocument();
+  });
+
+  it('nennt auch bei „Vorher sichern“ im Prüfblatt den mitgesicherten Anwendungsbereich vor dem Download', async () => {
+    downloads.length = 0;
+    const file = JSON.stringify({ format: 'gspp-workspace-verbund', verbuende: [{ ...VERBUND, scopeId: SCOPE.scopeId }], methodikScopes: [SCOPE], documents: [{}] });
+    const restoreVerbundBackup = vi.fn(() => ok(undefined));
+    renderWith(fakePort({ previewRestore: () => ok(verbundPreview(true, { kind: 'kept', current: SCOPE, file: SCOPE, assigns: false })), exportVerbundBackup: () => ok(file), restoreVerbundBackup }));
+    const sheet = await choose();
+    const trigger = await sheet.findByRole('button', { name: `Vorher sichern: ${VERBUND.name}` });
+
+    fireEvent.click(trigger);
+    const dialog = within(await screen.findByRole('dialog', { name: `„${VERBUND.name}“ sichern` }));
+    expect(dialog.getByText(`${SCOPE.name} · gemeinsame Daten werden mitgesichert`)).toBeInTheDocument();
+    expect(dialog.getByRole('button', { name: 'Sicherung herunterladen' })).toHaveFocus();
+    fireEvent.click(dialog.getByRole('button', { name: 'Abbrechen' }));
+    await waitFor(() => expect(trigger).toHaveFocus());
+    expect(downloads).toEqual([]);
+    expect(sheet.queryByText('Download gestartet')).not.toBeInTheDocument();
+
+    fireEvent.click(trigger);
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Sicherung herunterladen' }));
+    expect(await sheet.findByText('Download gestartet', { selector: 'output' })).toBeInTheDocument();
+    expect(downloads).toEqual([`informationsverbund-sicherung-${TODAY}.json`]);
+    await waitFor(() => expect(trigger).toHaveFocus());
+    expect(restoreVerbundBackup).not.toHaveBeenCalled();
+  });
+
+  it('schließt den Umfangsdialog einer Vorabsicherung, sobald eine andere Datei gewählt ist', async () => {
+    downloads.length = 0;
+    const file = JSON.stringify({ format: 'gspp-workspace-verbund', verbuende: [{ ...VERBUND, scopeId: SCOPE.scopeId }], methodikScopes: [SCOPE], documents: [{}] });
+    renderWith(fakePort({ previewRestore: () => ok(verbundPreview()), exportVerbundBackup: () => ok(file) }));
+    const sheet = await choose();
+    fireEvent.click(await sheet.findByRole('button', { name: `Vorher sichern: ${VERBUND.name}` }));
+    await screen.findByRole('dialog', { name: `„${VERBUND.name}“ sichern` });
+    // Die Dateiauswahl war vor dem Dialog geöffnet und liefert die neue Datei erst jetzt.
+    fireEvent.change(screen.getAllByLabelText('Sicherungsdatei')[0], { target: { files: [new File(['{}'], 'neu.json', { type: 'application/json' })] } });
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(await sheet.findByText('neu.json')).toBeInTheDocument();
+    expect(await sheet.findByRole('button', { name: `„${VERBUND.name}“ ersetzen` })).toBeEnabled();
+    expect(downloads).toEqual([]);
+  });
+
+  it('schließt den Umfangsdialog einer Zeilensicherung, sobald in der Übersicht eine Wiederherstellungsdatei gewählt ist', async () => {
+    downloads.length = 0;
+    const assigned = { ...VERBUND, scopeId: SCOPE.scopeId };
+    const file = JSON.stringify({ format: 'gspp-workspace-verbund', verbuende: [assigned], methodikScopes: [SCOPE], documents: [] });
+    renderWith(fakePort({ listVerbuende: () => ok([assigned]), listScopes: () => ok([SCOPE]), previewRestore: () => ok(verbundPreview()), exportVerbundBackup: () => ok(file) }));
+    const row = (await screen.findByRole('link', { name: VERBUND.name })).closest('li')!;
+    fireEvent.click(within(row).getByRole('button', { name: `${VERBUND.name} sichern…` }));
+    await screen.findByRole('dialog', { name: `„${VERBUND.name}“ sichern` });
+    // Die Dateiauswahl war vor dem Dialog geöffnet und liefert die Datei erst jetzt.
+    const sheet = await choose();
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(await sheet.findByRole('heading', { level: 1, name: 'Sicherung wiederherstellen' })).toHaveFocus();
+    expect(await sheet.findByRole('button', { name: `„${VERBUND.name}“ ersetzen` })).toBeEnabled();
+    expect(downloads).toEqual([]);
+  });
+
+  it('zeigt den Umfangsdialog nicht über einer inzwischen geöffneten Löschbestätigung', async () => {
+    downloads.length = 0;
+    const assigned = { ...VERBUND, scopeId: SCOPE.scopeId };
+    let finish: (value: Awaited<ReturnType<WorkspacePort['exportVerbundBackup']>>) => void = () => undefined;
+    const exportVerbundBackup = () => new Promise<Awaited<ReturnType<WorkspacePort['exportVerbundBackup']>>>((resolve) => { finish = resolve; });
+    renderWith(fakePort({ listVerbuende: () => ok([assigned]), listScopes: () => ok([SCOPE]), exportVerbundBackup }));
+    const row = (await screen.findByRole('link', { name: VERBUND.name })).closest('li')!;
+    fireEvent.click(within(row).getByRole('button', { name: `${VERBUND.name} sichern…` }));
+    fireEvent.click(within(row).getByRole('button', { name: 'Löschen…' }));
+    const confirm = await screen.findByRole('alertdialog');
+    finish({ ok: true, value: JSON.stringify({ format: 'gspp-workspace-verbund', verbuende: [assigned], methodikScopes: [SCOPE], documents: [] }) });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(downloads).toEqual([]);
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(confirm).not.toBeInTheDocument());
+  });
+
+  it.each([
+    ['öffnet den Dialog, wenn die Datei eines angezeigt unzugeordneten Verbunds einen Bereich mitführt', VERBUND, [SCOPE], 'Sichern'],
+    ['lädt ohne Dialog, wenn die Datei eines angezeigt zugeordneten Verbunds keinen Bereich mitführt', { ...VERBUND, scopeId: SCOPE.scopeId }, [], 'Sichern…'],
+  ] as const)('%s', async (_case, shown, fileScopes, label) => {
+    downloads.length = 0;
+    const file = JSON.stringify({ format: 'gspp-workspace-verbund', verbuende: [VERBUND], methodikScopes: fileScopes, documents: [] });
+    renderWith(fakePort({ listVerbuende: () => ok([shown]), listScopes: () => ok([SCOPE]), exportVerbundBackup: () => ok(file) }));
+    const row = (await screen.findByRole('link', { name: VERBUND.name })).closest('li')!;
+    fireEvent.click(within(row).getByRole('button', { name: `${VERBUND.name} sichern${label === 'Sichern' ? '' : '…'}` }));
+    if (fileScopes.length > 0) {
+      const dialog = within(await screen.findByRole('dialog', { name: `„${VERBUND.name}“ sichern` }));
+      expect(dialog.getByText(`${SCOPE.name} · gemeinsame Daten werden mitgesichert`)).toBeInTheDocument();
+      expect(downloads).toEqual([]);
+    } else {
+      await waitFor(() => expect(downloads).toEqual([`informationsverbund-sicherung-${TODAY}.json`]));
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    }
   });
 
   it('sperrt den Einstieg unter Schreibsperre; beide Exporte bleiben bedienbar', async () => {

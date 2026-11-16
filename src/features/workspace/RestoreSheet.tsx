@@ -7,9 +7,10 @@ import { inputVerbundName, saveNamedInput, type NamedInput, type RestoreInput, t
 import { OriginLabel } from '@/features/workspace/DocumentMarks';
 import { WORKSPACE_BACKUP_MAX_BYTES } from '@/domain/class2ImportLimits.mjs';
 import { useBackupExport } from '@/features/workspace/WorkspaceNotices';
+import { useVerbundExport } from '@/features/workspace/VerbundExportDialog';
 import {
   Actions, BUTTON, ClarifyRow, Facts, Mark, Message, PreviewBody, REJECTION_TEXT, Section, doneText, fileInfo, fileSize, formatDate, plural,
-  inputKey, scopeOf, type BackupState, type FileInfo,
+  inputKey, scopeConflict, scopeOf, type BackupState, type FileInfo,
 } from '@/features/workspace/RestoreSheetParts';
 
 /** Ergebnis einer Wiederherstellung für die Statusmeldung der Übersicht. */
@@ -39,7 +40,8 @@ export function RestoreSheet({ file: initialFile, rowDrafts, onCancel, onDone }:
   const {
     verbuende, writable, flushAutosaves, previewRestore, restoreBackup, pendingRestoreInputs, discardRestoreInput, renameVerbund, renameScope, createScope,
   } = useWorkspace();
-  const { exportBackup, exportVerbund } = useBackupExport();
+  const backupExport = useBackupExport();
+  const { exportVerbund, exportDialog, dismissExport } = useVerbundExport(backupExport);
   const navigate = useNavigate();
   const heading = useRef<HTMLHeadingElement>(null);
   const input = useRef<HTMLInputElement>(null);
@@ -54,7 +56,7 @@ export function RestoreSheet({ file: initialFile, rowDrafts, onCancel, onDone }:
   const [backup, setBackup] = useState<BackupState>('idle');
   useEffect(() => { heading.current?.focus(); }, []);
 
-  /** Liest die Vorschau zu den aktuellen Bytes; offene Eingaben im Zielbereich halten sie zurück. */
+  /** Liest die Vorschau zu den aktuellen Bytes; offene Eingaben im Zielbereich halten sie zurück, außer ein Zuordnungskonflikt blockiert jeden Restore. */
   const readPreview = async (run: number, clarify: boolean): Promise<void> => {
     const current = bytes.current;
     if (!current) return;
@@ -70,7 +72,7 @@ export function RestoreSheet({ file: initialFile, rowDrafts, onCancel, onDone }:
     const preview = result.value;
     setInfo(fileInfo(preview));
     scope.current = scopeOf(preview);
-    if (clarify) {
+    if (clarify && !scopeConflict(preview)) {
       const inputs = await pendingRestoreInputs(scope.current, rowDrafts);
       if (run !== generation.current) return;
       if (!inputs.ok) { setPhase({ step: 'read-failed' }); return; }
@@ -126,7 +128,6 @@ export function RestoreSheet({ file: initialFile, rowDrafts, onCancel, onDone }:
     await readPreview(run, false);
   };
 
-
   const saveRename = async (entry: NamedInput) => {
     const saved = await saveNamedInput(entry, { renameVerbund, renameScope, createScope });
     if (saved) discardRestoreInput(entry, rowDrafts);
@@ -137,7 +138,8 @@ export function RestoreSheet({ file: initialFile, rowDrafts, onCancel, onDone }:
     if (running.current) return;
     running.current = true;
     const run = generation.current;
-    // Eine nach der Vorschau entstandene Eingabe im Zielbereich verwirft die Vorschau.
+    // Ab der Bestätigung ist alles gesperrt; eine nach der Vorschau entstandene Eingabe im Zielbereich verwirft die Vorschau.
+    setPhase({ step: 'running', preview });
     const inputs = await pendingRestoreInputs(scopeOf(preview), rowDrafts);
     if (run !== generation.current) { running.current = false; return; }
     if (!inputs.ok || inputs.value.length > 0) {
@@ -145,7 +147,6 @@ export function RestoreSheet({ file: initialFile, rowDrafts, onCancel, onDone }:
       setPhase(inputs.ok ? { step: 'clarify', inputs: inputs.value } : { step: 'read-failed' });
       return;
     }
-    setPhase({ step: 'running', preview });
     const result = await restoreBackup(preview);
     running.current = false;
     if (run !== generation.current) return;
@@ -156,18 +157,20 @@ export function RestoreSheet({ file: initialFile, rowDrafts, onCancel, onDone }:
     else setPhase({ step: 'write-failed', preview, quota: code === 'WORKSPACE_QUOTA_EXCEEDED' });
   };
 
-  /** „Vorher sichern“: Das Ergebnis gehört nur zu dieser Prüfung; nach einem Dateiwechsel wird es verworfen. */
-  const backupFirst = (preview: RestorePreview) => {
+  /** „Vorher sichern“; eine Verbundsicherung läuft wie die Zeilenaktion. Ein Dateiwechsel verwirft die erstellte Datei und schließt ihren offenen Umfangsdialog. */
+  const backupFirst = (preview: RestorePreview, trigger: HTMLElement) => {
     const run = generation.current;
-    setBackup('running');
-    void (preview.kind === 'workspace' ? exportBackup() : exportVerbund(preview.verbundId))
-      .then((started) => { if (run === generation.current) setBackup(started ? 'started' : 'failed'); });
+    const current = () => run === generation.current;
+    setBackup('idle');
+    void (preview.kind === 'workspace' ? backupExport.exportBackup(current).then((started) => (started ? 'started' : 'failed')) : exportVerbund(preview.verbundId, trigger, current))
+      .then((outcome) => { if (current()) setBackup(outcome === 'canceled' ? 'idle' : outcome); });
   };
 
   const chooseFile = (event: ChangeEvent<HTMLInputElement>) => {
     const next = event.target.files?.[0];
     event.target.value = '';
     if (!next || running.current) return;
+    dismissExport();
     setFile(next);
     check(next);
   };
@@ -259,7 +262,7 @@ export function RestoreSheet({ file: initialFile, rowDrafts, onCancel, onDone }:
             {phase.step === 'reading' && <output className="block text-sm text-[var(--color-text-secondary)]">Vorschau wird gelesen…</output>}
             {phase.step === 'collision' && (
               <>
-                <Message tone="alert" title="Kollision">Dokumente der Datei gehören zu einem anderen Verbund, oder Datei und Ziel sind wegen einer Anwendungsbereichszuordnung nicht als Verbund wiederherstellbar. Nichts wird überschrieben.</Message>
+                <Message tone="alert" title="Kollision">Dokumente der Datei gehören zu einem anderen Verbund in diesem Browser. Nichts wird überschrieben.</Message>
                 <Actions>{cancel}{otherFile}</Actions>
               </>
             )}
@@ -282,15 +285,16 @@ export function RestoreSheet({ file: initialFile, rowDrafts, onCancel, onDone }:
                 phase={shown.step}
                 quota={shown.step === 'write-failed' && shown.quota}
                 writable={writable}
-                backup={backup}
-                cancel={cancel}
-                onBackup={() => backupFirst(shown.preview)}
+                backup={backupExport.exporting ? 'running' : backup}
+                cancel={cancel} otherFile={otherFile}
+                onBackup={(trigger) => backupFirst(shown.preview, trigger)}
                 onConfirm={() => void confirm(shown.preview)}
               />
             )}
           </Section>
         )}
       </div>
+      {exportDialog}
     </div>
   );
 }

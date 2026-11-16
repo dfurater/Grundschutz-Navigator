@@ -69,7 +69,7 @@ describe('Anwendungsbereich löschen', () => {
     const { dialog } = await openDelete();
     fireEvent.click(dialog.getByRole('button', { name: 'Endgültig löschen' }));
     expect(await within(main()).findByRole('heading', { level: 1, name: 'Arbeitsbereich' })).toHaveFocus();
-    expect(within(main()).getByRole('status', { name: '' })).toHaveTextContent('Anwendungsbereich gelöscht.');
+    expect(within(main()).getByText('Anwendungsbereich gelöscht.', { selector: 'output' })).toHaveRole('status');
     await within(main()).findByText('Kein Anwendungsbereich angelegt');
 
     await act(() => first.router.navigate('/about'));
