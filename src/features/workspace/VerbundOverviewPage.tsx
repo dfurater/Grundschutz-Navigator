@@ -12,6 +12,7 @@ import type { WorkspaceScope, WorkspaceVerbund } from '@/domain/workspaceModel';
 import { FOCUS_RING, OriginLabel } from '@/features/workspace/DocumentMarks';
 import { WorkspaceNotices, useBackupExport } from '@/features/workspace/WorkspaceNotices';
 import { RestoreSheet, type RestoreDone } from '@/features/workspace/RestoreSheet';
+import { useVerbundExport } from '@/features/workspace/VerbundExportDialog';
 import { WorkspaceDeleteDialog } from '@/features/workspace/WorkspaceDeleteDialog';
 import { NameForm, ROW_BUTTON, SectionHead } from '@/features/workspace/WorkspaceForms';
 import { ScopeCreateView } from '@/features/workspace/ScopeOverviewPage';
@@ -63,7 +64,7 @@ function VerbundRow({ verbund, scopeName, writable, rowDrafts, onRowDraft, track
   /** Zuletzt wiederhergestellt; hinterlegt, bis die Seite verlassen wird. */
   restored: boolean;
   exporting: boolean;
-  onExport: (verbund: WorkspaceVerbund) => void;
+  onExport: (verbund: WorkspaceVerbund, trigger: HTMLButtonElement) => void;
   onDelete: (verbund: WorkspaceVerbund) => void;
 }>) {
   const { renameVerbund, renameDrafts } = useWorkspace();
@@ -104,7 +105,10 @@ function VerbundRow({ verbund, scopeName, writable, rowDrafts, onRowDraft, track
       </span>
       <div className="flex gap-1">
         <Button variant="ghost" size="sm" className={ROW_BUTTON} disabled={!writable} onClick={() => onRowDraft(verbund.verbundId, verbund.name)}>Umbenennen</Button>
-        <Button variant="ghost" size="sm" className={ROW_BUTTON} disabled={exporting} aria-label={`${verbund.name} sichern`} onClick={() => onExport(verbund)}>Sichern</Button>
+        {/* Die Beschriftung folgt der angezeigten Zuordnung; ob der Dialog erscheint, entscheidet die erstellte Datei. */}
+        <Button variant="ghost" size="sm" className={ROW_BUTTON} disabled={exporting} aria-label={`${verbund.name} sichern${verbund.scopeId === undefined ? '' : '…'}`} onClick={(event) => onExport(verbund, event.currentTarget)}>
+          {verbund.scopeId === undefined ? 'Sichern' : 'Sichern…'}
+        </Button>
         <button
           type="button"
           disabled={!writable}
@@ -178,8 +182,11 @@ export function VerbundOverviewPage() {
   // „Anwendungsbereich anlegen“ ist Ansichtszustand dieser Seite wie das Prüfblatt: keine Route, kein Name im Titel.
   // Eine offene Anlage aus dem Provider öffnet die Ansicht beim Zurückkehren wieder.
   const [creatingScope, setCreatingScope] = useState(() => !scopeDeleted && scopeDrafts.has(NEW_SCOPE_DRAFT));
-  const { exporting, exportBackup, exportVerbund } = useBackupExport();
+  const backupExport = useBackupExport();
+  const { exporting, exportBackup } = backupExport;
+  const { exportVerbund: exportScoped, exportDialog, dismissExport } = useVerbundExport(backupExport);
   const [pendingDelete, setPendingDelete] = useState<WorkspaceVerbund | null>(null);
+  const [exportStarted, setExportStarted] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   // „Vorher sichern“ hat eine Eingabe gespeichert und die Löschung wurde nicht bestätigt.
   const [prepared, setPrepared] = useState(false);
@@ -282,10 +289,20 @@ export function VerbundOverviewPage() {
     heading.current?.focus();
   }, [deleted, rowDrafts]);
 
+  const exportVerbund = async (verbund: WorkspaceVerbund, trigger: HTMLButtonElement) => {
+    // Die vor jedem Export geleerte Statusregion sagt auch eine wiederholte Meldung erneut an.
+    setExportStarted(false);
+    // Eine inzwischen geöffnete modale Ebene oder Ansicht macht den Zeilenknopf unbedienbar; die erstellte Datei wird dann verworfen.
+    const operable = () => trigger.isConnected && !trigger.closest('[inert],[hidden]');
+    if (await exportScoped(verbund.verbundId, trigger, operable) === 'started') setExportStarted(true);
+  };
+
   const chooseFile = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = '';
     if (!file || !writable) return;
+    // Das Prüfblatt ersetzt die Übersicht; ein noch offener Umfangsdialog einer Zeilensicherung verwirft seine Datei.
+    dismissExport();
     setRestored(null);
     setRestoreFile(file);
   };
@@ -341,9 +358,11 @@ export function VerbundOverviewPage() {
 
         <WorkspaceNotices />
 
-        {/* S6819: <output> trägt die implizite Rolle "status". Die eine Region steht vorab und außerhalb des Layoutflusses
-            und sagt Lösch-, Abbruch- und Wiederherstellungsmeldung an; die sichtbaren Flächen sind aria-hidden-Spiegel. */}
+        {/* S6819: <output> trägt die implizite Rolle "status". Die erste Region steht vorab und außerhalb des Layoutflusses
+            und sagt Lösch-, Abbruch- und Wiederherstellungsmeldung an; die sichtbaren Flächen sind aria-hidden-Spiegel.
+            Die zweite meldet den Start eines Verbund-Downloads, ohne die Seitenüberschrift zu beschreiben. */}
         <output id={statusId} className="sr-only">{statusText}</output>
+        <output className="sr-only">{exportStarted ? 'Download gestartet' : ''}</output>
         {statusText === SCOPE_DELETED_TEXT && (
           <p aria-hidden="true" className="rounded-md border border-[var(--color-border-strong)] bg-[var(--color-surface-base)] p-4 text-sm text-[var(--color-text-primary)]">
             {SCOPE_DELETED_TEXT}
@@ -389,7 +408,7 @@ export function VerbundOverviewPage() {
                         track={track}
                         restored={restored?.verbundId === verbund.verbundId}
                         exporting={exporting}
-                        onExport={(entry) => void exportVerbund(entry.verbundId)}
+                        onExport={(entry, trigger) => void exportVerbund(entry, trigger)}
                         onDelete={setPendingDelete}
                       />
                     ))}
@@ -453,6 +472,8 @@ export function VerbundOverviewPage() {
           }}
         />
       )}
+
+      {exportDialog}
 
       <ConfirmDialog
         open={pendingDelete !== null}

@@ -43,6 +43,16 @@ function backupFilename(prefix: string): string {
   return `${prefix}-sicherung-${new Date().toISOString().slice(0, 10)}.json`;
 }
 
+/** Erstellte, noch nicht heruntergeladene Sicherung; Anzeige und Download stammen aus derselben Datei. */
+export interface PreparedBackup {
+  readonly text: string;
+  readonly filename: string;
+}
+
+function save(prepared: PreparedBackup): void {
+  downloadBlob(new Blob([prepared.text], { type: 'application/json' }), prepared.filename);
+}
+
 /**
  * Exportiert den gesamten Speicher oder einen Verbund als Sicherungsdatei; auch unter Schreibsperre verfügbar.
  * Der Dateiname trägt nur das Datum, der Verbundname steht allein im Dateiinhalt.
@@ -54,7 +64,9 @@ export function useBackupExport(): {
    * `wanted` wird nach dem Export gelesen: `false` verwirft die Datei, ohne einen Download zu starten.
    */
   readonly exportBackup: (wanted?: () => boolean) => Promise<boolean>;
-  readonly exportVerbund: (verbundId: VerbundId) => Promise<boolean>;
+  /** Erstellt die Verbundsicherung ohne Download; `null` nach einem Fehlschlag, den der Bereich als Speichermeldung zeigt. */
+  readonly prepareVerbund: (verbundId: VerbundId) => Promise<PreparedBackup | null>;
+  readonly saveBackup: (prepared: PreparedBackup) => void;
 } {
   const workspace = useWorkspace();
   const [exporting, setExporting] = useState(false);
@@ -63,13 +75,20 @@ export function useBackupExport(): {
     const exported = await result;
     setExporting(false);
     if (!wanted()) return false;
-    if (exported.ok) downloadBlob(new Blob([exported.value], { type: 'application/json' }), backupFilename(prefix));
+    if (exported.ok) save({ text: exported.value, filename: backupFilename(prefix) });
     return exported.ok;
+  };
+  const prepareVerbund = async (verbundId: VerbundId): Promise<PreparedBackup | null> => {
+    setExporting(true);
+    const exported = await workspace.exportVerbundBackup(verbundId);
+    setExporting(false);
+    return exported.ok ? { text: exported.value, filename: backupFilename('informationsverbund') } : null;
   };
   return {
     exporting,
     exportBackup: (wanted) => download(workspace.exportBackup(), 'informationsverbuende', wanted),
-    exportVerbund: (verbundId) => download(workspace.exportVerbundBackup(verbundId), 'informationsverbund'),
+    prepareVerbund,
+    saveBackup: save,
   };
 }
 

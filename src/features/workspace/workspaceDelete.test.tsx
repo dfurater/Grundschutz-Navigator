@@ -250,7 +250,8 @@ describe('Gesamtlöschung', () => {
       await waitFor(() => expect(dialog.getByRole('button', { name: 'Vorher sichern' })).toBeEnabled());
       fireEvent.click(dialog.getByRole('button', { name: 'Vorher sichern' }));
       expect(await dialog.findByText(`„${name}“`, { exact: false })).toBeInTheDocument();
-      expect(dialog.getByRole('heading', { name: 'Eine offene Eingabe klären' })).toHaveFocus();
+      // Der Dialog setzt den Fokus in einem Effekt nach dem Rendern der Klärungszeile.
+      await waitFor(() => expect(dialog.getByRole('heading', { name: 'Eine offene Eingabe klären' })).toHaveFocus());
       expect(dialog.getByRole('group', { name: `Neuer Informationsverbund · „${name}“` })).toContainElement(dialog.getByRole('button', { name: decision }));
       expect(downloads).toHaveLength(0);
       const decide = dialog.getByRole('button', { name: decision });
@@ -258,7 +259,7 @@ describe('Gesamtlöschung', () => {
       fireEvent.click(decide);
       expect(await dialog.findByText('Download gestartet. Bewahren Sie die Datei auf.')).toBeInTheDocument();
       // Die erledigte Klärungszeile nimmt den Fokus nicht aus dem Dialog mit.
-      expect(dialog.getByRole('heading', { name: 'Vor dem Löschen sichern' })).toHaveFocus();
+      await waitFor(() => expect(dialog.getByRole('heading', { name: 'Vor dem Löschen sichern' })).toHaveFocus());
       fireEvent.click(dialog.getByRole('button', { name: 'Abbrechen' }));
       expect(screen.getByLabelText('Name')).toHaveValue('');
       return downloads.splice(0)[0].text();

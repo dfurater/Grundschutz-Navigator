@@ -6,7 +6,7 @@ import { CONTENT_HASH_ALGORITHM, CONTENT_HASH_VERSION } from '@/domain/reviewTra
 import { bindsEnvelopeSource, withinSourceLimits } from '@/adapters/workspaceDraftSource';
 import {
   STORAGE_SCHEMA_VERSION, isVerbundName,
-  type DocumentSnapshot, type WorkspaceBackup, type WorkspaceBackupFile, type WorkspaceScope, type WorkspaceVerbundBackup,
+  type DocumentSnapshot, type WorkspaceBackup, type WorkspaceBackupFile, type WorkspaceScope, type WorkspaceVerbund, type WorkspaceVerbundBackup,
 } from '@/domain/workspaceModel';
 
 type StorageVersion = 1 | 2 | 3 | 4;
@@ -41,7 +41,6 @@ interface BundleContext {
   readonly version: StorageVersion;
   readonly verbuende: Set<string>;
   readonly scopes: Set<string>;
-  readonly partitioned: boolean;
   readonly documents: Map<string, { verbundId: string; rootType: string; oscalVersion: string }>;
   readonly drafts: Set<string>;
   readonly bindings: Set<string>;
@@ -52,12 +51,11 @@ interface BundleContext {
   metaSeen: boolean;
 }
 
-function newContext(version: StorageVersion, partitioned = false): BundleContext {
+function newContext(version: StorageVersion): BundleContext {
   return {
     version,
     verbuende: new Set(),
     scopes: new Set(),
-    partitioned,
     documents: new Map(),
     drafts: new Set(),
     bindings: new Set(),
@@ -91,7 +89,7 @@ function collectVerbuende(context: BundleContext, rows: readonly unknown[]): boo
   for (const row of rows) {
     if (!fields(row, ['verbundId', 'name', 'createdAt', 'savedAt'], optional) || !uuid(row.verbundId) || !isVerbundName(row.name)
       || !times(row) || !validBackupSavedAt(row.backupSavedAt) || context.verbuende.has(row.verbundId)) return false;
-    if (Object.hasOwn(row, 'scopeId') && (!uuid(row.scopeId) || (!context.partitioned && !context.scopes.has(row.scopeId)))) return false;
+    if (Object.hasOwn(row, 'scopeId') && (!uuid(row.scopeId) || !context.scopes.has(row.scopeId))) return false;
     context.verbuende.add(row.verbundId);
   }
   return true;
@@ -300,19 +298,28 @@ export function createWorkspaceStructureValidator(version: StorageVersion = STOR
   };
 }
 
+/** Scopezeilen vor den Verbünden; ein Verbundbündel trägt genau die Scopezeile seines zugeordneten Verbunds, sonst keine. */
+function collectBundleScopes(context: BundleContext, scopes: unknown, verbuende: readonly WorkspaceVerbund[], partitioned: boolean): boolean {
+  if (!Array.isArray(scopes) || !collectScopes(context, scopes) || !collectVerbuende(context, verbuende)) return false;
+  return !partitioned || context.scopes.size === (verbuende[0].scopeId === undefined ? 0 : 1);
+}
+
 function validBackupStructure(value: unknown, format: WorkspaceBackup['format'] | WorkspaceVerbundBackup['format'], version: 2 | 3 | 4): boolean {
   const partitioned = format === 'gspp-workspace-verbund';
   const required = ['format', 'storageSchemaVersion', 'verbuende', 'documents', 'drafts', 'bindings', 'reviewTrail', 'reviewBaseline'];
   if (!partitioned) required.push('workspaceMeta');
   if (!partitioned && version === 4) required.push('methodikScopes');
-  if (!fields(value, required) || value.format !== format || value.storageSchemaVersion !== version) return false;
+  // v4-Verbundbündel ohne Zuordnung bleiben auch ohne das Feld gültig.
+  const optional = partitioned && version === 4 ? ['methodikScopes'] : [];
+  if (!fields(value, required, optional) || value.format !== format || value.storageSchemaVersion !== version) return false;
   const backup = value as unknown as WorkspaceBackup;
   if (![backup.verbuende, backup.documents, backup.drafts, backup.bindings, backup.reviewTrail, backup.reviewBaseline].every(Array.isArray)) return false;
   if (!partitioned && (!Array.isArray(backup.workspaceMeta) || !validWorkspaceMeta(backup.workspaceMeta, version))) return false;
   if (partitioned && backup.verbuende.length !== 1) return false;
-  const context = newContext(version, partitioned);
-  if (!partitioned && version === 4 && (!Array.isArray(backup.methodikScopes) || !collectScopes(context, backup.methodikScopes))) return false;
-  return collectVerbuende(context, backup.verbuende) && collectDocuments(context, backup.documents)
+  const context = newContext(version);
+  // Nur ein fehlendes optionales Feld gilt als leere Liste; ein vorhandener Wert muss ein Array sein.
+  return collectBundleScopes(context, Object.hasOwn(value, 'methodikScopes') ? value.methodikScopes : [], backup.verbuende, partitioned)
+    && collectDocuments(context, backup.documents)
     && validDrafts(context, backup.drafts) && collectBindings(context, backup.bindings)
     && collectReviewTrail(context, backup.reviewTrail) && collectReviewBaseline(context, backup.reviewBaseline);
 }
