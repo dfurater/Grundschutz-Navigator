@@ -123,6 +123,10 @@ describe('Zuordnung im Arbeitsbereich', () => {
     expect(main().getByRole('checkbox', { name: northName })).toBeChecked();
     expect(await within(main().getByRole('region', { name: 'Bereits zugeordnet' })).findByText(portalName)).toBeVisible();
     expect(await rows()).toEqual(concurrent);
+    fireEvent.click(button('1 zuordnen'));
+    fireEvent.click(dialog().getByRole('button', { name: 'Zuordnen' }));
+    expect(await main().findByRole('link', { name: northName })).toBeVisible();
+    expect(main().queryByRole('alert')).not.toBeInTheDocument();
   });
 
   it('lädt die Auswahl nach einer Änderung aus „Bereits zugeordnet“ neu', async () => {
@@ -225,6 +229,40 @@ describe('Zuordnung im Arbeitsbereich', () => {
     fireEvent.click(button('Anlegen'));
     await main().findByRole('link', { name: 'Verwaltung' });
     expect((await rows()).find(row => row.name === 'Verwaltung')?.scopeId).toBe(network.scopeId);
+  });
+
+  it('legt den nächsten während des Speicherns eingegebenen Namen mit dem neuen Bereichsstand an', async () => {
+    const members: WorkspaceVerbund[] = [];
+    let finishFirstWrite!: () => void;
+    const firstWrite = new Promise<void>((resolve) => { finishFirstWrite = resolve; });
+    let scope = network;
+    const port = fakePort({
+      listScopes: () => ok([scope]),
+      listVerbuende: () => ok([...members]),
+      createVerbund: async (name, expected) => {
+        if (expected?.savedAt !== scope.savedAt) return fail('WORKSPACE_SAVE_CONFLICT');
+        if (members.length === 0) await firstWrite;
+        scope = { ...scope, savedAt: new Date(Date.parse(scope.savedAt) + 1).toISOString() };
+        const created = { ...(members.length === 0 ? north : portal), name, scopeId: scope.scopeId, savedAt: scope.savedAt };
+        members.push(created);
+        return ok(created);
+      },
+    });
+    renderWorkspaceWithPort(port, buildScopeUrl(network.scopeId));
+    fireEvent.click(await main().findByRole('button', { name: 'Informationsverbund hier anlegen' }));
+    const input = main().getByLabelText('Name des Informationsverbunds');
+    fireEvent.change(input, { target: { value: northName } });
+    fireEvent.click(button('Anlegen'));
+    fireEvent.change(input, { target: { value: portalName } });
+    await act(async () => {
+      finishFirstWrite();
+      await firstWrite;
+    });
+    await waitFor(() => expect(button('Anlegen')).toBeEnabled());
+    expect(input).toHaveValue(portalName);
+    fireEvent.click(button('Anlegen'));
+    expect(await main().findByRole('link', { name: portalName })).toBeVisible();
+    expect(members.map(row => row.name)).toEqual([northName, portalName]);
   });
 
   it('sperrt Anlegen, Zuordnen, Wechsel und Aufheben bei schreibgeschütztem Speicher', async () => {

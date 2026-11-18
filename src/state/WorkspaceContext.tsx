@@ -378,7 +378,10 @@ export function WorkspaceProvider({ open = openWorkspaceStore, session: provided
   const writeMembership = useCallback(async <T,>(operation: (store: WorkspacePort) => Promise<WorkspaceResult<T>>) => {
     return write(async (store) => {
       const result = await operation(store).catch(storageFailed);
-      if (result.ok) return result;
+      if (result.ok) {
+        setNotices(current => withoutNotice(current, 'conflict'));
+        return result;
+      }
       const { code } = result.diagnostic;
       if (code !== 'WORKSPACE_SAVE_CONFLICT' && code !== 'WORKSPACE_SCOPE_NOT_FOUND') return result;
       // Eine referenzierte Scopezeile kann seit der Auswahl auch gelöscht worden sein.

@@ -307,8 +307,12 @@ function CreateScopedVerbundView({ scope: openedScope, onClose, onSaved }: Reado
   const scope = inventory.scopes.find(row => row.scopeId === openedScope.scopeId);
   const draftKey = scopedVerbundDraftKey(openedScope.scopeId);
   const afterSave = (result: WorkspaceResult<WorkspaceVerbund>) => {
-    if (result.ok && !scopeDrafts.has(draftKey)) onSaved();
-    if (!result.ok && result.diagnostic.code === 'WORKSPACE_SAVE_CONFLICT') inventory.refresh();
+    if (!result.ok) {
+      if (result.diagnostic.code === 'WORKSPACE_SAVE_CONFLICT') inventory.refresh();
+      return;
+    }
+    if (scopeDrafts.has(draftKey)) inventory.refresh('save');
+    else onSaved();
   };
   const busy = usePendingWrite(() => pendingVerbundWrite(draftKey), afterSave);
   return (
