@@ -93,7 +93,7 @@ export function useBackupExport(): {
 }
 
 /** Benannte Speichermeldungen; jede trägt ihre Handlung. */
-export function WorkspaceNotices() {
+export function WorkspaceNotices({ refreshOnConflict = false }: Readonly<{ refreshOnConflict?: boolean }> = {}) {
   const { notices, reload, status } = useWorkspace();
   const { exporting, exportBackup } = useBackupExport();
   if (notices.length === 0) return null;
@@ -101,6 +101,7 @@ export function WorkspaceNotices() {
     <ul aria-label="Speichermeldungen" className="space-y-2">
       {notices.map((notice) => {
         const { title, text, action } = NOTICE_TEXT[notice];
+        const refreshing = notice === 'conflict' && refreshOnConflict;
         return (
           <li
             key={notice}
@@ -110,13 +111,15 @@ export function WorkspaceNotices() {
           >
             <div className="min-w-0">
               <p className="text-sm font-semibold text-[var(--color-text-primary)]">{title}</p>
-              <p className="mt-1 text-sm leading-relaxed text-[var(--color-text-secondary)]">{text}</p>
+              <p className="mt-1 text-sm leading-relaxed text-[var(--color-text-secondary)]">
+                {refreshing ? 'Ein anderer Tab hat die Zuordnung inzwischen geändert. Der aktuelle Stand wird geladen. Prüfen Sie Ihre Auswahl erneut.' : text}
+              </p>
             </div>
             {action === 'export' ? (
               <Button variant="secondary" className="min-h-touch shrink-0 desktop:min-h-0" onClick={() => void exportBackup()} disabled={exporting || (status !== 'ready' && notice !== 'migration-failed')}>
                 Sicherung exportieren
               </Button>
-            ) : (
+            ) : !refreshing && (
               <Button variant="secondary" className="min-h-touch shrink-0 desktop:min-h-0" onClick={reload}>
                 Neu laden
               </Button>

@@ -8,8 +8,9 @@ import { ConfirmDialog } from '@/components/ConfirmDialog';
 import type { ScopeMembershipExpectation, WorkspaceResult, WorkspaceScope, WorkspaceVerbund } from '@/domain/workspaceModel';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { FOCUS_RING, OriginLabel } from '@/features/workspace/DocumentMarks';
+import { ScopeMembershipArea } from '@/features/workspace/ScopeMembershipViews';
 import { relativeTime } from '@/features/workspace/StationCards';
-import { NameForm, SaveFailed, SectionHead } from '@/features/workspace/WorkspaceForms';
+import { NameForm, ROW_BUTTON, SaveFailed, SectionHead } from '@/features/workspace/WorkspaceForms';
 import { usePendingWrite } from '@/features/workspace/usePendingWrite';
 import { WorkspaceNotices } from '@/features/workspace/WorkspaceNotices';
 import { WorkspaceStatePage } from '@/features/workspace/WorkspaceStatePage';
@@ -207,49 +208,64 @@ function ScopeHeader({ scope, members, now }: Readonly<{ scope: WorkspaceScope; 
  */
 export function ScopeOverviewPage() {
   const { scopeId } = useParams();
-  const { status, scopes, scopesFailed, verbuende } = useWorkspace();
+  const { status, scopes, scopesFailed, verbuende, writable } = useWorkspace();
   const [now] = useState(Date.now);
   if (!isLocalIdentity(scopeId)) return <WorkspaceStatePage state="scope-not-found" />;
   if (status === 'unavailable' || scopesFailed) return <WorkspaceStatePage state="scope-failed" />;
   if (scopes === null || verbuende === null) return <WorkspaceStatePage state="scope-loading" />;
   const scope = scopes.find((entry) => entry.scopeId === scopeId);
-  if (!scope) return <WorkspaceStatePage state="scope-not-found" />;
-  const members = verbuende.filter((verbund) => verbund.scopeId === scope.scopeId);
+  const members = verbuende.filter((verbund) => verbund.scopeId === scopeId);
   return (
-    <>
-      <PageTitle title={PAGE_TITLES.scope} />
-      {/* Außerhalb des Desktops fehlt der Kopfzeilenpfad; die Zurückzeile führt in den Arbeitsbereich (Bild 6). */}
-      <Link
-        to={buildWorkspaceIndexUrl()}
-        className={`flex min-h-touch items-center gap-1 border-b border-[var(--color-border-default)] bg-[var(--color-surface-base)] px-4 text-sm font-semibold text-[var(--color-text-primary)] desktop:hidden ${FOCUS_RING} focus-visible:ring-inset focus-visible:ring-offset-0`}
-      >
-        <span aria-hidden="true">‹</span> Arbeitsbereich
-      </Link>
-      <div className="mx-auto w-full max-w-screen-2xl space-y-4 p-4 desktop:px-7 desktop:py-6">
-        <ScopeHeader key={scope.scopeId} scope={scope} members={members} now={now} />
-        <WorkspaceNotices />
-        <section aria-labelledby="scope-verbuende">
-          <SectionHead id="scope-verbuende" title="Informationsverbünde" count={members.length} />
-          <div className="rounded-md border border-[var(--color-border-default)] bg-[var(--color-surface-base)]">
-            {members.length === 0 ? (
-              <p className="px-4 py-3 text-sm text-[var(--color-text-secondary)]">Keine Informationsverbünde zugeordnet</p>
-            ) : (
-              <ul className="divide-y divide-[var(--color-border-subtle)]">
-                {members.map((verbund) => (
-                  <li key={verbund.verbundId} className="px-4 py-2">
-                    <Link
-                      to={buildVerbundUrl(verbund.verbundId)}
-                      className={`flex min-h-touch min-w-0 items-center rounded text-sm font-semibold text-[var(--color-text-primary)] hover:underline desktop:min-h-8 ${FOCUS_RING}`}
-                    >
-                      <span className="min-w-0 break-words">{verbund.name}</span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            )}
+    <ScopeMembershipArea key={scopeId}>
+      {(open) => scope ? (
+        <>
+          <PageTitle title={PAGE_TITLES.scope} />
+          {/* Außerhalb des Desktops fehlt der Kopfzeilenpfad; die Zurückzeile führt in den Arbeitsbereich (Bild 6). */}
+          <Link
+            to={buildWorkspaceIndexUrl()}
+            className={`flex min-h-touch items-center gap-1 border-b border-[var(--color-border-default)] bg-[var(--color-surface-base)] px-4 text-sm font-semibold text-[var(--color-text-primary)] desktop:hidden ${FOCUS_RING} focus-visible:ring-inset focus-visible:ring-offset-0`}
+          >
+            <span aria-hidden="true">‹</span> Arbeitsbereich
+          </Link>
+          <div className="mx-auto w-full max-w-screen-2xl space-y-4 p-4 desktop:px-7 desktop:py-6">
+            <ScopeHeader key={scope.scopeId} scope={scope} members={members} now={now} />
+            <WorkspaceNotices />
+            <section aria-labelledby="scope-verbuende">
+              <SectionHead id="scope-verbuende" title="Informationsverbünde" count={members.length} />
+              <div className="rounded-md border border-[var(--color-border-default)] bg-[var(--color-surface-base)]">
+                {members.length === 0 ? (
+                  <p className="px-4 py-3 text-sm text-[var(--color-text-secondary)]">Keine Informationsverbünde zugeordnet</p>
+                ) : (
+                  <ul className="divide-y divide-[var(--color-border-subtle)]">
+                    {members.map((verbund) => (
+                      <li key={verbund.verbundId} className="flex flex-wrap items-center gap-x-4 px-4 py-2">
+                        <Link
+                          to={buildVerbundUrl(verbund.verbundId)}
+                          className={`flex min-h-touch min-w-0 flex-1 basis-48 items-center rounded text-sm font-semibold text-[var(--color-text-primary)] hover:underline desktop:min-h-8 ${FOCUS_RING}`}
+                        >
+                          <span className="min-w-0 break-words">{verbund.name}</span>
+                        </Link>
+                        <div className="flex flex-wrap gap-2">
+                          <Button variant="ghost" disabled={!writable} className={ROW_BUTTON}
+                            onClick={(event) => open({ kind: 'move', verbundId: verbund.verbundId }, event.currentTarget)}>Zuordnung ändern…</Button>
+                          <Button variant="ghost" disabled={!writable} className={ROW_BUTTON}
+                            onClick={(event) => open({ kind: 'move', verbundId: verbund.verbundId, remove: true }, event.currentTarget)}>Zuordnung aufheben…</Button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button variant="secondary" disabled={!writable} className={ROW_BUTTON}
+                  onClick={(event) => open({ kind: 'assign', scope }, event.currentTarget)}>Vorhandene zuordnen</Button>
+                <Button variant="secondary" disabled={!writable} className={ROW_BUTTON}
+                  onClick={(event) => open({ kind: 'create', scope }, event.currentTarget)}>Informationsverbund hier anlegen</Button>
+              </div>
+            </section>
           </div>
-        </section>
-      </div>
-    </>
+        </>
+      ) : <WorkspaceStatePage state="scope-not-found" />}
+    </ScopeMembershipArea>
   );
 }

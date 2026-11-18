@@ -1,10 +1,11 @@
 import { Link } from 'react-router';
-import { buildStationUrl, buildVerbundUrl, buildWorkspaceIndexUrl } from '@/app/routes';
+import { buildScopeUrl, buildStationUrl, buildVerbundUrl, buildWorkspaceIndexUrl } from '@/app/routes';
 import {
   STATION_DEFINITIONS, WORKSPACE_STATIONS, documentValidity, type DocumentValidity, type WorkspaceStation,
 } from '@/domain/workspaceStations';
 import type { WorkspaceDocumentView } from '@/state/workspaceVerbundView';
 import { FOCUS_RING } from '@/features/workspace/DocumentMarks';
+import { useWorkspace } from '@/hooks/useWorkspace';
 
 export type StationSelection = WorkspaceStation | 'all';
 
@@ -45,6 +46,9 @@ export function StationStrip({ verbundId, active, documents }: Readonly<{
   /** Ohne geladene Ansicht entfallen die Statuspunkte. */
   documents?: readonly WorkspaceDocumentView[];
 }>) {
+  const { scopes, verbuende } = useWorkspace();
+  const member = verbuende?.find(row => row.verbundId === verbundId);
+  const scope = scopes?.find(row => row.scopeId === member?.scopeId);
   const entries = [
     { key: 'all', title: 'Übersicht', to: buildVerbundUrl(verbundId), current: active === 'all', validity: undefined, gap: false },
     ...WORKSPACE_STATIONS.map((station) => {
@@ -62,10 +66,10 @@ export function StationStrip({ verbundId, active, documents }: Readonly<{
   return (
     <div className="border-b border-[var(--color-border-default)] bg-[var(--color-surface-base)]">
       <Link
-        to={buildWorkspaceIndexUrl()}
+        to={scope ? buildScopeUrl(scope.scopeId) : buildWorkspaceIndexUrl()}
         className={`flex min-h-touch items-center gap-1 px-4 text-sm font-semibold text-[var(--color-text-primary)] desktop:hidden ${FOCUS_RING} focus-visible:ring-inset focus-visible:ring-offset-0`}
       >
-        <span aria-hidden="true">‹</span> Arbeitsbereich
+        <span aria-hidden="true">‹</span> <span className="line-clamp-2 min-w-0 break-words">{scope?.name ?? 'Arbeitsbereich'}</span>
       </Link>
       <nav aria-label="Stationen" className="scrollbar-hidden overflow-x-auto px-4 pb-2 compact:pt-1 desktop:px-7 desktop:pb-0">
         <ul className="flex gap-2 desktop:gap-4">
