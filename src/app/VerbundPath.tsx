@@ -31,15 +31,15 @@ export function VerbundPath({ verbundId }: Readonly<{ verbundId: string | null }
         <>
           <span aria-hidden="true" className={SEPARATOR}>/</span>
           {member ? (
-            <Link to={buildScopeUrl(scope.scopeId)} className={`flex min-w-0 ${PATH_LINK}`}>
-              <span className="line-clamp-2 max-w-64 break-words">{scope.name}</span>
+            <Link to={buildScopeUrl(scope.scopeId)} className={`hidden min-w-0 xl:flex ${PATH_LINK}`}>
+              <span className="line-clamp-2 min-w-0 max-w-64 break-words">{scope.name}</span>
             </Link>
           ) : <span aria-current="page" className="line-clamp-2 max-w-64 break-words px-2 font-semibold text-[var(--header-text)]">{scope.name}</span>}
         </>
       )}
       {member && (
         <>
-          <span aria-hidden="true" className={scope ? 'text-[var(--header-text-subtle)]' : SEPARATOR}>/</span>
+          <span aria-hidden="true" className={SEPARATOR}>/</span>
           <ScopeSwitcher label="Informationsverbund" items={items} activeKey={member.verbundId} tone="header" />
         </>
       )}
