@@ -3,7 +3,7 @@ import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildScopeUrl, buildStationUrl, buildVerbundUrl, buildWorkspaceIndexUrl } from '@/app/routes';
 import type { WorkspaceScope, WorkspaceVerbund } from '@/domain/workspaceModel';
-import { fakePort, ok } from '@/test/fakeWorkspacePort';
+import { fail, fakePort, ok } from '@/test/fakeWorkspacePort';
 import { mainLandmark, renderWorkspaceArea, renderWorkspaceWithPort } from '@/test/renderWorkspaceArea';
 import { readStore, resetWorkspace, seedWorkspace } from '@/test/workspaceAreaFixture';
 
@@ -125,6 +125,36 @@ describe('Zuordnung im Arbeitsbereich', () => {
     expect(await rows()).toEqual(concurrent);
   });
 
+  it('lädt die Auswahl nach einer Änderung aus „Bereits zugeordnet“ neu', async () => {
+    await readStore(store => store.changeVerbundScope(portal.verbundId, null, other, portal.savedAt));
+    renderWorkspaceArea(buildScopeUrl(network.scopeId));
+    fireEvent.click(await main().findByRole('button', { name: 'Vorhandene zuordnen' }));
+    fireEvent.click(within(main().getByRole('region', { name: 'Bereits zugeordnet' })).getByRole('button', { name: 'Zuordnung ändern…' }));
+    fireEvent.click(main().getByRole('radio', { name: 'Keiner' }));
+    await waitFor(() => expect(button('Zuordnung aufheben…')).toBeEnabled());
+    fireEvent.click(button('Zuordnung aufheben…'));
+    fireEvent.click(dialog().getByRole('button', { name: 'Zuordnung aufheben' }));
+    expect(await main().findByRole('checkbox', { name: portalName })).toBeVisible();
+    expect(within(main().getByRole('region', { name: 'Bereits zugeordnet' })).queryByText(portalName)).toBeNull();
+  });
+
+  it('wiederholt nach einem Lesefehler die Dokumentabfrage für denselben Verbund', async () => {
+    const listDocuments = vi.fn().mockImplementationOnce(() => fail('WORKSPACE_STORAGE_FAILED')).mockImplementation(() => ok([]));
+    const port = fakePort({
+      listScopes: () => ok([network, other]),
+      listVerbuende: () => ok([{ ...north, scopeId: network.scopeId }]),
+      listDocuments,
+    });
+    renderWorkspaceWithPort(port, buildScopeUrl(network.scopeId));
+    fireEvent.click(await main().findByRole('button', { name: 'Zuordnung ändern…' }));
+    fireEvent.click(main().getByRole('radio', { name: otherName }));
+    fireEvent.click(await main().findByRole('button', { name: 'Neu laden' }));
+    await waitFor(() => expect(button('Zuordnung ändern…')).toBeEnabled());
+    expect(listDocuments).toHaveBeenLastCalledWith(north.verbundId);
+    expect(listDocuments).toHaveBeenCalledTimes(2);
+    expect(main().getByText('Verbundidentität · 0 Dokumente')).toBeVisible();
+  });
+
   it('hält die Auswahl sichtbar, wenn der Zielbereich gelöscht wurde', async () => {
     renderWorkspaceArea(buildScopeUrl(network.scopeId));
     await openAssignment();
@@ -184,10 +214,14 @@ describe('Zuordnung im Arbeitsbereich', () => {
     expect(await documentsAndBindings()).toEqual(docs);
   });
 
-  it('legt einen neuen Verbund direkt im geöffneten Anwendungsbereich an', async () => {
-    renderWorkspaceArea(buildScopeUrl(network.scopeId));
+  it('hält den Namen beim Routenwechsel und legt den Verbund im Anwendungsbereich an', async () => {
+    const { router } = renderWorkspaceArea(buildScopeUrl(network.scopeId));
     fireEvent.click(await main().findByRole('button', { name: 'Informationsverbund hier anlegen' }));
     fireEvent.change(main().getByLabelText('Name des Informationsverbunds'), { target: { value: 'Verwaltung' } });
+    await act(() => router.navigate(buildWorkspaceIndexUrl()));
+    await act(() => router.navigate(buildScopeUrl(network.scopeId)));
+    fireEvent.click(await main().findByRole('button', { name: 'Informationsverbund hier anlegen' }));
+    expect(main().getByLabelText('Name des Informationsverbunds')).toHaveValue('Verwaltung');
     fireEvent.click(button('Anlegen'));
     await main().findByRole('link', { name: 'Verwaltung' });
     expect((await rows()).find(row => row.name === 'Verwaltung')?.scopeId).toBe(network.scopeId);

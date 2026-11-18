@@ -6,7 +6,9 @@ import { FOCUS_RING } from '@/features/workspace/DocumentMarks';
 import { Facts, plural } from '@/features/workspace/RestoreSheetParts';
 import { NameForm, ROW_BUTTON, SectionHead } from '@/features/workspace/WorkspaceForms';
 import { WorkspaceNotices } from '@/features/workspace/WorkspaceNotices';
+import { usePendingWrite } from '@/features/workspace/usePendingWrite';
 import { useWorkspace } from '@/hooks/useWorkspace';
+import { scopedVerbundDraftKey } from '@/state/workspaceRestore';
 
 type MembershipView =
   | { readonly kind: 'assign' | 'create'; readonly scope: WorkspaceScope }
@@ -14,12 +16,16 @@ type MembershipView =
 
 type OpenMembershipView = (view: MembershipView, trigger: HTMLButtonElement) => void;
 type ViewActions = Readonly<{ onClose: () => void; onSaved: () => void }>;
+type InventoryRefresh = 'save' | 'conflict';
 
 const PANEL = 'rounded-md border border-[var(--color-border-default)] bg-[var(--color-surface-base)]';
 const CHOICE = 'flex min-h-touch cursor-pointer items-center gap-2 rounded-md border border-[var(--color-border-default)] px-3 py-2 text-sm has-disabled:cursor-not-allowed has-disabled:opacity-60 has-checked:border-[var(--color-accent-default)] has-checked:bg-[var(--color-accent-soft)]';
 const CHOICE_INPUT = `shrink-0 accent-[var(--color-accent-default)] ${FOCUS_RING}`;
 
-export function ScopeMembershipArea({ children }: Readonly<{ children: (open: OpenMembershipView) => ReactNode }>) {
+export function ScopeMembershipArea({ children, onSaved }: Readonly<{
+  children: (open: OpenMembershipView) => ReactNode;
+  onSaved?: () => void;
+}>) {
   const [action, setAction] = useState<{ view: MembershipView | null; trigger: HTMLButtonElement; saved?: boolean }>();
   const view = action?.view;
   const overview = useRef<HTMLDivElement>(null);
@@ -33,7 +39,10 @@ export function ScopeMembershipArea({ children }: Readonly<{ children: (open: Op
   const open: OpenMembershipView = (next, trigger) => setAction({ view: next, trigger });
   const actions: ViewActions = {
     onClose: () => setAction(current => current && { ...current, view: null }),
-    onSaved: () => setAction(current => current && { ...current, view: null, saved: true }),
+    onSaved: () => {
+      onSaved?.();
+      setAction(current => current && { ...current, view: null, saved: true });
+    },
   };
 
   return (
@@ -60,13 +69,14 @@ function MembershipPage({ title, refreshed, children }: Readonly<{ title: string
 
 function useMembershipInventory() {
   const { scopes, verbuende, scopesFailed, writable } = useWorkspace();
-  const [snapshot, setSnapshot] = useState(() => ({ scopes, verbuende, conflicted: false }));
+  const [snapshot, setSnapshot] = useState(() => ({ scopes, verbuende, refresh: null as InventoryRefresh | null }));
+  const refreshing = snapshot.refresh !== null;
   return {
-    scopes: (snapshot.conflicted ? scopes : snapshot.scopes) ?? [],
-    verbuende: (snapshot.conflicted ? verbuende : snapshot.verbuende) ?? [],
-    writable: writable && !scopesFailed && scopes !== null && verbuende !== null && (!snapshot.conflicted || snapshot.verbuende !== verbuende),
-    refreshed: snapshot.conflicted,
-    refresh: () => setSnapshot({ scopes, verbuende, conflicted: true }),
+    scopes: (refreshing ? scopes : snapshot.scopes) ?? [],
+    verbuende: (refreshing ? verbuende : snapshot.verbuende) ?? [],
+    writable: writable && !scopesFailed && scopes !== null && verbuende !== null && (!refreshing || snapshot.verbuende !== verbuende),
+    refreshed: snapshot.refresh === 'conflict',
+    refresh: (refresh: InventoryRefresh = 'conflict') => setSnapshot({ scopes, verbuende, refresh }),
   };
 }
 
@@ -123,13 +133,13 @@ function AssignVerbuendeView({ scope: openedScope, onClose, onSaved }: Readonly<
     setConfirmation({
       title: 'Informationsverbünde zuordnen?',
       label: 'Zuordnen',
-      description: <p>{plural(chosen.length, 'Informationsverbund', 'Informationsverbünde')} dem Anwendungsbereich „{scope.name}“ zuordnen?</p>,
+      description: <p className="tabular-nums">{plural(chosen.length, 'Informationsverbund', 'Informationsverbünde')} dem Anwendungsbereich „{scope.name}“ zuordnen?</p>,
       write: () => assignVerbuende(scope.scopeId, { scopeSavedAt: scope.savedAt, verbuende: chosen }),
     });
   };
 
   return (
-    <ScopeMembershipArea>
+    <ScopeMembershipArea onSaved={() => inventory.refresh('save')}>
       {(open) => (
         <MembershipPage title="Vorhandene Verbünde zuordnen" refreshed={inventory.refreshed}>
           <p className="break-words text-sm text-[var(--color-text-secondary)]">Ziel: {scope?.name ?? openedScope.name}</p>
@@ -153,7 +163,7 @@ function AssignVerbuendeView({ scope: openedScope, onClose, onSaved }: Readonly<
             {!scope && <p className="text-sm text-[var(--color-text-secondary)]">Der Anwendungsbereich ist nicht mehr verfügbar.</p>}
             <div className="flex flex-wrap gap-2">
               {candidates.length > 0 ? (
-                <Button type="submit" disabled={!inventory.writable || chosen.length === 0 || !scope} className={ROW_BUTTON}>{chosen.length} zuordnen</Button>
+                <Button type="submit" disabled={!inventory.writable || chosen.length === 0 || !scope} className={`${ROW_BUTTON} tabular-nums`}>{chosen.length} zuordnen</Button>
               ) : scope && (
                 <Button variant="secondary" disabled={!inventory.writable} className={ROW_BUTTON}
                   onClick={(event) => open({ kind: 'create', scope }, event.currentTarget)}>Informationsverbund hier anlegen</Button>
@@ -191,20 +201,20 @@ function AssignVerbuendeView({ scope: openedScope, onClose, onSaved }: Readonly<
 }
 
 function ChangeVerbundScopeView({ verbundId, remove, onClose, onSaved }: Readonly<{ verbundId: VerbundId; remove: boolean }> & ViewActions) {
-  const { changeVerbundScope, listDocuments } = useWorkspace();
+  const { changeVerbundScope, listDocuments, verbuende } = useWorkspace();
   const inventory = useMembershipInventory();
   const [selectedVerbund, setSelectedVerbund] = useState(verbundId);
   const [selection, setSelection] = useState<{ id: ScopeId | null; name: string } | undefined>(
     remove ? { id: null, name: 'Keiner' } : undefined,
   );
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
-  const [count, setCount] = useState<{ verbundId: VerbundId; documents: number } | null>(null);
+  const [count, setCount] = useState<{ verbundId: VerbundId; verbuende: typeof verbuende; documents: number } | null>(null);
   const verbund = inventory.verbuende.find(row => row.verbundId === selectedVerbund);
   const from = inventory.scopes.find(row => row.scopeId === verbund?.scopeId);
   const targets = inventory.scopes.filter(row => row.scopeId !== verbund?.scopeId);
   const to = targets.find(row => row.scopeId === selection?.id);
   const removable = selection?.id === null && from !== undefined;
-  const documents = count?.verbundId === selectedVerbund ? count.documents : null;
+  const documents = count?.verbundId === selectedVerbund && count.verbuende === verbuende ? count.documents : null;
   const writable = inventory.writable && Boolean(verbund) && (!verbund?.scopeId || from !== undefined);
   const ready = writable && documents !== null && (to !== undefined || removable);
   const changeLabel = removable ? 'Zuordnung aufheben' : 'Zuordnung ändern';
@@ -215,10 +225,10 @@ function ChangeVerbundScopeView({ verbundId, remove, onClose, onSaved }: Readonl
   useEffect(() => {
     let current = true;
     void listDocuments(selectedVerbund).then(result => {
-      if (current) setCount(result.ok ? { verbundId: selectedVerbund, documents: result.value.length } : null);
+      if (current) setCount(result.ok ? { verbundId: selectedVerbund, verbuende, documents: result.value.length } : null);
     });
     return () => { current = false; };
-  }, [selectedVerbund, listDocuments, inventory.verbuende]);
+  }, [selectedVerbund, listDocuments, verbuende]);
 
   const openConfirmation = () => {
     if (!ready || !verbund) return;
@@ -292,19 +302,26 @@ function ChangeVerbundScopeView({ verbundId, remove, onClose, onSaved }: Readonl
 }
 
 function CreateScopedVerbundView({ scope: openedScope, onClose, onSaved }: Readonly<{ scope: WorkspaceScope }> & ViewActions) {
-  const { createVerbund } = useWorkspace();
+  const { createVerbund, scopeDrafts, pendingVerbundWrite } = useWorkspace();
   const inventory = useMembershipInventory();
   const scope = inventory.scopes.find(row => row.scopeId === openedScope.scopeId);
+  const draftKey = scopedVerbundDraftKey(openedScope.scopeId);
+  const afterSave = (result: WorkspaceResult<WorkspaceVerbund>) => {
+    if (result.ok && !scopeDrafts.has(draftKey)) onSaved();
+    if (!result.ok && result.diagnostic.code === 'WORKSPACE_SAVE_CONFLICT') inventory.refresh();
+  };
+  const busy = usePendingWrite(() => pendingVerbundWrite(draftKey), afterSave);
   return (
     <MembershipPage title="Informationsverbund hier anlegen" refreshed={inventory.refreshed}>
       <p className="break-words text-sm text-[var(--color-text-secondary)]">Anwendungsbereich: {scope?.name ?? openedScope.name}</p>
       <div className={`p-4 ${PANEL}`}>
-        <NameForm label="Name des Informationsverbunds" submitLabel="Anlegen" disabled={!inventory.writable || !scope} onCancel={onClose}
+        <NameForm label="Name des Informationsverbunds" submitLabel="Anlegen" disabled={!inventory.writable || !scope}
+          initial={scopeDrafts.get(draftKey)} busy={busy} onChange={(name) => scopeDrafts.set(draftKey, name)}
+          onCancel={() => { scopeDrafts.delete(draftKey); onClose(); }}
           onSubmit={async (name) => {
             if (!inventory.writable || !scope) return false;
             const result = await createVerbund(name, scope);
-            if (result.ok) onSaved();
-            else if (result.diagnostic.code === 'WORKSPACE_SAVE_CONFLICT') inventory.refresh();
+            afterSave(result);
             return result.ok;
           }} />
       </div>
