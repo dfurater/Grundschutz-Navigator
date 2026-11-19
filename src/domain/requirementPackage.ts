@@ -79,7 +79,7 @@ export function requirementPackageState(
   return { kind: 'stale', requirementPackage, ...(title === undefined ? {} : { title }), ...(current ? { current } : {}) };
 }
 
-/** Der `class-1`-Quellenstand des Pakets; fehlt er, ist der Quellenstand offen. */
+/** Der `class-1`-Quellenstand des Pakets mit registriertem Artefaktschlüssel; sonst ist der Quellenstand offen. */
 export function classOnePin(requirementPackage: RequirementPackage) {
-  return requirementPackage.sourcePins.find((pin) => pin.kind === 'class-1');
+  return requirementPackage.sourcePins.find((pin): pin is Extract<RequirementPackagePin, { kind: 'class-1' }> => pin.kind === 'class-1' && isRegisteredArtifactKey(pin.artifactKey));
 }

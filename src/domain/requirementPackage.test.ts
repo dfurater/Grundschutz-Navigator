@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildRequirementPackage, missingStandFields, requirementPackageState } from '@/domain/requirementPackage';
+import { buildRequirementPackage, classOnePin, missingStandFields, requirementPackageState } from '@/domain/requirementPackage';
 import type { DocumentSnapshot, LocalId } from '@/domain/workspaceModel';
 
 const localId = '11111111-1111-4111-8111-111111111111' as LocalId;
@@ -20,6 +20,13 @@ describe('buildRequirementPackage', () => {
     expect(buildRequirementPackage('p', { localId, derivedFrom: partial }, stand).sourcePins).toHaveLength(1);
     const unknown = { ...derivedFrom, artifactKey: 'catalog-unbekannt' };
     expect(buildRequirementPackage('p', { localId, derivedFrom: unknown }, stand).sourcePins).toHaveLength(1);
+  });
+
+  it('zeigt einen nicht registrierten class-1-Pin als offenen Quellenstand', () => {
+    const built = buildRequirementPackage('p', { localId, derivedFrom }, stand);
+    expect(classOnePin(built)).toMatchObject({ artifactKey: 'catalog-gspp' });
+    const unregistered = { ...built, sourcePins: [built.sourcePins[0], { ...built.sourcePins[1], artifactKey: 'catalog-nicht-mehr-registriert' }] };
+    expect(classOnePin(unregistered as typeof built)).toBeUndefined();
   });
 
   it('teilt kein Objekt zwischen Baseline und Pin', () => {

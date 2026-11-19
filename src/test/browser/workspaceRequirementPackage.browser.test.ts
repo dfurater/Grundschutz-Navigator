@@ -201,7 +201,7 @@ it('verweigert den Verbund-Restore, wenn ein anderer Zielverbund dieselbe fehlen
   expect(value(await store.exportBackup())).toBe(before);
 });
 
-it('nimmt einen class-1-Paketpin nur mit registriertem Artefaktschlüssel aus Gesamt- und Verbundbackup an', async () => {
+it('stellt einen class-1-Paketpin wieder her, auch wenn sein Artefaktschlüssel nicht mehr im Register steht', async () => {
   const { store, va, p1 } = await fixture();
   value(await store.setRequirementPackage(va.verbundId, { savedAt: va.savedAt, baselineSavedAt: p1.savedAt }, p1.localId));
   const pinned = (text: string, artifactKey: string) => {
@@ -211,10 +211,11 @@ it('nimmt einen class-1-Paketpin nur mit registriertem Artefaktschlüssel aus Ge
   };
   const whole = value(await store.exportBackup());
   const partial = value(await store.exportVerbundBackup(va.verbundId));
-  const before = whole;
-  expect(await restoreWorkspaceBackup(store, pinned(whole, 'catalog-unbekannt'))).toMatchObject(backupInvalid);
-  expect(await restoreVerbundBackup(store, pinned(partial, 'catalog-unbekannt'))).toMatchObject(backupInvalid);
-  expect(value(await store.exportBackup())).toBe(before);
-  value(await restoreWorkspaceBackup(store, pinned(whole, 'catalog-gspp')));
-  expect((await verbund(store, va.verbundId)).requirementPackage?.sourcePins[1]).toMatchObject({ kind: 'class-1', artifactKey: 'catalog-gspp' });
+  // Grammatikwidrige Schlüssel bleiben abgelehnt.
+  expect(await restoreWorkspaceBackup(store, pinned(whole, 'Catalog Unbekannt'))).toMatchObject(backupInvalid);
+  value(await restoreWorkspaceBackup(store, pinned(whole, 'catalog-nicht-mehr-registriert')));
+  expect((await verbund(store, va.verbundId)).requirementPackage?.sourcePins[1]).toMatchObject({ kind: 'class-1', artifactKey: 'catalog-nicht-mehr-registriert' });
+  // Die eingespielte Sicherung lässt sich erneut exportieren und wiederherstellen.
+  value(await restoreWorkspaceBackup(store, bytes(value(await store.exportBackup()))));
+  value(await restoreVerbundBackup(store, pinned(partial, 'catalog-nicht-mehr-registriert')));
 });

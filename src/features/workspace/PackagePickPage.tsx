@@ -34,7 +34,7 @@ const LINK = `catalog-prose-link font-semibold ${FOCUS_RING}`;
 function MissingStand({ document, verbundId }: Readonly<{ document: WorkspaceDocumentView; verbundId: string }>) {
   if (!document.missingStand) return null;
   return (
-    <p className="-mt-2 pb-3 pl-[41px] pr-4 text-xs text-[var(--color-text-secondary)]">
+    <p className="-mt-2 pb-3 pl-10 pr-4 text-xs text-[var(--color-text-secondary)]">
       Fehlt: {document.missingStand.join(', ')} · <Link to={buildWorkspaceDocumentUrl(verbundId, document.localId)} className={LINK}>Dokument öffnen<span aria-hidden="true">&nbsp;→</span></Link>
     </p>
   );

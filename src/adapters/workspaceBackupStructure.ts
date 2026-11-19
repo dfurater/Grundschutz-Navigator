@@ -3,7 +3,6 @@ import { CLASS_2_IMPORT_LIMITS } from '@/domain/class2ImportLimits.mjs';
 import { serializeWorkspaceJson } from '@/domain/workspaceJson';
 import { OSCAL_ROOT_KEYS } from '@/domain/oscalVersionMatrix';
 import { CONTENT_HASH_ALGORITHM, CONTENT_HASH_VERSION } from '@/domain/reviewTrail';
-import { isRegisteredArtifactKey } from '@/domain/requirementPackage';
 import { bindsEnvelopeSource, withinSourceLimits } from '@/adapters/workspaceDraftSource';
 import {
   REQUIREMENT_PACKAGE_ROOTS, STORAGE_SCHEMA_VERSION, isVerbundName,
@@ -104,7 +103,7 @@ function collectVerbuende(context: BundleContext, rows: readonly unknown[]): boo
 
 /**
  * Paket eines Verbunds: eindeutige `packageId`, Baseline `profile`/`catalog` mit vollständigem Stand,
- * Pins in fester Folge `local` (gleich der Baseline) und höchstens ein `class-1` mit registriertem Artefaktschlüssel. Die Baseline darf fehlen
+ * Pins in fester Folge `local` (gleich der Baseline) und höchstens ein `class-1`. Wie bei `derivedFrom` gilt für den Artefaktschlüssel nur die Grammatik, damit ein exportiertes Paket wiederherstellbar bleibt, wenn sein Schlüssel später aus dem Register fällt. Die Baseline darf fehlen
  * („nicht auflösbar“), aber nie zu einem anderen Verbund gehören (`collectDocuments`).
  */
 function collectRequirementPackage(context: BundleContext, value: unknown, verbundId: string): boolean {
@@ -118,7 +117,6 @@ function collectRequirementPackage(context: BundleContext, value: unknown, verbu
   if (!fields(local, ['kind', 'localId', 'stand']) || local.kind !== 'local' || local.localId !== baseline.localId
     || !validSnapshot(local.stand) || !sameSnapshot(local.stand, baseline.stand)) return false;
   if (classOne !== undefined && !(fields(classOne, ['kind', 'artifactKey', 'snapshotCommit', 'contentSha256']) && classOne.kind === 'class-1'
-    && isRegisteredArtifactKey(classOne.artifactKey)
     && validDerivedFrom({ artifactKey: classOne.artifactKey, contentSha256: classOne.contentSha256, snapshotCommit: classOne.snapshotCommit }))) return false;
   context.packageIds.add(value.packageId);
   context.baselines.set(baseline.localId, verbundId);
