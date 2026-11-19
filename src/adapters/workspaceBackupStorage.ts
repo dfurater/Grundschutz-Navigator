@@ -3,7 +3,7 @@ import type { Collection } from 'dexie';
 import { STORAGE_SCHEMA_VERSION, type LocalId, type VerbundId, type WorkspaceBackup, type WorkspaceVerbundBackup, type WorkspaceRestoreTarget, type WorkspaceVerbundRestoreTarget, type WorkspaceVerbundRestorePreview, type WorkspaceMeta, type WorkspaceEnvelope, type WorkspaceDraft, type WorkspaceBinding, type WorkspaceVerbund, type ReviewTrailRow, type ReviewBaseline, type ScopeId, type WorkspaceScope, type VerbundRestoreScope } from '@/domain/workspaceModel';
 import { CLASS_2_IMPORT_LIMITS, WORKSPACE_BACKUP_MAX_BYTES } from '@/domain/class2ImportLimits.mjs';
 import { countObjectGraphNodesCapped, enforceClass2ObjectGraphInvariants, enforceWorkspaceBackupGraphInvariants } from '@/domain/oscalObjectGraph';
-import { serializeWorkspaceJson } from '@/domain/workspaceJson';
+import { serializeWorkspaceJson, serializeWorkspaceJsonSorted } from '@/domain/workspaceJson';
 import { serializeWorkspaceRecoveryJson } from '@/adapters/workspaceRecoveryJson';
 import { validWorkspaceBackupStructure, validVerbundBackupStructure, validWorkspaceScope } from '@/adapters/workspaceBackupStructure';
 import { LAST_TIMESTAMP_MS, reject, timestamp } from '@/adapters/workspaceStorageFailure';
@@ -189,6 +189,17 @@ export async function restoreWorkspaceBackupSnapshot(db: Dexie, backup: Workspac
   await db.table('workspaceMeta').bulkAdd(backup.workspaceMeta.map(row => ({ ...row, databaseId: meta.databaseId, storageSchemaVersion: STORAGE_SCHEMA_VERSION, savedAt: stamp })));
 }
 
+function packageId(verbund: WorkspaceVerbund): string | undefined {
+  return verbund.requirementPackage?.packageId;
+}
+
+/** Ein bestehender Zielverbund nimmt nur ein Bündel mit identischem Paket auf, verglichen als vollständiges Plain JSON. */
+function requirementPackageConflict(file: WorkspaceVerbund, existing: WorkspaceVerbund | null): boolean {
+  if (!existing) return false;
+  const plain = (verbund: WorkspaceVerbund) => verbund.requirementPackage === undefined ? null : serializeWorkspaceJsonSorted(verbund.requirementPackage);
+  return plain(file) !== plain(existing);
+}
+
 /** Restore rule R2: the scope state plus the target scope row whose stamp binds the preview. */
 async function readRestoreScope(db: Dexie, fileScope: WorkspaceScope | null, existingVerbund: WorkspaceVerbund | null): Promise<{ scope: VerbundRestoreScope; targetScope: WorkspaceScope | null }> {
   const scopes = db.table<WorkspaceScope, ScopeId>('methodikScopes');
@@ -214,6 +225,8 @@ export async function readVerbundRestorePreviewSnapshot(db: Dexie, backup: Works
     if (existing && existing.verbundId !== verbundId) reject('WORKSPACE_BACKUP_CONFLICT');
   }
   const existingVerbund = await db.table<WorkspaceVerbund>('verbuende').get(verbundId) ?? null;
+  if (requirementPackageConflict(backup.verbuende[0], existingVerbund)
+    || await db.table<WorkspaceVerbund>('verbuende').filter(row => row.verbundId !== verbundId && packageId(row) !== undefined && packageId(row) === packageId(backup.verbuende[0])).count()) reject('WORKSPACE_BACKUP_CONFLICT');
   const { scope, targetScope } = await readRestoreScope(db, backup.methodikScopes?.[0] ?? null, existingVerbund);
   const members: Pick<WorkspaceEnvelope, 'localId' | 'savedAt'>[] = [];
   await documents.where('verbundId').equals(verbundId).each(row => { members.push({ localId: row.localId, savedAt: row.savedAt }); });

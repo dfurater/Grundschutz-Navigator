@@ -5,11 +5,11 @@ import { OSCAL_ROOT_KEYS } from '@/domain/oscalVersionMatrix';
 import { CONTENT_HASH_ALGORITHM, CONTENT_HASH_VERSION } from '@/domain/reviewTrail';
 import { bindsEnvelopeSource, withinSourceLimits } from '@/adapters/workspaceDraftSource';
 import {
-  STORAGE_SCHEMA_VERSION, isVerbundName,
+  REQUIREMENT_PACKAGE_ROOTS, STORAGE_SCHEMA_VERSION, isVerbundName,
   type DocumentSnapshot, type WorkspaceBackup, type WorkspaceBackupFile, type WorkspaceScope, type WorkspaceVerbund, type WorkspaceVerbundBackup,
 } from '@/domain/workspaceModel';
 
-type StorageVersion = 1 | 2 | 3 | 4;
+type StorageVersion = 1 | 2 | 3 | 4 | 5;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SHA256 = /^[a-f0-9]{64}$/;
@@ -41,13 +41,16 @@ interface BundleContext {
   readonly version: StorageVersion;
   readonly verbuende: Set<string>;
   readonly scopes: Set<string>;
+  readonly packageIds: Set<string>;
+  /** Baseline-`localId` je Paket und der Verbund, dem sie gehören muss. */
+  readonly baselines: Map<string, string>;
   readonly documents: Map<string, { verbundId: string; rootType: string; oscalVersion: string }>;
   readonly drafts: Set<string>;
   readonly bindings: Set<string>;
   readonly sequences: Map<string, number>;
   readonly checkpoints: Map<string, Map<number, DocumentSnapshot>>;
   readonly approvals: Map<string, Map<string, number>>;
-  readonly baselines: Set<string>;
+  readonly reviewBaselines: Set<string>;
   metaSeen: boolean;
 }
 
@@ -56,13 +59,15 @@ function newContext(version: StorageVersion): BundleContext {
     version,
     verbuende: new Set(),
     scopes: new Set(),
+    packageIds: new Set(),
+    baselines: new Map(),
     documents: new Map(),
     drafts: new Set(),
     bindings: new Set(),
     sequences: new Map(),
     checkpoints: new Map(),
     approvals: new Map(),
-    baselines: new Set(),
+    reviewBaselines: new Set(),
     metaSeen: false,
   };
 }
@@ -85,13 +90,36 @@ function collectScopes(context: BundleContext, rows: readonly unknown[]): boolea
 }
 
 function collectVerbuende(context: BundleContext, rows: readonly unknown[]): boolean {
-  const optional = [...(context.version >= 3 ? ['backupSavedAt'] : []), ...(context.version >= 4 ? ['scopeId'] : [])];
+  const optional = [...(context.version >= 3 ? ['backupSavedAt'] : []), ...(context.version >= 4 ? ['scopeId'] : []), ...(context.version >= 5 ? ['requirementPackage'] : [])];
   for (const row of rows) {
     if (!fields(row, ['verbundId', 'name', 'createdAt', 'savedAt'], optional) || !uuid(row.verbundId) || !isVerbundName(row.name)
       || !times(row) || !validBackupSavedAt(row.backupSavedAt) || context.verbuende.has(row.verbundId)) return false;
     if (Object.hasOwn(row, 'scopeId') && (!uuid(row.scopeId) || !context.scopes.has(row.scopeId))) return false;
+    if (Object.hasOwn(row, 'requirementPackage') && !collectRequirementPackage(context, row.requirementPackage, row.verbundId)) return false;
     context.verbuende.add(row.verbundId);
   }
+  return true;
+}
+
+/**
+ * Paket eines Verbunds: eindeutige `packageId`, Baseline `profile`/`catalog` mit vollständigem Stand,
+ * Pins in fester Folge `local` (gleich der Baseline) und höchstens ein `class-1`. Die Baseline darf fehlen
+ * („nicht auflösbar“), aber nie zu einem anderen Verbund gehören (`collectDocuments`).
+ */
+function collectRequirementPackage(context: BundleContext, value: unknown, verbundId: string): boolean {
+  if (!fields(value, ['packageId', 'baseline', 'sourcePins']) || !uuid(value.packageId) || context.packageIds.has(value.packageId)) return false;
+  const baseline = value.baseline;
+  if (!fields(baseline, ['localId', 'stand']) || !uuid(baseline.localId) || !validSnapshot(baseline.stand)
+    || !REQUIREMENT_PACKAGE_ROOTS.includes(baseline.stand.rootType) || context.baselines.has(baseline.localId)) return false;
+  const pins = value.sourcePins;
+  if (!Array.isArray(pins) || pins.length < 1 || pins.length > 2) return false;
+  const [local, classOne] = pins as unknown[];
+  if (!fields(local, ['kind', 'localId', 'stand']) || local.kind !== 'local' || local.localId !== baseline.localId
+    || !validSnapshot(local.stand) || !sameSnapshot(local.stand, baseline.stand)) return false;
+  if (classOne !== undefined && !(fields(classOne, ['kind', 'artifactKey', 'snapshotCommit', 'contentSha256']) && classOne.kind === 'class-1'
+    && validDerivedFrom({ artifactKey: classOne.artifactKey, contentSha256: classOne.contentSha256, snapshotCommit: classOne.snapshotCommit }))) return false;
+  context.packageIds.add(value.packageId);
+  context.baselines.set(baseline.localId, verbundId);
   return true;
 }
 
@@ -126,6 +154,8 @@ function collectDocuments(context: BundleContext, rows: readonly unknown[]): boo
   for (const row of rows) {
     if (!validDocumentFields(row, context.version) || !context.verbuende.has(row.verbundId as string)
       || context.documents.has(row.localId as string) || !validDocumentRoot(row)) return false;
+    const owner = context.baselines.get(row.localId as string);
+    if (owner !== undefined && owner !== row.verbundId) return false;
     context.documents.set(row.localId as string, { verbundId: row.verbundId as string, rootType: row.rootType as string, oscalVersion: row.oscalVersion as string });
   }
   return true;
@@ -267,13 +297,13 @@ function collectReviewBaseline(context: BundleContext, rows: readonly unknown[])
   if (context.version < 2) return true;
   for (const row of rows) {
     if (!fields(row, ['localId', 'sequence', 'stand', 'source']) || !context.documents.has(row.localId as string)
-      || !positiveInteger(row.sequence) || context.baselines.has(row.localId as string)) return false;
+      || !positiveInteger(row.sequence) || context.reviewBaselines.has(row.localId as string)) return false;
     const localId = row.localId as string;
     const document = context.documents.get(localId);
     const checkpoint = context.checkpoints.get(localId)?.get(row.sequence as number);
     if (!checkpoint || !validSnapshot(row.stand) || !sameSnapshot(row.stand, checkpoint) || row.stand.rootType !== document?.rootType) return false;
     if (!document || !withinSourceLimits(row.source) || !bindsEnvelopeSource(row.source, document.rootType as never, document.oscalVersion)) return false;
-    context.baselines.add(localId);
+    context.reviewBaselines.add(localId);
   }
   return true;
 }
@@ -282,7 +312,7 @@ function collectReviewBaseline(context: BundleContext, rows: readonly unknown[])
 export function createWorkspaceStructureValidator(version: StorageVersion = STORAGE_SCHEMA_VERSION) {
   const context = newContext(version);
   return {
-    methodikScopes: (row: unknown) => version === 4 && collectScopes(context, [row]),
+    methodikScopes: (row: unknown) => version >= 4 && collectScopes(context, [row]),
     verbuende: (row: unknown) => collectVerbuende(context, [row]),
     documents: (row: unknown) => collectDocuments(context, [row]),
     drafts: (row: unknown) => validDrafts(context, [row]),
@@ -304,13 +334,13 @@ function collectBundleScopes(context: BundleContext, scopes: unknown, verbuende:
   return !partitioned || context.scopes.size === (verbuende[0].scopeId === undefined ? 0 : 1);
 }
 
-function validBackupStructure(value: unknown, format: WorkspaceBackup['format'] | WorkspaceVerbundBackup['format'], version: 2 | 3 | 4): boolean {
+function validBackupStructure(value: unknown, format: WorkspaceBackup['format'] | WorkspaceVerbundBackup['format'], version: 2 | 3 | 4 | 5): boolean {
   const partitioned = format === 'gspp-workspace-verbund';
   const required = ['format', 'storageSchemaVersion', 'verbuende', 'documents', 'drafts', 'bindings', 'reviewTrail', 'reviewBaseline'];
   if (!partitioned) required.push('workspaceMeta');
-  if (!partitioned && version === 4) required.push('methodikScopes');
-  // v4-Verbundbündel ohne Zuordnung bleiben auch ohne das Feld gültig.
-  const optional = partitioned && version === 4 ? ['methodikScopes'] : [];
+  if (!partitioned && version >= 4) required.push('methodikScopes');
+  // Verbundbündel ab v4 ohne Zuordnung bleiben auch ohne das Feld gültig.
+  const optional = partitioned && version >= 4 ? ['methodikScopes'] : [];
   if (!fields(value, required, optional) || value.format !== format || value.storageSchemaVersion !== version) return false;
   const backup = value as unknown as WorkspaceBackup;
   if (![backup.verbuende, backup.documents, backup.drafts, backup.bindings, backup.reviewTrail, backup.reviewBaseline].every(Array.isArray)) return false;
@@ -334,12 +364,13 @@ export function validVerbundBackupStructure(value: unknown): value is WorkspaceV
 export function adoptWorkspaceBackup(value: unknown): WorkspaceBackupFile | null {
   if (validWorkspaceBackupStructure(value)) return value;
   const version = record(value) ? value.storageSchemaVersion : undefined;
-  return (version === 2 || version === 3) && validBackupStructure(value, 'gspp-workspace', version)
+  return (version === 2 || version === 3 || version === 4) && validBackupStructure(value, 'gspp-workspace', version)
     ? value as WorkspaceBackupFile : null;
 }
 
 export function adoptVerbundBackup(value: unknown): WorkspaceVerbundBackup | null {
-  return validVerbundBackupStructure(value) || validBackupStructure(value, 'gspp-workspace-verbund', 3)
+  const version = record(value) ? value.storageSchemaVersion : undefined;
+  return validVerbundBackupStructure(value) || ((version === 3 || version === 4) && validBackupStructure(value, 'gspp-workspace-verbund', version))
     ? value as WorkspaceVerbundBackup : null;
 }
 

@@ -8,7 +8,7 @@ declare const scopeIdBrand: unique symbol;
 export type LocalId = string & { readonly [localIdBrand]: 'LocalId' };
 export type VerbundId = string & { readonly [verbundIdBrand]: 'VerbundId' };
 export type ScopeId = string & { readonly [scopeIdBrand]: 'ScopeId' };
-export const STORAGE_SCHEMA_VERSION = 4;
+export const STORAGE_SCHEMA_VERSION = 5;
 export type DocumentState = 'imported' | 'draft' | 'export-ready';
 
 /** A verbund name carries at least one non-whitespace character. */
@@ -23,6 +23,30 @@ export interface WorkspaceVerbund {
   readonly name: string;
   readonly createdAt: string;
   readonly savedAt: string;
+  /** Aktives Anforderungspaket; fehlt, solange keines festgelegt ist. */
+  readonly requirementPackage?: RequirementPackage;
+}
+
+/** Quellenstand eines Pakets: immer die lokale Baseline, `class-1` nur aus vollständigem `derivedFrom`. */
+export type RequirementPackagePin =
+  | { readonly kind: 'local'; readonly localId: LocalId; readonly stand: DocumentSnapshot }
+  | { readonly kind: 'class-1'; readonly artifactKey: string; readonly snapshotCommit: string; readonly contentSha256: string };
+
+export interface RequirementPackage {
+  /** Zufällige UUID, workspaceweit eindeutig und über Neufestlegungen stabil. */
+  readonly packageId: string;
+  /** Gespeichertes `profile` oder `catalog` desselben Verbunds mit dem festgelegten Stand. */
+  readonly baseline: { readonly localId: LocalId; readonly stand: DocumentSnapshot };
+  readonly sourcePins: readonly RequirementPackagePin[];
+}
+
+/** Root-Typen, die als Baseline eines Anforderungspakets zulässig sind. */
+export const REQUIREMENT_PACKAGE_ROOTS: readonly OscalRootKey[] = ['profile', 'catalog'];
+
+/** Vergleichswerte einer Festlegung: `savedAt` des Verbunds und der gewählten Baseline. */
+export interface RequirementPackageExpectation {
+  readonly savedAt: string;
+  readonly baselineSavedAt: string;
 }
 
 export interface WorkspaceScope {

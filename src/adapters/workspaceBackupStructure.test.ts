@@ -23,14 +23,14 @@ const stand = {
   contentHash: { version: 1, algorithm: 'sha-256', value: 'a'.repeat(64) },
 };
 
-/** v4-Bündel mit Prüfpunkt, Entscheidungen und Vergleichsbasis. */
+/** v5-Bündel mit Prüfpunkt, Entscheidungen und Vergleichsbasis. */
 function bundle(): WorkspaceBackup {
   return {
     format: 'gspp-workspace', methodikScopes: [],
-    storageSchemaVersion: 4,
+    storageSchemaVersion: 5,
     verbuende: [{ verbundId, name: 'Test', createdAt: timestamp, savedAt: timestamp }],
     documents: [{
-      localId, verbundId, storageSchemaVersion: 4, rootType: 'catalog', oscalVersion: '1.1.3',
+      localId, verbundId, storageSchemaVersion: 5, rootType: 'catalog', oscalVersion: '1.1.3',
       trustClass: 'class-2-local-user', documentState: 'export-ready', createdAt: timestamp, savedAt: timestamp, source,
     }],
     drafts: [],
@@ -45,7 +45,7 @@ function bundle(): WorkspaceBackup {
       { localId, sequence: 4, kind: 'decision', createdAt: timestamp, decision: 'withdrawn', stand, withdraws: { sequence: 3, actionUuid } },
     ],
     reviewBaseline: [{ localId, sequence: 1, stand, source }],
-    workspaceMeta: [{ id: 'workspace', databaseId: '66666666-6666-4666-8666-666666666666', storageSchemaVersion: 4, createdAt: timestamp, savedAt: timestamp }],
+    workspaceMeta: [{ id: 'workspace', databaseId: '66666666-6666-4666-8666-666666666666', storageSchemaVersion: 5, createdAt: timestamp, savedAt: timestamp }],
   };
 }
 
@@ -75,7 +75,7 @@ const rejected: readonly (readonly [string, Mutation])[] = [
   ['baseline-fehlt', (b) => ({ ...b, reviewBaseline: undefined })],
 ];
 
-describe('workspace backup structure v4', () => {
+describe('workspace backup structure v5', () => {
   it('akzeptiert Trail, Entscheidungen und Vergleichsbasis in Dokumentreihenfolge', () => {
     expect(validWorkspaceBackupStructure(bundle())).toBe(true);
   });
@@ -89,7 +89,7 @@ describe('workspace backup structure v4', () => {
     expect(adoptAnyBackup(single)).toBe(single);
     // Eine Verbundsicherung mit Metadaten ist weder die eine noch die andere Art.
     expect(adoptAnyBackup({ ...whole, format: 'gspp-workspace-verbund' })).toBeNull();
-    for (const value of [{ ...whole, format: 'gspp-other' }, { ...whole, storageSchemaVersion: 5 }, null, []]) expect(adoptAnyBackup(value)).toBeNull();
+    for (const value of [{ ...whole, format: 'gspp-other' }, { ...whole, storageSchemaVersion: 6 }, null, []]) expect(adoptAnyBackup(value)).toBeNull();
   });
 
   it.each(rejected)('weist %s ab', (_name, mutate) => {
@@ -108,7 +108,7 @@ describe('workspace backup structure v4', () => {
   });
 
   it('validiert inkrementell in Abhängigkeitsreihenfolge', () => {
-    const validator = createWorkspaceStructureValidator(4);
+    const validator = createWorkspaceStructureValidator(5);
     const backup = bundle();
     for (const row of backup.verbuende) expect(validator.verbuende(row)).toBe(true);
     for (const row of backup.documents) expect(validator.documents(row)).toBe(true);
@@ -128,5 +128,54 @@ describe('workspace backup structure v4', () => {
     const { workspaceMeta, ...verbund } = old;
     expect(workspaceMeta).toHaveLength(1);
     expect(validVerbundBackupStructure({ ...verbund, format: 'gspp-workspace-verbund' })).toBe(false);
+  });
+});
+
+describe('requirementPackage im Verbund (v5)', () => {
+  const packageId = '77777777-7777-4777-8777-777777777777';
+  const otherVerbund = '88888888-8888-4888-8888-888888888888';
+  const profileStand = { ...stand, rootType: 'profile' as const };
+  const withPackage = (requirementPackage: unknown, extra: (backup: WorkspaceBackup) => WorkspaceBackup = (backup) => backup) => {
+    const backup = bundle();
+    return extra({ ...backup, verbuende: [{ ...backup.verbuende[0], requirementPackage } as never] });
+  };
+  const valid = { packageId, baseline: { localId, stand: profileStand }, sourcePins: [{ kind: 'local', localId, stand: profileStand }] };
+
+  it('akzeptiert ein Paket mit lokalem und vollständigem BSI-Pin sowie ein nicht auflösbares Paket', () => {
+    expect(validWorkspaceBackupStructure(withPackage(valid))).toBe(true);
+    const classOne = { kind: 'class-1', artifactKey: 'catalog-gspp', snapshotCommit: 'c'.repeat(40), contentSha256: 'b'.repeat(64) };
+    expect(validWorkspaceBackupStructure(withPackage({ ...valid, sourcePins: [...valid.sourcePins, classOne] }))).toBe(true);
+    const gone = '99999999-9999-4999-8999-999999999999';
+    expect(validWorkspaceBackupStructure(withPackage({ ...valid, baseline: { localId: gone, stand: profileStand }, sourcePins: [{ kind: 'local', localId: gone, stand: profileStand }] }))).toBe(true);
+  });
+
+  it.each([
+    ['einen SSP-Stand als Baseline', { ...valid, baseline: { localId, stand: { ...stand, rootType: 'system-security-plan' } } }],
+    ['einen abweichenden lokalen Pin', { ...valid, sourcePins: [{ kind: 'local', localId, stand: { ...profileStand, version: '2' } }] }],
+    ['einen unvollständigen BSI-Pin', { ...valid, sourcePins: [...valid.sourcePins, { kind: 'class-1', artifactKey: 'catalog-gspp', snapshotCommit: '', contentSha256: 'b'.repeat(64) }] }],
+    ['eine ungültige packageId', { ...valid, packageId: 'P1' }],
+    ['ein zusätzliches Feld', { ...valid, title: 'TITLE' }],
+  ])('weist %s ab', (_name, requirementPackage) => {
+    expect(validWorkspaceBackupStructure(withPackage(requirementPackage))).toBe(false);
+  });
+
+  it('weist eine Baseline aus einem anderen Verbund und eine doppelte packageId ab', () => {
+    const foreign = withPackage(valid, (backup) => ({
+      ...backup,
+      verbuende: [...backup.verbuende, { ...backup.verbuende[0], verbundId: otherVerbund as VerbundId, requirementPackage: undefined }].map((row) => row.requirementPackage === undefined ? (({ requirementPackage: _drop, ...rest }) => rest)(row) : row),
+      documents: backup.documents.map((row) => ({ ...row, verbundId: otherVerbund as VerbundId })),
+      drafts: [], bindings: [], reviewTrail: [], reviewBaseline: [],
+    }));
+    expect(validWorkspaceBackupStructure(foreign)).toBe(false);
+    const twin = withPackage(valid, (backup) => ({
+      ...backup,
+      verbuende: [...backup.verbuende, { ...backup.verbuende[0], verbundId: otherVerbund as VerbundId, requirementPackage: { ...valid, baseline: { localId: otherVerbund, stand: profileStand }, sourcePins: [{ kind: 'local', localId: otherVerbund, stand: profileStand }] } as never }],
+    }));
+    expect(validWorkspaceBackupStructure(twin)).toBe(false);
+  });
+
+  it('kennt das Feld erst ab Speicherversion 5', () => {
+    const validator = createWorkspaceStructureValidator(4);
+    expect(validator.verbuende({ ...bundle().verbuende[0], requirementPackage: valid })).toBe(false);
   });
 });

@@ -7,6 +7,7 @@ import type { CatalogDelivery } from '@/domain/workspaceCatalogPin';
 import { catalogDelivery, verifiedCatalogArtifacts } from '@/state/workspaceCatalogSession';
 import type { WorkspaceClass1Artifact } from '@/domain/workspaceGraphModel';
 import type { LocalId, VerbundId, VerbundWriteExpectation, WorkspaceResult, WorkspaceScope, WorkspaceVerbund } from '@/domain/workspaceModel';
+import type { RequirementPackageState } from '@/domain/requirementPackage';
 import {
   NEW_SCOPE_DRAFT, collectRestoreInputs, discardReplacedInputs, scopeDraftKey, scopedVerbundDraftKey,
   type RestoreInput, type RestorePreview, type RestoreScope,
@@ -54,6 +55,8 @@ export interface WorkspaceContextValue {
   readonly scopes: readonly WorkspaceScope[] | null;
   /** Der letzte Bestandslauf konnte die Anwendungsbereiche nicht lesen; `scopes` ist dann kein Beleg für einen leeren Bestand. */
   readonly scopesFailed: boolean;
+  /** Paketzustand je `verbundId` mit Paket; `null`, solange er nicht gelesen ist oder nicht gelesen werden konnte. */
+  readonly packages: ReadonlyMap<string, RequirementPackageState> | null;
   readonly writable: boolean;
   /** Ausgelieferte BSI-Katalogstände dieser Sitzung; nur das Manifest, keine Katalogbytes. */
   readonly catalogDelivery: CatalogDelivery;
@@ -72,6 +75,8 @@ export interface WorkspaceContextValue {
   readonly createVerbund: WorkspacePort['createVerbund'];
   readonly renameVerbund: WorkspacePort['renameVerbund'];
   readonly deleteVerbund: WorkspacePort['deleteVerbund'];
+  readonly setRequirementPackage: WorkspacePort['setRequirementPackage'];
+  readonly clearRequirementPackage: WorkspacePort['clearRequirementPackage'];
   /** Stand der Gesamtlöschung; `pending` heißt: Der gestartete Löschrequest wartet auf eine andere Verbindung. */
   readonly deletion: 'idle' | 'deleting' | 'pending' | 'failed';
   /** Prüft unter exklusiver Koordination auf weitere Arbeitsbereich-Tabs; `granted` sperrt neue Sitzungen bis zum Verlassen. */
@@ -123,6 +128,7 @@ export const WorkspaceContext = createContext<WorkspaceContextValue>({
   verbuende: null,
   scopes: null,
   scopesFailed: false,
+  packages: null,
   writable: false,
   catalogDelivery: new Map(),
   notices: [],
@@ -140,6 +146,8 @@ export const WorkspaceContext = createContext<WorkspaceContextValue>({
   createVerbund: unavailable,
   renameVerbund: unavailable,
   deleteVerbund: unavailable,
+  setRequirementPackage: unavailable,
+  clearRequirementPackage: unavailable,
   deletion: 'idle',
   enterWorkspaceDeletion: () => Promise.resolve('unavailable'),
   leaveWorkspaceDeletion: () => undefined,
@@ -193,6 +201,7 @@ export function WorkspaceProvider({ open = openWorkspaceStore, session: provided
   const [status, setStatus] = useState<WorkspaceContextValue['status']>('idle');
   const [verbuende, setVerbuende] = useState<readonly WorkspaceVerbund[] | null>(null);
   const [scopes, setScopes] = useState<readonly WorkspaceScope[] | null>(null);
+  const [packages, setPackages] = useState<ReadonlyMap<string, RequirementPackageState> | null>(null);
   const [writable, setWritable] = useState(true);
   const [notices, setNotices] = useState<readonly WorkspaceNotice[]>([]);
   const [selectedVerbundId, setSelectedVerbundId] = useState<string | null>(null);
@@ -313,6 +322,10 @@ export function WorkspaceProvider({ open = openWorkspaceStore, session: provided
         report(listed.diagnostic);
       }
       setScopes(listed.ok ? [...listed.value].sort(byName) : []);
+      const states = await port.listRequirementPackages().catch(storageFailed);
+      if (!current) return;
+      if (!states.ok) report(states.diagnostic);
+      setPackages(states.ok ? new Map(states.value.map(({ verbundId, state }) => [verbundId, state])) : null);
       // Ein anderswo gelöschter Verbund hinterlässt keinen Namensentwurf im Tab.
       for (const verbundId of renameDrafts.keys()) {
         if (!result.value.some((entry) => entry.verbundId === verbundId)) renameDrafts.delete(verbundId);
@@ -439,6 +452,7 @@ export function WorkspaceProvider({ open = openWorkspaceStore, session: provided
           setLoaded(null);
           setVerbuende([]);
           setScopes([]);
+          setPackages(null);
           setNotices([]);
           setWritable(true);
           invalidateAnalysis();
@@ -512,6 +526,7 @@ export function WorkspaceProvider({ open = openWorkspaceStore, session: provided
     verbuende,
     scopes,
     scopesFailed,
+    packages,
     writable,
     catalogDelivery: delivery,
     notices,
@@ -588,6 +603,8 @@ export function WorkspaceProvider({ open = openWorkspaceStore, session: provided
       }
       return result;
     },
+    setRequirementPackage: (...args) => writeMembership((store) => store.setRequirementPackage(...args)),
+    clearRequirementPackage: (...args) => writeMembership((store) => store.clearRequirementPackage(...args)),
     deletion,
     enterWorkspaceDeletion,
     leaveWorkspaceDeletion,
@@ -670,7 +687,7 @@ export function WorkspaceProvider({ open = openWorkspaceStore, session: provided
     scopeDrafts,
     pendingScopeWrite: (key) => pendingScopes.current.get(key)?.run,
     pendingVerbundWrite: (key) => pendingVerbuende.current.get(key)?.run,
-  }), [status, verbuende, scopes, scopesFailed, scopeDrafts, keepScope, verbundExpectation, writable, delivery, notices, verbund, activate, openStore, checkSchema, write, writeTo, writeMembership, deletion, enterWorkspaceDeletion, leaveWorkspaceDeletion, deleteWorkspace, freeze, quiet, listDocuments, port, report, registerAutosave, flushAutosaves, documents, importTargets, invalidateAnalysis, analysisRevision, renameDrafts]);
+  }), [status, verbuende, scopes, scopesFailed, packages, scopeDrafts, keepScope, verbundExpectation, writable, delivery, notices, verbund, activate, openStore, checkSchema, write, writeTo, writeMembership, deletion, enterWorkspaceDeletion, leaveWorkspaceDeletion, deleteWorkspace, freeze, quiet, listDocuments, port, report, registerAutosave, flushAutosaves, documents, importTargets, invalidateAnalysis, analysisRevision, renameDrafts]);
 
   return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>;
 }

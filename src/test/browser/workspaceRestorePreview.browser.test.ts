@@ -179,7 +179,7 @@ it('reports a changed metadata schema as a preview conflict before any clear', a
   const raw = new Dexie(WORKSPACE_DATABASE_NAME);
   await raw.open();
   try {
-    await raw.table('workspaceMeta').update('workspace', { storageSchemaVersion: 5 });
+    await raw.table('workspaceMeta').update('workspace', { storageSchemaVersion: 6 });
     const before = await raw.table('workspaceMeta').toArray();
     expect(await store.restoreBackup(preview)).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_SAVE_CONFLICT' } });
     expect(await raw.table('workspaceMeta').toArray()).toEqual(before);

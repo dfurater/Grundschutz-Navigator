@@ -19,7 +19,8 @@ export type WorkspacePort = Pick<WorkspaceStore,
   | 'createVerbund' | 'renameVerbund' | 'deleteVerbund' | 'deleteAll' | 'exportBackup' | 'estimate' | 'close'
   | 'exportVerbundBackup' | 'previewRestore' | 'restoreBackup' | 'restoreVerbundBackup'
   | 'addDocument' | 'saveDocument' | 'saveProcessDecision' | 'autosaveDraft' | 'setBinding' | 'removeBinding' | 'deleteDocument'
-  | 'listReviewTrail' | 'appendCheckpoint' | 'appendDecision'>;
+  | 'listReviewTrail' | 'appendCheckpoint' | 'appendDecision'
+  | 'listRequirementPackages' | 'setRequirementPackage' | 'clearRequirementPackage'>;
 
 export interface WorkspaceDocumentView {
   readonly localId: LocalId;
@@ -28,6 +29,10 @@ export interface WorkspaceDocumentView {
   readonly documentState: DocumentState;
   /** `metadata.title`, nur für den Seiteninhalt. */
   readonly title?: string;
+  /** `metadata.version` und `metadata.last-modified` für die Paketauswahl. */
+  readonly version?: string;
+  readonly lastModified?: string;
+  readonly derivedFrom?: WorkspaceEnvelope['derivedFrom'];
   /** Bindung an BSI-Katalogstände; fehlt, wenn das Dokument auf keinen BSI-Katalog verweist. */
   readonly catalogPin?: CatalogPin;
   readonly savedAt: string;
@@ -87,6 +92,16 @@ function record(value: unknown): Record<string, unknown> | undefined {
 function documentTitle(envelope: WorkspaceEnvelope): string | undefined {
   const title = record(record(record(envelope.source)?.[envelope.rootType])?.metadata)?.title;
   return typeof title === 'string' ? title : undefined;
+}
+
+function documentVersion(envelope: WorkspaceEnvelope): Pick<WorkspaceDocumentView, 'version' | 'lastModified'> {
+  const metadata = record(record(record(envelope.source)?.[envelope.rootType])?.metadata);
+  const version = metadata?.version;
+  const lastModified = metadata?.['last-modified'];
+  return {
+    ...(typeof version === 'string' ? { version } : {}),
+    ...(typeof lastModified === 'string' ? { lastModified } : {}),
+  };
 }
 
 export { pointerString } from '@/domain/jsonGuards';
@@ -215,6 +230,8 @@ export async function deriveVerbundView({ verbund, members, bindings: stored, cl
       oscalVersion: member.oscalVersion,
       documentState: member.documentState,
       title: documentTitle(member),
+      ...documentVersion(member),
+      ...(member.derivedFrom ? { derivedFrom: member.derivedFrom } : {}),
       savedAt: member.savedAt,
       ...(pins.has(member.localId) ? { catalogPin: pins.get(member.localId) } : {}),
       ...(metrics.documents.has(member.localId) ? { metric: metrics.documents.get(member.localId) } : {}),
