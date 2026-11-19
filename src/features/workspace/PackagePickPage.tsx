@@ -90,14 +90,16 @@ export function PackagePickPage({ view, onClose, onSaved }: Readonly<{ view: Ver
       <WorkspaceNotices />
       <form className="max-w-2xl space-y-4" onSubmit={(event) => { event.preventDefault(); void confirm(); }}>
         <Facts rows={[['Informationsverbund', verbund.name], ['Bisher', <Previous key="bisher" verbund={verbund} />]]} />
-        {candidates.length === 0 ? (
+        {candidates.length === 0 && (
           <div className={`${PANEL} flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm`}>
             <span className="text-[var(--color-text-secondary)]">Kein Profile oder Catalog in diesem Informationsverbund</span>
             <Link to={buildStationUrl(verbund.verbundId, 'profile')} className={`flex min-h-touch items-center rounded font-semibold catalog-prose-link desktop:min-h-0 ${FOCUS_RING}`}>
               Anforderungspaket anlegen<span aria-hidden="true">&nbsp;→</span>
             </Link>
           </div>
-        ) : (
+        )}
+        {/* „Kein Paket“ bleibt auch ohne Kandidaten erreichbar, damit ein nicht auflösbares Paket aufhebbar ist. */}
+        {(candidates.length > 0 || verbund.requirementPackage) && (
           <fieldset disabled={!writable || busy}>
             <legend className="mb-2 text-sm font-semibold">Neu</legend>
             <ul className={`${PANEL} divide-y divide-[var(--color-border-subtle)]`}>
@@ -120,7 +122,8 @@ export function PackagePickPage({ view, onClose, onSaved }: Readonly<{ view: Ver
         )}
         <div className="flex flex-wrap gap-2">
           <Button type="submit" className={ROW_BUTTON} disabled={!writable || busy || (!chosen && !clearing)}>{label}</Button>
-          <Button variant="secondary" className={ROW_BUTTON} onClick={onClose}>Abbrechen</Button>
+          {/* Gesperrt während des Speicherns: Ein später eintreffendes Ergebnis darf keine neu geöffnete Auswahl schließen. */}
+          <Button variant="secondary" className={ROW_BUTTON} disabled={busy} onClick={onClose}>Abbrechen</Button>
         </div>
       </form>
     </div>

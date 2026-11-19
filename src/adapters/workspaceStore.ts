@@ -398,20 +398,16 @@ export class WorkspaceStore {
    */
   async listRequirementPackages(): Promise<WorkspaceResult<{ verbundId: VerbundId; state: RequirementPackageState }[]>> {
     try {
-      const read = await this.read(['verbuende', 'documents'], async () => {
-        const rows: { verbund: WorkspaceVerbund; document?: WorkspaceEnvelope }[] = [];
-        for (const verbund of await this.verbuende.toArray()) {
-          const requirementPackage = verbund.requirementPackage;
-          if (!requirementPackage) continue;
-          const document = await this.documents.get(requirementPackage.baseline.localId);
-          rows.push({ verbund, document: document?.verbundId === verbund.verbundId ? document : undefined });
-        }
-        return rows;
-      });
-      if (!read.ok) return read;
+      const listed = await this.read(['verbuende'], () => this.verbuende.filter(row => row.requirementPackage !== undefined).toArray());
+      if (!listed.ok) return listed;
       const states: { verbundId: VerbundId; state: RequirementPackageState }[] = [];
-      for (const { verbund, document } of read.value) {
+      // Je Baseline eine eigene Lesung: Höchstens eine Quelle ist zugleich im Speicher.
+      for (const verbund of listed.value) {
         const requirementPackage = verbund.requirementPackage;
+        if (!requirementPackage) continue;
+        const read = await this.read(['documents'], () => this.documents.get(requirementPackage.baseline.localId));
+        if (!read.ok) return read;
+        const document = read.value?.verbundId === verbund.verbundId ? read.value : undefined;
         let baseline: Parameters<typeof requirementPackageState>[1];
         if (document) {
           const stamp = documentStamp(document.source, document.rootType);

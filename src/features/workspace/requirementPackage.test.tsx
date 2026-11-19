@@ -84,6 +84,11 @@ describe('Anforderungspaket im Verbundkopf', () => {
     await openPick('Neu festlegen…');
     expect(main().getByText('Kein Profile oder Catalog in diesem Informationsverbund')).toBeVisible();
     expect(main().getByRole('link', { name: /Anforderungspaket anlegen/ })).toBeVisible();
+    // Ohne verbleibende Kandidaten bleibt „Kein Paket“ der Weg, die nicht auflösbare Festlegung aufzuheben.
+    fireEvent.click(main().getByRole('radio', { name: 'Kein Paket' }));
+    fireEvent.click(main().getByRole('button', { name: 'Festlegung aufheben' }));
+    expect(await main().findByText('Paket fehlt')).toBeVisible();
+    expect((await readStore((store) => store.listVerbuende())).find((row) => row.verbundId === seeded.verbundId)).not.toHaveProperty('requirementPackage');
   });
 
   it('hebt eine Festlegung auf', async () => {

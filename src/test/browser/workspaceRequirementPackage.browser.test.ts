@@ -150,3 +150,26 @@ it('verweigert den Verbund-Restore auf ein abweichendes oder fehlendes Zielpaket
   expect(await verbund(store, va.verbundId)).not.toHaveProperty('requirementPackage');
   expect(cleared).not.toHaveProperty('requirementPackage');
 });
+
+it('verweigert den Verbund-Restore, wenn ein Paketverweis nach dem Restore auf ein Dokument eines anderen Verbunds zeigte', async () => {
+  const { store, va, p1, p2 } = await fixture();
+  const set = value(await store.setRequirementPackage(va.verbundId, { savedAt: va.savedAt, baselineSavedAt: p2.savedAt }, p2.localId));
+  value(await store.deleteDocument(p2.localId));
+  const vb = value(await store.createVerbund('VB'));
+  const foreign = value(await store.addDocument(vb.verbundId, await oscal('profile', 'FOREIGN')));
+
+  // Datei: VA mit nicht auflösbarer Baseline, deren localId im Ziel einem Dokument von VB gehört.
+  const pointing = JSON.parse(value(await store.exportVerbundBackup(va.verbundId)));
+  pointing.verbuende[0].requirementPackage.baseline.localId = foreign.localId;
+  pointing.verbuende[0].requirementPackage.sourcePins[0].localId = foreign.localId;
+  const before = value(await store.exportBackup());
+  expect(await restoreVerbundBackup(store, bytes(JSON.stringify(pointing)))).toMatchObject(backupConflict);
+
+  // Datei: VB bringt ein Dokument mit der localId, auf die das nicht auflösbare Paket von VA zeigt.
+  const incoming = JSON.parse(value(await store.exportVerbundBackup(vb.verbundId)));
+  incoming.documents[0].localId = p2.localId;
+  expect(await restoreVerbundBackup(store, bytes(JSON.stringify(incoming)))).toMatchObject(backupConflict);
+  expect(value(await store.exportBackup())).toBe(before);
+  expect((await verbund(store, va.verbundId)).requirementPackage).toEqual(set.requirementPackage);
+  expect(value(await store.getDocument(p1.localId))).toBeDefined();
+});

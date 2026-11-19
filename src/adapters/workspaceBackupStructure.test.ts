@@ -162,7 +162,7 @@ describe('requirementPackage im Verbund (v5)', () => {
   it('weist eine Baseline aus einem anderen Verbund und eine doppelte packageId ab', () => {
     const foreign = withPackage(valid, (backup) => ({
       ...backup,
-      verbuende: [...backup.verbuende, { ...backup.verbuende[0], verbundId: otherVerbund as VerbundId, requirementPackage: undefined }].map((row) => row.requirementPackage === undefined ? (({ requirementPackage: _drop, ...rest }) => rest)(row) : row),
+      verbuende: [...backup.verbuende, { verbundId: otherVerbund as VerbundId, name: 'VB', createdAt: timestamp, savedAt: timestamp }],
       documents: backup.documents.map((row) => ({ ...row, verbundId: otherVerbund as VerbundId })),
       drafts: [], bindings: [], reviewTrail: [], reviewBaseline: [],
     }));

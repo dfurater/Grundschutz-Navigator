@@ -35,7 +35,7 @@ describe('requirementPackageState', () => {
     expect(requirementPackageState(requirementPackage, { title: 'T', current: stand })).toEqual({ kind: 'set', requirementPackage, title: 'T' });
     const changed = { ...stand, contentHash: { ...stand.contentHash, value: 'd'.repeat(64) } };
     expect(requirementPackageState(requirementPackage, { current: changed })).toMatchObject({ kind: 'stale', current: changed });
-    const { contentHash: _hash, ...stamp } = { ...stand, lastModified: '2026-11-14T09:12:00Z' };
+    const stamp = { rootType: stand.rootType, uuid: stand.uuid, lastModified: '2026-11-14T09:12:00Z', version: stand.version, oscalVersion: stand.oscalVersion };
     expect(requirementPackageState(requirementPackage, { current: stamp })).toMatchObject({ kind: 'stale', current: stamp });
     expect(requirementPackageState(requirementPackage, {})).toEqual({ kind: 'stale', requirementPackage });
   });
