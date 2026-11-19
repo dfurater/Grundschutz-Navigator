@@ -95,7 +95,7 @@ it.each(['recreate', 'migration'] as const)('invalidates a preview after databas
     replacement.close();
   } else {
     const upgraded = new Dexie(WORKSPACE_DATABASE_NAME);
-    upgraded.version(5).stores({ ...WORKSPACE_SCHEMA, future: 'id' });
+    upgraded.version(6).stores({ ...WORKSPACE_SCHEMA, future: 'id' });
     await upgraded.open();
     upgraded.close();
   }
