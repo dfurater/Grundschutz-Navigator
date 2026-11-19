@@ -66,7 +66,7 @@ export function WorkspaceDeleteDialog({ rowDrafts, createDraft, writes, track, c
 }>) {
   const {
     status, verbuende, writable, deletion, enterWorkspaceDeletion, leaveWorkspaceDeletion, deleteWorkspace, dismissDeletionFailure,
-    flushAutosaves, pendingRestoreInputs, discardRestoreInput, renameVerbund, renameScope, createScope,
+    flushAutosaves, pendingRestoreInputs, discardRestoreInput, renameVerbund, renameScope, createScope, createVerbund,
   } = useWorkspace();
   const { exportBackup } = useBackupExport();
   const navigate = useNavigate();
@@ -137,7 +137,7 @@ export function WorkspaceDeleteDialog({ rowDrafts, createDraft, writes, track, c
   // Jede Klärungsaktion blendet die Liste bis zum erneuten Lesen aus: Sie setzt die Sicherung genau einmal fort.
   const saveRename = async (entry: NamedInput) => {
     setBackup({ step: 'saving' });
-    const saved = await track(saveNamedInput(entry, { renameVerbund, renameScope, createScope }).then((ok) => {
+    const saved = await track(saveNamedInput(entry, { renameVerbund, renameScope, createScope, createVerbund }).then((ok) => {
       if (ok) { onPrepared(); discardRestoreInput(entry, rowDrafts); }
       return ok;
     }));

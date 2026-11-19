@@ -212,13 +212,14 @@ export function ClarifyRow({ entry, verbundName, failed, writable, onSave, onDis
   if (entry.kind === 'rename') label = <><span className="font-semibold">Umbenennung</span> · „{entry.name}“ → „{entry.draft}“</>;
   else if (entry.kind === 'import') label = <><span className="font-semibold">Importzuordnung</span> · {ROOT_TYPE_LABELS[entry.rootType]} in „{verbundName}“ · {plural(entry.count, 'Verweis', 'Verweise')}</>;
   else if (entry.kind === 'orphan') label = <><span className="font-semibold">Importzuordnung</span> · Dokument nicht mehr vorhanden · {plural(entry.count, 'Verweis', 'Verweise')}</>;
+  else if (entry.newVerbund) label = <><span className="font-semibold">Neuer Informationsverbund</span> · „{entry.draft}“ in „{entry.scope.name}“</>;
   else if (entry.scope) label = <><span className="font-semibold">Umbenennung Anwendungsbereich</span> · „{entry.scope.name}“ → „{entry.draft}“</>;
   else label = <><span className="font-semibold">Neuer Anwendungsbereich</span> · „{entry.draft}“</>;
   return (
     <ClarifyItem label={label} failed={failed}>
       {named && (
         <Button variant="secondary" size="sm" className={BUTTON} disabled={!writable || saving || !isVerbundName(named.draft)} onClick={() => { setSaving(true); void onSave(named).finally(() => setSaving(false)); }}>
-          {named.kind === 'scope' && !named.scope ? 'Anlegen' : 'Speichern'}
+          {named.kind === 'scope' && (!named.scope || named.newVerbund) ? 'Anlegen' : 'Speichern'}
         </Button>
       )}
       {entry.kind === 'import' && (

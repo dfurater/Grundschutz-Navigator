@@ -1,16 +1,18 @@
 import type { OscalRootKey } from '@/domain/oscalVersionMatrix';
 import type {
-  LocalId, VerbundId, WorkspaceDocumentSummary, WorkspaceRestorePreview, WorkspaceScope, WorkspaceVerbund,
+  LocalId, ScopeId, VerbundId, WorkspaceDocumentSummary, WorkspaceRestorePreview, WorkspaceScope, WorkspaceVerbund,
   WorkspaceVerbundRestorePreview,
 } from '@/domain/workspaceModel';
 import type { WorkspaceContextValue } from '@/state/WorkspaceContext';
 
 /** Schlüssel der offenen Anlage eines Anwendungsbereichs unter den Namensentwürfen; keine `scopeId` hat diese Form. */
 export const NEW_SCOPE_DRAFT = 'neu';
+export const scopedVerbundDraftKey = (scopeId: ScopeId) => `neuer-verbund:${scopeId}`;
 
 export type RestorePreview = WorkspaceRestorePreview | WorkspaceVerbundRestorePreview;
 
 type ScopeDocument = Pick<WorkspaceDocumentSummary, 'localId' | 'verbundId' | 'rootType'>;
+type ScopeName = Pick<WorkspaceScope, 'scopeId' | 'name' | 'savedAt'>;
 
 /**
  * Zielbereich einer Wiederherstellung. `documents` sind die Dokumente der Sicherung: Auch ein inzwischen
@@ -29,10 +31,12 @@ export type RestoreInput =
   | { readonly kind: 'import'; readonly verbundId: VerbundId; readonly localId: LocalId; readonly rootType: OscalRootKey; readonly count: number }
   | { readonly kind: 'orphan'; readonly localId: LocalId; readonly count: number }
   /** Offener Name eines Anwendungsbereichs: Umbenennung mit Vergleichsstand oder, ohne `scope`, eine Anlage. */
-  | { readonly kind: 'scope'; readonly scope: Pick<WorkspaceScope, 'scopeId' | 'name' | 'savedAt'> | null; readonly draft: string };
+  | { readonly kind: 'scope'; readonly scope: ScopeName | null; readonly draft: string; readonly newVerbund?: never }
+  | { readonly kind: 'scope'; readonly scope: ScopeName; readonly draft: string; readonly newVerbund: true };
 
 /** Schlüssel eines Scope-Eintrags unter den Namensentwürfen. */
 export function scopeDraftKey(entry: Extract<RestoreInput, { kind: 'scope' }>): string {
+  if (entry.newVerbund) return scopedVerbundDraftKey(entry.scope.scopeId);
   return entry.scope?.scopeId ?? NEW_SCOPE_DRAFT;
 }
 
@@ -90,10 +94,12 @@ function scopeInputs(drafts: ReadonlyMap<string, string>, scopes: readonly Works
       if (draft.trim() !== '') inputs.push({ kind: 'scope', scope: null, draft });
       continue;
     }
-    const stored = scopes.find((candidate) => candidate.scopeId === key);
-    if (stored && draft.trim() !== stored.name) {
-      inputs.push({ kind: 'scope', scope: { scopeId: stored.scopeId, name: stored.name, savedAt: stored.savedAt }, draft });
-    }
+    const stored = scopes.find((candidate) => candidate.scopeId === key || scopedVerbundDraftKey(candidate.scopeId) === key);
+    if (!stored) continue;
+    const scope = { scopeId: stored.scopeId, name: stored.name, savedAt: stored.savedAt };
+    if (key === stored.scopeId) {
+      if (draft.trim() !== stored.name) inputs.push({ kind: 'scope', scope, draft });
+    } else if (draft.trim() !== '') inputs.push({ kind: 'scope', scope, draft, newVerbund: true });
   }
   return inputs;
 }
@@ -113,9 +119,10 @@ export function discardReplacedInputs(preview: RestorePreview, importTargets: Ma
 export type NamedInput = Extract<RestoreInput, { kind: 'rename' | 'scope' }>;
 
 /** Speichert eine offene Namenseingabe aus der Klärung; `true` erst nach bestätigtem Schreiben. */
-export async function saveNamedInput(entry: NamedInput, writers: Pick<WorkspaceContextValue, 'renameVerbund' | 'renameScope' | 'createScope'>): Promise<boolean> {
+export async function saveNamedInput(entry: NamedInput, writers: Pick<WorkspaceContextValue, 'renameVerbund' | 'renameScope' | 'createScope' | 'createVerbund'>): Promise<boolean> {
   const name = entry.draft.trim();
   if (entry.kind === 'rename') return (await writers.renameVerbund(entry.verbundId, name)).ok;
+  if (entry.newVerbund) return (await writers.createVerbund(name, entry.scope)).ok;
   if (entry.scope) return (await writers.renameScope(entry.scope.scopeId, name, entry.scope.savedAt)).ok;
   return (await writers.createScope(name)).ok;
 }

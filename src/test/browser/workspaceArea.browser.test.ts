@@ -7,7 +7,7 @@ import { afterEach, describe, expect, test } from 'vitest';
 import { commands, page, userEvent } from 'vitest/browser';
 import { AppShell } from '@/app/AppShell';
 import { createAppRoutes } from '@/app/appRoutes';
-import { buildStationUrl, buildVerbundUrl, buildWorkspaceDocumentUrl, buildWorkspaceIndexUrl } from '@/app/routes';
+import { buildScopeUrl, buildStationUrl, buildVerbundUrl, buildWorkspaceDocumentUrl, buildWorkspaceIndexUrl } from '@/app/routes';
 import { WorkspaceStore } from '@/adapters/workspaceStore';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { CatalogContext } from '@/state/CatalogContext';
@@ -15,7 +15,7 @@ import { WorkspaceProvider, type AutosaveFlush } from '@/state/WorkspaceContext'
 import { createA11yCatalogState } from '@/test/browser/a11yCatalogState';
 import { assertNoAxeViolations } from '@/test/browser/axeAssertions';
 import { openDrawer, settlePush } from '@/test/browser/mobileDrawerHarness';
-import { SENTINEL_VERBUND, resetWorkspace, seedWorkspace, value } from '@/test/workspaceAreaFixture';
+import { SENTINEL_VERBUND, readStore, resetWorkspace, seedWorkspace, value } from '@/test/workspaceAreaFixture';
 import '@/index.css';
 
 /*
@@ -67,6 +67,29 @@ async function renderAt(path: string, width: number, height: number, touch: bool
 function areaSwitchIn(container: Element) {
   return container.querySelector<HTMLElement>('nav[aria-label="Bereiche"]');
 }
+
+test('lange Namen im Verbundpfad lassen die Suche an beiden Desktop-Grenzen bedienbar', async () => {
+  const scope = await readStore(store => store.createScope('Netzbetrieb Stadtwerke Strom Gas Wasser und Fernwärme Nordregion'));
+  const { verbundId } = await readStore(store => store.createVerbund('Rechenzentrum Nord mit Leitstelle und Notfallrechenzentrum', scope));
+  const { shell, router: current } = await renderAt(buildVerbundUrl(verbundId), 1024, 800, false);
+  const path = shell.querySelector<HTMLElement>('nav[aria-label="Pfad"]')!;
+  const scopeLink = path.querySelector<HTMLAnchorElement>(`a[href="${buildScopeUrl(scope.scopeId)}"]`)!;
+  const search = page.getByRole('searchbox', { name: 'Katalog durchsuchen' });
+
+  for (const width of [1024, 1100, 1279, 1280, 1440]) {
+    await page.viewport(width, 800);
+    expect(scopeLink.checkVisibility()).toBe(width >= 1280);
+    const separators = [...path.querySelectorAll<HTMLElement>('span[aria-hidden="true"]')];
+    expect(separators.filter(separator => separator.checkVisibility())).toHaveLength(width >= 1280 ? 2 : 0);
+    expect(search.element().getBoundingClientRect().right).toBeLessThanOrEqual(path.getBoundingClientRect().left);
+    await search.click();
+    expect(document.activeElement).toBe(search.element());
+  }
+
+  await page.viewport(1100, 800);
+  await page.getByRole('main').getByRole('link', { name: scope.name }).click();
+  await expect.poll(() => current.state.location.pathname).toBe(buildScopeUrl(scope.scopeId));
+});
 
 describe.each(LAYOUTS)('$name ($width px)', ({ name, width, height, touch }) => {
   test('Bereichswechsel ist sichtbar, zeigt den aktiven Bereich und ist per Tastatur bedienbar', async () => {

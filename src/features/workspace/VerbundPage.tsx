@@ -2,7 +2,7 @@ import { useId, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useOutletContext, useParams } from 'react-router';
 import { PageTitle } from '@/app/PageTitle';
 import { PAGE_TITLES } from '@/app/pageTitles';
-import { buildWorkspaceDocumentUrl, buildWorkspaceIndexUrl } from '@/app/routes';
+import { buildScopeUrl, buildWorkspaceDocumentUrl, buildWorkspaceIndexUrl } from '@/app/routes';
 import {
   ROOT_TYPE_LABELS, STATION_DEFINITIONS, isWorkspaceStation, type WorkspaceStation,
 } from '@/domain/workspaceStations';
@@ -10,7 +10,8 @@ import type { VerbundView, WorkspaceDocumentView } from '@/state/workspaceVerbun
 import { FOCUS_RING, OriginLabel, ValidityBadge } from '@/features/workspace/DocumentMarks';
 import { WorkspaceNotices } from '@/features/workspace/WorkspaceNotices';
 import { StationCards, latestSavedAt, relativeTime } from '@/features/workspace/StationCards';
-import { NameForm } from '@/features/workspace/WorkspaceForms';
+import { NameForm, ROW_BUTTON } from '@/features/workspace/WorkspaceForms';
+import { ScopeMembershipArea } from '@/features/workspace/ScopeMembershipViews';
 import { usePendingWrite } from '@/features/workspace/usePendingWrite';
 import { WorkspaceStatePage, useRoutedVerbund } from '@/features/workspace/WorkspaceStatePage';
 import { Button } from '@/components/Button';
@@ -126,11 +127,17 @@ function DocumentList({ verbundId, documents, empty }: Readonly<{ verbundId: str
 }
 
 /** Kopf der Verbund-Übersicht (Bild 2): Name, Umbenennen, Löschen mit Bestätigung, Herkunft und Speicherstand. */
-function VerbundHeader({ view, now }: Readonly<{ view: VerbundView; now: number }>) {
+function VerbundHeader({ view, now, onMembership }: Readonly<{
+  view: VerbundView;
+  now: number;
+  onMembership: (trigger: HTMLButtonElement) => void;
+}>) {
   // Eine offene Umbenennung überdauert Stations- und Verbundwechsel (`renameDrafts` im Provider).
-  const { writable, renameVerbund, deleteVerbund, renameDrafts, pendingVerbundWrite } = useWorkspace();
+  const { writable, scopes, scopesFailed, verbuende, renameVerbund, deleteVerbund, renameDrafts, pendingVerbundWrite } = useWorkspace();
   const navigate = useNavigate();
   const { verbund, documents } = view;
+  const member = verbuende?.find(row => row.verbundId === verbund.verbundId) ?? verbund;
+  const scope = scopes?.find(row => row.scopeId === member.scopeId);
   const [renaming, setRenaming] = useState(() => renameDrafts.has(verbund.verbundId));
   const [confirming, setConfirming] = useState(false);
   const stopRenaming = () => {
@@ -147,7 +154,7 @@ function VerbundHeader({ view, now }: Readonly<{ view: VerbundView; now: number 
       <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
         <div className="min-w-0 space-y-1">
           <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">Informationsverbund</p>
-          <h1 className="type-page-title break-words">{verbund.name}</h1>
+          <h1 tabIndex={-1} className="type-page-title break-words">{verbund.name}</h1>
         </div>
         {!renaming && (
           <div className="flex gap-2">
@@ -192,6 +199,18 @@ function VerbundHeader({ view, now }: Readonly<{ view: VerbundView; now: number 
           onCancel={stopRenaming}
         />
       )}
+      <div className="flex flex-wrap items-center gap-x-2 text-sm">
+        <span className="text-[var(--color-text-secondary)]">Anwendungsbereich:</span>
+        {scope ? (
+          <Link to={buildScopeUrl(scope.scopeId)} className={`flex min-h-touch min-w-0 items-center rounded font-semibold catalog-prose-link desktop:min-h-0 ${FOCUS_RING}`}>
+            <span className="break-words">{scope.name}</span>
+          </Link>
+        ) : <span>{member.scopeId ? 'Anwendungsbereich nicht lesbar' : 'keiner'}</span>}
+        {!member.scopeId && (
+          <Button variant="ghost" className={ROW_BUTTON} disabled={!writable || scopesFailed || !verbuende || !scopes}
+            onClick={(event) => onMembership(event.currentTarget)}>Zuordnen…</Button>
+        )}
+      </div>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <OriginLabel />
         <span aria-live="polite" className="flex items-center gap-1.5 text-xs tabular-nums text-[var(--color-text-secondary)]">
@@ -229,23 +248,28 @@ function VerbundOverview({ view }: Readonly<{ view: VerbundView }>) {
   const [now] = useState(Date.now);
   const { verbund, documents, diagnostics } = view;
   return (
-    <div className="mx-auto w-full max-w-screen-2xl space-y-4 p-4 desktop:px-7 desktop:py-6">
-      <VerbundHeader key={verbund.verbundId} view={view} now={now} />
-      <WorkspaceNotices />
-      <section aria-labelledby="verbund-stationen" className="space-y-3">
-        <h2 id="verbund-stationen" className="sr-only">Stationen</h2>
-        <p className="max-w-prose text-sm text-[var(--color-text-secondary)]">
-          Die fünf Stationen sind unabhängig voneinander betretbar. Eine leere oder unvollständige Station blockiert die übrigen nicht — Lücken werden angezeigt, nicht verhindert.
-        </p>
-        <StationCards view={view} catalogHref={catalogHref} now={now} />
-      </section>
-      <Disclosure title="Alle Dokumente" count={documents.length}>
-        <DocumentList verbundId={verbund.verbundId} documents={documents} empty="Dieser Informationsverbund enthält noch kein Dokument." />
-      </Disclosure>
-      <Disclosure title="Diagnosen" count={diagnostics.length}>
-        <DiagnosticList diagnostics={diagnostics} />
-      </Disclosure>
-    </div>
+    <ScopeMembershipArea key={verbund.verbundId}>
+      {(open) => (
+        <div className="mx-auto w-full max-w-screen-2xl space-y-4 p-4 desktop:px-7 desktop:py-6">
+          <VerbundHeader view={view} now={now}
+            onMembership={(trigger) => open({ kind: 'move', verbundId: verbund.verbundId }, trigger)} />
+          <WorkspaceNotices />
+          <section aria-labelledby="verbund-stationen" className="space-y-3">
+            <h2 id="verbund-stationen" className="sr-only">Stationen</h2>
+            <p className="max-w-prose text-sm text-[var(--color-text-secondary)]">
+              Die fünf Stationen sind unabhängig voneinander betretbar. Eine leere oder unvollständige Station blockiert die übrigen nicht — Lücken werden angezeigt, nicht verhindert.
+            </p>
+            <StationCards view={view} catalogHref={catalogHref} now={now} />
+          </section>
+          <Disclosure title="Alle Dokumente" count={documents.length}>
+            <DocumentList verbundId={verbund.verbundId} documents={documents} empty="Dieser Informationsverbund enthält noch kein Dokument." />
+          </Disclosure>
+          <Disclosure title="Diagnosen" count={diagnostics.length}>
+            <DiagnosticList diagnostics={diagnostics} />
+          </Disclosure>
+        </div>
+      )}
+    </ScopeMembershipArea>
   );
 }
 

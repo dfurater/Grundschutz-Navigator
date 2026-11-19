@@ -140,7 +140,7 @@ export function HeaderBar({
     <header
       role="banner"
       data-sticky-header
-      className={`header-reference-theme sticky top-0 z-30 grid h-14 shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-4 sm:grid-cols-[max-content_minmax(0,36rem)] sm:gap-0 desktop:grid-cols-[max-content_minmax(0,36rem)_minmax(max-content,1fr)] ${className}`}
+      className={`header-reference-theme sticky top-0 z-30 grid h-14 shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-4 sm:grid-cols-[max-content_minmax(0,36rem)] sm:gap-0 desktop:grid-cols-[max-content_minmax(14rem,1fr)_minmax(0,auto)] ${className}`}
       data-testid="header-bar"
     >
       {/* Hamburger + Brand — grouped as one visual unit */}
@@ -176,7 +176,7 @@ export function HeaderBar({
       </div>
 
       {/* Search */}
-      <div inert={obscured} className="hidden w-full px-2 sm:block md:px-4 lg:px-8">
+      <div inert={obscured} className="hidden w-full max-w-xl px-2 sm:block md:px-4 lg:px-8">
         <div className="relative group">
           <IconSearch className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--header-text-subtle)] transition-colors group-focus-within:text-[var(--header-brand-accent)]" />
           <input
@@ -209,7 +209,7 @@ export function HeaderBar({
       </Link>
 
       {context && (
-        <div inert={obscured} className="hidden min-w-0 justify-self-end desktop:flex">
+        <div inert={obscured} className="hidden min-w-0 max-w-full justify-self-end desktop:flex">
           {context}
         </div>
       )}

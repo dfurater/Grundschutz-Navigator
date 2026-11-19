@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
-import type { LocalId, VerbundId, WorkspaceVerbund } from '@/domain/workspaceModel';
-import { NEW_SCOPE_DRAFT, collectRestoreInputs } from '@/state/workspaceRestore';
+import type { LocalId, ScopeId, VerbundId, WorkspaceScope, WorkspaceVerbund } from '@/domain/workspaceModel';
+import { NEW_SCOPE_DRAFT, collectRestoreInputs, scopeDraftKey, scopedVerbundDraftKey } from '@/state/workspaceRestore';
 
 const target = { verbundId: '11111111-1111-4111-8111-111111111111' as VerbundId, name: 'Ziel', createdAt: '', savedAt: '' } as WorkspaceVerbund;
 const other = { ...target, verbundId: '22222222-2222-4222-8222-222222222222' as VerbundId, name: 'Anderer' };
@@ -40,15 +40,21 @@ it('führt beim Gesamt-Restore Importziele ohne bekanntes Dokument als verwaiste
 });
 
 it('führt offene Namen von Anwendungsbereichen nur beim Gesamt-Restore und nur bei Abweichung', () => {
-  const scope = { scopeId: '55555555-5555-4555-8555-555555555555', name: 'Netz', savedAt: 's1', createdAt: '', items: [], evidence: [] } as never;
+  const scope: WorkspaceScope = {
+    scopeId: '55555555-5555-4555-8555-555555555555' as ScopeId, name: 'Netz', savedAt: 's1', createdAt: '', items: [], evidence: [],
+  };
+  const createVerbundKey = scopedVerbundDraftKey(scope.scopeId);
   const base = {
     renameDrafts: new Map(), importTargets: new Map(), verbuende: [target], documents: [], scopes: [scope],
-    scopeDrafts: new Map([['55555555-5555-4555-8555-555555555555', 'Netz Nord'], [NEW_SCOPE_DRAFT, 'Anlage'], ['66666666-6666-4666-8666-666666666666', 'Verwaist']]),
+    scopeDrafts: new Map([[scope.scopeId, 'Netz Nord'], [NEW_SCOPE_DRAFT, 'Anlage'], [createVerbundKey, 'Rechenzentrum'], ['66666666-6666-4666-8666-666666666666', 'Verwaist']]),
   };
-  expect(collectRestoreInputs({ ...base, scope: { kind: 'workspace', documents: [] } })).toEqual([
+  const inputs = collectRestoreInputs({ ...base, scope: { kind: 'workspace', documents: [] } });
+  expect(inputs).toEqual([
     { kind: 'scope', scope: { scopeId: '55555555-5555-4555-8555-555555555555', name: 'Netz', savedAt: 's1' }, draft: 'Netz Nord' },
     { kind: 'scope', scope: null, draft: 'Anlage' },
+    { kind: 'scope', scope: { scopeId: scope.scopeId, name: 'Netz', savedAt: 's1' }, draft: 'Rechenzentrum', newVerbund: true },
   ]);
+  expect(inputs.filter(entry => entry.kind === 'scope').map(scopeDraftKey)).toEqual([scope.scopeId, NEW_SCOPE_DRAFT, createVerbundKey]);
   expect(collectRestoreInputs({ ...base, scope: { kind: 'verbund', verbundId: target.verbundId, documents: [] } })).toEqual([]);
   const unchanged = new Map([['55555555-5555-4555-8555-555555555555', ' Netz '], [NEW_SCOPE_DRAFT, '  ']]);
   expect(collectRestoreInputs({ ...base, scopeDrafts: unchanged, scope: { kind: 'workspace', documents: [] } })).toEqual([]);

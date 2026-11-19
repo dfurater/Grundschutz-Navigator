@@ -1,6 +1,6 @@
 import { useId, useRef, type ReactNode } from 'react';
 import { BackdropTint } from '@/components/BackdropTint';
-import { Button } from '@/components/Button';
+import { Button, type ButtonVariant } from '@/components/Button';
 import { ModalPortal } from '@/components/ModalPortal';
 import { useGlobalEventListener } from '@/hooks/useGlobalEventListener';
 import { useModalDialog } from '@/hooks/useModalDialog';
@@ -9,16 +9,18 @@ import { useScrollLock } from '@/hooks/useScrollLock';
 export interface ConfirmDialogProps {
   readonly open: boolean;
   readonly title: string;
-  /** Benennt den nicht umkehrbaren Teil der Aktion. */
+  /** Beschreibt die Folgen der Bestätigung. */
   readonly children: ReactNode;
   readonly confirmLabel: string;
+  readonly confirmVariant?: ButtonVariant;
+  readonly confirmDisabled?: boolean;
   readonly busy?: boolean;
   readonly onConfirm: () => void;
   readonly onCancel: () => void;
 }
 
-/** Ausdrückliche Bestätigung einer zerstörenden Aktion; Abbrechen ist der Standard. */
-export function ConfirmDialog({ open, title, children, confirmLabel, busy = false, onConfirm, onCancel }: ConfirmDialogProps) {
+/** Ausdrückliche Bestätigung mit Abbrechen als anfänglichem Fokus. */
+export function ConfirmDialog({ open, title, children, confirmLabel, confirmVariant = 'danger', confirmDisabled = false, busy = false, onConfirm, onCancel }: ConfirmDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const titleId = useId();
   const descriptionId = useId();
@@ -53,7 +55,7 @@ export function ConfirmDialog({ open, title, children, confirmLabel, busy = fals
           <div className="mt-4 flex shrink-0 flex-wrap justify-end gap-2">
             {/* Abbrechen steht zuerst und erhält den Fokus: Enter löscht nichts. */}
             <Button variant="secondary" className="min-h-touch aria-disabled:cursor-not-allowed aria-disabled:opacity-50 desktop:min-h-0" aria-disabled={busy || undefined} onClick={cancel}>Abbrechen</Button>
-            <Button variant="danger" className="min-h-touch aria-disabled:cursor-not-allowed aria-disabled:opacity-50 desktop:min-h-0" aria-disabled={busy || undefined} onClick={() => { if (!busy) onConfirm(); }}>{confirmLabel}</Button>
+            <Button variant={confirmVariant} className="min-h-touch aria-disabled:cursor-not-allowed aria-disabled:opacity-50 desktop:min-h-0" aria-disabled={busy || confirmDisabled || undefined} onClick={() => { if (!busy && !confirmDisabled) onConfirm(); }}>{confirmLabel}</Button>
           </div>
         </dialog>
       </div>

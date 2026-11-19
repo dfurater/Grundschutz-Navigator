@@ -25,7 +25,7 @@ export function NameForm({ label, submitLabel, initial = '', disabled, busy = fa
   const saving = submitting || busy;
   const handleSubmit = (event: React.SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (saving || !isVerbundName(name)) return;
+    if (disabled || saving || !isVerbundName(name)) return;
     setSubmitting(true);
     const submitted = name.trim();
     void onSubmit(submitted).then((saved) => {
