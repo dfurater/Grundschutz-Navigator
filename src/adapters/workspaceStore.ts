@@ -403,26 +403,29 @@ export class WorkspaceStore {
       const states: { verbundId: VerbundId; state: RequirementPackageState }[] = [];
       // Je Baseline eine eigene Lesung: Höchstens eine Quelle ist zugleich im Speicher.
       for (const verbund of listed.value) {
-        const requirementPackage = verbund.requirementPackage;
-        if (!requirementPackage) continue;
-        const read = await this.read(['documents'], () => this.documents.get(requirementPackage.baseline.localId));
-        if (!read.ok) return read;
-        const document = read.value?.verbundId === verbund.verbundId ? read.value : undefined;
-        let baseline: Parameters<typeof requirementPackageState>[1];
-        if (document) {
-          const stamp = documentStamp(document.source, document.rootType);
-          let current: DocumentSnapshot | typeof stamp = stamp;
-          if (stamp && requirementPackage && sameStamp(stamp, requirementPackage.baseline.stand)) {
-            const work = await reviewTrailInWorker({ source: document.source, rootType: document.rootType, previous: null, baseSequence: null, diff: false });
-            if (!work.ok) return work;
-            current = work.value.snapshot;
-          }
-          baseline = { title: packageTitle(document), ...(current ? { current } : {}) };
-        }
-        states.push({ verbundId: verbund.verbundId, state: requirementPackageState(requirementPackage, baseline) });
+        const state = await this.requirementPackageStateOf(verbund);
+        if (!state.ok) return state;
+        states.push({ verbundId: verbund.verbundId, state: state.value });
       }
       return { ok: true, value: states };
     } catch (error) { return failure(error); }
+  }
+
+  private async requirementPackageStateOf(verbund: WorkspaceVerbund): Promise<WorkspaceResult<RequirementPackageState>> {
+    const requirementPackage = verbund.requirementPackage;
+    if (!requirementPackage) return { ok: true, value: requirementPackageState(undefined, undefined) };
+    const read = await this.read(['documents'], () => this.documents.get(requirementPackage.baseline.localId));
+    if (!read.ok) return read;
+    const document = read.value;
+    if (document?.verbundId !== verbund.verbundId) return { ok: true, value: requirementPackageState(requirementPackage, undefined) };
+    const stamp = documentStamp(document.source, document.rootType);
+    let current: DocumentSnapshot | typeof stamp = stamp;
+    if (stamp && sameStamp(stamp, requirementPackage.baseline.stand)) {
+      const work = await reviewTrailInWorker({ source: document.source, rootType: document.rootType, previous: null, baseSequence: null, diff: false });
+      if (!work.ok) return work;
+      current = work.value.snapshot;
+    }
+    return { ok: true, value: requirementPackageState(requirementPackage, { title: packageTitle(document), ...(current ? { current } : {}) }) };
   }
 
   /** Liest Verbund und Baseline unter den Vergleichswerten; jede Abweichung, auch ein gelöschtes Dokument, ist ein Konflikt. */

@@ -32,7 +32,7 @@ export interface WorkspaceDocumentView {
   /** `metadata.version` und `metadata.last-modified` für die Paketauswahl. */
   readonly version?: string;
   readonly lastModified?: string;
-  readonly derivedFrom?: WorkspaceEnvelope['derivedFrom'];
+  readonly derivedFrom?: NonNullable<WorkspaceEnvelope['derivedFrom']>;
   /** Bindung an BSI-Katalogstände; fehlt, wenn das Dokument auf keinen BSI-Katalog verweist. */
   readonly catalogPin?: CatalogPin;
   readonly savedAt: string;

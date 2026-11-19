@@ -35,6 +35,16 @@ const loadView = (port: WorkspacePort, verbundId: VerbundId, class1: readonly Wo
 
 const byName = (a: { readonly name: string }, b: { readonly name: string }) => a.name.localeCompare(b.name, 'de');
 
+/** Paketzustände je `verbundId`; ein Lesefehler wird gemeldet und ergibt `null`, nie einen leeren Bestand. */
+function packageMap(
+  states: Awaited<ReturnType<WorkspacePort['listRequirementPackages']>>,
+  report: (diagnostic: { readonly code: string }) => void,
+): ReadonlyMap<string, RequirementPackageState> | null {
+  if (states.ok) return new Map(states.value.map(({ verbundId, state }) => [verbundId, state]));
+  report(states.diagnostic);
+  return null;
+}
+
 /** Speichert einen offenen Entwurf; Stationen registrieren ihn für den Bereichswechsel. */
 export type AutosaveFlush = () => Promise<WorkspaceResult<unknown>>;
 
@@ -324,8 +334,7 @@ export function WorkspaceProvider({ open = openWorkspaceStore, session: provided
       setScopes(listed.ok ? [...listed.value].sort(byName) : []);
       const states = await port.listRequirementPackages().catch(storageFailed);
       if (!current) return;
-      if (!states.ok) report(states.diagnostic);
-      setPackages(states.ok ? new Map(states.value.map(({ verbundId, state }) => [verbundId, state])) : null);
+      setPackages(packageMap(states, report));
       // Ein anderswo gelöschter Verbund hinterlässt keinen Namensentwurf im Tab.
       for (const verbundId of renameDrafts.keys()) {
         if (!result.value.some((entry) => entry.verbundId === verbundId)) renameDrafts.delete(verbundId);
