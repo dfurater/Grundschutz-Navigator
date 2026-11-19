@@ -7,7 +7,7 @@ import type { LocalId, WorkspaceEnvelope, WorkspaceVerbund, WorkspaceVerbundBack
 /**
  * Paketverweise behalten ihren Verbundkontext über den Restore hinaus: Die `packageId` der Datei gehört keinem anderen
  * Zielverbund, ihre Baseline-`localId` keinem Dokument eines anderen Verbunds, und kein anderer Zielverbund verweist mit
- * seiner Baseline auf ein Dokument der Datei.
+ * seiner Baseline auf ein Dokument der Datei oder auf dieselbe Baseline-`localId` wie die Datei, auch wenn das Dokument fehlt.
  */
 export async function foreignPackageReference(db: Dexie, backup: WorkspaceVerbundBackup): Promise<boolean> {
   const verbundId = backup.verbuende[0].verbundId;
@@ -19,7 +19,8 @@ export async function foreignPackageReference(db: Dexie, backup: WorkspaceVerbun
   }
   const others = await db.table<WorkspaceVerbund>('verbuende')
     .filter(row => row.verbundId !== verbundId && row.requirementPackage !== undefined
-      && (row.requirementPackage.packageId === filePackage?.packageId || fileDocuments.has(row.requirementPackage.baseline.localId)))
+      && (row.requirementPackage.packageId === filePackage?.packageId || row.requirementPackage.baseline.localId === filePackage?.baseline.localId
+        || fileDocuments.has(row.requirementPackage.baseline.localId)))
     .count();
   return others > 0;
 }

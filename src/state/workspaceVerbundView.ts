@@ -1,6 +1,7 @@
 import { pointerString } from '@/domain/jsonGuards';
 import { REFERENCE_GRAPH_CODES } from '@/domain/referenceGraphModel';
 import { buildWorkspaceGraph } from '@/domain/workspaceGraph';
+import { isRequirementPackageRoot, missingStandFields } from '@/domain/requirementPackage';
 import { applyCatalogPins, CATALOG_PIN_PATH, type CatalogDelivery, type CatalogPin } from '@/domain/workspaceCatalogPin';
 import type { WorkspaceClass1Artifact, WorkspaceGraph, WorkspaceGraphEdge } from '@/domain/workspaceGraphModel';
 import type { OscalRootKey } from '@/domain/oscalVersionMatrix';
@@ -33,6 +34,8 @@ export interface WorkspaceDocumentView {
   readonly version?: string;
   readonly lastModified?: string;
   readonly derivedFrom?: NonNullable<WorkspaceEnvelope['derivedFrom']>;
+  /** Fehlende Stempelangaben eines Profile oder Catalog; fehlt, wenn das Dokument als Paket festlegbar ist. */
+  readonly missingStand?: readonly string[];
   /** Bindung an BSI-Katalogstände; fehlt, wenn das Dokument auf keinen BSI-Katalog verweist. */
   readonly catalogPin?: CatalogPin;
   readonly savedAt: string;
@@ -102,6 +105,12 @@ function documentVersion(envelope: WorkspaceEnvelope): Pick<WorkspaceDocumentVie
     ...(typeof version === 'string' ? { version } : {}),
     ...(typeof lastModified === 'string' ? { lastModified } : {}),
   };
+}
+
+function missingStand(envelope: WorkspaceEnvelope): Pick<WorkspaceDocumentView, 'missingStand'> {
+  if (!isRequirementPackageRoot(envelope.rootType)) return {};
+  const missing = missingStandFields(envelope);
+  return missing.length > 0 ? { missingStand: missing } : {};
 }
 
 export { pointerString } from '@/domain/jsonGuards';
@@ -232,6 +241,7 @@ export async function deriveVerbundView({ verbund, members, bindings: stored, cl
       title: documentTitle(member),
       ...documentVersion(member),
       ...(member.derivedFrom ? { derivedFrom: member.derivedFrom } : {}),
+      ...missingStand(member),
       savedAt: member.savedAt,
       ...(pins.has(member.localId) ? { catalogPin: pins.get(member.localId) } : {}),
       ...(metrics.documents.has(member.localId) ? { metric: metrics.documents.get(member.localId) } : {}),

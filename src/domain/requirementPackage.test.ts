@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildRequirementPackage, requirementPackageState } from '@/domain/requirementPackage';
+import { buildRequirementPackage, missingStandFields, requirementPackageState } from '@/domain/requirementPackage';
 import type { DocumentSnapshot, LocalId } from '@/domain/workspaceModel';
 
 const localId = '11111111-1111-4111-8111-111111111111' as LocalId;
@@ -18,6 +18,8 @@ describe('buildRequirementPackage', () => {
     ]);
     const partial = { ...derivedFrom, snapshotCommit: '' };
     expect(buildRequirementPackage('p', { localId, derivedFrom: partial }, stand).sourcePins).toHaveLength(1);
+    const unknown = { ...derivedFrom, artifactKey: 'catalog-unbekannt' };
+    expect(buildRequirementPackage('p', { localId, derivedFrom: unknown }, stand).sourcePins).toHaveLength(1);
   });
 
   it('teilt kein Objekt zwischen Baseline und Pin', () => {
@@ -38,5 +40,13 @@ describe('requirementPackageState', () => {
     const stamp = { rootType: stand.rootType, uuid: stand.uuid, lastModified: '2026-11-14T09:12:00Z', version: stand.version, oscalVersion: stand.oscalVersion };
     expect(requirementPackageState(requirementPackage, { current: stamp })).toMatchObject({ kind: 'stale', current: stamp });
     expect(requirementPackageState(requirementPackage, {})).toEqual({ kind: 'stale', requirementPackage });
+  });
+});
+
+describe('missingStandFields', () => {
+  it('nennt jede fehlende Stempelangabe', () => {
+    const metadata = { version: '3', 'oscal-version': '1.1.3', 'last-modified': '2026-11-12T10:41:00Z' };
+    expect(missingStandFields({ rootType: 'profile', source: { profile: { uuid: 'u', metadata } } })).toEqual([]);
+    expect(missingStandFields({ rootType: 'profile', source: { profile: { metadata: {} } } })).toEqual(['UUID', 'Version', 'OSCAL-Version', 'Stand']);
   });
 });

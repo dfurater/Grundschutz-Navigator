@@ -12,7 +12,7 @@ import {
   type ReviewBaseline, type ReviewCheckpoint, type ReviewDecision, type ReviewDecisionKind, type ReviewTrailRow,
   type ReviewTrailView, type DocumentSnapshot, type RequirementPackageExpectation,
 } from '@/domain/workspaceModel';
-import { buildRequirementPackage, isRequirementPackageRoot, packageTitle, requirementPackageState, sameStamp, type RequirementPackageState } from '@/domain/requirementPackage';
+import { buildRequirementPackage, isRequirementPackageRoot, missingStandFields, packageTitle, requirementPackageState, sameStamp, type RequirementPackageState } from '@/domain/requirementPackage';
 import { snapshotDocument, assertAdmissible, assertState, pointerValue } from '@/adapters/workspaceDocumentAdmission';
 import { parseAnyBackup, parseWorkspaceBackup, parseVerbundBackup } from '@/adapters/workspaceBackup';
 import { CLASS_2_IMPORT_LIMITS } from '@/domain/oscalImportContract';
@@ -435,6 +435,7 @@ export class WorkspaceStore {
     const document = await this.documents.get(baselineLocalId);
     if (document?.savedAt !== expected.baselineSavedAt) reject('WORKSPACE_SAVE_CONFLICT');
     if (document.verbundId !== verbundId || !isRequirementPackageRoot(document.rootType)) reject('WORKSPACE_PACKAGE_INVALID');
+    if (missingStandFields(document).length > 0) reject('WORKSPACE_PACKAGE_STAND_INCOMPLETE');
     return { verbund, document };
   }
 

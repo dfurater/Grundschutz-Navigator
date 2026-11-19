@@ -1,8 +1,8 @@
 import { useId, useLayoutEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
-import { buildStationUrl } from '@/app/routes';
+import { buildStationUrl, buildWorkspaceDocumentUrl } from '@/app/routes';
 import { Button } from '@/components/Button';
-import { isRequirementPackageRoot } from '@/domain/requirementPackage';
+import { classOneSource, isRequirementPackageRoot } from '@/domain/requirementPackage';
 import type { LocalId, VerbundId, WorkspaceVerbund } from '@/domain/workspaceModel';
 import { FOCUS_RING, ValidityBadge } from '@/features/workspace/DocumentMarks';
 import { Facts } from '@/features/workspace/RestoreSheetParts';
@@ -28,11 +28,23 @@ function Previous({ verbund }: Readonly<{ verbund: WorkspaceVerbund }>) {
   return <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-1">{chip}<span>{name} · festgelegt: {standText(stand.lastModified)}</span></span>;
 }
 
-function Candidate({ document, name, checked, onSelect }: Readonly<{ document: WorkspaceDocumentView; name: string; checked: boolean; onSelect: () => void }>) {
+const LINK = `catalog-prose-link font-semibold ${FOCUS_RING}`;
+
+/** Ohne vollständigen Stempel entsteht kein Paketstand: Der Kandidat bleibt sichtbar, nennt die Lücke und führt zum Dokument. */
+function MissingStand({ document, verbundId }: Readonly<{ document: WorkspaceDocumentView; verbundId: string }>) {
+  if (!document.missingStand) return null;
+  return (
+    <p className="-mt-2 pb-3 pl-[41px] pr-4 text-xs text-[var(--color-text-secondary)]">
+      Fehlt: {document.missingStand.join(', ')} · <Link to={buildWorkspaceDocumentUrl(verbundId, document.localId)} className={LINK}>Dokument öffnen<span aria-hidden="true">&nbsp;→</span></Link>
+    </p>
+  );
+}
+
+function Candidate({ document, verbundId, name, checked, onSelect }: Readonly<{ document: WorkspaceDocumentView; verbundId: string; name: string; checked: boolean; onSelect: () => void }>) {
   return (
     <li>
       <label className={CHOICE}>
-        <input type="radio" name={name} checked={checked} onChange={onSelect} className={CHOICE_INPUT} />
+        <input type="radio" name={name} checked={checked} disabled={document.missingStand !== undefined} onChange={onSelect} className={CHOICE_INPUT} />
         <span className="min-w-0 flex-1">
           <span className="block break-words font-semibold text-[var(--color-text-primary)]">{document.title ?? document.rootType}</span>
           <span className={META}>
@@ -40,10 +52,12 @@ function Candidate({ document, name, checked, onSelect }: Readonly<{ document: W
             {document.version ? ` · Version ${document.version}` : ''}
             {document.lastModified ? ` · ${standText(document.lastModified)}` : ''}
           </span>
-          <span className={META}><SourceState pin={document.derivedFrom} /></span>
+          <span className={META}><SourceState pin={classOneSource(document.derivedFrom)} /></span>
         </span>
         <ValidityBadge state={document.documentState} />
       </label>
+      {/* Außerhalb des Labels: Lücke und Link bleiben bei gesperrter Auswahl voll lesbar und bedienbar. */}
+      <MissingStand document={document} verbundId={verbundId} />
     </li>
   );
 }
@@ -68,7 +82,7 @@ export function PackagePickPage({ view, onClose, onSaved }: Readonly<{ view: Ver
   const [conflict, setConflict] = useState(false);
   const [busy, setBusy] = useState(false);
   const name = useId();
-  const chosen = candidates.find((document) => document.localId === selection);
+  const chosen = candidates.find((document) => document.localId === selection && !document.missingStand);
   const clearing = selection === NONE && verbund.requirementPackage !== undefined;
   const label = confirmLabel(clearing, chosen);
 
@@ -104,7 +118,7 @@ export function PackagePickPage({ view, onClose, onSaved }: Readonly<{ view: Ver
             <legend className="mb-2 text-sm font-semibold">Neu</legend>
             <ul className={`${PANEL} divide-y divide-[var(--color-border-subtle)]`}>
               {candidates.map((document) => (
-                <Candidate key={document.localId} document={document} name={name} checked={selection === document.localId} onSelect={() => setSelection(document.localId)} />
+                <Candidate key={document.localId} document={document} verbundId={verbund.verbundId} name={name} checked={selection === document.localId} onSelect={() => setSelection(document.localId)} />
               ))}
               {verbund.requirementPackage && (
                 <li>

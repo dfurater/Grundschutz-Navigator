@@ -12,6 +12,7 @@ const bytes = (text: string) => new TextEncoder().encode(text);
 const conflict = { ok: false, diagnostic: { code: 'WORKSPACE_SAVE_CONFLICT' } };
 const invalid = { ok: false, diagnostic: { code: 'WORKSPACE_PACKAGE_INVALID' } };
 const backupConflict = { ok: false, diagnostic: { code: 'WORKSPACE_BACKUP_CONFLICT' } };
+const backupInvalid = { ok: false, diagnostic: { code: 'WORKSPACE_BACKUP_INVALID' } };
 
 async function oscal(rootType: OscalRootKey, title: string, lastModified = '2026-11-12T10:41:00Z') {
   const source = makeSchemaValidOscalDocument(rootType, '1.1.3');
@@ -172,4 +173,48 @@ it('verweigert den Verbund-Restore, wenn ein Paketverweis nach dem Restore auf e
   expect(value(await store.exportBackup())).toBe(before);
   expect((await verbund(store, va.verbundId)).requirementPackage).toEqual(set.requirementPackage);
   expect(value(await store.getDocument(p1.localId))).toBeDefined();
+});
+
+it('lehnt einen Entwurf ohne metadata.version mit fachlicher Diagnose ab, ohne etwas zu schreiben', async () => {
+  const { store, va } = await fixture();
+  const source = makeSchemaValidOscalDocument('profile', '1.1.3');
+  delete (source.profile as { metadata: Record<string, unknown> }).metadata.version;
+  const draft = value(await store.addDocument(va.verbundId, { source, context: { trustClass: 'class-2-local-user' }, rootType: 'profile', oscalVersion: '1.1.3' }, 'draft'));
+  const before = value(await store.exportBackup());
+  expect(await store.setRequirementPackage(va.verbundId, { savedAt: va.savedAt, baselineSavedAt: draft.savedAt }, draft.localId))
+    .toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_PACKAGE_STAND_INCOMPLETE' } });
+  expect(value(await store.exportBackup())).toBe(before);
+});
+
+it('verweigert den Verbund-Restore, wenn ein anderer Zielverbund dieselbe fehlende Baseline festgelegt hat', async () => {
+  const { store, va, p2 } = await fixture();
+  value(await store.setRequirementPackage(va.verbundId, { savedAt: va.savedAt, baselineSavedAt: p2.savedAt }, p2.localId));
+  value(await store.deleteDocument(p2.localId));
+
+  // Datei: neuer Verbund mit eigener packageId, dessen nicht auflösbares Paket auf dieselbe localId zeigt.
+  const twin = JSON.parse(value(await store.exportVerbundBackup(va.verbundId)));
+  twin.verbuende[0] = { ...twin.verbuende[0], verbundId: crypto.randomUUID(), name: 'VB' };
+  twin.verbuende[0].requirementPackage.packageId = crypto.randomUUID();
+  twin.documents = twin.documents.map((row: object) => ({ ...row, verbundId: twin.verbuende[0].verbundId, localId: crypto.randomUUID() }));
+  const before = value(await store.exportBackup());
+  expect(await restoreVerbundBackup(store, bytes(JSON.stringify(twin)))).toMatchObject(backupConflict);
+  expect(value(await store.exportBackup())).toBe(before);
+});
+
+it('nimmt einen class-1-Paketpin nur mit registriertem Artefaktschlüssel aus Gesamt- und Verbundbackup an', async () => {
+  const { store, va, p1 } = await fixture();
+  value(await store.setRequirementPackage(va.verbundId, { savedAt: va.savedAt, baselineSavedAt: p1.savedAt }, p1.localId));
+  const pinned = (text: string, artifactKey: string) => {
+    const parsed = JSON.parse(text);
+    parsed.verbuende[0].requirementPackage.sourcePins.push({ kind: 'class-1', artifactKey, snapshotCommit: 'c'.repeat(40), contentSha256: 'b'.repeat(64) });
+    return bytes(JSON.stringify(parsed));
+  };
+  const whole = value(await store.exportBackup());
+  const partial = value(await store.exportVerbundBackup(va.verbundId));
+  const before = whole;
+  expect(await restoreWorkspaceBackup(store, pinned(whole, 'catalog-unbekannt'))).toMatchObject(backupInvalid);
+  expect(await restoreVerbundBackup(store, pinned(partial, 'catalog-unbekannt'))).toMatchObject(backupInvalid);
+  expect(value(await store.exportBackup())).toBe(before);
+  value(await restoreWorkspaceBackup(store, pinned(whole, 'catalog-gspp')));
+  expect((await verbund(store, va.verbundId)).requirementPackage?.sourcePins[1]).toMatchObject({ kind: 'class-1', artifactKey: 'catalog-gspp' });
 });
