@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { buildScopeUrl, buildVerbundUrl, buildWorkspaceDocumentUrl, buildWorkspaceIndexUrl } from '@/app/routes';
+import { buildScopeUrl, buildVerbundUrl, buildStationUrl, buildWorkspaceIndexUrl } from '@/app/routes';
 import type { VerbundId } from '@/domain/workspaceModel';
 import { makeSchemaValidOscalDocument } from '@/test/fixtures/oscalSchemaFixtures';
 import { mainLandmark, renderWorkspaceArea } from '@/test/renderWorkspaceArea';
@@ -61,17 +61,22 @@ describe('Anforderungspaket im Verbundkopf', () => {
     expect(globalThis.location.href).not.toContain('SENTINEL');
   });
 
-  it('listet einen Entwurf ohne Version gesperrt, nennt die Lücke und führt zum Dokument', async () => {
-    const source = makeSchemaValidOscalDocument('profile', '1.2.2');
-    const metadata = (source.profile as { metadata: Record<string, unknown> }).metadata;
-    metadata.title = 'Entwurf ohne Version';
-    delete metadata.version;
-    const draft = await readStore((store) => store.addDocument(seeded.verbundId, { source, context: { trustClass: 'class-2-local-user' }, rootType: 'profile', oscalVersion: '1.2.2' }, 'draft'));
+  it('listet Profile und Catalog ohne Version gesperrt und nennt je Root-Typ den verfügbaren Korrekturweg', async () => {
+    for (const rootType of ['profile', 'catalog'] as const) {
+      const source = makeSchemaValidOscalDocument(rootType, '1.2.2');
+      const metadata = (source[rootType] as { metadata: Record<string, unknown> }).metadata;
+      metadata.title = `${rootType} ohne Version`;
+      delete metadata.version;
+      await readStore((store) => store.addDocument(seeded.verbundId, { source, context: { trustClass: 'class-2-local-user' }, rootType, oscalVersion: '1.2.2' }, 'draft'));
+    }
     renderWorkspaceArea(buildVerbundUrl(seeded.verbundId));
     await openPick('Festlegen…');
-    expect(main().getByRole('radio', { name: /Entwurf ohne Version/ })).toBeDisabled();
-    expect(main().getByText(/Fehlt: Version/)).toBeVisible();
-    expect(main().getByRole('link', { name: /Dokument öffnen/ })).toHaveAttribute('href', buildWorkspaceDocumentUrl(seeded.verbundId, draft.localId));
+    expect(main().getByRole('radio', { name: /profile ohne Version/ })).toBeDisabled();
+    expect(main().getByRole('radio', { name: /catalog ohne Version/ })).toBeDisabled();
+    expect(main().getByText(/Fehlt: Version · in der OSCAL-Datei ergänzen, dann/)).toBeVisible();
+    expect(main().getByText(/Fehlt: Version · in der Sicherungsdatei ergänzen, dann/)).toBeVisible();
+    expect(main().getByRole('link', { name: /Profil-Datei einlesen/ })).toHaveAttribute('href', buildStationUrl(seeded.verbundId, 'profile'));
+    expect(main().getByRole('link', { name: /Sicherung wiederherstellen/ })).toHaveAttribute('href', buildWorkspaceIndexUrl());
   });
 
   it('zeigt „überholt“ mit festgelegtem und aktuellem Stand und übernimmt beim Neufestlegen den neuen Stand', async () => {

@@ -16,6 +16,7 @@ import { createA11yCatalogState } from '@/test/browser/a11yCatalogState';
 import { assertNoAxeViolations } from '@/test/browser/axeAssertions';
 import { openDrawer, settlePush } from '@/test/browser/mobileDrawerHarness';
 import { SENTINEL_VERBUND, readStore, resetWorkspace, seedWorkspace, value } from '@/test/workspaceAreaFixture';
+import { makeSchemaValidOscalDocument } from '@/test/fixtures/oscalSchemaFixtures';
 import '@/index.css';
 
 /*
@@ -248,4 +249,23 @@ test('der Wechsel in den Katalog speichert einen offenen Entwurf, bevor die Kata
   } finally {
     store.close();
   }
+});
+
+describe.each(LAYOUTS.filter((layout) => layout.width !== 1032))('Festlegeansicht $name', ({ width, height, touch }) => {
+  test.each([
+    ['profile', 'Profil-Datei einlesen'],
+    ['catalog', 'Sicherung wiederherstellen'],
+  ] as const)('der Korrekturlink eines %s ohne Version nimmt einen Zeigerklick in seiner Mitte an', async (rootType, action) => {
+    const seeded = await seedWorkspace();
+    const source = makeSchemaValidOscalDocument(rootType, '1.2.2');
+    delete (source[rootType] as { metadata: Record<string, unknown> }).metadata.version;
+    await readStore((store) => store.addDocument(seeded.verbundId, { source, context: { trustClass: 'class-2-local-user' }, rootType, oscalVersion: '1.2.2' }, 'draft'));
+    const { router: current } = await renderAt(buildVerbundUrl(seeded.verbundId), width, height, touch);
+    await page.getByRole('main').getByRole('button', { name: 'Festlegen…' }).click();
+    const link = page.getByRole('main').getByRole('link', { name: action });
+    const box = link.element().getBoundingClientRect();
+    expect(link.element().contains(document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2))).toBe(true);
+    await link.click();
+    await expect.poll(() => current.state.location.pathname).toBe(rootType === 'profile' ? buildStationUrl(seeded.verbundId, 'profile') : buildWorkspaceIndexUrl());
+  });
 });

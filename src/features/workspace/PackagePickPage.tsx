@@ -1,6 +1,6 @@
 import { useId, useLayoutEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
-import { buildStationUrl, buildWorkspaceDocumentUrl } from '@/app/routes';
+import { buildStationUrl, buildWorkspaceIndexUrl } from '@/app/routes';
 import { Button } from '@/components/Button';
 import { classOneSource, isRequirementPackageRoot } from '@/domain/requirementPackage';
 import type { LocalId, VerbundId, WorkspaceVerbund } from '@/domain/workspaceModel';
@@ -30,12 +30,19 @@ function Previous({ verbund }: Readonly<{ verbund: WorkspaceVerbund }>) {
 
 const LINK = `catalog-prose-link font-semibold ${FOCUS_RING}`;
 
-/** Ohne vollständigen Stempel entsteht kein Paketstand: Der Kandidat bleibt sichtbar, nennt die Lücke und führt zum Dokument. */
+/** Korrigierte Stempelangaben gelangen bei Profiles per Datei-Import, bei Catalogs nur per Sicherung in den Verbund. */
+const STAND_FIX = {
+  profile: { where: 'in der OSCAL-Datei', action: 'Profil-Datei einlesen', to: (verbundId: string) => buildStationUrl(verbundId, 'profile') },
+  catalog: { where: 'in der Sicherungsdatei', action: 'Sicherung wiederherstellen', to: () => buildWorkspaceIndexUrl() },
+} as const;
+
+/** Ohne vollständigen Stempel entsteht kein Paketstand: Der Kandidat bleibt sichtbar, nennt die Lücke und den Korrekturweg. */
 function MissingStand({ document, verbundId }: Readonly<{ document: WorkspaceDocumentView; verbundId: string }>) {
   if (!document.missingStand) return null;
+  const fix = document.rootType === 'catalog' ? STAND_FIX.catalog : STAND_FIX.profile;
   return (
-    <p className="-mt-2 pb-3 pl-10 pr-4 text-xs text-[var(--color-text-secondary)]">
-      Fehlt: {document.missingStand.join(', ')} · <Link to={buildWorkspaceDocumentUrl(verbundId, document.localId)} className={LINK}>Dokument öffnen<span aria-hidden="true">&nbsp;→</span></Link>
+    <p className="pb-3 pl-10 pr-4 text-xs text-[var(--color-text-secondary)]">
+      Fehlt: {document.missingStand.join(', ')} · {fix.where} ergänzen, dann <Link to={fix.to(verbundId)} className={LINK}>{fix.action}<span aria-hidden="true">&nbsp;→</span></Link>
     </p>
   );
 }
