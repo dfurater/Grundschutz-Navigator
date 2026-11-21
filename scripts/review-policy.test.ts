@@ -9,6 +9,7 @@ import { promisify } from 'node:util';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
+  CODERABBIT_GLOBAL_PATH,
   CODERABBIT_INSTRUCTIONS_MAX_LENGTH,
   GITAR_REVIEW_DIRECTORY,
   GITIGNORED_INSTRUCTION_SURFACES,
@@ -335,7 +336,7 @@ describe('review-policy CodeRabbit-Adapter', () => {
 
   type CodeRabbitConfig = {
     knowledge_base: { opt_out: boolean; code_guidelines: { enabled: boolean } };
-    reviews: { path_instructions: Array<{ path: string; instructions: string }> };
+    reviews: { path_filters: string[]; path_instructions: Array<{ path: string; instructions: string }> };
   };
 
   const renderedYaml = (policy = {}) =>
@@ -357,25 +358,45 @@ describe('review-policy CodeRabbit-Adapter', () => {
 
     expect(validate(config), JSON.stringify(validate.errors)).toBe(true);
     expect(config.knowledge_base).toEqual({ opt_out: true, code_guidelines: { enabled: false } });
+    expect(config.reviews.path_filters).toEqual(['!scripts/fixtures/coderabbit-schema.v2.json']);
   });
 
-  it('führt jede globale Regel für ** und jede gescopte Regel einmal je Scope', () => {
+  it('führt jede globale Regel global, jede gescopte Regel und jeden Datei-Kontext einmal je Scope', () => {
     const entries = parseConfig(renderedYaml()).reviews.path_instructions;
+    const context = (scope: string, file: { path: string; description: string }) => ({
+      path: scope,
+      instructions: `Datei-Kontext: Ziehe \`${file.path}\` beim Review heran. ${file.description}`,
+    });
     const expected = [
-      ...globalRules.map((rule) => ({ path: '**', instructions: `${rule.key}: ${rule.body}` })),
+      ...globalRules.map((rule) => ({ path: CODERABBIT_GLOBAL_PATH, instructions: `${rule.key}: ${rule.body}` })),
       ...scopedRules.flatMap((rule) =>
         rule.scopes.map((scope) => ({ path: scope, instructions: `${rule.key}: ${rule.body}` }))),
+      ...fileContexts.flatMap((file) =>
+        (file.scopes.length > 0 ? file.scopes : [CODERABBIT_GLOBAL_PATH]).map((scope) => context(scope, file))),
     ];
 
     expect(entries).toEqual(expected);
   });
 
+  /**
+   * Minimatch lässt `**` keine Punkt-Segmente treffen; das globale Muster deckt
+   * genau einen Punkt-Segment je Pfad ab. Ein versionierter Pfad mit zweien
+   * bekäme keine globale Regel.
+   */
+  it('erreicht mit dem globalen Muster jeden versionierten Pfad', async () => {
+    const { stdout } = await execFileAsync('git', ['ls-files', '-z'], { cwd: REPO_ROOT, maxBuffer: 64 * 1024 * 1024 });
+    const uncovered = stdout.split('\0').filter((file) => file.split('/').filter((part) => part.startsWith('.')).length > 1);
+
+    expect(CODERABBIT_GLOBAL_PATH).toBe('{**,**/.*,**/.*/**}');
+    expect(uncovered).toEqual([]);
+  });
+
   it('überträgt Anführungszeichen, Backslash und Zeilenumbruch unverändert', () => {
     const body = 'Zitat "a" und \'b\', Pfad C:\\x\\y, Zeile 1\nZeile 2: - nicht: yaml\t# kein Kommentar';
-    const entries = parseConfig(renderedYaml({ global: [{ ...globalRules[0], body }], scoped: [] }))
+    const entries = parseConfig(renderedYaml({ global: [{ ...globalRules[0], body }], scoped: [], files: [] }))
       .reviews.path_instructions;
 
-    expect(entries).toEqual([{ path: '**', instructions: `G1-sprache: ${body}` }]);
+    expect(entries).toEqual([{ path: CODERABBIT_GLOBAL_PATH, instructions: `G1-sprache: ${body}` }]);
   });
 
   it('schlägt bei einer von Hand veränderten .coderabbit.yaml fehl', async () => {
@@ -394,6 +415,23 @@ describe('review-policy CodeRabbit-Adapter', () => {
     expect(() => assertPolicyIsWellFormed({ global: [{ ...rule, body: atLimit }] })).not.toThrow();
     await expect(checkFixture(root, { policy: { global: [{ ...rule, body: `${atLimit}x` }] } }))
       .rejects.toThrow(/überschreitet die CodeRabbit-Grenze von 20000 Zeichen: G1-sprache/);
+  });
+
+  /** Das Schema zählt Codepoints; ein Emoji sind zwei UTF-16-Einheiten, aber ein Zeichen. */
+  it('zählt die Grenze in Unicode-Codepoints', () => {
+    const rule = globalRules[0];
+    const atLimit = `${'x'.repeat(CODERABBIT_INSTRUCTIONS_MAX_LENGTH - `${rule.key}: `.length - 1)}😀`;
+
+    expect(() => assertPolicyIsWellFormed({ global: [{ ...rule, body: atLimit }] })).not.toThrow();
+    expect(() => assertPolicyIsWellFormed({ global: [{ ...rule, body: `${atLimit}😀` }] }))
+      .toThrow(/überschreitet die CodeRabbit-Grenze/);
+  });
+
+  it('weist einen Datei-Kontext über der CodeRabbit-Grenze zurück', () => {
+    const context = { ...fileContexts[0], description: 'x'.repeat(CODERABBIT_INSTRUCTIONS_MAX_LENGTH) };
+
+    expect(() => assertPolicyIsWellFormed({ files: [context] }))
+      .toThrow(/überschreitet die CodeRabbit-Grenze von 20000 Zeichen: docs\/ARCHITECTURE\.md/);
   });
 });
 
@@ -480,6 +518,8 @@ describe('review-policy Drift-Check', () => {
     ['.coderabbit.config.ts'],
     ['packages/api/.coderabbit.config.ts'],
     ['src/.coderabbit.yaml'],
+    ['.coderabbit/instructions/local.md'],
+    ['src/.coderabbit/instructions/local.md'],
   ])('schlägt bei einer Anweisungsdatei unter %s fehl', async (relative) => {
     const root = await createGeneratedFixtureRoot();
     await writeFixtureFile(root, relative, '{"disabledRules":["R1-integritaet"]}\n');
@@ -513,7 +553,7 @@ describe('review-policy Drift-Check', () => {
   });
 
   it('deckt jede in der Autorenquelle geführte Anweisungsfläche ab', () => {
-    expect(REVIEW_INSTRUCTION_DIRECTORY_NAMES).toEqual(['.gitar', '.greptile', '.cursor']);
+    expect(REVIEW_INSTRUCTION_DIRECTORY_NAMES).toEqual(['.gitar', '.greptile', '.cursor', '.coderabbit']);
     expect(REVIEW_INSTRUCTION_ROOT_DIRECTORIES).toEqual(['.github/skills']);
     expect(REVIEW_INSTRUCTION_FILE_NAMES).toEqual([
       '.cursorrules',

@@ -4,6 +4,10 @@
   "inheritance": false,
   "reviews": {
     "profile": "assertive",
+    "in_progress_fortune": false,
+    "path_filters": [
+      "!scripts/fixtures/coderabbit-schema.v2.json"
+    ],
     "auto_review": {
       "enabled": true,
       "drafts": false,
@@ -14,27 +18,27 @@
     },
     "path_instructions": [
       {
-        "path": "**",
+        "path": "{**,**/.*,**/.*/**}",
         "instructions": "G1-sprache: Verfasse Zusammenfassung und alle Reviewkommentare auf Deutsch. Fachbegriffe und Code-Bezeichner bleiben englisch."
       },
       {
-        "path": "**",
+        "path": "{**,**/.*,**/.*/**}",
         "instructions": "G2-anwendungskontext: Die Anwendung läuft vollständig clientseitig auf GitHub Pages unter https://gspp-navigator.furater.com/ am Domain-Root. Öffentliche BSI-Artefakte kommen aus dem Quellregister über den gepinnten Build- und Integritätspfad; public/data/ ist gitignored. Die lokale Arbeitsbereichsinfrastruktur speichert organisationseigene OSCAL-Dokumente und Entwürfe in IndexedDB (gspp-workspace). Diese Inhalte können personenbezogene Daten, Systemdetails, Risiken und Nachweise enthalten und sind unvertraut. Es gibt kein Backend, keine Serverlaufzeit und keine Nutzerkonten. Melde keine Befunde, die einen nicht vorhandenen Server oder eine serverseitige Session voraussetzen; die lokale Datenbank und sensible Nutzerdaten sind ausdrücklich Reviewgegenstand. Klasse-1-Provenienz beruht auf Upstream-Pin, Allowlist, SHA-256 und SLSA-Attestation; diese Aussage gilt nicht für eigene Dokumente. Bewerte bei Ausbauregeln den konkret berührten Datenpfad: Das Fehlen einer optionalen oder noch nicht implementierten Produktfunktion ist für sich kein Befund."
       },
       {
-        "path": "**",
+        "path": "{**,**/.*,**/.*/**}",
         "instructions": "G3-nicht-melden: Lint, Typprüfung, Tests, Coverage-Schwellen, Actions-SHA-Pinning und der PR-Dokumentationsvertrag laufen bereits als CI-Checks. Melde nichts, was eslint.config.js, tsc oder die Guards unter scripts/ ohnehin abfangen. Melde ebenso keine Geschmacksfragen und keine alternativen Formulierungen gleichwertiger Logik. Konzentriere dich auf Logikfehler, gebrochene Invarianten, Sicherheitsauswirkungen und Dokumentation, die nicht mehr zum Code passt."
       },
       {
-        "path": "**",
+        "path": "{**,**/.*,**/.*/**}",
         "instructions": "G4-befundqualitaet: Jeder Befund nennt den konkreten Fehlerfall: welcher Input, welcher Zustand, welches falsche Ergebnis. Ein Befund ohne benennbaren Fehlerfall ist eine Vermutung und gehört nicht in den Review, sondern allenfalls als Frage formuliert."
       },
       {
-        "path": "**",
+        "path": "{**,**/.*,**/.*/**}",
         "instructions": "G5-priorisierung: Priorisiere Befunde in dieser Reihenfolge:\n1. Datenabfluss, gebrochene Verbundgrenzen, aktive Fremdinhalte und falsche Vertrauensaussagen sowie Brüche von Integritätsprüfung, Quellregister, Versionsmatrix oder Upstream-Allowlist.\n2. Irreversibler Datenverlust: verlorene Quellfelder, überschriebene Bearbeitung, Teiltransaktionen und nicht wiederherstellbare Sicherungen.\n3. Fachlich falsche Status-, Prüf-, Risiko- oder Aggregationsaussagen.\n4. Undefinierte Fehlerpfade bei Netzwerk, Parsing, Worker, Speicherung und Export.\n5. Dokumentation, die dem Code widerspricht.\n\nDie Einstufung benennt jeweils den konkreten auslösenden Zustand und seine Auswirkung."
       },
       {
-        "path": "**",
+        "path": "{**,**/.*,**/.*/**}",
         "instructions": "G6-pruefgrenzen: Repository-Einstellungen wie Rulesets, Branch Protection und Actions-Policies kannst du mit deinem Token nicht lesen. Dokumentiert ein Diff so etwas, halte fest, dass du es nicht verifizieren konntest. Werte es nicht als Fehler und senke dafür nicht den Confidence Score."
       },
       {
@@ -500,6 +504,98 @@
       {
         "path": "docs/PERSISTENCE.md",
         "instructions": "R36-bearbeitungskontext-loeschung: Bei Änderungen an Navigation, Mehrfachauswahl, Massenaktionen oder Löschung bleibt der Bearbeitungskontext eindeutig. Vor einer Massenänderung ist ihr tatsächlicher Umfang einschließlich ausgeblendeter ausgewählter Einträge erkennbar; ein Verbundwechsel überträgt weder Auswahl noch Eingabewerte auf fremde Dokumente. Noch ungespeicherte Änderungen bleiben bei Navigation erhalten oder werden ausdrücklich verworfen, niemals still verloren. Löschung folgt dem vollständigen Löschvertrag in docs/PERSISTENCE.md: betroffene Entwürfe, ein- und ausgehende Bindungen, Indizes, Caches, Suchindex und vorhandene Werkzeughistorie werden mitbereinigt; optionale Feldhistorie benötigt eine dokumentierte Aufbewahrungs- und Schwärzungsregel. Die App verspricht weder die Löschung bereits exportierter Dateien noch eine sichere physische Löschung von Datenträgerbytes. Ein Verlust, eine falsche Massenänderung oder eine appinterne Restkopie nach zugesagter Löschung ist blockierend. Negativnachweise: Auswahl unter geändertem Filter und nach Verbundwechsel; Sentinel-Suche nach Löschung über alle appinternen Ablagen bei erhaltenem Kontrolldokument. Tastaturbedienung und sichtbarer Fokus erreichen auch Auswahlumfang, Bestätigung und Verwerfen."
+      },
+      {
+        "path": "{**,**/.*,**/.*/**}",
+        "instructions": "Datei-Kontext: Ziehe `docs/ARCHITECTURE.md` beim Review heran. Schichten, Datenfluss von BSI-Upstream bis UI, Verzeichnisverantwortung"
+      },
+      {
+        "path": "src/domain/**",
+        "instructions": "Datei-Kontext: Ziehe `docs/OSCAL_VERSION_MATRIX.md` beim Review heran. Verbindliche Root-Typ-mal-Version-Matrix, Schema-Pins, Migrationspolitik"
+      },
+      {
+        "path": "src/adapters/**",
+        "instructions": "Datei-Kontext: Ziehe `docs/OSCAL_VERSION_MATRIX.md` beim Review heran. Verbindliche Root-Typ-mal-Version-Matrix, Schema-Pins, Migrationspolitik"
+      },
+      {
+        "path": "scripts/**",
+        "instructions": "Datei-Kontext: Ziehe `docs/OSCAL_VERSION_MATRIX.md` beim Review heran. Verbindliche Root-Typ-mal-Version-Matrix, Schema-Pins, Migrationspolitik"
+      },
+      {
+        "path": "src/domain/**",
+        "instructions": "Datei-Kontext: Ziehe `docs/OSCAL_VALIDATION.md` beim Review heran. Validierungsvertrag: womit und wo geprüft wird"
+      },
+      {
+        "path": "src/adapters/**",
+        "instructions": "Datei-Kontext: Ziehe `docs/OSCAL_VALIDATION.md` beim Review heran. Validierungsvertrag: womit und wo geprüft wird"
+      },
+      {
+        "path": "scripts/**",
+        "instructions": "Datei-Kontext: Ziehe `docs/OSCAL_VALIDATION.md` beim Review heran. Validierungsvertrag: womit und wo geprüft wird"
+      },
+      {
+        "path": "src/domain/integrity.ts",
+        "instructions": "Datei-Kontext: Ziehe `docs/INTEGRITY.md` beim Review heran. SHA-256-Verifikation, Provenance, Manifest v2, SLSA"
+      },
+      {
+        "path": "src/state/**",
+        "instructions": "Datei-Kontext: Ziehe `docs/INTEGRITY.md` beim Review heran. SHA-256-Verifikation, Provenance, Manifest v2, SLSA"
+      },
+      {
+        "path": "scripts/**",
+        "instructions": "Datei-Kontext: Ziehe `docs/INTEGRITY.md` beim Review heran. SHA-256-Verifikation, Provenance, Manifest v2, SLSA"
+      },
+      {
+        "path": ".github/workflows/**",
+        "instructions": "Datei-Kontext: Ziehe `docs/INTEGRITY.md` beim Review heran. SHA-256-Verifikation, Provenance, Manifest v2, SLSA"
+      },
+      {
+        "path": "src/domain/**",
+        "instructions": "Datei-Kontext: Ziehe `docs/DOMAIN_MODELS.md` beim Review heran. Rohe OSCAL-Typen gegen angereicherte Domänentypen"
+      },
+      {
+        "path": "src/adapters/**",
+        "instructions": "Datei-Kontext: Ziehe `docs/DOMAIN_MODELS.md` beim Review heran. Rohe OSCAL-Typen gegen angereicherte Domänentypen"
+      },
+      {
+        "path": "src/features/**",
+        "instructions": "Datei-Kontext: Ziehe `docs/DOMAIN_MODELS.md` beim Review heran. Rohe OSCAL-Typen gegen angereicherte Domänentypen"
+      },
+      {
+        "path": "src/hooks/**",
+        "instructions": "Datei-Kontext: Ziehe `docs/FILTERING.md` beim Review heran. Filterlogik und URL-Parameter-Synchronisation"
+      },
+      {
+        "path": "src/features/**",
+        "instructions": "Datei-Kontext: Ziehe `docs/FILTERING.md` beim Review heran. Filterlogik und URL-Parameter-Synchronisation"
+      },
+      {
+        "path": "src/domain/vocabulary*.ts",
+        "instructions": "Datei-Kontext: Ziehe `docs/VOCABULARY.md` beim Review heran. BSI-Vokabulare, Namespaces, Taxonomie-Abdeckung"
+      },
+      {
+        "path": "src/features/vocabular*/**",
+        "instructions": "Datei-Kontext: Ziehe `docs/VOCABULARY.md` beim Review heran. BSI-Vokabulare, Namespaces, Taxonomie-Abdeckung"
+      },
+      {
+        "path": "scripts/**",
+        "instructions": "Datei-Kontext: Ziehe `docs/VOCABULARY.md` beim Review heran. BSI-Vokabulare, Namespaces, Taxonomie-Abdeckung"
+      },
+      {
+        "path": "{**,**/.*,**/.*/**}",
+        "instructions": "Datei-Kontext: Ziehe `README.md` beim Review heran. Projektzweck, Setup, Kommandos"
+      },
+      {
+        "path": "src/**",
+        "instructions": "Datei-Kontext: Ziehe `docs/PERSISTENCE.md` beim Review heran. Datenklassen, Verbundidentität, Transaktionen, Konflikte, Entwürfe, Backup, Migration und Löschung"
+      },
+      {
+        "path": "src/**",
+        "instructions": "Datei-Kontext: Ziehe `docs/PROJECT_PROPS.md` beim Review heran. Projektsemantik, Namespace-Grenze, Werteräume, Träger und Katalogreferenzpaare"
+      },
+      {
+        "path": "src/**",
+        "instructions": "Datei-Kontext: Ziehe `docs/OSCAL_ROUND_TRIP.md` beim Review heran. Verlustfreiheit, No-op-Identität, Ausgabeprüfung und Grenzen des Round-trip-Nachweises"
       }
     ]
   },
