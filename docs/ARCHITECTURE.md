@@ -572,6 +572,7 @@ scripts/                          # Build-, CI- und Wartungsskripte
 ├── deployRunDisplay.mjs              # Geprüfte Log-Ausgabewerte der Deploy-Skripte
 ├── deployChecksums.mjs               # Prüfsummen-Manifest SHA256SUMS der Pages-Auslieferung
 ├── fetch-catalog.mjs                 # Registry-gesteuerter Abruf, Validierung und Ausgabe
+├── fixtures/                         # Prüfkopie des CodeRabbit-Konfigurationsschemas v2
 ├── git-changed-files.mjs             # Geänderte Dateien eines Pull Requests
 ├── githubApiFetch.mjs                # Gemeinsamer GitHub-JSON-Abruf der CI-Guards
 ├── greptile-review-nudge.mjs         # Greptile-Auslösung bei übersprungenem PR
@@ -1318,11 +1319,11 @@ Ein Cherry-Pick-PR zweigt von `main` ab und führt `ci.yml` und `scripts/cherry-
 
 ## Versionierte Review-Policy
 
-Gitar und Greptile prüfen dieses Repository parallel. Regeln sind versioniert, haben genau eine Autorenquelle, und alles Weitere wird daraus deterministisch erzeugt.
+Gitar, Greptile und CodeRabbit prüfen dieses Repository parallel und gleichrangig. Regeln sind versioniert, haben genau eine Autorenquelle, und alles Weitere wird daraus deterministisch erzeugt.
 
-Die Autorenquelle besteht aus zwei Dateien: `scripts/review-policy.rules.mjs` trägt die Regeltabelle als reine Daten — Regel-ID, Scope und Regeltext. `scripts/review-policy.mjs` trägt Generator, Drift-Guard und CLI. Erzeugt werden vier Adapter: `docs/REVIEW_INVARIANTS.md`, `.gitar/review/invarianten.md`, `.greptile/config.json` und `.greptile/files.json`. `npm run review-policy` erzeugt neu, `npm run review-policy:check` schlägt bei jeder manuellen Abweichung fehl und läuft als Pflichtschritt im CI-Job `validate`.
+Die Autorenquelle besteht aus zwei Dateien: `scripts/review-policy.rules.mjs` trägt die Regeltabelle als reine Daten — Regel-ID, Scope und Regeltext. `scripts/review-policy.mjs` trägt Generator, Drift-Guard und CLI. Erzeugt werden fünf Adapter: `docs/REVIEW_INVARIANTS.md`, `.gitar/review/invarianten.md`, `.greptile/config.json`, `.greptile/files.json` und `.coderabbit.yaml`. `npm run review-policy` erzeugt neu, `npm run review-policy:check` schlägt bei jeder manuellen Abweichung fehl und läuft als Pflichtschritt im CI-Job `validate`.
 
-Der Guard prüft neben der Byte-Gleichheit der erzeugten Dateien, dass keine Anweisungsfläche an der Autorenquelle vorbei existiert: Dateien unter den von den Reviewern gelesenen Verzeichnissen (`.gitar`, `.greptile`, `.cursor` in jeder Verzeichnistiefe, `.github/skills` an der Wurzel) sowie die Einzeldateien `.cursorrules` und `greptile.json` (ebenfalls in jeder Tiefe), die nicht aus dem Generator stammen, sind Drift. Ein von Hand angelegtes `.greptile/rules.md` fällt damit auf. Aufgezählt wird die Fläche über `git ls-files --cached --others --exclude-standard`, also genau die Menge der Pfade, die im PR-Head landen können. Ist der Index nicht lesbar, schlägt der Guard fehl.
+Der Guard prüft neben der Byte-Gleichheit der erzeugten Dateien, dass keine Anweisungsfläche an der Autorenquelle vorbei existiert: Dateien unter den von den Reviewern gelesenen Verzeichnissen (`.gitar`, `.greptile`, `.cursor` in jeder Verzeichnistiefe, `.github/skills` an der Wurzel) sowie die Einzeldateien `.cursorrules`, `greptile.json`, `.coderabbit.yaml`, `.coderabbit.yml` und `.coderabbit.config.ts` (ebenfalls in jeder Tiefe), die nicht aus dem Generator stammen, sind Drift. Ein von Hand angelegtes `.greptile/rules.md` oder ein `.coderabbit.yaml` außerhalb der Wurzel fällt damit auf. Aufgezählt wird die Fläche über `git ls-files --cached --others --exclude-standard`, also genau die Menge der Pfade, die im PR-Head landen können. Ist der Index nicht lesbar, schlägt der Guard fehl.
 
 ### Greptile-Adapter
 
@@ -1333,6 +1334,18 @@ Der Adapter schreibt Greptiles strukturiertes Regelformat `config.json`: Nur dor
 `.greptile/files.json` bildet die Datei-Kontexte ab.
 
 Fallstrick: Greptiles `strictness` ist invers zu seiner Beschriftung (`1` = ausführlich, `3` = nur Kritisches; die Stufe Low entspricht `strictness: 1`). Der Adapter setzt das Feld nicht.
+
+### CodeRabbit-Adapter
+
+`.coderabbit.yaml` liegt in der Repository-Wurzel. Zeile 1 ist ein Schema-Kommentar auf `https://coderabbit.ai/integrations/schema.v2.json`, darunter steht die Konfiguration als JSON, das zugleich gültiges YAML ist. Gesetzt sind `language: de-DE`, `inheritance: false`, `reviews.profile: assertive` und `reviews.auto_review` für Basis-Branches `develop` und `main` ohne Entwürfe.
+
+`reviews.path_instructions` führt jede globale Regel mit `path: "**"` und jede gescopte Regel einmal je Scope-Glob. Weil CodeRabbit kein eigenes Schlüsselfeld kennt, beginnt `instructions` mit `<Regelschlüssel>: `. Schema v2 begrenzt `instructions` auf 20.000 Zeichen; `assertPolicyIsWellFormed` weist einen längeren Regeltext zurück, damit `npm run review-policy:check` fehlschlägt, statt dass CodeRabbit die ungültige Datei still ignoriert.
+
+`knowledge_base.code_guidelines.enabled: false` hält Guideline-Dateien wie `AGENTS.md`, `CLAUDE.md` oder `.cursorrules` aus dem Review heraus, `knowledge_base.opt_out: true` schaltet gespeicherte Learnings ab. Die Regeln stammen damit allein aus der Autorenquelle.
+
+`scripts/review-policy.test.ts` validiert die erzeugte Konfiguration netzfrei mit Ajv (Draft 2020-12) gegen `scripts/fixtures/coderabbit-schema.v2.json` und prüft vorher deren SHA-256 gegen einen Pin im Test. Schema v2 setzt auf oberster Ebene, unter `reviews` und unter `knowledge_base` `additionalProperties: false`; ein unbekannter Schlüssel lässt den Test fehlschlagen.
+
+CodeRabbit ist kein Pflicht-Check der Rulesets für `develop` und `main`. Der Check-Run `CodeRabbit` endet auch bei übersprungenem oder rate-limitiertem Review erfolgreich und belegt deshalb allein kein Review.
 
 ### Erzwungene Auslösung bei leerem Reviewumfang
 
