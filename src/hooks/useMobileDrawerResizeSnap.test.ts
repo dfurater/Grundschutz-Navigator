@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+
 import { renderHook } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { finishDrawerMotion, useMobileDrawerResizeSnap } from './useMobileDrawerResizeSnap';

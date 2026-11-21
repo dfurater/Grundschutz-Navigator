@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+
 import { describe, expect, it } from 'vitest';
 // `?raw` statt `readFileSync(process.cwd(), …)`: Vite löst den Pfad zur
 // Bauzeit über den Alias `@` (`src/`) auf, unabhängig vom Arbeitsverzeichnis.

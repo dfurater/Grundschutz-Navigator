@@ -1,4 +1,3 @@
-// @vitest-environment node
 // =============================================================================
 // Zweigeteilter Referenznachweis, Seite 2: NIST-Baseline-Orakel (GSPP-291)
 //

@@ -1,4 +1,3 @@
-// @vitest-environment node
 // =============================================================================
 // Optionaler Realkorpus — die beiden BSI-Mappings (GSPP-245)
 //

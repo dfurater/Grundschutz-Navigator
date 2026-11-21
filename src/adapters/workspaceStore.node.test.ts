@@ -1,4 +1,3 @@
-// @vitest-environment node
 // Run the identical transaction contract against real Chromium and the
 // deterministic IndexedDB implementation, keeping failure oracles shared.
 import 'fake-indexeddb/auto';

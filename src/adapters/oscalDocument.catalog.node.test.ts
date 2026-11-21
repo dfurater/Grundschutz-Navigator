@@ -1,4 +1,3 @@
-// @vitest-environment node
 // =============================================================================
 // Positivkorpus — Verlustfreiheit am realen Grundschutz++-Katalog
 //

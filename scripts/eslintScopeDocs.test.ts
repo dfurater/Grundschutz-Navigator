@@ -1,4 +1,3 @@
-// @vitest-environment node
 // =============================================================================
 // ESLint-Geltungsbereiche in docs/ARCHITECTURE.md (Greptile-Befund im
 // Release-PR #313)

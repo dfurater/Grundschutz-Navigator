@@ -1,4 +1,3 @@
-// @vitest-environment node
 // =============================================================================
 // Keine Kopien abgeleiteter Namespace-URLs (Greptile-Befund im Release-PR #305)
 //

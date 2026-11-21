@@ -1,4 +1,3 @@
-// @vitest-environment node
 // Contract of the review trail (GSPP-315): checkpoint CAS, decision transitions,
 // atomic approval, reference validation and worker failure without a write.
 import { restoreWorkspaceBackup, restoreVerbundBackup } from '@/test/restoreWorkspaceBackup';

@@ -161,12 +161,12 @@ jobs:
           # Coverage bleibt bei 7 Tagen.
           retention-days: 14
 
-      # Seit GSPP-416 der einzige vollstaendige jsdom-Suite-Lauf eines
-      # Pull Requests. `--coverage` setzt dabei die in vite.config.ts gepinnten
-      # Schwellen im Pflichtcheck durch: Eine Unterschreitung faerbt `validate`
-      # rot, statt erst den nachgelagerten Scanner-Job ausfallen zu lassen und
-      # den Required Check `SonarCloud Code Analysis` als pending stehen zu
-      # lassen.
+      # Der Pflichtcheck `validate` startet beide Vitest-Projekte in einem
+      # Lauf. `node` sammelt TypeScript-Tests, deren DOM-Tests jsdom per
+      # Dateikommentar wählen. `jsdom` sammelt die TSX-Tests.
+      # `--coverage` prüft die Schwellen aus vite.config.ts für beide
+      # Projekte gemeinsam. Der nachgelagerte SonarQube-Job liest den
+      # Coverage-Report dieses Laufs.
       - name: Run tests with coverage
         run: npm run test:coverage
 

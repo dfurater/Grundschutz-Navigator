@@ -1,4 +1,3 @@
-// @vitest-environment node
 import 'fake-indexeddb/auto';
 import { expect, it, vi } from 'vitest';
 import { makeFullSsp } from '@/test/fixtures/systemSecurityPlans';

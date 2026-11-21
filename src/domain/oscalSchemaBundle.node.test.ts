@@ -1,5 +1,3 @@
-// @vitest-environment node
-
 import { describe, expect, it } from 'vitest';
 import { readFile, stat } from 'node:fs/promises';
 import viteConfig from '../../vite.config';

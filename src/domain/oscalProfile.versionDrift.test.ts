@@ -1,4 +1,3 @@
-// @vitest-environment node
 // =============================================================================
 // Versionsdrift des Profile-Modells (GSPP-240)
 //

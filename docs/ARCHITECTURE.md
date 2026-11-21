@@ -54,7 +54,7 @@ Als reiner Tokenbezug gilt genau ein `var(--…)`, wahlweise mit Typhinweis (`le
 
 ## Browser-Testlane
 
-`npm run test` läuft vollständig in jsdom und schließt Dateien unter `src/test/browser/**/*.browser.test.ts` explizit aus (Ausschluss in `vite.config.ts`).
+`npm run test` nutzt die Vitest-Projekte `node` für `**/*.test.ts` und `jsdom` für `**/*.test.tsx`. Eine `.test.ts`-Datei, die DOM-APIs benötigt, setzt `// @vitest-environment jsdom` in der ersten Zeile. Beide Projekte übernehmen die Ausschlüsse aus `vite.config.ts`, darunter `src/test/browser/**/*.browser.test.ts`.
 
 `npm run test:browser` startet die getrennte Vitest-Browser-Lane aus `vitest.browser.config.ts` mit dem Playwright-Provider und Chromium. Jede Testdatei läuft in einem eigenen Test-iframe (`isolate: true`); `src/test/browser/iframePath+encoding.browser.test.ts` sichert ab, dass ein `+` im Testdateipfad die iframe-Zuordnung nicht bricht. Die Lane führt `ajv` in `optimizeDeps.include`, weil die Schemaprüfung das Paket erst zur Laufzeit importiert. Jeder Test bereinigt seine eigene IndexedDB-Datenbank, und der Egress-Guard setzt seinen Zustand vor jedem Test zurück.
 
@@ -97,7 +97,7 @@ Die Hook-Grenze erfasst keine Browser-Aufgabe, die erst *nach* Ende des Tests ei
 
 `src/test/browser/visualRegression.browser.test.ts` vergleicht Katalogliste, Control-Detail, Filter (Desktop: Filterpanel mit aktivem Aufwandsfilter, Mobil: geöffnetes Filter-Sheet), Suchergebnisse, die Übersicht der Informationsverbünde und die Verbund-Übersicht mit Stationskarten bei 1440 × 900 und 390 × 844 px mit Referenzbildern `…-chromium-linux.png` unter `src/test/browser/__screenshots__/visualRegression.browser.test.ts/`. Für die Übersicht der Informationsverbünde und die Verbund-Übersicht wächst der Viewport vor der Aufnahme auf die Dokumenthöhe, weil Chromium ein Element-Bildschirmfoto nur innerhalb des Viewports malt; die mobilen Referenzen zeigen so die ganze Seite bis zum Footer. Die Ansichten rendern den synthetischen Katalog aus `a11yCatalogState.ts` mit den selbst gehosteten Schriften aus `public/fonts/`; Animationen sind für die Aufnahme abgeschaltet. Die Datei läuft nur, wenn `GSPP_VISUAL_REGRESSION=1` gesetzt ist (`provide` in `vitest.browser.config.ts`); in `npm run test:browser` bleibt sie übersprungen. `scripts/visual-regression.mjs` startet sie im Docker-Image `mcr.microsoft.com/playwright`, gepinnt per Digest auf die `playwright`-Version aus `package-lock.json`: `npm run test:browser:visual` vergleicht (Schritt im CI-Job `validate`), `npm run test:browser:update-references` schreibt die Referenzen neu. Das Skript bricht ab, wenn Lockfile-Version und Pin auseinanderlaufen. Das Skript ruft den Docker-Client nur an festen Pfaden auf (`/usr/bin`, `/usr/local/bin`, `/opt/homebrew/bin`), nicht über `PATH`. Der Container liest den Checkout nur lesend und installiert die Abhängigkeiten in einer eigenen Kopie; der Update-Modus bindet das Referenzverzeichnis beschreibbar ein, der Prüfmodus nur `.vitest/visual-regression/`, wohin er bei einem Fehlschlag Ist- und Differenzbilder kopiert. Im CI-Job `validate` lädt der Schritt „Archive visual regression failures“ dieses Verzeichnis nach einem Fehlschlag als Artefakt `visual-regression-failures` hoch. Chromium auf dem GitHub-Runner rastert Schrift anders als im Image (rund 1 % abweichende Pixel je Ansicht), deshalb laufen Erzeugung und Vergleich im selben Image. `.gitignore` lässt in diesem Verzeichnis nur `*-chromium-linux.png` zu.
 
-Die Browser-Lane erzeugt keine Coverage-Ausgabe. Die verbindlichen V8-Coverage-Schwellen bleiben ausschließlich in der jsdom-Lane (`npm run test:coverage`): Lines 87, Branches 77, Functions 88, Statements 85 (`vite.config.ts`).
+Die Browser-Lane erzeugt keine Coverage-Ausgabe. `npm run test:coverage` misst die V8-Coverage beider Projekte gemeinsam und prüft die Schwellen in `vite.config.ts`. Global gelten 87 % Lines, 77 % Branches, 88 % Functions und 85 % Statements. Eigene Schwellen gelten für `src/domain/**` und `src/adapters/**`.
 
 ## Verzeichnisstruktur
 
@@ -545,7 +545,7 @@ src/                              # Anwendungsquellcode
 │   └── workspaceNodeWorkers.ts       # In-Process-Ersatz für Import-Gate und Backup-Worker in Node-Tests
 ├── index.css                     # Tailwind-Einstieg und einzige Quelle der Gestaltungstokens
 ├── main.tsx                      # Einstiegspunkt
-├── test-setup.ts                 # Vitest-Setup der jsdom-Lane
+├── test-setup.ts                 # Vitest-Setup der Projekte node und jsdom
 └── vite-env.d.ts                 # Typen der Vite-Umgebungsvariablen
 
 public/data/                      # Generierte Katalog-Daten (nicht im Repo)

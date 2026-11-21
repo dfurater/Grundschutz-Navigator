@@ -1,4 +1,3 @@
-// @vitest-environment node
 import { describe, expect, it, vi } from 'vitest';
 import { processWorkspaceBackupBytes as parseWorkspaceBackup } from './workspaceBackupProcessing';
 import { makeSchemaValidOscalDocument } from '@/test/fixtures/oscalSchemaFixtures';

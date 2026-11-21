@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createProfileAnalysisHandler, handleProfileWorkbenchRequest } from '@/workers/profileWorkbenchRequests';
 import { makeSchemaValidOscalDocument } from '@/test/fixtures/oscalSchemaFixtures';

@@ -1,4 +1,3 @@
-// @vitest-environment node
 // =============================================================================
 // Schutzziel-Facetten am realen Grundschutz++-Katalog (GSPP-226)
 //

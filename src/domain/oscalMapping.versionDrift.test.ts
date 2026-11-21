@@ -1,4 +1,3 @@
-// @vitest-environment node
 // =============================================================================
 // Versionsdrift des Mapping-Modells (GSPP-245)
 //

@@ -1,4 +1,3 @@
-// @vitest-environment node
 // =============================================================================
 // Auslieferungsartefakte bleiben ungetrackt (GSPP-242)
 //

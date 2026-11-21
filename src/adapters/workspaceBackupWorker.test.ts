@@ -1,4 +1,3 @@
-// @vitest-environment node
 import { afterEach, expect, it, vi } from 'vitest';
 import { parseWorkspaceBackup, parseVerbundBackup } from './workspaceBackup';
 import { WORKSPACE_BACKUP_WORKER_TIMEOUT_MS } from './workspaceBackupContract';

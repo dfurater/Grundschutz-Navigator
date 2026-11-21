@@ -1,4 +1,3 @@
-// @vitest-environment node
 // One dedicated worker per request, no in-process fallback (GSPP-315).
 import { afterEach, expect, it, vi } from 'vitest';
 import { reviewTrailInWorker, type ReviewTrailWorkRequest } from './reviewTrailWork';

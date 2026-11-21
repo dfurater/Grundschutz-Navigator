@@ -1,4 +1,3 @@
-// @vitest-environment node
 // =============================================================================
 // Verpflichtender Bauzeitlauf der Profile Resolution (GSPP-291, Commit B)
 //

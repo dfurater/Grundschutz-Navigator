@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+
 import { afterEach, expect, it, vi } from 'vitest';
 const workspace = vi.hoisted(() => vi.fn());
 const verbund = vi.hoisted(() => vi.fn());

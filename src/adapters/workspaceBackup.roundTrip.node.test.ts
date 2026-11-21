@@ -1,4 +1,3 @@
-// @vitest-environment node
 import { restoreWorkspaceBackup } from '@/test/restoreWorkspaceBackup';
 import 'fake-indexeddb/auto';
 import { expect, it, vi } from 'vitest';

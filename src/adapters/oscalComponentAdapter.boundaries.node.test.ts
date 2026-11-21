@@ -1,4 +1,3 @@
-// @vitest-environment node
 // =============================================================================
 // Modulgrenzen des Component-Adapters (GSPP-248)
 //

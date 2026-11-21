@@ -315,7 +315,17 @@ export default defineConfig(({ command, isPreview }) => ({
     format: 'es',
   },
   test: {
-    environment: 'jsdom',
+    environment: 'node',
+    projects: [
+      {
+        extends: true,
+        test: { name: 'node', include: ['**/*.test.ts'] },
+      },
+      {
+        extends: true,
+        test: { name: 'jsdom', environment: 'jsdom', include: ['**/*.test.tsx'] },
+      },
+    ],
     globalSetup: ['./scripts/check-catalog-freshness.mjs'],
     setupFiles: ['./src/test-setup.ts'],
     // Die QA-Lane des Round-trip-Harnischs (`*.qa.test.ts`, GSPP-298) läuft

@@ -1,4 +1,3 @@
-// @vitest-environment node
 // =============================================================================
 // Modulgrenzen des Profile-Adapters (GSPP-240)
 //

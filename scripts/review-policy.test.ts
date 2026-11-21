@@ -1,5 +1,3 @@
-// @vitest-environment node
-
 import { afterEach, describe, expect, it } from 'vitest';
 import { Ajv2020 } from 'ajv/dist/2020';
 import { createHash } from 'node:crypto';
