@@ -1,6 +1,7 @@
 import { pointerString } from '@/domain/jsonGuards';
 import { REFERENCE_GRAPH_CODES } from '@/domain/referenceGraphModel';
 import { buildWorkspaceGraph } from '@/domain/workspaceGraph';
+import { isRequirementPackageRoot, missingStandFields } from '@/domain/requirementPackage';
 import { applyCatalogPins, CATALOG_PIN_PATH, type CatalogDelivery, type CatalogPin } from '@/domain/workspaceCatalogPin';
 import type { WorkspaceClass1Artifact, WorkspaceGraph, WorkspaceGraphEdge } from '@/domain/workspaceGraphModel';
 import type { OscalRootKey } from '@/domain/oscalVersionMatrix';
@@ -19,7 +20,8 @@ export type WorkspacePort = Pick<WorkspaceStore,
   | 'createVerbund' | 'renameVerbund' | 'deleteVerbund' | 'deleteAll' | 'exportBackup' | 'estimate' | 'close'
   | 'exportVerbundBackup' | 'previewRestore' | 'restoreBackup' | 'restoreVerbundBackup'
   | 'addDocument' | 'saveDocument' | 'saveProcessDecision' | 'autosaveDraft' | 'setBinding' | 'removeBinding' | 'deleteDocument'
-  | 'listReviewTrail' | 'appendCheckpoint' | 'appendDecision'>;
+  | 'listReviewTrail' | 'appendCheckpoint' | 'appendDecision'
+  | 'listRequirementPackages' | 'setRequirementPackage' | 'clearRequirementPackage'>;
 
 export interface WorkspaceDocumentView {
   readonly localId: LocalId;
@@ -28,6 +30,12 @@ export interface WorkspaceDocumentView {
   readonly documentState: DocumentState;
   /** `metadata.title`, nur für den Seiteninhalt. */
   readonly title?: string;
+  /** `metadata.version` und `metadata.last-modified` für die Paketauswahl. */
+  readonly version?: string;
+  readonly lastModified?: string;
+  readonly derivedFrom?: NonNullable<WorkspaceEnvelope['derivedFrom']>;
+  /** Fehlende Stempelangaben eines Profile oder Catalog; fehlt, wenn das Dokument als Paket festlegbar ist. */
+  readonly missingStand?: readonly string[];
   /** Bindung an BSI-Katalogstände; fehlt, wenn das Dokument auf keinen BSI-Katalog verweist. */
   readonly catalogPin?: CatalogPin;
   readonly savedAt: string;
@@ -87,6 +95,22 @@ function record(value: unknown): Record<string, unknown> | undefined {
 function documentTitle(envelope: WorkspaceEnvelope): string | undefined {
   const title = record(record(record(envelope.source)?.[envelope.rootType])?.metadata)?.title;
   return typeof title === 'string' ? title : undefined;
+}
+
+function documentVersion(envelope: WorkspaceEnvelope): Pick<WorkspaceDocumentView, 'version' | 'lastModified'> {
+  const metadata = record(record(record(envelope.source)?.[envelope.rootType])?.metadata);
+  const version = metadata?.version;
+  const lastModified = metadata?.['last-modified'];
+  return {
+    ...(typeof version === 'string' ? { version } : {}),
+    ...(typeof lastModified === 'string' ? { lastModified } : {}),
+  };
+}
+
+function missingStand(envelope: WorkspaceEnvelope): Pick<WorkspaceDocumentView, 'missingStand'> {
+  if (!isRequirementPackageRoot(envelope.rootType)) return {};
+  const missing = missingStandFields(envelope);
+  return missing.length > 0 ? { missingStand: missing } : {};
 }
 
 export { pointerString } from '@/domain/jsonGuards';
@@ -215,6 +239,9 @@ export async function deriveVerbundView({ verbund, members, bindings: stored, cl
       oscalVersion: member.oscalVersion,
       documentState: member.documentState,
       title: documentTitle(member),
+      ...documentVersion(member),
+      ...(member.derivedFrom ? { derivedFrom: member.derivedFrom } : {}),
+      ...missingStand(member),
       savedAt: member.savedAt,
       ...(pins.has(member.localId) ? { catalogPin: pins.get(member.localId) } : {}),
       ...(metrics.documents.has(member.localId) ? { metric: metrics.documents.get(member.localId) } : {}),

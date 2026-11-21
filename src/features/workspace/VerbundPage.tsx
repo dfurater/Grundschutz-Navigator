@@ -1,4 +1,4 @@
-import { useId, useState, type ReactNode } from 'react';
+import { useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useOutletContext, useParams } from 'react-router';
 import { PageTitle } from '@/app/PageTitle';
 import { PAGE_TITLES } from '@/app/pageTitles';
@@ -12,6 +12,8 @@ import { WorkspaceNotices } from '@/features/workspace/WorkspaceNotices';
 import { StationCards, latestSavedAt, relativeTime } from '@/features/workspace/StationCards';
 import { NameForm, ROW_BUTTON } from '@/features/workspace/WorkspaceForms';
 import { ScopeMembershipArea } from '@/features/workspace/ScopeMembershipViews';
+import { PackageHeadLine } from '@/features/workspace/RequirementPackageState';
+import { PackagePickPage } from '@/features/workspace/PackagePickPage';
 import { usePendingWrite } from '@/features/workspace/usePendingWrite';
 import { WorkspaceStatePage, useRoutedVerbund } from '@/features/workspace/WorkspaceStatePage';
 import { Button } from '@/components/Button';
@@ -127,10 +129,11 @@ function DocumentList({ verbundId, documents, empty }: Readonly<{ verbundId: str
 }
 
 /** Kopf der Verbund-Übersicht (Bild 2): Name, Umbenennen, Löschen mit Bestätigung, Herkunft und Speicherstand. */
-function VerbundHeader({ view, now, onMembership }: Readonly<{
+function VerbundHeader({ view, now, onMembership, onPick }: Readonly<{
   view: VerbundView;
   now: number;
   onMembership: (trigger: HTMLButtonElement) => void;
+  onPick: (trigger: HTMLButtonElement) => void;
 }>) {
   // Eine offene Umbenennung überdauert Stations- und Verbundwechsel (`renameDrafts` im Provider).
   const { writable, scopes, scopesFailed, verbuende, renameVerbund, deleteVerbund, renameDrafts, pendingVerbundWrite } = useWorkspace();
@@ -199,17 +202,20 @@ function VerbundHeader({ view, now, onMembership }: Readonly<{
           onCancel={stopRenaming}
         />
       )}
-      <div className="flex flex-wrap items-center gap-x-2 text-sm">
-        <span className="text-[var(--color-text-secondary)]">Anwendungsbereich:</span>
-        {scope ? (
-          <Link to={buildScopeUrl(scope.scopeId)} className={`flex min-h-touch min-w-0 items-center rounded font-semibold catalog-prose-link desktop:min-h-0 ${FOCUS_RING}`}>
-            <span className="break-words">{scope.name}</span>
-          </Link>
-        ) : <span>{member.scopeId ? 'Anwendungsbereich nicht lesbar' : 'keiner'}</span>}
-        {!member.scopeId && (
-          <Button variant="ghost" className={ROW_BUTTON} disabled={!writable || scopesFailed || !verbuende || !scopes}
-            onClick={(event) => onMembership(event.currentTarget)}>Zuordnen…</Button>
-        )}
+      <div className="space-y-1">
+        <div className="flex flex-wrap items-center gap-x-2 text-sm">
+          <span className="text-[var(--color-text-secondary)]">Anwendungsbereich:</span>
+          {scope ? (
+            <Link to={buildScopeUrl(scope.scopeId)} className={`flex min-h-touch min-w-0 items-center rounded font-semibold catalog-prose-link desktop:min-h-0 ${FOCUS_RING}`}>
+              <span className="break-words">{scope.name}</span>
+            </Link>
+          ) : <span>{member.scopeId ? 'Anwendungsbereich nicht lesbar' : 'keiner'}</span>}
+          {!member.scopeId && (
+            <Button variant="ghost" className={ROW_BUTTON} disabled={!writable || scopesFailed || !verbuende || !scopes}
+              onClick={(event) => onMembership(event.currentTarget)}>Zuordnen…</Button>
+          )}
+        </div>
+        <PackageHeadLine verbund={member} onPick={onPick} />
       </div>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <OriginLabel />
@@ -247,12 +253,26 @@ function VerbundOverview({ view }: Readonly<{ view: VerbundView }>) {
   // Bezugszeit der relativen Zeitangaben; eine neue Route setzt sie neu.
   const [now] = useState(Date.now);
   const { verbund, documents, diagnostics } = view;
+  // Ansicht „Anforderungspaket festlegen“: lokaler Zustand, keine Route; Rückkehr fokussiert Auslöser oder Überschrift.
+  const [pick, setPick] = useState<{ open: boolean; trigger: HTMLButtonElement; saved?: boolean }>();
+  const overview = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (!pick || pick.open) return;
+    if (!pick.saved) pick.trigger.focus();
+    if (pick.saved || document.activeElement !== pick.trigger) overview.current?.querySelector('h1')?.focus();
+  }, [pick]);
   return (
     <ScopeMembershipArea key={verbund.verbundId}>
-      {(open) => (
-        <div className="mx-auto w-full max-w-screen-2xl space-y-4 p-4 desktop:px-7 desktop:py-6">
+      {(open) => (<>
+        {pick?.open && (
+          <PackagePickPage view={view}
+            onClose={() => setPick((current) => current && { ...current, open: false })}
+            onSaved={() => setPick((current) => current && { ...current, open: false, saved: true })} />
+        )}
+        <div ref={overview} hidden={pick?.open} className="mx-auto w-full max-w-screen-2xl space-y-4 p-4 desktop:px-7 desktop:py-6">
           <VerbundHeader view={view} now={now}
-            onMembership={(trigger) => open({ kind: 'move', verbundId: verbund.verbundId }, trigger)} />
+            onMembership={(trigger) => open({ kind: 'move', verbundId: verbund.verbundId }, trigger)}
+            onPick={(trigger) => setPick({ open: true, trigger })} />
           <WorkspaceNotices />
           <section aria-labelledby="verbund-stationen" className="space-y-3">
             <h2 id="verbund-stationen" className="sr-only">Stationen</h2>
@@ -268,7 +288,7 @@ function VerbundOverview({ view }: Readonly<{ view: VerbundView }>) {
             <DiagnosticList diagnostics={diagnostics} />
           </Disclosure>
         </div>
-      )}
+      </>)}
     </ScopeMembershipArea>
   );
 }

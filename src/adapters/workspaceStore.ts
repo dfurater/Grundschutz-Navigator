@@ -10,8 +10,9 @@ import {
   type WorkspaceBackupFile, type WorkspaceVerbundBackup,
   type ScopeId, type ScopeSnapshot, type WorkspaceScope, type VerbundWriteExpectation, type ScopeMembershipExpectation,
   type ReviewBaseline, type ReviewCheckpoint, type ReviewDecision, type ReviewDecisionKind, type ReviewTrailRow,
-  type ReviewTrailView, type DocumentSnapshot,
+  type ReviewTrailView, type DocumentSnapshot, type RequirementPackageExpectation,
 } from '@/domain/workspaceModel';
+import { buildRequirementPackage, isRequirementPackageRoot, missingStandFields, packageTitle, requirementPackageState, sameStamp, type RequirementPackageState } from '@/domain/requirementPackage';
 import { snapshotDocument, assertAdmissible, assertState, pointerValue } from '@/adapters/workspaceDocumentAdmission';
 import { parseAnyBackup, parseWorkspaceBackup, parseVerbundBackup } from '@/adapters/workspaceBackup';
 import { CLASS_2_IMPORT_LIMITS } from '@/domain/oscalImportContract';
@@ -23,7 +24,7 @@ import { deleteDatabase, storedDatabaseShape, withinDeadline } from '@/adapters/
 import { migrateWorkspaceStorage } from '@/adapters/workspaceMigration';
 import { validWorkspaceScope } from '@/adapters/workspaceBackupStructure';
 import { reviewTrailInWorker } from '@/adapters/reviewTrailWork';
-import { appendDecisionError, deriveReviewState, resolveActionReferences, REVIEW_ACTIONS_SYSTEM, REVIEW_ACTION_TYPE_APPROVED } from '@/domain/reviewTrail';
+import { appendDecisionError, deriveReviewState, documentStamp, resolveActionReferences, REVIEW_ACTIONS_SYSTEM, REVIEW_ACTION_TYPE_APPROVED } from '@/domain/reviewTrail';
 import { documentBody } from '@/domain/documentContent';
 import { isJsonObject, readArray, type JsonObject } from '@/domain/jsonGuards';
 import { hasSspTargetDeletion, sspDeletionBlocked } from '@/domain/sspTargetDeletion';
@@ -47,6 +48,7 @@ export const WORKSPACE_SCHEMA_V3 = Object.freeze({
   workspaceMeta: 'id',
 });
 
+/** Layout from v4 on; v5 adds only the optional `requirementPackage` field of `verbuende`. */
 export const WORKSPACE_SCHEMA = Object.freeze({ ...WORKSPACE_SCHEMA_V3, methodikScopes: 'scopeId' });
 
 export const WORKSPACE_SCHEMA_V1 = Object.freeze({
@@ -59,7 +61,7 @@ export const WORKSPACE_SCHEMA_V1 = Object.freeze({
 
 /** Die native Freigabe wird mit dem Dokumentenschreibvorgang atomar geschrieben. */
 function schemaForVersion(version: number) {
-  if (version >= STORAGE_SCHEMA_VERSION) return WORKSPACE_SCHEMA;
+  if (version >= 4) return WORKSPACE_SCHEMA;
   return version >= 2 ? WORKSPACE_SCHEMA_V3 : WORKSPACE_SCHEMA_V1;
 }
 
@@ -203,7 +205,7 @@ export class WorkspaceStore {
   /** Declared steps share one atomic versionchange transaction. */
   private static declareVersions(db: Dexie): void {
     db.version(1).stores(WORKSPACE_SCHEMA_V1);
-    for (const version of [2, 3, STORAGE_SCHEMA_VERSION]) {
+    for (const version of [2, 3, 4, STORAGE_SCHEMA_VERSION]) {
       db.version(version).stores(schemaForVersion(version)).upgrade(async transaction => {
         try { await migrateWorkspaceStorage(transaction, version - 1, version); }
         catch { reject('WORKSPACE_MIGRATION_FAILED'); }
@@ -385,6 +387,86 @@ export class WorkspaceStore {
       if (!isVerbundName(name)) reject('WORKSPACE_VERBUND_INVALID');
       if (verbund.name === name) return verbund;
       const updated = { ...writtenRow(verbund), name, savedAt: stamp };
+      await this.verbuende.put(updated);
+      return updated;
+    });
+  }
+
+  /**
+   * Paketzustand jedes Verbunds mit Paket; Verbünde ohne Eintrag haben keines. Der Content-Hash entsteht
+   * im Worker und nur, wenn der Stempel des Baselinedokuments noch dem festgelegten Stand gleicht.
+   */
+  async listRequirementPackages(): Promise<WorkspaceResult<{ verbundId: VerbundId; state: RequirementPackageState }[]>> {
+    try {
+      const listed = await this.read(['verbuende'], () => this.verbuende.filter(row => row.requirementPackage !== undefined).toArray());
+      if (!listed.ok) return listed;
+      const states: { verbundId: VerbundId; state: RequirementPackageState }[] = [];
+      // Je Baseline eine eigene Lesung: Höchstens eine Quelle ist zugleich im Speicher.
+      for (const verbund of listed.value) {
+        const state = await this.requirementPackageStateOf(verbund);
+        if (!state.ok) return state;
+        states.push({ verbundId: verbund.verbundId, state: state.value });
+      }
+      return { ok: true, value: states };
+    } catch (error) { return failure(error); }
+  }
+
+  private async requirementPackageStateOf(verbund: WorkspaceVerbund): Promise<WorkspaceResult<RequirementPackageState>> {
+    const requirementPackage = verbund.requirementPackage;
+    if (!requirementPackage) return { ok: true, value: requirementPackageState(undefined, undefined) };
+    const read = await this.read(['documents'], () => this.documents.get(requirementPackage.baseline.localId));
+    if (!read.ok) return read;
+    const document = read.value;
+    if (document?.verbundId !== verbund.verbundId) return { ok: true, value: requirementPackageState(requirementPackage, undefined) };
+    const stamp = documentStamp(document.source, document.rootType);
+    let current: DocumentSnapshot | typeof stamp = stamp;
+    if (stamp && sameStamp(stamp, requirementPackage.baseline.stand)) {
+      const work = await reviewTrailInWorker({ source: document.source, rootType: document.rootType, previous: null, baseSequence: null, diff: false });
+      if (!work.ok) return work;
+      current = work.value.snapshot;
+    }
+    return { ok: true, value: requirementPackageState(requirementPackage, { title: packageTitle(document), ...(current ? { current } : {}) }) };
+  }
+
+  /** Liest Verbund und Baseline unter den Vergleichswerten; jede Abweichung, auch ein gelöschtes Dokument, ist ein Konflikt. */
+  private async packageInputs(verbundId: VerbundId, expected: RequirementPackageExpectation, baselineLocalId: LocalId): Promise<{ verbund: WorkspaceVerbund; document: WorkspaceEnvelope }> {
+    const verbund = await this.verbuende.get(verbundId);
+    if (verbund?.savedAt !== expected.savedAt) reject('WORKSPACE_SAVE_CONFLICT');
+    const document = await this.documents.get(baselineLocalId);
+    if (document?.savedAt !== expected.baselineSavedAt) reject('WORKSPACE_SAVE_CONFLICT');
+    if (document.verbundId !== verbundId || !isRequirementPackageRoot(document.rootType)) reject('WORKSPACE_PACKAGE_INVALID');
+    if (missingStandFields(document).length > 0) reject('WORKSPACE_PACKAGE_STAND_INCOMPLETE');
+    return { verbund, document };
+  }
+
+  /** Legt Profile oder Catalog des Verbunds als aktives Paket fest; eine Neufestlegung behält die `packageId`. */
+  async setRequirementPackage(verbundId: VerbundId, expected: RequirementPackageExpectation, baselineLocalId: LocalId): Promise<WorkspaceResult<WorkspaceVerbund>> {
+    try {
+      const read = await this.read(['verbuende', 'documents'], () => this.packageInputs(verbundId, expected, baselineLocalId));
+      if (!read.ok) return read;
+      const { document } = read.value;
+      const work = await reviewTrailInWorker({ source: document.source, rootType: document.rootType, previous: null, baseSequence: null, diff: false });
+      if (!work.ok) return work;
+      return await this.write(async stamp => {
+        // `documents.savedAt` wechselt mit jedem Inhaltsschreiben: Gleicher Wert heißt gleiche Quelle wie im Worker.
+        const { verbund, document: current } = await this.packageInputs(verbundId, expected, baselineLocalId);
+        const packageId = verbund.requirementPackage?.packageId ?? crypto.randomUUID();
+        if (await this.verbuende.filter(row => row.verbundId !== verbundId && row.requirementPackage?.packageId === packageId).count()) reject('WORKSPACE_PACKAGE_INVALID');
+        const updated: WorkspaceVerbund = { ...writtenRow(verbund), requirementPackage: buildRequirementPackage(packageId, current, work.value.snapshot), savedAt: stamp };
+        await this.verbuende.put(updated);
+        return updated;
+      });
+    } catch (error) { return failure(error); }
+  }
+
+  /** Hebt die Festlegung auf; der Vergleich gilt dem Verbund, dessen `savedAt` jede Festlegung fortschreibt. */
+  clearRequirementPackage(verbundId: VerbundId, expected: Pick<RequirementPackageExpectation, 'savedAt'>): Promise<WorkspaceResult<WorkspaceVerbund>> {
+    return this.write(async stamp => {
+      const verbund = await this.verbuende.get(verbundId);
+      if (verbund?.savedAt !== expected.savedAt) reject('WORKSPACE_SAVE_CONFLICT');
+      if (!verbund.requirementPackage) return verbund;
+      const updated = { ...writtenRow(verbund), savedAt: stamp };
+      delete updated.requirementPackage;
       await this.verbuende.put(updated);
       return updated;
     });

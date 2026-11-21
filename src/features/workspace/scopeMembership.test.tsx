@@ -156,7 +156,7 @@ describe('Zuordnung im Arbeitsbereich', () => {
     await waitFor(() => expect(button('Zuordnung ändern…')).toBeEnabled());
     expect(listDocuments).toHaveBeenLastCalledWith(north.verbundId);
     expect(listDocuments).toHaveBeenCalledTimes(2);
-    expect(main().getByText('Verbundidentität · 0 Dokumente')).toBeVisible();
+    expect(main().getByText(/^Verbundidentität · 0 Dokumente/)).toBeVisible();
   });
 
   it('hält die Auswahl sichtbar, wenn der Zielbereich gelöscht wurde', async () => {

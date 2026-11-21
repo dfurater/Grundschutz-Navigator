@@ -16,6 +16,7 @@ import { useVerbundExport } from '@/features/workspace/VerbundExportDialog';
 import { WorkspaceDeleteDialog } from '@/features/workspace/WorkspaceDeleteDialog';
 import { NameForm, ROW_BUTTON, SectionHead } from '@/features/workspace/WorkspaceForms';
 import { ScopeCreateView } from '@/features/workspace/ScopeOverviewPage';
+import { PackageLabel } from '@/features/workspace/RequirementPackageState';
 
 const DELETED_TITLE = 'Lokale Daten gelöscht';
 const SCOPES_UNREADABLE = 'Anwendungsbereiche nicht lesbar';
@@ -102,6 +103,9 @@ function VerbundRow({ verbund, scopeName, writable, rowDrafts, onRowDraft, track
       </Link>
       <span className="min-w-0 basis-40 break-words text-sm text-[var(--color-text-secondary)]">
         {scopeName ?? <span className={UNASSIGNED}>Unzugeordnet</span>}
+      </span>
+      <span className="min-w-0 basis-40 text-sm text-[var(--color-text-primary)]">
+        <PackageLabel verbund={verbund} />
       </span>
       <div className="flex gap-1">
         <Button variant="ghost" size="sm" className={ROW_BUTTON} disabled={!writable} onClick={() => onRowDraft(verbund.verbundId, verbund.name)}>Umbenennen</Button>

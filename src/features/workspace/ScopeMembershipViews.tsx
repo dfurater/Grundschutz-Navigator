@@ -5,6 +5,7 @@ import type { ScopeId, VerbundId, WorkspaceResult, WorkspaceScope, WorkspaceVerb
 import { FOCUS_RING } from '@/features/workspace/DocumentMarks';
 import { Facts, plural } from '@/features/workspace/RestoreSheetParts';
 import { NameForm, ROW_BUTTON, SectionHead } from '@/features/workspace/WorkspaceForms';
+import { PackageLabel } from '@/features/workspace/RequirementPackageState';
 import { WorkspaceNotices } from '@/features/workspace/WorkspaceNotices';
 import { usePendingWrite } from '@/features/workspace/usePendingWrite';
 import { useWorkspace } from '@/hooks/useWorkspace';
@@ -200,6 +201,15 @@ function AssignVerbuendeView({ scope: openedScope, onClose, onSaved }: Readonly<
   );
 }
 
+/** „Bleibt erhalten“ beim Umhängen: Verbundidentität, Dokumentzahl und Paketzustand. */
+function Retained({ verbund, documents }: Readonly<{ verbund: WorkspaceVerbund; documents: number | null }>) {
+  return (
+    <span className="inline-flex flex-wrap items-center gap-x-1.5 gap-y-1">
+      {documents === null ? 'Verbundidentität' : `Verbundidentität · ${plural(documents, 'Dokument', 'Dokumente')}`} · <PackageLabel verbund={verbund} />
+    </span>
+  );
+}
+
 function ChangeVerbundScopeView({ verbundId, remove, onClose, onSaved }: Readonly<{ verbundId: VerbundId; remove: boolean }> & ViewActions) {
   const { changeVerbundScope, listDocuments, verbuende } = useWorkspace();
   const inventory = useMembershipInventory();
@@ -239,7 +249,7 @@ function ChangeVerbundScopeView({ verbundId, remove, onClose, onSaved }: Readonl
         ['Informationsverbund', verbund.name],
         ['Bisher', from?.name ?? 'keiner'],
         ['Neu', to?.name ?? 'Keiner'],
-        ['Bleibt erhalten', `Verbundidentität · ${plural(documents, 'Dokument', 'Dokumente')}`],
+        ['Bleibt erhalten', <Retained key="retained" verbund={verbund} documents={documents} />],
       ]} />,
       write: () => changeVerbundScope(verbund.verbundId, from ?? null, to ?? null, verbund.savedAt),
     });
@@ -285,7 +295,7 @@ function ChangeVerbundScopeView({ verbundId, remove, onClose, onSaved }: Readonl
             {selection && !to && !removable && (
               <p className="break-words text-sm text-[var(--color-text-secondary)]">Auswahl nicht mehr verfügbar: {selection.name}</p>
             )}
-            <Facts rows={ [['Bleibt erhalten', documents === null ? 'Verbundidentität' : `Verbundidentität · ${plural(documents, 'Dokument', 'Dokumente')}`]] } />
+            <Facts rows={ [['Bleibt erhalten', <Retained key="retained" verbund={verbund} documents={documents} />]] } />
           </>
         )}
         <div className="flex flex-wrap gap-2">

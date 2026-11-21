@@ -4,6 +4,7 @@ import { STORAGE_SCHEMA_VERSION, type LocalId, type VerbundId, type WorkspaceBac
 import { CLASS_2_IMPORT_LIMITS, WORKSPACE_BACKUP_MAX_BYTES } from '@/domain/class2ImportLimits.mjs';
 import { countObjectGraphNodesCapped, enforceClass2ObjectGraphInvariants, enforceWorkspaceBackupGraphInvariants } from '@/domain/oscalObjectGraph';
 import { serializeWorkspaceJson } from '@/domain/workspaceJson';
+import { foreignPackageReference, requirementPackageConflict } from '@/adapters/workspaceRestorePackage';
 import { serializeWorkspaceRecoveryJson } from '@/adapters/workspaceRecoveryJson';
 import { validWorkspaceBackupStructure, validVerbundBackupStructure, validWorkspaceScope } from '@/adapters/workspaceBackupStructure';
 import { LAST_TIMESTAMP_MS, reject, timestamp } from '@/adapters/workspaceStorageFailure';
@@ -214,6 +215,7 @@ export async function readVerbundRestorePreviewSnapshot(db: Dexie, backup: Works
     if (existing && existing.verbundId !== verbundId) reject('WORKSPACE_BACKUP_CONFLICT');
   }
   const existingVerbund = await db.table<WorkspaceVerbund>('verbuende').get(verbundId) ?? null;
+  if (requirementPackageConflict(backup.verbuende[0], existingVerbund) || await foreignPackageReference(db, backup)) reject('WORKSPACE_BACKUP_CONFLICT');
   const { scope, targetScope } = await readRestoreScope(db, backup.methodikScopes?.[0] ?? null, existingVerbund);
   const members: Pick<WorkspaceEnvelope, 'localId' | 'savedAt'>[] = [];
   await documents.where('verbundId').equals(verbundId).each(row => { members.push({ localId: row.localId, savedAt: row.savedAt }); });

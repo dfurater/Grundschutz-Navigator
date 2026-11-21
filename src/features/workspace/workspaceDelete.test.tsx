@@ -117,8 +117,8 @@ describe('Gesamtlöschung', () => {
     other.leave();
     fireEvent.click(recheck);
     await waitFor(() => expect(dialog.getByRole('button', { name: CONFIRM })).toBeEnabled());
-    // Der verschwundene Button gibt den Fokus an den Sicherungsabschnitt ab, nicht an die Seite.
-    expect(dialog.getByRole('heading', { name: 'Vor dem Löschen sichern' })).toHaveFocus();
+    // Der verschwundene Button gibt den Fokus an den Sicherungsabschnitt ab, nicht an die Seite; der Fokus folgt im passiven Effekt nach dem Commit.
+    await waitFor(() => expect(dialog.getByRole('heading', { name: 'Vor dem Löschen sichern' })).toHaveFocus());
     expect(deleteAll).not.toHaveBeenCalled();
   });
 
@@ -421,7 +421,7 @@ describe('Gesamtlöschung', () => {
     expect(region).toHaveTextContent('Lokale Daten gelöscht. Der gesamte Arbeitsbestand wurde aus diesem Browserprofil entfernt. Exportierte Dateien bleiben erhalten.');
     expect(screen.queryByRole('alertdialog')).toBeNull();
     const pageHeading = screen.getByRole('heading', { level: 1, name: 'Arbeitsbereich' });
-    expect(pageHeading).toHaveFocus();
+    await waitFor(() => expect(pageHeading).toHaveFocus());
     expect(pageHeading).toHaveAccessibleDescription(/^Lokale Daten gelöscht\./);
     expect(screen.getByText('Keine Informationsverbünde vorhanden.')).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: VERBUND.name })).toBeNull();

@@ -14,6 +14,7 @@ import { NameForm, ROW_BUTTON, SaveFailed, SectionHead } from '@/features/worksp
 import { usePendingWrite } from '@/features/workspace/usePendingWrite';
 import { WorkspaceNotices } from '@/features/workspace/WorkspaceNotices';
 import { WorkspaceStatePage } from '@/features/workspace/WorkspaceStatePage';
+import { PackageLabel } from '@/features/workspace/RequirementPackageState';
 import { NEW_SCOPE_DRAFT } from '@/state/workspaceRestore';
 
 /** Ansicht „Anwendungsbereich anlegen“ (GSPP-669, Ansicht 7): erst nach bestätigtem Speichern öffnet sich die Übersicht. */
@@ -245,6 +246,9 @@ export function ScopeOverviewPage() {
                         >
                           <span className="min-w-0 break-words">{verbund.name}</span>
                         </Link>
+                        <span className="min-w-0 basis-40 text-sm text-[var(--color-text-primary)]">
+                          <PackageLabel verbund={verbund} />
+                        </span>
                         <div className="flex flex-wrap gap-2">
                           <Button variant="ghost" disabled={!writable} className={ROW_BUTTON}
                             onClick={(event) => open({ kind: 'move', verbundId: verbund.verbundId }, event.currentTarget)}>Zuordnung ändern…</Button>
