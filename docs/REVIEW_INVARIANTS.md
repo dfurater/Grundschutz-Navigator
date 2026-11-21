@@ -9,7 +9,7 @@
 # Review-Invarianten
 
 Der verbindliche Reviewvertrag dieses Repositoriums. Er gilt gleichrangig für
-Gitar, für Greptile und für jeden Agenten-Cross-Review.
+Gitar, Greptile, CodeRabbit und jeden Agenten-Cross-Review.
 
 Diese Datei wird von `scripts/review-policy.mjs` erzeugt; die Regeltexte selbst
 stehen in `scripts/review-policy.rules.mjs`. Änderungen gehören dorthin;

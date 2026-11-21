@@ -572,6 +572,7 @@ scripts/                          # Build-, CI- und Wartungsskripte
 ├── deployRunDisplay.mjs              # Geprüfte Log-Ausgabewerte der Deploy-Skripte
 ├── deployChecksums.mjs               # Prüfsummen-Manifest SHA256SUMS der Pages-Auslieferung
 ├── fetch-catalog.mjs                 # Registry-gesteuerter Abruf, Validierung und Ausgabe
+├── fixtures/                         # Prüfkopie des CodeRabbit-Konfigurationsschemas v2
 ├── git-changed-files.mjs             # Geänderte Dateien eines Pull Requests
 ├── githubApiFetch.mjs                # Gemeinsamer GitHub-JSON-Abruf der CI-Guards
 ├── greptile-review-nudge.mjs         # Greptile-Auslösung bei übersprungenem PR
@@ -1318,11 +1319,11 @@ Ein Cherry-Pick-PR zweigt von `main` ab und führt `ci.yml` und `scripts/cherry-
 
 ## Versionierte Review-Policy
 
-Gitar und Greptile prüfen dieses Repository parallel. Regeln sind versioniert, haben genau eine Autorenquelle, und alles Weitere wird daraus deterministisch erzeugt.
+Gitar, Greptile und CodeRabbit prüfen dieses Repository parallel und gleichrangig. Regeln sind versioniert, haben genau eine Autorenquelle, und alles Weitere wird daraus deterministisch erzeugt.
 
-Die Autorenquelle besteht aus zwei Dateien: `scripts/review-policy.rules.mjs` trägt die Regeltabelle als reine Daten — Regel-ID, Scope und Regeltext. `scripts/review-policy.mjs` trägt Generator, Drift-Guard und CLI. Erzeugt werden vier Adapter: `docs/REVIEW_INVARIANTS.md`, `.gitar/review/invarianten.md`, `.greptile/config.json` und `.greptile/files.json`. `npm run review-policy` erzeugt neu, `npm run review-policy:check` schlägt bei jeder manuellen Abweichung fehl und läuft als Pflichtschritt im CI-Job `validate`.
+Die Autorenquelle besteht aus zwei Dateien: `scripts/review-policy.rules.mjs` trägt die Regeltabelle als reine Daten — Regel-ID, Scope und Regeltext. `scripts/review-policy.mjs` trägt Generator, Drift-Guard und CLI. Erzeugt werden fünf Adapter: `docs/REVIEW_INVARIANTS.md`, `.gitar/review/invarianten.md`, `.greptile/config.json`, `.greptile/files.json` und `.coderabbit.yaml`. `npm run review-policy` erzeugt neu, `npm run review-policy:check` schlägt bei jeder manuellen Abweichung fehl und läuft als Pflichtschritt im CI-Job `validate`.
 
-Der Guard prüft neben der Byte-Gleichheit der erzeugten Dateien, dass keine Anweisungsfläche an der Autorenquelle vorbei existiert: Dateien unter den von den Reviewern gelesenen Verzeichnissen (`.gitar`, `.greptile`, `.cursor` in jeder Verzeichnistiefe, `.github/skills` an der Wurzel) sowie die Einzeldateien `.cursorrules` und `greptile.json` (ebenfalls in jeder Tiefe), die nicht aus dem Generator stammen, sind Drift. Ein von Hand angelegtes `.greptile/rules.md` fällt damit auf. Aufgezählt wird die Fläche über `git ls-files --cached --others --exclude-standard`, also genau die Menge der Pfade, die im PR-Head landen können. Ist der Index nicht lesbar, schlägt der Guard fehl.
+Der Guard prüft neben der Byte-Gleichheit der erzeugten Dateien, dass keine Anweisungsfläche an der Autorenquelle vorbei existiert: Dateien unter den von den Reviewern gelesenen Verzeichnissen (`.gitar`, `.greptile`, `.cursor`, `.coderabbit` in jeder Verzeichnistiefe, `.github/skills` an der Wurzel) sowie die Einzeldateien `.cursorrules`, `greptile.json`, `.coderabbit.yaml`, `.coderabbit.yml` und `.coderabbit.config.ts` (ebenfalls in jeder Tiefe), die nicht aus dem Generator stammen, sind Drift. Ein von Hand angelegtes `.greptile/rules.md` oder ein `.coderabbit.yaml` außerhalb der Wurzel fällt damit auf. Aufgezählt wird die Fläche über `git ls-files --cached --others --exclude-standard`, also genau die Menge der Pfade, die im PR-Head landen können. Ist der Index nicht lesbar, schlägt der Guard fehl.
 
 ### Greptile-Adapter
 
@@ -1334,13 +1335,23 @@ Der Adapter schreibt Greptiles strukturiertes Regelformat `config.json`: Nur dor
 
 Fallstrick: Greptiles `strictness` ist invers zu seiner Beschriftung (`1` = ausführlich, `3` = nur Kritisches; die Stufe Low entspricht `strictness: 1`). Der Adapter setzt das Feld nicht.
 
+### CodeRabbit-Adapter
+
+`reviews.path_instructions` führt jede globale Regel mit `path: "{**,**/.*,**/.*/**}"` und jede gescopte Regel einmal je Scope-Glob. CodeRabbit wertet Globs nach Minimatch aus, wo `**` keine Punkt-Segmente trifft; das globale Muster deckt Pfade mit höchstens einem Punkt-Segment ab, und ein Test hält alle versionierten Pfade in dieser Menge. Weil CodeRabbit kein eigenes Schlüsselfeld kennt, beginnt `instructions` mit `<Regelschlüssel>: `. Jeder Datei-Kontext erscheint als Eintrag `Datei-Kontext: Ziehe <Pfad> beim Review heran.` samt Beschreibung, je Scope oder mit dem globalen Muster. Schema v2 begrenzt `instructions` auf 20.000 Unicode-Codepoints; `assertPolicyIsWellFormed` weist einen längeren Regeltext oder Datei-Kontext zurück, damit `npm run review-policy:check` fehlschlägt, statt dass CodeRabbit die ungültige Datei still ignoriert.
+
+`knowledge_base.code_guidelines.enabled: false` hält Guideline-Dateien wie `AGENTS.md`, `CLAUDE.md` oder `.cursorrules` aus dem Review heraus, `knowledge_base.opt_out: true` schaltet gespeicherte Learnings ab. Die Regeln stammen damit allein aus der Autorenquelle.
+
+`scripts/review-policy.test.ts` validiert die erzeugte Konfiguration netzfrei mit Ajv (Draft 2020-12) gegen `scripts/fixtures/coderabbit-schema.v2.json` und prüft vorher deren SHA-256 gegen einen Pin im Test. Schema v2 setzt auf oberster Ebene, unter `reviews` und unter `knowledge_base` `additionalProperties: false`; ein unbekannter Schlüssel lässt den Test fehlschlagen.
+
+CodeRabbit ist kein Pflicht-Check der Rulesets für `develop` und `main`. Beide Rulesets setzen in der Pull-Request-Regel `required_review_thread_resolution: true`: Jeder offene Review-Thread, also auch jeder Inline-Befund von Gitar, Greptile oder CodeRabbit, sperrt den Merge, bis er erledigt ist. `required_approving_review_count` ist `0`, weil `scripts/catalog-sync-policy.mjs` das für die Katalog-Sync-Lane auf `main` verlangt. Der Check-Run `CodeRabbit` endet bei übersprungenem Review als `skipped` und bei rate-limitiertem Review als `neutral`; GitHub wertet beide Zustände wie einen bestandenen Check, ohne dass ein Review lief. Ein bestandener Check belegt deshalb allein kein Review.
+
 ### Erzwungene Auslösung bei leerem Reviewumfang
 
-Greptile wendet anbieterseitige Ignore-Patterns bereits vor der Auslösung an. Bleibt danach keine Datei übrig, legt es weder Review-Lauf noch Merge-Request-Datensatz an. Weil `Greptile Review` auf `develop` und `main` Pflicht-Check ist, steht ein so übersprungener Pull Request dauerhaft auf `mergeStateStatus: BLOCKED`. Betroffen ist die Klasse der Diffs, die ausschließlich `package-lock.json` ändern.
+Greptile wendet anbieterseitige Ignore-Patterns bereits vor der Auslösung an. Bleibt danach keine Datei übrig, legt es weder Review-Lauf noch Merge-Request-Datensatz an. Das Ruleset für `main` verlangt `Greptile Review` als Pflicht-Check; dort steht ein so übersprungener Pull Request dauerhaft auf `mergeStateStatus: BLOCKED`. Das Ruleset für `develop` verlangt den Check nicht. Betroffen ist die Klasse der Diffs, die ausschließlich `package-lock.json` ändern.
 
 `.github/workflows/greptile-review-nudge.yml` schließt die Lücke über eine Erwähnung: Sie bewegt Greptile zu einem echten Review auf demselben Head und stellt damit echte Reviewabdeckung her. Ein selbst gebauter Check gleichen Namens ist ausgeschlossen.
 
-Ausgelöst wird über `issue_comment`, gefiltert auf Kommentare an Pull Requests und auf `greptile-apps[bot]` als Autor. Die Bedingung für die Erwähnung ist der Zustand, der den Merge blockiert: Auf dem frisch gelesenen Head-SHA fehlt ein Check-Run namens `Greptile Review`. Ein unsichtbarer Marker mit dem Head-SHA im eigenen Kommentar begrenzt die Erwähnung auf eine je Head. Eine `concurrency`-Gruppe je Pull Request serialisiert die Läufe, mit `cancel-in-progress: false`.
+Ausgelöst wird über `issue_comment`, gefiltert auf Kommentare an Pull Requests und auf `greptile-apps[bot]` als Autor. Die Bedingung für die Erwähnung ist der Zustand, der auf `main` den Merge blockiert: Auf dem frisch gelesenen Head-SHA fehlt ein Check-Run namens `Greptile Review`. Ein unsichtbarer Marker mit dem Head-SHA im eigenen Kommentar begrenzt die Erwähnung auf eine je Head. Eine `concurrency`-Gruppe je Pull Request serialisiert die Läufe, mit `cancel-in-progress: false`.
 
 Der Workflow checkt den Default-Branch aus, nie den PR-Head — fremder Code läuft zu keinem Zeitpunkt. Die Job-Berechtigungen sind auf `contents`, `checks` und `pull-requests` lesend plus `issues` schreibend beschränkt. `issue_comment` feuert nur von der Fassung auf dem Default-Branch; eine Änderung am Workflow wirkt erst nach ihrem Merge.
 

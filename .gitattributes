@@ -3,3 +3,7 @@
 # core.autocrlf=true die Zeilenenden normalisieren und die Hashprüfung auf genau
 # dieser Maschine falsch-rot machen — bei unverändertem Repository-Inhalt.
 schemas/oscal/** -text
+
+# Die CodeRabbit-Schema-Fixture wird in scripts/review-policy.test.ts byteweise gegen
+# ihren SHA-256 geprüft; ohne diese Zeile verfälscht core.autocrlf=true den Hash.
+scripts/fixtures/coderabbit-schema.v2.json -text

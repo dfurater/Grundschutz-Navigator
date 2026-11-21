@@ -1,12 +1,16 @@
 // @vitest-environment node
 
 import { afterEach, describe, expect, it } from 'vitest';
+import { Ajv2020 } from 'ajv/dist/2020';
+import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { promisify } from 'node:util';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
+  CODERABBIT_GLOBAL_PATH,
+  CODERABBIT_INSTRUCTIONS_MAX_LENGTH,
   GITAR_REVIEW_DIRECTORY,
   GITIGNORED_INSTRUCTION_SURFACES,
   REPO_ROOT,
@@ -177,12 +181,13 @@ describe('review-policy Autorenquelle', () => {
 });
 
 describe('review-policy Erzeugung', () => {
-  it('erzeugt genau die vier Zielpfade', () => {
+  it('erzeugt genau die fünf Zielpfade', () => {
     expect(REVIEW_POLICY_TARGETS.map((target) => target.path)).toEqual([
       'docs/REVIEW_INVARIANTS.md',
       '.gitar/review/invarianten.md',
       '.greptile/config.json',
       '.greptile/files.json',
+      '.coderabbit.yaml',
     ]);
   });
 
@@ -320,9 +325,124 @@ describe('review-policy Greptile-Adapter', () => {
   });
 });
 
+/**
+ * CodeRabbit liest `.coderabbit.yaml` und ignoriert eine nicht schemagültige
+ * Datei still. Die Prüfung gegen das eingecheckte Schema v2 läuft deshalb ohne
+ * Netz gegen eine Kopie mit Hash-Pin.
+ */
+describe('review-policy CodeRabbit-Adapter', () => {
+  const SCHEMA_FIXTURE = path.join(REPO_ROOT, 'scripts/fixtures/coderabbit-schema.v2.json');
+  const SCHEMA_SHA256 = '27b618b678e8f77378fe7dcde89e198f45c0a6b60c8aaf4b8bcd99c9e4340163';
+
+  type CodeRabbitConfig = {
+    knowledge_base: { opt_out: boolean; code_guidelines: { enabled: boolean } };
+    reviews: {
+      auto_approvals: { enabled: boolean; allow_author_approval: boolean };
+      path_filters: string[];
+      path_instructions: Array<{ path: string; instructions: string }>;
+    };
+  };
+
+  const renderedYaml = (policy = {}) =>
+    renderReviewPolicy(policy).find((target) => target.path === '.coderabbit.yaml')!.content;
+
+  /** Zeile 1 ist der Schema-Kommentar, der Rest JSON (gültiges YAML 1.2). */
+  const parseConfig = (content: string): CodeRabbitConfig => {
+    const [comment, ...rest] = content.split('\n');
+    expect(comment).toBe('# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json');
+    return JSON.parse(rest.join('\n'));
+  };
+
+  it('ist gegen das eingecheckte Schema v2 gültig, dessen SHA-256 dem Pin entspricht', async () => {
+    const bytes = await readFile(SCHEMA_FIXTURE);
+    expect(createHash('sha256').update(bytes).digest('hex')).toBe(SCHEMA_SHA256);
+
+    const validate = new Ajv2020({ strict: false, allErrors: true }).compile(JSON.parse(bytes.toString('utf8')));
+    const config = parseConfig(renderedYaml());
+
+    expect(validate(config), JSON.stringify(validate.errors)).toBe(true);
+    expect(config.knowledge_base).toEqual({ opt_out: true, code_guidelines: { enabled: false } });
+    expect(config.reviews.path_filters).toEqual(['!scripts/fixtures/coderabbit-schema.v2.json']);
+    expect(config.reviews.auto_approvals).toEqual({ enabled: true, allow_author_approval: false });
+  });
+
+  it('führt jede globale Regel global, jede gescopte Regel und jeden Datei-Kontext einmal je Scope', () => {
+    const entries = parseConfig(renderedYaml()).reviews.path_instructions;
+    const context = (scope: string, file: { path: string; description: string }) => ({
+      path: scope,
+      instructions: `Datei-Kontext: Ziehe \`${file.path}\` beim Review heran. ${file.description}`,
+    });
+    const expected = [
+      ...globalRules.map((rule) => ({ path: CODERABBIT_GLOBAL_PATH, instructions: `${rule.key}: ${rule.body}` })),
+      ...scopedRules.flatMap((rule) =>
+        rule.scopes.map((scope) => ({ path: scope, instructions: `${rule.key}: ${rule.body}` }))),
+      ...fileContexts.flatMap((file) =>
+        (file.scopes.length > 0 ? file.scopes : [CODERABBIT_GLOBAL_PATH]).map((scope) => context(scope, file))),
+    ];
+
+    expect(entries).toEqual(expected);
+  });
+
+  /**
+   * Minimatch lässt `**` keine Punkt-Segmente treffen; das globale Muster deckt
+   * genau einen Punkt-Segment je Pfad ab. Ein versionierter Pfad mit zweien
+   * bekäme keine globale Regel.
+   */
+  it('erreicht mit dem globalen Muster jeden versionierten Pfad', async () => {
+    const { stdout } = await execFileAsync('git', ['ls-files', '-z'], { cwd: REPO_ROOT, maxBuffer: 64 * 1024 * 1024 });
+    const uncovered = stdout.split('\0').filter((file) => file.split('/').filter((part) => part.startsWith('.')).length > 1);
+
+    expect(CODERABBIT_GLOBAL_PATH).toBe('{**,**/.*,**/.*/**}');
+    expect(uncovered).toEqual([]);
+  });
+
+  it('überträgt Anführungszeichen, Backslash und Zeilenumbruch unverändert', () => {
+    const body = 'Zitat "a" und \'b\', Pfad C:\\x\\y, Zeile 1\nZeile 2: - nicht: yaml\t# kein Kommentar';
+    const entries = parseConfig(renderedYaml({ global: [{ ...globalRules[0], body }], scoped: [], files: [] }))
+      .reviews.path_instructions;
+
+    expect(entries).toEqual([{ path: CODERABBIT_GLOBAL_PATH, instructions: `G1-sprache: ${body}` }]);
+  });
+
+  it('schlägt bei einer von Hand veränderten .coderabbit.yaml fehl', async () => {
+    const root = await createGeneratedFixtureRoot();
+    const file = path.join(root, '.coderabbit.yaml');
+    await writeFile(file, (await readFile(file, 'utf8')).replace('"opt_out": true', '"opt_out": false'), 'utf8');
+
+    await expect(checkFixture(root)).rejects.toThrow(/weicht von der Autorenquelle ab: \.coderabbit\.yaml/);
+  });
+
+  it('schlägt bei einem Regeltext über der CodeRabbit-Grenze von 20.000 Zeichen fehl', async () => {
+    const root = await createGeneratedFixtureRoot();
+    const rule = globalRules[0];
+    const atLimit = 'x'.repeat(CODERABBIT_INSTRUCTIONS_MAX_LENGTH - `${rule.key}: `.length);
+
+    expect(() => assertPolicyIsWellFormed({ global: [{ ...rule, body: atLimit }] })).not.toThrow();
+    await expect(checkFixture(root, { policy: { global: [{ ...rule, body: `${atLimit}x` }] } }))
+      .rejects.toThrow(/überschreitet die CodeRabbit-Grenze von 20000 Zeichen: G1-sprache/);
+  });
+
+  /** Das Schema zählt Codepoints; ein Emoji sind zwei UTF-16-Einheiten, aber ein Zeichen. */
+  it('zählt die Grenze in Unicode-Codepoints', () => {
+    const rule = globalRules[0];
+    const atLimit = `${'x'.repeat(CODERABBIT_INSTRUCTIONS_MAX_LENGTH - `${rule.key}: `.length - 1)}😀`;
+
+    expect(() => assertPolicyIsWellFormed({ global: [{ ...rule, body: atLimit }] })).not.toThrow();
+    expect(() => assertPolicyIsWellFormed({ global: [{ ...rule, body: `${atLimit}😀` }] }))
+      .toThrow(/überschreitet die CodeRabbit-Grenze/);
+  });
+
+  it('weist einen Datei-Kontext über der CodeRabbit-Grenze zurück', () => {
+    const context = { ...fileContexts[0], description: 'x'.repeat(CODERABBIT_INSTRUCTIONS_MAX_LENGTH) };
+
+    expect(() => assertPolicyIsWellFormed({ files: [context] }))
+      .toThrow(/überschreitet die CodeRabbit-Grenze von 20000 Zeichen: docs\/ARCHITECTURE\.md/);
+  });
+});
+
 describe('review-policy Drift-Check', () => {
   it('bestätigt den eingecheckten Stand des Repositoriums', async () => {
-    await expect(checkReviewPolicy({ repoRoot: REPO_ROOT })).resolves.toHaveLength(4);
+    await expect(checkReviewPolicy({ repoRoot: REPO_ROOT })).resolves.toHaveLength(5);
   });
 
   it('schlägt bei einer von Hand veränderten Adapterdatei fehl', async () => {
@@ -398,6 +518,13 @@ describe('review-policy Drift-Check', () => {
     ['src/.cursor/rules/umgehung.md'],
     ['src/.cursorrules'],
     ['packages/api/greptile.json'],
+    ['.coderabbit.yml'],
+    ['src/.coderabbit.yml'],
+    ['.coderabbit.config.ts'],
+    ['packages/api/.coderabbit.config.ts'],
+    ['src/.coderabbit.yaml'],
+    ['.coderabbit/instructions/local.md'],
+    ['src/.coderabbit/instructions/local.md'],
   ])('schlägt bei einer Anweisungsdatei unter %s fehl', async (relative) => {
     const root = await createGeneratedFixtureRoot();
     await writeFixtureFile(root, relative, '{"disabledRules":["R1-integritaet"]}\n');
@@ -431,9 +558,15 @@ describe('review-policy Drift-Check', () => {
   });
 
   it('deckt jede in der Autorenquelle geführte Anweisungsfläche ab', () => {
-    expect(REVIEW_INSTRUCTION_DIRECTORY_NAMES).toEqual(['.gitar', '.greptile', '.cursor']);
+    expect(REVIEW_INSTRUCTION_DIRECTORY_NAMES).toEqual(['.gitar', '.greptile', '.cursor', '.coderabbit']);
     expect(REVIEW_INSTRUCTION_ROOT_DIRECTORIES).toEqual(['.github/skills']);
-    expect(REVIEW_INSTRUCTION_FILE_NAMES).toEqual(['.cursorrules', 'greptile.json']);
+    expect(REVIEW_INSTRUCTION_FILE_NAMES).toEqual([
+      '.cursorrules',
+      'greptile.json',
+      '.coderabbit.yaml',
+      '.coderabbit.yml',
+      '.coderabbit.config.ts',
+    ]);
     expect(REVIEW_INSTRUCTION_DIRECTORY_NAMES.includes(GITAR_REVIEW_DIRECTORY.split('/')[0])).toBe(true);
   });
 
@@ -447,7 +580,7 @@ describe('review-policy Drift-Check', () => {
     const root = await createGeneratedFixtureRoot();
     await writeFixtureFile(root, 'src/.github/skills/harmlos.md', '# Kein Reviewkontext\n');
 
-    await expect(checkFixture(root)).resolves.toHaveLength(4);
+    await expect(checkFixture(root)).resolves.toHaveLength(5);
   });
 
   /**
@@ -461,7 +594,7 @@ describe('review-policy Drift-Check', () => {
     await writeFile(path.join(root, '.gitignore'), '.greptile/lokal.md\n', 'utf8');
     await writeFile(path.join(root, '.greptile/lokal.md'), '# Nur lokal\n', 'utf8');
 
-    await expect(checkFixture(root)).resolves.toHaveLength(4);
+    await expect(checkFixture(root)).resolves.toHaveLength(5);
 
     await execFileAsync('git', ['add', '-f', '.greptile/lokal.md'], { cwd: root });
 
@@ -515,7 +648,7 @@ describe('review-policy Drift-Check', () => {
     await expect(checkFixture(root)).rejects.toThrow(ReviewPolicyError);
 
     await writeReviewPolicy({ repoRoot: root });
-    await expect(checkFixture(root)).resolves.toHaveLength(4);
+    await expect(checkFixture(root)).resolves.toHaveLength(5);
   });
 });
 
@@ -588,7 +721,7 @@ describe('review-policy Guard gegen erzwungen versionierte Anweisungsflächen', 
     await writeFile(path.join(root, '.gitignore'), 'AGENTS.md\n', 'utf8');
     await writeFile(path.join(root, 'AGENTS.md'), '# Lokale Agentendatei\n', 'utf8');
 
-    await expect(checkReviewPolicy({ repoRoot: root })).resolves.toHaveLength(4);
+    await expect(checkReviewPolicy({ repoRoot: root })).resolves.toHaveLength(5);
 
     await git('add', '-f', 'AGENTS.md');
 
@@ -597,6 +730,6 @@ describe('review-policy Guard gegen erzwungen versionierte Anweisungsflächen', 
   }, 30_000);
 
   it('bestätigt, dass in diesem Repository keine dieser Flächen versioniert ist', async () => {
-    await expect(checkReviewPolicy({ repoRoot: REPO_ROOT })).resolves.toHaveLength(4);
+    await expect(checkReviewPolicy({ repoRoot: REPO_ROOT })).resolves.toHaveLength(5);
   });
 });

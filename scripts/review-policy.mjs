@@ -34,6 +34,8 @@
  *                                    derselben Tabelle
  *   - `.greptile/files.json`         Greptile-Datei-Kontexte aus derselben
  *                                    Tabelle
+ *   - `.coderabbit.yaml`             CodeRabbit-Konfiguration, Regeln als
+ *                                    `reviews.path_instructions`
  *
  * Der Greptile-Zweig (`.greptile/`) ist seit GSPP-383 Teil dieser
  * Autorenquelle. Es gibt keinen Dashboard-Importzyklus mehr und keine
@@ -90,6 +92,38 @@ export class ReviewPolicyError extends Error {
   }
 }
 
+/** Schema der CodeRabbit-Konfiguration; die Prüfkopie liegt unter `scripts/fixtures/`. */
+export const CODERABBIT_SCHEMA_URL = 'https://coderabbit.ai/integrations/schema.v2.json';
+
+/** Obergrenze je `path_instructions[].instructions` laut CodeRabbit-Schema v2 (`maxLength`). */
+export const CODERABBIT_INSTRUCTIONS_MAX_LENGTH = 20_000;
+
+/**
+ * Glob für globale Regeln und ungescopte Datei-Kontexte. CodeRabbit wertet Globs
+ * nach Minimatch aus, dort trifft `**` keine Punkt-Segmente wie `.github/`.
+ * shortcut: Pfade mit mehr als einem Punkt-Segment (`.github/.x/y`) trifft das
+ * Muster nicht; das Repository versioniert keinen solchen Pfad (Test prüft es).
+ */
+export const CODERABBIT_GLOBAL_PATH = '{**,**/.*,**/.*/**}';
+
+/** CodeRabbit kennt kein Regel-`id`-Feld, deshalb trägt der Text den Schlüssel. */
+const codeRabbitInstructions = (rule) => `${rule.key}: ${rule.body}`;
+
+/** Datei-Kontext als Anweisung, gleichwertig zu `.greptile/files.json`. */
+const codeRabbitContextInstructions = (context) =>
+  `Datei-Kontext: Ziehe \`${context.path}\` beim Review heran. ${context.description}`;
+
+/**
+ * Das Schema zählt `maxLength` in Unicode-Codepoints, nicht in UTF-16-Einheiten.
+ * CodeRabbit ignoriert eine nicht schemagültige Datei still; zu lang ist deshalb ein Fehler.
+ */
+function assertCodeRabbitLength(instructions, label) {
+  reject(
+    [...instructions].length > CODERABBIT_INSTRUCTIONS_MAX_LENGTH,
+    `Anweisung überschreitet die CodeRabbit-Grenze von ${CODERABBIT_INSTRUCTIONS_MAX_LENGTH} Zeichen: ${label}`,
+  );
+}
+
 /** Wirft mit der übergebenen Meldung, sobald die Bedingung zutrifft. */
 function reject(condition, message) {
   if (condition) throw new ReviewPolicyError(message);
@@ -105,6 +139,7 @@ function assertRuleIsWellFormed(rule) {
     'Der Schlüssel steht bereits in id (Greptile) bzw. der Überschrift (Dokumentation); ' +
     'ein Präfix im Text würde ihn doppeln.',
   );
+  assertCodeRabbitLength(codeRabbitInstructions(rule), rule.key);
 }
 
 /** Der Schlüssel bzw. Pfad identifiziert einen Eintrag; zweimal vergeben verdeckt einen davon. */
@@ -133,6 +168,7 @@ export function assertPolicyIsWellFormed({ global = globalRules, scoped = scoped
   }
 
   assertIdentifiersAreUnique(files.map((context) => context.path), 'Doppelter Datei-Kontext');
+  for (const context of files) assertCodeRabbitLength(codeRabbitContextInstructions(context), context.path);
 }
 
 /** Kopfzeile jeder erzeugten Datei — sie sagt, wo bearbeitet wird. */
@@ -159,7 +195,7 @@ export function renderInvariantsDocument({ global = globalRules, scoped = scoped
     '# Review-Invarianten',
     '',
     'Der verbindliche Reviewvertrag dieses Repositoriums. Er gilt gleichrangig für',
-    'Gitar, für Greptile und für jeden Agenten-Cross-Review.',
+    'Gitar, Greptile, CodeRabbit und jeden Agenten-Cross-Review.',
     '',
     'Diese Datei wird von `scripts/review-policy.mjs` erzeugt; die Regeltexte selbst',
     'stehen in `scripts/review-policy.rules.mjs`. Änderungen gehören dorthin;',
@@ -280,6 +316,44 @@ export function renderGreptileFiles({ files = fileContexts } = {}) {
 }
 
 /**
+ * CodeRabbit-Konfiguration `.coderabbit.yaml`. Der Inhalt ist JSON, das als
+ * YAML 1.2 gültig ist: keine YAML-Abhängigkeit und kein eigenes Quoting. Jede
+ * globale Regel gilt für `CODERABBIT_GLOBAL_PATH`, jede gescopte einmal je
+ * Scope-Glob; Datei-Kontexte folgen derselben Zuordnung.
+ *
+ * `knowledge_base.code_guidelines.enabled: false` und `knowledge_base.opt_out:
+ * true` halten Guideline-Dateien (`AGENTS.md`, `CLAUDE.md`, `.cursorrules`, …)
+ * und gespeicherte Learnings aus dem Review heraus; Regeln kommen dann allein
+ * aus der Autorenquelle. `inheritance: false` schließt Organisationsvorgaben aus.
+ */
+export function renderCodeRabbitConfig({ global = globalRules, scoped = scopedRules, files = fileContexts } = {}) {
+  const scopesOrGlobal = (scopes) => (scopes.length > 0 ? scopes : [CODERABBIT_GLOBAL_PATH]);
+  const pathInstructions = [
+    ...global.map((rule) => ({ path: CODERABBIT_GLOBAL_PATH, instructions: codeRabbitInstructions(rule) })),
+    ...scoped.flatMap((rule) =>
+      rule.scopes.map((scope) => ({ path: scope, instructions: codeRabbitInstructions(rule) }))),
+    ...files.flatMap((context) =>
+      scopesOrGlobal(context.scopes).map((scope) => ({ path: scope, instructions: codeRabbitContextInstructions(context) }))),
+  ];
+  const config = {
+    language: 'de-DE',
+    inheritance: false,
+    reviews: {
+      profile: 'assertive',
+      in_progress_fortune: false,
+      // Changes requested bei blockierenden Befunden; der PR-Autor (das Konto der Agenten) gibt nicht selbst frei.
+      auto_approvals: { enabled: true, allow_author_approval: false },
+      // Die Schemakopie ist Prüfdatum mit Hash-Pin, kein reviewbarer Code.
+      path_filters: ['!scripts/fixtures/coderabbit-schema.v2.json'],
+      auto_review: { enabled: true, drafts: false, base_branches: ['^develop$', '^main$'] },
+      path_instructions: pathInstructions,
+    },
+    knowledge_base: { opt_out: true, code_guidelines: { enabled: false } },
+  };
+  return `# yaml-language-server: $schema=${CODERABBIT_SCHEMA_URL}\n${JSON.stringify(config, null, 2)}\n`;
+}
+
+/**
  * Verzeichnis der Gitar-Reviewregeln — der Ablageort des erzeugten Adapters.
  */
 export const GITAR_REVIEW_DIRECTORY = '.gitar/review';
@@ -297,8 +371,11 @@ export const GITAR_REVIEW_DIRECTORY = '.gitar/review';
  * `src/.greptile/config.json` könnte damit die Regeln aushebeln, nach denen
  * der PR bewertet wird, der es mitbringt. Ein auf die Wurzel beschränkter
  * Scan hätte das durchgelassen (Codex-Review auf 32b35d8).
+ *
+ * `.coderabbit/` trägt CodeRabbits Anweisungs- und Check-Dokumente
+ * (`.coderabbit/instructions/*.md`), die zusätzlich zu `path_instructions` wirken.
  */
-export const REVIEW_INSTRUCTION_DIRECTORY_NAMES = ['.gitar', '.greptile', '.cursor'];
+export const REVIEW_INSTRUCTION_DIRECTORY_NAMES = ['.gitar', '.greptile', '.cursor', '.coderabbit'];
 
 /**
  * Anweisungsflächen, die nur im Repositoriumswurzelverzeichnis gelesen werden.
@@ -316,8 +393,18 @@ export const REVIEW_INSTRUCTION_ROOT_DIRECTORIES = ['.github/skills'];
  * setzt bewusst keine davon. Fehlte sie hier, ließe sich am Guard vorbei
  * genau das tun, was dieser Slice ausschließt: eine Reviewsteuerung in den
  * PR-Head legen, ohne dass sie aus der Autorenquelle stammt.
+ *
+ * `.coderabbit.yml` und `.coderabbit.config.ts` sind gleichwertige bzw.
+ * nachrangige CodeRabbit-Konfigurationen. `.coderabbit.yaml` ist nur an der
+ * Wurzel ein erzeugtes Ziel; an jeder anderen Stelle meldet der Guard sie.
  */
-export const REVIEW_INSTRUCTION_FILE_NAMES = ['.cursorrules', 'greptile.json'];
+export const REVIEW_INSTRUCTION_FILE_NAMES = [
+  '.cursorrules',
+  'greptile.json',
+  '.coderabbit.yaml',
+  '.coderabbit.yml',
+  '.coderabbit.config.ts',
+];
 
 /**
  * Liegt dieser Pfad auf einer Anweisungsfläche? Geprüft wird jeder
@@ -351,6 +438,7 @@ export const REVIEW_POLICY_TARGETS = [
   { path: `${GITAR_REVIEW_DIRECTORY}/invarianten.md`, render: renderGitarAdapter },
   { path: '.greptile/config.json', render: renderGreptileConfig },
   { path: '.greptile/files.json', render: renderGreptileFiles },
+  { path: '.coderabbit.yaml', render: renderCodeRabbitConfig },
 ];
 
 /** Soll-Inhalt aller Ziele. Rein funktional, ohne Zeitstempel — zweimal aufgerufen identisch. */
