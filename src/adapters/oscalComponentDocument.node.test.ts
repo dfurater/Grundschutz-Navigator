@@ -1,4 +1,3 @@
-// @vitest-environment node
 // =============================================================================
 // Optionaler Realkorpus — die sechs BSI Component Definitions (GSPP-248)
 //

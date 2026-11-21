@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+
 import { describe, expect, it, vi } from 'vitest';
 import { createWorkspaceSession } from '@/state/workspaceSession';
 import { fakeLocks } from '@/test/fakeLocks';

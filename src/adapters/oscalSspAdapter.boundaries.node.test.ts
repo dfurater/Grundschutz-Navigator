@@ -1,4 +1,3 @@
-// @vitest-environment node
 // =============================================================================
 // Modulgrenzen des SSP-Adapters (GSPP-293)
 //

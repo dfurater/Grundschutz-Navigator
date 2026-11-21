@@ -1,4 +1,3 @@
-// @vitest-environment node
 // Pfadbasierter Schemaabgleich, einschließlich Inline-Objekten und anyOf-Zweigen.
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';

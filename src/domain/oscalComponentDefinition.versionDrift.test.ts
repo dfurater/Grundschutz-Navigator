@@ -1,4 +1,3 @@
-// @vitest-environment node
 // =============================================================================
 // Versionsdrift des Component-Modells (GSPP-248)
 //

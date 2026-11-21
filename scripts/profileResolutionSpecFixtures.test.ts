@@ -1,4 +1,3 @@
-// @vitest-environment node
 // =============================================================================
 // Hergeleitete Spezifikationstests der Profile Resolution (GSPP-291, B7c)
 //

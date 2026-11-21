@@ -1,4 +1,3 @@
-// @vitest-environment node
 import 'fake-indexeddb/auto';
 import { vi } from 'vitest';
 vi.mock('@/adapters/oscalImportGate', async () => (await import('@/test/reviewTrailFixtures')).importGateMock());

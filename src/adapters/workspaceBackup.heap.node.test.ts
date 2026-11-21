@@ -1,4 +1,3 @@
-// @vitest-environment node
 import { expect, it, vi } from 'vitest';
 import { getHeapStatistics, setFlagsFromString } from 'node:v8';
 import { runInNewContext } from 'node:vm';

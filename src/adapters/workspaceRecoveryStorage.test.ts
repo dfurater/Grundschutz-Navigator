@@ -1,4 +1,3 @@
-// @vitest-environment node
 import type Dexie from 'dexie';
 import { expect, it, vi } from 'vitest';
 import { exportNewerWorkspaceBackup } from '@/adapters/workspaceRecoveryStorage';

@@ -1,4 +1,3 @@
-// @vitest-environment node
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { OFFICIAL_BSI_REPOSITORY_URL, OFFICIAL_BSI_REPO } from './security-guards.mjs';

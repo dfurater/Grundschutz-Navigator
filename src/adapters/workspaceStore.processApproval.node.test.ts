@@ -1,4 +1,3 @@
-// @vitest-environment node
 import 'fake-indexeddb/auto';
 import Dexie from 'dexie';
 import { afterEach, expect, it, vi } from 'vitest';

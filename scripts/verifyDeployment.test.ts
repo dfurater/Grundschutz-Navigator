@@ -1,5 +1,3 @@
-// @vitest-environment node
-
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {

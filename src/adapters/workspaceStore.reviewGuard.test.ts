@@ -1,4 +1,3 @@
-// @vitest-environment node
 // Contract of the ReviewGuard (GSPP-362): the catalog lock is checked inside the
 // write transaction, and a rejecting guard leaves document, bindings, draft and trail untouched.
 import 'fake-indexeddb/auto';

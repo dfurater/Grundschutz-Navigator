@@ -1,4 +1,3 @@
-// @vitest-environment node
 import { expect, it } from 'vitest';
 import { serializeWorkspaceRecoveryJson } from '@/adapters/workspaceRecoveryJson';
 import { serializeWorkspaceJson } from '@/domain/workspaceJson';

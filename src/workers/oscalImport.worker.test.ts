@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+
 import { afterEach, expect, it, vi } from 'vitest';
 const process = vi.hoisted(() => vi.fn());
 vi.mock('@/domain/oscalClass2Import', () => ({ processClass2OscalBytes: process }));

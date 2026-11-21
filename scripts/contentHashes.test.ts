@@ -1,4 +1,3 @@
-// @vitest-environment node
 import { describe, expect, it } from 'vitest';
 import { computeGitBlobSha, sha256Hex } from './contentHashes.mjs';
 

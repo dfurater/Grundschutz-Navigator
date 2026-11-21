@@ -1,4 +1,3 @@
-// @vitest-environment node
 // =============================================================================
 // Dokumenteinstieg und Klasse-2-Importgrenze für SSPs (GSPP-293)
 //

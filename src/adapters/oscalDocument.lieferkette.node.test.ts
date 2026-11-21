@@ -1,4 +1,3 @@
-// @vitest-environment node
 // =============================================================================
 // Positivkorpus — Anwenderkatalog Lieferkettensicherheit (GSPP-242)
 //

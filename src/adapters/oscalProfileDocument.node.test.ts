@@ -1,4 +1,3 @@
-// @vitest-environment node
 // =============================================================================
 // Optionaler Realkorpus — die drei BSI-Profile (GSPP-240)
 //

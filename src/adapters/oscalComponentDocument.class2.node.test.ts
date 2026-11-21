@@ -1,4 +1,3 @@
-// @vitest-environment node
 // =============================================================================
 // Klasse-2-Lesepfad lokaler Component Definitions (GSPP-322)
 //

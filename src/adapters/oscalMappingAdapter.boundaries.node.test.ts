@@ -1,4 +1,3 @@
-// @vitest-environment node
 // =============================================================================
 // Modulgrenzen des Mapping-Adapters (GSPP-245)
 //

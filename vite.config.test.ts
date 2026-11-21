@@ -1,5 +1,3 @@
-// @vitest-environment node
-
 import {
   existsSync,
   mkdtempSync,

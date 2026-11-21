@@ -1,4 +1,3 @@
-// @vitest-environment node
 // =============================================================================
 // Versionsdrift des SSP-Modells (GSPP-293)
 //

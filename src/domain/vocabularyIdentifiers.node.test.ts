@@ -1,4 +1,3 @@
-// @vitest-environment node
 // =============================================================================
 // GSPP-380 — Abdeckung der Kennungserkennung am realen Artefakt
 //

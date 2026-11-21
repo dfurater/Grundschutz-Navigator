@@ -1,4 +1,3 @@
-// @vitest-environment node
 // =============================================================================
 // Heap-Regressionstest — Preis des erhaltenen Quellgraphen
 //

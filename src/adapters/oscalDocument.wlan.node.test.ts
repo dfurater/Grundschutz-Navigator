@@ -1,4 +1,3 @@
-// @vitest-environment node
 // =============================================================================
 // Positivkorpus — Anwenderkatalog WLAN (GSPP-243)
 //
