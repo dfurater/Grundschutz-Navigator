@@ -1347,11 +1347,11 @@ CodeRabbit ist kein Pflicht-Check der Rulesets für `develop` und `main`. Beide 
 
 ### Erzwungene Auslösung bei leerem Reviewumfang
 
-Greptile wendet anbieterseitige Ignore-Patterns bereits vor der Auslösung an. Bleibt danach keine Datei übrig, legt es weder Review-Lauf noch Merge-Request-Datensatz an. Weil `Greptile Review` auf `develop` und `main` Pflicht-Check ist, steht ein so übersprungener Pull Request dauerhaft auf `mergeStateStatus: BLOCKED`. Betroffen ist die Klasse der Diffs, die ausschließlich `package-lock.json` ändern.
+Greptile wendet anbieterseitige Ignore-Patterns bereits vor der Auslösung an. Bleibt danach keine Datei übrig, legt es weder Review-Lauf noch Merge-Request-Datensatz an. Das Ruleset für `main` verlangt `Greptile Review` als Pflicht-Check; dort steht ein so übersprungener Pull Request dauerhaft auf `mergeStateStatus: BLOCKED`. Das Ruleset für `develop` verlangt den Check nicht. Betroffen ist die Klasse der Diffs, die ausschließlich `package-lock.json` ändern.
 
 `.github/workflows/greptile-review-nudge.yml` schließt die Lücke über eine Erwähnung: Sie bewegt Greptile zu einem echten Review auf demselben Head und stellt damit echte Reviewabdeckung her. Ein selbst gebauter Check gleichen Namens ist ausgeschlossen.
 
-Ausgelöst wird über `issue_comment`, gefiltert auf Kommentare an Pull Requests und auf `greptile-apps[bot]` als Autor. Die Bedingung für die Erwähnung ist der Zustand, der den Merge blockiert: Auf dem frisch gelesenen Head-SHA fehlt ein Check-Run namens `Greptile Review`. Ein unsichtbarer Marker mit dem Head-SHA im eigenen Kommentar begrenzt die Erwähnung auf eine je Head. Eine `concurrency`-Gruppe je Pull Request serialisiert die Läufe, mit `cancel-in-progress: false`.
+Ausgelöst wird über `issue_comment`, gefiltert auf Kommentare an Pull Requests und auf `greptile-apps[bot]` als Autor. Die Bedingung für die Erwähnung ist der Zustand, der auf `main` den Merge blockiert: Auf dem frisch gelesenen Head-SHA fehlt ein Check-Run namens `Greptile Review`. Ein unsichtbarer Marker mit dem Head-SHA im eigenen Kommentar begrenzt die Erwähnung auf eine je Head. Eine `concurrency`-Gruppe je Pull Request serialisiert die Läufe, mit `cancel-in-progress: false`.
 
 Der Workflow checkt den Default-Branch aus, nie den PR-Head — fremder Code läuft zu keinem Zeitpunkt. Die Job-Berechtigungen sind auf `contents`, `checks` und `pull-requests` lesend plus `issues` schreibend beschränkt. `issue_comment` feuert nur von der Fassung auf dem Default-Branch; eine Änderung am Workflow wirkt erst nach ihrem Merge.
 

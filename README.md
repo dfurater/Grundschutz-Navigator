@@ -79,7 +79,7 @@ Jede Änderung kommt als Pull Request in den Integrationszweig `develop`. Direkt
 - `documentation-contract` und `catalog-sync-guard` ([ci.yml](.github/workflows/ci.yml)): Jede Codeänderung muss angeben, ob und wo sie die Dokumentation anpasst; Änderungen am Datenstand des BSI werden gegen die Quelle geprüft.
 - SonarCloud mit Quality Gate, als eigener Job in [validate.yml](.github/workflows/validate.yml). Bei Pull Requests aus Forks entfällt die SonarCloud-Analyse, weil GitHub dort keine Secrets bereitstellt.
 - CodeQL über das Code Scanning von GitHub, als Regel im Ruleset von `develop` und `main`.
-- `Greptile Review`: ein automatisches Code-Review.
+- `Greptile Review` (nur Pflichtprüfung für `main`): ein automatisches Code-Review.
 
 [![Quality Gate](https://sonarcloud.io/api/project_badges/measure?project=gspp&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=gspp)
 [![Bugs](https://sonarcloud.io/api/project_badges/measure?project=gspp&metric=bugs)](https://sonarcloud.io/summary/new_code?id=gspp)
