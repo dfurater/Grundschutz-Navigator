@@ -238,6 +238,13 @@ describe('review-policy Erzeugung', () => {
     }
   });
 
+  it('ordnet Iteration, Ausnahme, Restrisiko und Planfreigabe in R41 getrennten Kriterien zu', () => {
+    const rule = scopedRules.find(({ key }) => key === 'R41-risikoverfahren');
+
+    expect(rule?.body).toContain('Nr. 26 zur erneuten Bewertung und Behandlung bei verfehlten Akzeptanzkriterien, Nr. 27 zur Ausnahmegenehmigung der Institutionsleitung');
+    expect(rule?.body).toContain('Nr. 30 zur Autorisierung des Restrisikos durch die Institutionsleitung und Nr. 31 zur Freigabe des Umsetzungsplans durch die Risikoeigentümer');
+  });
+
   it.each(storyRuleCases)('liefert %s für %s an alle drei Review-Adapter aus', (key, relativePath) => {
     const [document, gitar, greptile, , codeRabbit] = renderReviewPolicy();
     const rule = scopedRules.find((entry) => entry.key === key);
