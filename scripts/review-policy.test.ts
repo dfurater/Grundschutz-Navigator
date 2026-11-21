@@ -36,6 +36,7 @@ const temporaryRoots: string[] = [];
 const storyRuleCases = [
   ['R37-scope-prozess-schutzbedarf', 'src/domain/sspProcessProtection.ts'],
   ['R38-anforderungspaket', 'upstream-manifest.json'],
+  ['R38-anforderungspaket', 'scripts/taxonomy-coverage.mjs'],
   ['R39-parameter', 'src/features/catalog/ControlStatement.tsx'],
   ['R40-zuordnungen', 'src/adapters/oscalMappingAdapter.ts'],
   ['R41-risikoverfahren', 'docs/PROJECT_PROPS.md'],
@@ -143,7 +144,8 @@ describe('review-policy Autorenquelle', () => {
     ]);
     expect(scopedRules[0].key).toBe('R1-integritaet');
     expect(scopedRules[35].key).toBe('R36-bearbeitungskontext-loeschung');
-    expect(scopedRules.slice(36).map((rule) => rule.key)).toEqual(storyRuleCases.map(([key]) => key));
+    const storyRuleKeys = new Set(storyRuleCases.map(([key]) => key));
+    expect(scopedRules.slice(36).map((rule) => rule.key)).toEqual([...storyRuleKeys]);
     expect(scopedRules.at(-1)?.key).toBe('R45-massnahmen-fristen');
     expect(new Set(allRules.map((rule) => rule.key)).size).toBe(51);
   });
