@@ -402,7 +402,9 @@ describe('Gesamtlöschung', () => {
     const confirm = dialog.getByRole('button', { name: CONFIRM });
     fireEvent.click(confirm);
     fireEvent.click(confirm);
-    expect(await dialog.findByRole('heading', { name: 'Löschung wartet' })).toHaveFocus();
+    const focusedHeading = await dialog.findByRole('heading', { name: 'Löschung wartet' });
+    // Der Fokus folgt im passiven Effekt nach dem Commit.
+    await waitFor(() => expect(focusedHeading).toHaveFocus());
     expect(deleteAll).toHaveBeenCalledTimes(1);
     // Kein Abbruch, kein Export, kein zweiter Versuch; ein neuer Tab bleibt ausgesperrt.
     expect(dialog.queryAllByRole('button')).toHaveLength(0);

@@ -5,6 +5,10 @@
   "reviews": {
     "profile": "assertive",
     "in_progress_fortune": false,
+    "auto_approvals": {
+      "enabled": true,
+      "allow_author_approval": false
+    },
     "path_filters": [
       "!scripts/fixtures/coderabbit-schema.v2.json"
     ],

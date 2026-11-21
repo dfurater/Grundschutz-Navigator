@@ -336,7 +336,11 @@ describe('review-policy CodeRabbit-Adapter', () => {
 
   type CodeRabbitConfig = {
     knowledge_base: { opt_out: boolean; code_guidelines: { enabled: boolean } };
-    reviews: { path_filters: string[]; path_instructions: Array<{ path: string; instructions: string }> };
+    reviews: {
+      auto_approvals: { enabled: boolean; allow_author_approval: boolean };
+      path_filters: string[];
+      path_instructions: Array<{ path: string; instructions: string }>;
+    };
   };
 
   const renderedYaml = (policy = {}) =>
@@ -359,6 +363,7 @@ describe('review-policy CodeRabbit-Adapter', () => {
     expect(validate(config), JSON.stringify(validate.errors)).toBe(true);
     expect(config.knowledge_base).toEqual({ opt_out: true, code_guidelines: { enabled: false } });
     expect(config.reviews.path_filters).toEqual(['!scripts/fixtures/coderabbit-schema.v2.json']);
+    expect(config.reviews.auto_approvals).toEqual({ enabled: true, allow_author_approval: false });
   });
 
   it('führt jede globale Regel global, jede gescopte Regel und jeden Datei-Kontext einmal je Scope', () => {

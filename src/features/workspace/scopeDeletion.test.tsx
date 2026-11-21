@@ -68,7 +68,9 @@ describe('Anwendungsbereich löschen', () => {
     const first = renderArea(buildScopeUrl(scope.scopeId));
     const { dialog } = await openDelete();
     fireEvent.click(dialog.getByRole('button', { name: 'Endgültig löschen' }));
-    expect(await within(main()).findByRole('heading', { level: 1, name: 'Arbeitsbereich' })).toHaveFocus();
+    const pageHeading = await within(main()).findByRole('heading', { level: 1, name: 'Arbeitsbereich' });
+    // Der Fokus folgt im passiven Effekt nach dem Commit des asynchron ausgelösten Updates.
+    await waitFor(() => expect(pageHeading).toHaveFocus());
     expect(within(main()).getByText('Anwendungsbereich gelöscht.', { selector: 'output' })).toHaveRole('status');
     await within(main()).findByText('Kein Anwendungsbereich angelegt');
 

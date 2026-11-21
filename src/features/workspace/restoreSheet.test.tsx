@@ -64,7 +64,9 @@ describe('Sicherung wiederherstellen', () => {
     const restoreVerbundBackup = vi.fn(() => ok(undefined));
     renderWith(fakePort({ listVerbuende: () => ok([VERBUND, OTHER]), previewRestore: () => ok(preview), restoreVerbundBackup }));
     const sheet = await choose();
-    expect(await sheet.findByRole('heading', { level: 1, name: 'Sicherung wiederherstellen' })).toHaveFocus();
+    const focusedHeading = await sheet.findByRole('heading', { level: 1, name: 'Sicherung wiederherstellen' });
+    // Der Fokus folgt im passiven Effekt nach dem Commit.
+    await waitFor(() => expect(focusedHeading).toHaveFocus());
     expect(document.title).not.toContain(VERBUND.name);
     expect(await sheet.findByText('Verbundsicherung')).toBeInTheDocument();
     expect(sheet.getByText(`Verbund „${VERBUND.name}“`)).toBeInTheDocument();
@@ -537,7 +539,9 @@ describe('Sicherung wiederherstellen', () => {
     // Die Dateiauswahl war vor dem Dialog geöffnet und liefert die Datei erst jetzt.
     const sheet = await choose();
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
-    expect(await sheet.findByRole('heading', { level: 1, name: 'Sicherung wiederherstellen' })).toHaveFocus();
+    const focusedHeading = await sheet.findByRole('heading', { level: 1, name: 'Sicherung wiederherstellen' });
+    // Der Fokus folgt im passiven Effekt nach dem Commit.
+    await waitFor(() => expect(focusedHeading).toHaveFocus());
     expect(await sheet.findByRole('button', { name: `„${VERBUND.name}“ ersetzen` })).toBeEnabled();
     expect(downloads).toEqual([]);
   });

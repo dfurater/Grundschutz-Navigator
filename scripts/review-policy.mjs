@@ -341,6 +341,8 @@ export function renderCodeRabbitConfig({ global = globalRules, scoped = scopedRu
     reviews: {
       profile: 'assertive',
       in_progress_fortune: false,
+      // Changes requested bei blockierenden Befunden; der PR-Autor (das Konto der Agenten) gibt nicht selbst frei.
+      auto_approvals: { enabled: true, allow_author_approval: false },
       // Die Schemakopie ist Prüfdatum mit Hash-Pin, kein reviewbarer Code.
       path_filters: ['!scripts/fixtures/coderabbit-schema.v2.json'],
       auto_review: { enabled: true, drafts: false, base_branches: ['^develop$', '^main$'] },
