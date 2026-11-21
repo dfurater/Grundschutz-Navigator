@@ -33,6 +33,19 @@ import {
 const execFileAsync = promisify(execFile);
 const temporaryRoots: string[] = [];
 
+const storyRuleCases = [
+  ['R37-scope-prozess-schutzbedarf', 'src/domain/sspProcessProtection.ts'],
+  ['R38-anforderungspaket', 'upstream-manifest.json'],
+  ['R38-anforderungspaket', 'scripts/taxonomy-coverage.mjs'],
+  ['R39-parameter', 'src/features/catalog/ControlStatement.tsx'],
+  ['R40-zuordnungen', 'src/adapters/oscalMappingAdapter.ts'],
+  ['R41-risikoverfahren', 'docs/PROJECT_PROPS.md'],
+  ['R42-entscheidungsbindung', 'src/domain/sspProcessApproval.ts'],
+  ['R43-pruefung-nachweis-wirksamkeit', 'src/domain/evidenceReadModel.ts'],
+  ['R44-aufgabenfuehrung', 'index.html'],
+  ['R45-massnahmen-fristen', 'src/domain/poamProgress.ts'],
+] as const;
+
 /**
  * Baut einen Repo-Abzug, der ausschließlich die erzeugten Dateien enthält.
  * Die Bytes stammen aus dem Generator selbst — damit prüfen die
@@ -113,14 +126,14 @@ describe('review-policy Schnitt zwischen Regeltabelle und Logik', () => {
 });
 
 describe('review-policy Autorenquelle', () => {
-  it('führt 6 globale Regeln, 36 gescopte Regeln und 11 Datei-Kontexte', () => {
+  it('führt 6 globale Regeln, 45 gescopte Regeln und 11 Datei-Kontexte', () => {
     expect(globalRules).toHaveLength(6);
-    expect(scopedRules).toHaveLength(36);
+    expect(scopedRules).toHaveLength(45);
     expect(fileContexts).toHaveLength(11);
-    expect(allRules).toHaveLength(42);
+    expect(allRules).toHaveLength(51);
   });
 
-  it('trägt die stabilen Schlüssel G1-sprache bis G6-pruefgrenzen und R1-integritaet bis R36-bearbeitungskontext-loeschung', () => {
+  it('trägt die stabilen globalen Schlüssel und schließt mit R45-massnahmen-fristen', () => {
     expect(globalRules.map((rule) => rule.key)).toEqual([
       'G1-sprache',
       'G2-anwendungskontext',
@@ -130,8 +143,11 @@ describe('review-policy Autorenquelle', () => {
       'G6-pruefgrenzen',
     ]);
     expect(scopedRules[0].key).toBe('R1-integritaet');
-    expect(scopedRules.at(-1)?.key).toBe('R36-bearbeitungskontext-loeschung');
-    expect(new Set(allRules.map((rule) => rule.key)).size).toBe(42);
+    expect(scopedRules[35].key).toBe('R36-bearbeitungskontext-loeschung');
+    const storyRuleKeys = new Set(storyRuleCases.map(([key]) => key));
+    expect(scopedRules.slice(36).map((rule) => rule.key)).toEqual([...storyRuleKeys]);
+    expect(scopedRules.at(-1)?.key).toBe('R45-massnahmen-fristen');
+    expect(new Set(allRules.map((rule) => rule.key)).size).toBe(51);
   });
 
   it('ist wohlgeformt', () => {
@@ -219,6 +235,32 @@ describe('review-policy Erzeugung', () => {
     expect(adapter).toContain('@docs/REVIEW_INVARIANTS.md');
     for (const rule of allRules) {
       expect(adapter).not.toContain(rule.body);
+    }
+  });
+
+  it('ordnet Iteration, Ausnahme, Restrisiko und Planfreigabe in R41 getrennten Kriterien zu', () => {
+    const rule = scopedRules.find(({ key }) => key === 'R41-risikoverfahren');
+
+    expect(rule?.body).toContain('Nr. 26 zur erneuten Bewertung und Behandlung bei verfehlten Akzeptanzkriterien, Nr. 27 zur Ausnahmegenehmigung der Institutionsleitung');
+    expect(rule?.body).toContain('Nr. 30 zur Autorisierung des Restrisikos durch die Institutionsleitung und Nr. 31 zur Freigabe des Umsetzungsplans durch die Risikoeigentümer');
+  });
+
+  it.each(storyRuleCases)('liefert %s für %s an alle drei Review-Adapter aus', (key, relativePath) => {
+    const [document, gitar, greptile, , codeRabbit] = renderReviewPolicy();
+    const rule = scopedRules.find((entry) => entry.key === key);
+    if (!rule) throw new Error(`Story-Regel fehlt: ${key}`);
+    const matchingScopes = rule.scopes.filter((scope) => path.matchesGlob(relativePath, scope));
+    expect(matchingScopes.length).toBeGreaterThan(0);
+
+    expect(gitar.content).toContain(`@${document.path}`);
+    const section = document.content.split(`### ${key}\n`)[1].split('\n### ')[0];
+    expect(section).toContain(rule.body);
+
+    expect(JSON.parse(greptile.content).rules).toContainEqual({ id: key, rule: rule.body, scope: rule.scopes });
+    const config = JSON.parse(codeRabbit.content.slice(codeRabbit.content.indexOf('\n') + 1));
+    for (const scope of matchingScopes) {
+      expect(section).toContain(`\`${scope}\``);
+      expect(config.reviews.path_instructions).toContainEqual({ path: scope, instructions: `${key}: ${rule.body}` });
     }
   });
 });
