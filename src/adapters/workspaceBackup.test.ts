@@ -39,7 +39,7 @@ describe('workspace backup validation', () => {
   });
   it.each([
     (b: WorkspaceBackup) => ({ ...b, extra: 'secret' }),
-    (b: WorkspaceBackup) => ({ ...b, storageSchemaVersion: 6 }),
+    (b: WorkspaceBackup) => ({ ...b, storageSchemaVersion: 7 }),
     (b: WorkspaceBackup) => ({ ...b, documents: [...b.documents, b.documents[0]] }),
     (b: WorkspaceBackup) => ({ ...b, documents: [{ ...b.documents[0], localId: 'secret' }] }),
     (b: WorkspaceBackup) => ({ ...b, documents: [{ ...b.documents[0], trustClass: 'class-1-verified-public' }] }),

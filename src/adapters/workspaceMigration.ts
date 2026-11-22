@@ -33,7 +33,7 @@ function visitRows(transaction: Transaction, store: string, visit: (cursor: IDBC
 /** Each declared step validates its input inside the shared versionchange transaction. */
 export async function migrateWorkspaceStorage(transaction: Transaction, fromVersion: number, toVersion: number): Promise<void> {
   try {
-    if ((fromVersion !== 1 && fromVersion !== 2 && fromVersion !== 3 && fromVersion !== 4) || toVersion !== fromVersion + 1 || transaction.idbtrans.mode !== 'versionchange') invalid();
+    if ((fromVersion !== 1 && fromVersion !== 2 && fromVersion !== 3 && fromVersion !== 4 && fromVersion !== 5) || toVersion !== fromVersion + 1 || transaction.idbtrans.mode !== 'versionchange') invalid();
     const stores = ['verbuende', 'documents', 'drafts', 'bindings', 'workspaceMeta', 'reviewTrail', 'reviewBaseline'];
     if (toVersion >= 4) stores.push('methodikScopes');
     // The native list reflects intermediate steps. At the final step Dexie's list also detects planned removals.

@@ -95,7 +95,7 @@ it.each(['recreate', 'migration'] as const)('invalidates a preview after databas
     replacement.close();
   } else {
     const upgraded = new Dexie(WORKSPACE_DATABASE_NAME);
-    upgraded.version(6).stores({ ...WORKSPACE_SCHEMA, future: 'id' });
+    upgraded.version(7).stores({ ...WORKSPACE_SCHEMA, future: 'id' });
     await upgraded.open();
     upgraded.close();
   }
@@ -179,7 +179,7 @@ it('reports a changed metadata schema as a preview conflict before any clear', a
   const raw = new Dexie(WORKSPACE_DATABASE_NAME);
   await raw.open();
   try {
-    await raw.table('workspaceMeta').update('workspace', { storageSchemaVersion: 6 });
+    await raw.table('workspaceMeta').update('workspace', { storageSchemaVersion: 7 });
     const before = await raw.table('workspaceMeta').toArray();
     expect(await store.restoreBackup(preview)).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_SAVE_CONFLICT' } });
     expect(await raw.table('workspaceMeta').toArray()).toEqual(before);

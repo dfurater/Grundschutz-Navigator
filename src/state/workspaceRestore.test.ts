@@ -1,6 +1,6 @@
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import type { LocalId, ScopeId, VerbundId, WorkspaceScope, WorkspaceVerbund } from '@/domain/workspaceModel';
-import { NEW_SCOPE_DRAFT, collectRestoreInputs, scopeDraftKey, scopedVerbundDraftKey } from '@/state/workspaceRestore';
+import { NEW_SCOPE_DRAFT, collectRestoreInputs, saveNamedInput, scopeDraftKey, scopedVerbundDraftKey } from '@/state/workspaceRestore';
 
 const target = { verbundId: '11111111-1111-4111-8111-111111111111' as VerbundId, name: 'Ziel', createdAt: '', savedAt: '' } as WorkspaceVerbund;
 const other = { ...target, verbundId: '22222222-2222-4222-8222-222222222222' as VerbundId, name: 'Anderer' };
@@ -58,4 +58,37 @@ it('führt offene Namen von Anwendungsbereichen nur beim Gesamt-Restore und nur 
   expect(collectRestoreInputs({ ...base, scope: { kind: 'verbund', verbundId: target.verbundId, documents: [] } })).toEqual([]);
   const unchanged = new Map([['55555555-5555-4555-8555-555555555555', ' Netz '], [NEW_SCOPE_DRAFT, '  ']]);
   expect(collectRestoreInputs({ ...base, scopeDrafts: unchanged, scope: { kind: 'workspace', documents: [] } })).toEqual([]);
+});
+
+it('führt nur vom gespeicherten Stand abweichende Abgrenzungsentwürfe und nur beim Gesamt-Restore als Eingabe', async () => {
+  const { scopeBoundaryInput, startBoundaryDraft } = await import('@/domain/scopeBoundary');
+  const scope = { scopeId: '66666666-6666-4666-8666-666666666666' as ScopeId, name: 'Netz', createdAt: '', savedAt: 's2', items: [], evidence: [] } as WorkspaceScope;
+  const name = { scopeId: scope.scopeId, name: 'Netz', savedAt: 's2' };
+  const empty = scopeBoundaryInput(undefined);
+  const portal = { ...empty, interfaces: 'Portal' };
+  // Veralteter Vergleichsstand, aber Eingabe gleich dem gespeicherten Inhalt: nichts geht verloren.
+  const unchanged = { input: empty, base: 's1', baseInput: empty, baseItemId: null };
+  // Nur der Stempel ist fortgeschrieben (etwa durch eine Zuordnung): gespeichert wird mit dem neuen Stempel.
+  const restamped = { input: portal, base: 's1', baseInput: empty, baseItemId: null };
+  // Ein anderer Tab hat die Abgrenzung geändert: gespeichert wird mit dem alten Stempel und scheitert als Konflikt.
+  const outdated = { input: portal, base: 's1', baseInput: { ...empty, interfaces: 'Alt' }, baseItemId: null };
+  const base = { renameDrafts: new Map(), importTargets: new Map(), verbuende: [], documents: [], scopes: [scope] };
+  const whole = { kind: 'workspace', documents: [] } as const;
+  expect(collectRestoreInputs({ ...base, scope: whole, boundaryDrafts: new Map([[scope.scopeId, unchanged]]) })).toEqual([]);
+  expect(collectRestoreInputs({ ...base, scope: whole, boundaryDrafts: new Map([[scope.scopeId, restamped], ['77777777-7777-4777-8777-777777777777', restamped]]) }))
+    .toEqual([{ kind: 'boundary', scope: name, draft: restamped, base: 's2' }]);
+  expect(collectRestoreInputs({ ...base, scope: whole, boundaryDrafts: new Map([[scope.scopeId, outdated]]) }))
+    .toEqual([{ kind: 'boundary', scope: name, draft: outdated, base: 's1' }]);
+  expect(collectRestoreInputs({ ...base, scope: { kind: 'verbund', verbundId: target.verbundId, documents: [] }, boundaryDrafts: new Map([[scope.scopeId, restamped]]) })).toEqual([]);
+  expect(startBoundaryDraft(scope)).toEqual({ input: empty, base: 's2', baseInput: empty, baseItemId: null });
+});
+
+it('speichert einen Abgrenzungsentwurf aus der Klärung mit dessen Vergleichsstand', async () => {
+  const { scopeBoundaryInput } = await import('@/domain/scopeBoundary');
+  const input = { ...scopeBoundaryInput(undefined), interfaces: 'Portal' };
+  const saveScopeBoundary = vi.fn(() => Promise.resolve({ ok: true as const, value: {} as WorkspaceScope }));
+  const entry = { kind: 'boundary' as const, scope: { scopeId: '66666666-6666-4666-8666-666666666666' as ScopeId, name: 'Netz', savedAt: 's2' }, draft: { input, base: 's1', baseInput: input, baseItemId: null }, base: 's2' };
+  const unused = vi.fn();
+  expect(await saveNamedInput(entry, { renameVerbund: unused, renameScope: unused, createScope: unused, createVerbund: unused, saveScopeBoundary })).toBe(true);
+  expect(saveScopeBoundary).toHaveBeenCalledExactlyOnceWith(entry.scope.scopeId, 's2', input);
 });

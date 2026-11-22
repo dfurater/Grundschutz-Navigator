@@ -4,12 +4,13 @@ import { serializeWorkspaceJson } from '@/domain/workspaceJson';
 import { OSCAL_ROOT_KEYS } from '@/domain/oscalVersionMatrix';
 import { CONTENT_HASH_ALGORITHM, CONTENT_HASH_VERSION } from '@/domain/reviewTrail';
 import { bindsEnvelopeSource, withinSourceLimits } from '@/adapters/workspaceDraftSource';
+import { SCOPE_BOUNDARY_DETAILS, isIssuedAt, normalizeText } from '@/domain/scopeBoundary';
 import {
   REQUIREMENT_PACKAGE_ROOTS, STORAGE_SCHEMA_VERSION, isVerbundName,
   type DocumentSnapshot, type WorkspaceBackup, type WorkspaceBackupFile, type WorkspaceScope, type WorkspaceVerbund, type WorkspaceVerbundBackup,
 } from '@/domain/workspaceModel';
 
-type StorageVersion = 1 | 2 | 3 | 4 | 5;
+type StorageVersion = 1 | 2 | 3 | 4 | 5 | 6;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SHA256 = /^[a-f0-9]{64}$/;
@@ -72,10 +73,30 @@ function newContext(version: StorageVersion): BundleContext {
   };
 }
 
-export function validWorkspaceScope(row: unknown): row is WorkspaceScope {
+/** Gespeicherter Text ist getrimmt und NFC-normalisiert; leer nur, wo das Feld leer sein darf. */
+function normalized(value: unknown, allowEmpty = true): value is string {
+  return typeof value === 'string' && value === normalizeText(value) && (allowEmpty || value !== '');
+}
+function emptyList(value: unknown): boolean { return Array.isArray(value) && value.length === 0; }
+
+/** Abgrenzungseintrag (`category: 'scope'`) in geschlossener Form; jede andere Kategorie und jedes Fremdfeld ist ungültig. */
+function validScopeBoundary(value: unknown): boolean {
+  if (!fields(value, ['itemId', 'category', 'details', 'evidenceIds', 'conflictsWith', 'supersedes'], ['content', 'source', 'responsibility'])) return false;
+  const { details, source, responsibility } = value;
+  return uuid(value.itemId) && value.category === 'scope'
+    && (value.content === undefined || normalized(value.content, false))
+    && fields(details, SCOPE_BOUNDARY_DETAILS.map(([key]) => key)) && SCOPE_BOUNDARY_DETAILS.every(([key]) => normalized(details[key]))
+    && (source === undefined || (fields(source, ['label'], ['version', 'issuedAt']) && normalized(source.label)
+      && (source.version === undefined || normalized(source.version, false)) && (source.issuedAt === undefined || isIssuedAt(source.issuedAt))))
+    && (responsibility === undefined || (fields(responsibility, ['role', 'party']) && normalized(responsibility.role) && normalized(responsibility.party)))
+    && emptyList(value.evidenceIds) && emptyList(value.conflictsWith) && emptyList(value.supersedes);
+}
+
+/** Bis Schemaversion 5 ist `items` leer; ab 6 trägt es höchstens die eine aktive Abgrenzung. */
+export function validWorkspaceScope(row: unknown, version: StorageVersion = STORAGE_SCHEMA_VERSION): row is WorkspaceScope {
   return fields(row, ['scopeId', 'name', 'createdAt', 'savedAt', 'items', 'evidence'], ['backupSavedAt'])
     && uuid(row.scopeId) && isVerbundName(row.name) && times(row) && validBackupSavedAt(row.backupSavedAt)
-    && Array.isArray(row.items) && row.items.length === 0
+    && Array.isArray(row.items) && row.items.length <= (version >= 6 ? 1 : 0) && row.items.every(validScopeBoundary)
     && Array.isArray(row.evidence) && row.evidence.length === 0
     && row.name.length <= CLASS_2_IMPORT_LIMITS.maxBytes
     && new TextEncoder().encode(serializeWorkspaceJson(row)).byteLength <= CLASS_2_IMPORT_LIMITS.maxBytes;
@@ -83,7 +104,7 @@ export function validWorkspaceScope(row: unknown): row is WorkspaceScope {
 
 function collectScopes(context: BundleContext, rows: readonly unknown[]): boolean {
   for (const row of rows) {
-    if (!validWorkspaceScope(row) || context.scopes.has(row.scopeId)) return false;
+    if (!validWorkspaceScope(row, context.version) || context.scopes.has(row.scopeId)) return false;
     context.scopes.add(row.scopeId);
   }
   return true;
@@ -334,7 +355,7 @@ function collectBundleScopes(context: BundleContext, scopes: unknown, verbuende:
   return !partitioned || context.scopes.size === (verbuende[0].scopeId === undefined ? 0 : 1);
 }
 
-function validBackupStructure(value: unknown, format: WorkspaceBackup['format'] | WorkspaceVerbundBackup['format'], version: 2 | 3 | 4 | 5): boolean {
+function validBackupStructure(value: unknown, format: WorkspaceBackup['format'] | WorkspaceVerbundBackup['format'], version: Exclude<StorageVersion, 1>): boolean {
   const partitioned = format === 'gspp-workspace-verbund';
   const required = ['format', 'storageSchemaVersion', 'verbuende', 'documents', 'drafts', 'bindings', 'reviewTrail', 'reviewBaseline'];
   if (!partitioned) required.push('workspaceMeta');
@@ -364,13 +385,13 @@ export function validVerbundBackupStructure(value: unknown): value is WorkspaceV
 export function adoptWorkspaceBackup(value: unknown): WorkspaceBackupFile | null {
   if (validWorkspaceBackupStructure(value)) return value;
   const version = record(value) ? value.storageSchemaVersion : undefined;
-  return (version === 2 || version === 3 || version === 4) && validBackupStructure(value, 'gspp-workspace', version)
+  return (version === 2 || version === 3 || version === 4 || version === 5) && validBackupStructure(value, 'gspp-workspace', version)
     ? value as WorkspaceBackupFile : null;
 }
 
 export function adoptVerbundBackup(value: unknown): WorkspaceVerbundBackup | null {
   const version = record(value) ? value.storageSchemaVersion : undefined;
-  return validVerbundBackupStructure(value) || ((version === 3 || version === 4) && validBackupStructure(value, 'gspp-workspace-verbund', version))
+  return validVerbundBackupStructure(value) || ((version === 3 || version === 4 || version === 5) && validBackupStructure(value, 'gspp-workspace-verbund', version))
     ? value as WorkspaceVerbundBackup : null;
 }
 

@@ -38,7 +38,7 @@ export function RestoreSheet({ file: initialFile, rowDrafts, onCancel, onDone }:
   onDone: (done: RestoreDone) => void;
 }>) {
   const {
-    verbuende, writable, flushAutosaves, previewRestore, restoreBackup, pendingRestoreInputs, discardRestoreInput, renameVerbund, renameScope, createScope, createVerbund,
+    verbuende, writable, flushAutosaves, previewRestore, restoreBackup, pendingRestoreInputs, discardRestoreInput, renameVerbund, renameScope, createScope, createVerbund, saveScopeBoundary,
   } = useWorkspace();
   const backupExport = useBackupExport();
   const { exportVerbund, exportDialog, dismissExport } = useVerbundExport(backupExport);
@@ -129,7 +129,7 @@ export function RestoreSheet({ file: initialFile, rowDrafts, onCancel, onDone }:
   };
 
   const saveRename = async (entry: NamedInput) => {
-    const saved = await saveNamedInput(entry, { renameVerbund, renameScope, createScope, createVerbund });
+    const saved = await saveNamedInput(entry, { renameVerbund, renameScope, createScope, createVerbund, saveScopeBoundary });
     if (saved) discardRestoreInput(entry, rowDrafts);
     await afterClarify(saved ? undefined : entry);
   };

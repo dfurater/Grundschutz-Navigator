@@ -8,7 +8,7 @@ import { ConfirmDialog } from '@/components/ConfirmDialog';
 import type { ScopeMembershipExpectation, WorkspaceResult, WorkspaceScope, WorkspaceVerbund } from '@/domain/workspaceModel';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { FOCUS_RING, OriginLabel } from '@/features/workspace/DocumentMarks';
-import { ScopeMembershipArea } from '@/features/workspace/ScopeMembershipViews';
+import { ScopeMembershipArea, type OpenMembershipView } from '@/features/workspace/ScopeMembershipViews';
 import { relativeTime } from '@/features/workspace/StationCards';
 import { NameForm, ROW_BUTTON, SaveFailed, SectionHead } from '@/features/workspace/WorkspaceForms';
 import { usePendingWrite } from '@/features/workspace/usePendingWrite';
@@ -16,6 +16,7 @@ import { WorkspaceNotices } from '@/features/workspace/WorkspaceNotices';
 import { WorkspaceStatePage } from '@/features/workspace/WorkspaceStatePage';
 import { PackageLabel } from '@/features/workspace/RequirementPackageState';
 import { NEW_SCOPE_DRAFT } from '@/state/workspaceRestore';
+import { ScopeBoundaryArea, ScopeBoundaryCard } from '@/features/workspace/ScopeBoundary';
 
 /** Ansicht „Anwendungsbereich anlegen“ (GSPP-669, Ansicht 7): erst nach bestätigtem Speichern öffnet sich die Übersicht. */
 export function ScopeCreateView({ writable, onCancel }: Readonly<{ writable: boolean; onCancel: () => void }>) {
@@ -219,8 +220,18 @@ export function ScopeOverviewPage() {
   return (
     <ScopeMembershipArea key={scopeId}>
       {(open) => scope ? (
-        <>
-          <PageTitle title={PAGE_TITLES.scope} />
+        <ScopeOverviewContent key={scopeId} scope={scope} members={members} now={now} writable={writable} open={open} />
+      ) : <WorkspaceStatePage state="scope-not-found" />}
+    </ScopeMembershipArea>
+  );
+}
+
+function ScopeOverviewContent({ scope, members, now, writable, open }: Readonly<{
+  scope: WorkspaceScope; members: readonly WorkspaceVerbund[]; now: number; writable: boolean; open: OpenMembershipView;
+}>) {
+  return (
+    <ScopeBoundaryArea scopeId={scope.scopeId} title={<PageTitle title={PAGE_TITLES.scope} />}>
+      {(edit, editing) => (<>
           {/* Außerhalb des Desktops fehlt der Kopfzeilenpfad; die Zurückzeile führt in den Arbeitsbereich (Bild 6). */}
           <Link
             to={buildWorkspaceIndexUrl()}
@@ -230,7 +241,10 @@ export function ScopeOverviewPage() {
           </Link>
           <div className="mx-auto w-full max-w-screen-2xl space-y-4 p-4 desktop:px-7 desktop:py-6">
             <ScopeHeader key={scope.scopeId} scope={scope} members={members} now={now} />
-            <WorkspaceNotices />
+            {!editing && <WorkspaceNotices />}
+            <div className="grid gap-4 desktop:grid-cols-2">
+              <ScopeBoundaryCard scope={scope} writable={writable} onEdit={edit} />
+            </div>
             <section aria-labelledby="scope-verbuende">
               <SectionHead id="scope-verbuende" title="Informationsverbünde" count={members.length} />
               <div className="rounded-md border border-[var(--color-border-default)] bg-[var(--color-surface-base)]">
@@ -268,8 +282,7 @@ export function ScopeOverviewPage() {
               </div>
             </section>
           </div>
-        </>
-      ) : <WorkspaceStatePage state="scope-not-found" />}
-    </ScopeMembershipArea>
+      </>)}
+    </ScopeBoundaryArea>
   );
 }

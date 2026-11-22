@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { LocalId, VerbundId, WorkspaceBackup } from '@/domain/workspaceModel';
+import { buildScopeBoundary, scopeBoundaryInput } from '@/domain/scopeBoundary';
+import type { LocalId, ScopeId, VerbundId, WorkspaceBackup, WorkspaceScope } from '@/domain/workspaceModel';
 import { makeSchemaValidOscalDocument } from '@/test/fixtures/oscalSchemaFixtures';
 import {
   adoptAnyBackup,
@@ -23,14 +24,14 @@ const stand = {
   contentHash: { version: 1, algorithm: 'sha-256', value: 'a'.repeat(64) },
 };
 
-/** v5-Bündel mit Prüfpunkt, Entscheidungen und Vergleichsbasis. */
+/** Bündel der aktuellen Version mit Prüfpunkt, Entscheidungen und Vergleichsbasis. */
 function bundle(): WorkspaceBackup {
   return {
     format: 'gspp-workspace', methodikScopes: [],
-    storageSchemaVersion: 5,
+    storageSchemaVersion: 6,
     verbuende: [{ verbundId, name: 'Test', createdAt: timestamp, savedAt: timestamp }],
     documents: [{
-      localId, verbundId, storageSchemaVersion: 5, rootType: 'catalog', oscalVersion: '1.1.3',
+      localId, verbundId, storageSchemaVersion: 6, rootType: 'catalog', oscalVersion: '1.1.3',
       trustClass: 'class-2-local-user', documentState: 'export-ready', createdAt: timestamp, savedAt: timestamp, source,
     }],
     drafts: [],
@@ -45,7 +46,7 @@ function bundle(): WorkspaceBackup {
       { localId, sequence: 4, kind: 'decision', createdAt: timestamp, decision: 'withdrawn', stand, withdraws: { sequence: 3, actionUuid } },
     ],
     reviewBaseline: [{ localId, sequence: 1, stand, source }],
-    workspaceMeta: [{ id: 'workspace', databaseId: '66666666-6666-4666-8666-666666666666', storageSchemaVersion: 5, createdAt: timestamp, savedAt: timestamp }],
+    workspaceMeta: [{ id: 'workspace', databaseId: '66666666-6666-4666-8666-666666666666', storageSchemaVersion: 6, createdAt: timestamp, savedAt: timestamp }],
   };
 }
 
@@ -75,7 +76,7 @@ const rejected: readonly (readonly [string, Mutation])[] = [
   ['baseline-fehlt', (b) => ({ ...b, reviewBaseline: undefined })],
 ];
 
-describe('workspace backup structure v5', () => {
+describe('workspace backup structure v6', () => {
   it('akzeptiert Trail, Entscheidungen und Vergleichsbasis in Dokumentreihenfolge', () => {
     expect(validWorkspaceBackupStructure(bundle())).toBe(true);
   });
@@ -89,7 +90,7 @@ describe('workspace backup structure v5', () => {
     expect(adoptAnyBackup(single)).toBe(single);
     // Eine Verbundsicherung mit Metadaten ist weder die eine noch die andere Art.
     expect(adoptAnyBackup({ ...whole, format: 'gspp-workspace-verbund' })).toBeNull();
-    for (const value of [{ ...whole, format: 'gspp-other' }, { ...whole, storageSchemaVersion: 6 }, null, []]) expect(adoptAnyBackup(value)).toBeNull();
+    for (const value of [{ ...whole, format: 'gspp-other' }, { ...whole, storageSchemaVersion: 7 }, null, []]) expect(adoptAnyBackup(value)).toBeNull();
   });
 
   it.each(rejected)('weist %s ab', (_name, mutate) => {
@@ -108,7 +109,7 @@ describe('workspace backup structure v5', () => {
   });
 
   it('validiert inkrementell in Abhängigkeitsreihenfolge', () => {
-    const validator = createWorkspaceStructureValidator(5);
+    const validator = createWorkspaceStructureValidator(6);
     const backup = bundle();
     for (const row of backup.verbuende) expect(validator.verbuende(row)).toBe(true);
     for (const row of backup.documents) expect(validator.documents(row)).toBe(true);
@@ -177,5 +178,42 @@ describe('requirementPackage im Verbund (v5)', () => {
   it('kennt das Feld erst ab Speicherversion 5', () => {
     const validator = createWorkspaceStructureValidator(4);
     expect(validator.verbuende({ ...bundle().verbuende[0], requirementPackage: valid })).toBe(false);
+  });
+});
+
+describe('Abgrenzung im Anwendungsbereich (v6)', () => {
+  const scopeId = '77777777-7777-4777-8777-777777777777' as ScopeId;
+  const item = buildScopeBoundary('88888888-8888-4888-8888-888888888888', { ...scopeBoundaryInput(undefined), organization: 'Verwaltung', sourceLabel: 'Abgrenzung v2', sourceIssuedAt: '2026-10-22', role: 'ISB', party: 'SiOrg' });
+  const scope = { scopeId, name: 'Bereich', createdAt: timestamp, savedAt: timestamp, items: [item], evidence: [] } as unknown as WorkspaceScope;
+  const withScope = (row: unknown): WorkspaceBackup => {
+    const backup = bundle();
+    return { ...backup, methodikScopes: [row as WorkspaceScope], verbuende: [{ ...backup.verbuende[0], scopeId }] };
+  };
+
+  it('nimmt genau einen geschlossenen Abgrenzungseintrag im Gesamt- und Verbundbündel an', () => {
+    expect(validWorkspaceBackupStructure(withScope(scope))).toBe(true);
+    const verbund: Record<string, unknown> = { ...withScope(scope), format: 'gspp-workspace-verbund' };
+    delete verbund.workspaceMeta;
+    expect(validVerbundBackupStructure(verbund)).toBe(true);
+  });
+
+  it('lehnt zweiten Eintrag, fremde Kategorie, Fremdfelder, nicht normalisierten Text und ungültiges Datum ab', () => {
+    const invalid = [
+      { ...scope, items: [item, { ...item, itemId: '99999999-9999-4999-8999-999999999999' }] },
+      { ...scope, items: [{ ...item, category: 'context' }] },
+      { ...scope, items: [{ ...item, extra: true }] },
+      { ...scope, items: [{ ...item, details: { ...item?.details, extra: '' } }] },
+      { ...scope, items: [{ ...item, details: { ...item?.details, organization: ' Verwaltung' } }] },
+      { ...scope, items: [{ ...item, source: { label: 'Abgrenzung', issuedAt: '2026-02-30' } }] },
+      { ...scope, items: [{ ...item, evidenceIds: ['x'] }] },
+    ];
+    for (const row of invalid) expect(validWorkspaceBackupStructure(withScope(row))).toBe(false);
+  });
+
+  it('kennt Einträge erst ab Speicherversion 6', () => {
+    expect(createWorkspaceStructureValidator(5).methodikScopes(scope)).toBe(false);
+    expect(createWorkspaceStructureValidator(5).methodikScopes({ ...scope, items: [] })).toBe(true);
+    const v5 = { ...withScope({ ...scope, items: [] }), storageSchemaVersion: 5 };
+    expect(adoptAnyBackup({ ...v5, documents: v5.documents.map((row) => ({ ...row, storageSchemaVersion: 5 })), workspaceMeta: v5.workspaceMeta.map((row) => ({ ...row, storageSchemaVersion: 5 })) })).not.toBeNull();
   });
 });

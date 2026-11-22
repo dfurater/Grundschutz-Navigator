@@ -34,6 +34,7 @@ export function fakePort(overrides: Partial<WorkspacePort> = {}): WorkspacePort 
     listScopes: () => ok([]),
     createScope: () => fail('WORKSPACE_STORAGE_FAILED'),
     renameScope: () => fail('WORKSPACE_STORAGE_FAILED'),
+    saveScopeBoundary: () => fail('WORKSPACE_STORAGE_FAILED'),
     deleteScope: () => fail('WORKSPACE_STORAGE_FAILED'),
     assignVerbuende: () => fail('WORKSPACE_STORAGE_FAILED'),
     changeVerbundScope: () => fail('WORKSPACE_STORAGE_FAILED'),
