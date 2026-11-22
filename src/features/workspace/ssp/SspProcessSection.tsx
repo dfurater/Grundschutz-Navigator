@@ -6,13 +6,14 @@ import { isJsonObject, readArray, readString } from '@/domain/jsonGuards';
 import { isOscalUuid } from '@/domain/identifierQuery';
 import { BUSINESS_PROCESS_COMPONENT_TYPE } from '@/domain/projectProps';
 import { addSspItem, readSspValue, removeSspComponent, type SspPath } from '@/domain/sspAuthoring';
-import { PROCESS_GOALS, PROCESS_GOAL_KEYS, readProcessDraft, rebaseProcessCategories, SSP_COMPONENT_PATH, writeProcessDraft, type ProcessDraft } from '@/domain/sspProcessEditing';
+import { PROCESS_GOALS, PROCESS_GOAL_KEYS, PROCESS_OWNER_ROLE, readProcessDraft, rebaseProcessCategories, SSP_COMPONENT_PATH, writeProcessDraft, type ProcessDraft } from '@/domain/sspProcessEditing';
 import { deriveSspProcessProtection, processProtectionFailure, type ProcessProtection, type SspProcessProtection } from '@/domain/sspProcessProtection';
 import { targetProps } from '@/domain/sspTargetObjects';
 import { FOCUS_RING } from '@/features/workspace/DocumentMarks';
 import { FormSection } from '@/features/workspace/ssp/SspFormSections';
 import { hasIncompleteProcessInput, ProcessFields } from '@/features/workspace/ssp/SspProcessFields';
-import { SspTargetFields } from '@/features/workspace/ssp/SspTargetFields';
+import { SspProtocolFields } from '@/features/workspace/ssp/SspFormControls';
+import { SspTargetFields, TargetResponsibility } from '@/features/workspace/ssp/SspTargetFields';
 import type { SspEditor } from '@/features/workspace/ssp/useSspEditor';
 
 const STATUS_TONES = {
@@ -145,6 +146,9 @@ function ProcessRow({ editor, path, protection, autoOpen, parties, applications 
     if (!found.length) setConfirming(true);
   };
   const legacy = targetProps(readSspValue(editor.working, path), 'protection-need-level')[0];
+  const hasProtocols = readArray(readSspValue(editor.working, [...path, 'protocols'])).length > 0;
+  const hasOtherRoles = readArray(readSspValue(editor.working, [...path, 'responsible-roles']))
+    .some(role => !isJsonObject(role) || role['role-id'] !== PROCESS_OWNER_ROLE);
   return <details ref={details} className="group/process border-b border-[var(--color-border-subtle)] last:border-0">
     <summary ref={summary} className={`flex min-h-touch cursor-pointer flex-wrap items-center gap-2 px-3 py-2 ${FOCUS_RING}`}>
       <IconChevronDown aria-hidden="true" className="size-4 shrink-0 -rotate-90 group-open/process:rotate-0" />
@@ -177,6 +181,11 @@ function ProcessRow({ editor, path, protection, autoOpen, parties, applications 
         </summary>
         <SspTargetFields editor={editor} path={path} />
       </details>
+      {(hasProtocols || hasOtherRoles) && <details className="space-y-2">
+        <summary className={`min-h-touch cursor-pointer py-2 text-sm font-medium ${FOCUS_RING}`}>Technische Angaben</summary>
+        {hasProtocols && <SspProtocolFields editor={editor} path={path} />}
+        {hasOtherRoles && <TargetResponsibility editor={editor} path={path} excludeRole={PROCESS_OWNER_ROLE} />}
+      </details>}
       <ConfirmDialog open={confirming} title="Geschäftsprozess entfernen?" confirmLabel="Prozess entfernen" onCancel={() => setConfirming(false)} onConfirm={() => {
         const index = Number(path.at(-1));
         editor.apply(source => {

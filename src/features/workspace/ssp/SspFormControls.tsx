@@ -2,7 +2,7 @@ import { useId, useState, type ReactNode } from 'react';
 import { Button } from '@/components/Button';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { isJsonObject, readArray, readString } from '@/domain/jsonGuards';
-import { addSspItem, moveSspItem, readSspValue, removeSspItem, setSspValue, type SspPath } from '@/domain/sspAuthoring';
+import { addSspItem, moveSspItem, readSspValue, removeSspItem, setSspValue, sspOscalVersion, sspProtocolNameRequired, type SspPath } from '@/domain/sspAuthoring';
 import { INPUT, OscalKey, SECTION_LABEL } from '@/features/workspace/profile/ProfileMarks';
 import type { SspEditor } from '@/features/workspace/ssp/useSspEditor';
 
@@ -65,6 +65,16 @@ export function SspSelectField({ editor, path, label, options, required = false 
       </select>
     </div>
   );
+}
+
+export function SspProtocolFields({ editor, path }: Readonly<{ editor: SspEditor; path: SspPath }>) {
+  const protocols = readArray(readSspValue(editor.working, [...path, 'protocols']));
+  const required = protocols.length > 0 && sspProtocolNameRequired(sspOscalVersion(editor.working));
+  return protocols.map((protocol, index) => {
+    const uuid = isJsonObject(protocol) ? readString(protocol.uuid) : undefined;
+    return <SspTextField key={uuid ?? `protocol-${index}`} editor={editor} path={[...path, 'protocols', index, 'name']}
+      label={`Protokoll ${index + 1}`} required={required} mono />;
+  });
 }
 
 /**

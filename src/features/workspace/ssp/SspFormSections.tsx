@@ -1,15 +1,15 @@
 import { useId, useState, type ReactNode } from 'react';
 import { Button } from '@/components/Button';
 import { BUSINESS_PROCESS_COMPONENT_TYPE } from '@/domain/projectProps';
-import { isJsonObject, readArray, readString } from '@/domain/jsonGuards';
+import { isJsonObject, readString } from '@/domain/jsonGuards';
 import {
-  addSspItem, readSspValue, removeSspComponent, sspOscalVersion, sspProtocolNameRequired, sspUsersRequired,
+  addSspItem, readSspValue, removeSspComponent, sspOscalVersion, sspUsersRequired,
   SSP_COMPONENT_STATES, SSP_SYSTEM_STATES,
 } from '@/domain/sspAuthoring';
 import { INPUT, OscalKey, SECTION_LABEL } from '@/features/workspace/profile/ProfileMarks';
 import { ImportTargetPicker } from '@/features/workspace/profile/ImportTargetPicker';
 import { targetKey, type ImportTargetOption } from '@/features/workspace/profile/useImportTargets';
-import { SspRowList, SspSelectField, SspTextField } from '@/features/workspace/ssp/SspFormControls';
+import { SspProtocolFields, SspRowList, SspSelectField, SspTextField } from '@/features/workspace/ssp/SspFormControls';
 import type { BaselineControls } from '@/features/workspace/ssp/useBaselineControls';
 import { InventoryReferences, SspTargetFields, TargetResponsibility } from '@/features/workspace/ssp/SspTargetFields';
 import type { SspEditor } from '@/features/workspace/ssp/useSspEditor';
@@ -131,7 +131,7 @@ export function ImplementationSection({ editor }: Readonly<{ editor: SspEditor }
       <SspRowList editor={editor} path={[si, 'components']} title="Komponenten" required uuidKeyed protectedTarget addLabel="Komponente hinzufügen"
         include={item => !isJsonObject(item) || item.type !== BUSINESS_PROCESS_COMPONENT_TYPE}
         newItem={() => ({ uuid: crypto.randomUUID() })} remove={removeSspComponent} rowTitle={rowTitle('Komponente', 'title')}
-        renderRow={(path, item) => (
+        renderRow={(path) => (
           <>
             <div className={GRID}>
               <SspTextField editor={editor} path={[...path, 'title']} label="Titel" required />
@@ -143,9 +143,7 @@ export function ImplementationSection({ editor }: Readonly<{ editor: SspEditor }
             <SspSelectField editor={editor} path={[...path, 'status', 'state']} label="Status" options={SSP_COMPONENT_STATES} required />
             <TargetResponsibility editor={editor} path={path} />
             <SspTargetFields editor={editor} path={path} />
-            {readArray(isJsonObject(item) ? item.protocols : undefined).map((protocol, index) => (
-              <SspTextField key={text(protocol, 'uuid') ?? `protocol-${index}`} editor={editor} path={[...path, 'protocols', index, 'name']} label={`Protokoll ${index + 1}`} required={sspProtocolNameRequired(version)} mono />
-            ))}
+            <SspProtocolFields editor={editor} path={path} />
           </>
         )} />
       <SspRowList editor={editor} path={[si, 'inventory-items']} title="Inventareinträge" uuidKeyed protectedTarget addLabel="Inventareintrag hinzufügen"

@@ -11,7 +11,7 @@ import type { CatalogKey } from '@/domain/sourceRegistry';
 import type { LocalId, VerbundId, WorkspaceEnvelope } from '@/domain/workspaceModel';
 import { makeSchemaValidOscalDocument } from '@/test/fixtures/oscalSchemaFixtures';
 import { WorkspaceStore } from '@/adapters/workspaceStore';
-import { makeFullSsp, makeMinimalSsp, SSP_FIXTURE_IDS, withSspBody } from '@/test/fixtures/systemSecurityPlans';
+import { makeFullSsp, makeMinimalSsp, SSP_FIXTURE_IDS, SSP_FIXTURE_ROLE_ID, withSspBody } from '@/test/fixtures/systemSecurityPlans';
 import { mainLandmark as main, renderWorkspaceArea as renderArea, withLoadedCatalog } from '@/test/renderWorkspaceArea';
 import { readStore, resetWorkspace, seedWorkspace, type SeededWorkspace } from '@/test/workspaceAreaFixture';
 import { withSspCategories, SSP_CATEGORY_IDS } from '@/test/fixtures/sspCategories';
@@ -244,6 +244,28 @@ describe('Geschäftsprozesse', () => {
     await waitFor(() => expect(within(main()).getByRole('button', { name: 'Geschäftsprozess hinzufügen' })).toBeEnabled(), WAIT);
     expect(within(main()).getByRole('button', { name: 'Speichern' })).toBeDisabled();
     expect(within(main()).getByRole('button', { name: 'Export' })).toBeDisabled();
+  });
+
+  it('hält das Pflichtfeld für einen Protokollnamen aus OSCAL 1.1.2 erreichbar', async () => {
+    const source = withSspBody(makeFullSsp(), body => {
+      body.metadata['oscal-version'] = '1.1.2';
+      const component = body['system-implementation'].components[0];
+      component.type = 'business-process';
+      component.protocols = [{}];
+    });
+    const ssp = await readStore(store => store.addDocument(seeded.verbundId, {
+      source: JSON.parse(JSON.stringify(source)), context: { trustClass: 'class-2-local-user' },
+      rootType: 'system-security-plan', oscalVersion: '1.1.2',
+    }, 'draft'));
+    renderArea(buildWorkspaceDocumentUrl(seeded.verbundId, ssp.localId), withGspp());
+    const section = within(await within(main()).findByRole('region', { name: 'Geschäftsprozesse' }));
+    fireEvent.click(section.getByText('Gesamtsystem'));
+    fireEvent.click(section.getByText('Technische Angaben'));
+    expect(section.getByLabelText('Verantwortliche Rolle')).toHaveValue(SSP_FIXTURE_ROLE_ID);
+    const name = section.getByLabelText(/^Protokoll 1/);
+    expect(name).toHaveAttribute('aria-required', 'true');
+    fireEvent.change(name, { target: { value: 'TLS' } });
+    expect(within(main()).queryByText(/components\/0\/protocols\/0\/name/)).not.toBeInTheDocument();
   });
 
   it('bietet den Status auch nach explizitem Wechsel zum Geschäftsprozess an', async () => {
