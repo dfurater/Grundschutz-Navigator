@@ -36,7 +36,8 @@ function setup(strict = false, withBaseline = false) {
   const target = withBaseline ? { kind: 'local' as const, localId: PROFILE.localId } : undefined;
   const hook = renderHook(({ source, localId, verbundId }: { source: unknown; localId: LocalId; verbundId: VerbundId }) => {
     const workspace = useWorkspace();
-    useEffect(() => workspace.activate(), [workspace.activate]);
+    const { activate } = workspace;
+    useEffect(() => activate(), [activate]);
     useBaselineControls(verbundId, target, undefined);
     return { ...useProfileAnalysis(verbundId, localId, source, bindings), workspace };
   }, { wrapper, initialProps: { source: PROFILE.source, localId: PROFILE.localId, verbundId: PROFILE.verbundId } });
