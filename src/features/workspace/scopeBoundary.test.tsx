@@ -1,7 +1,8 @@
 import 'fake-indexeddb/auto';
 import { fireEvent, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { buildScopeUrl } from '@/app/routes';
+import { buildScopeUrl, buildWorkspaceIndexUrl } from '@/app/routes';
+import { scopeBoundaryInput } from '@/domain/scopeBoundary';
 import { SCOPE, fail, fakePort, ok } from '@/test/fakeWorkspacePort';
 import { mainLandmark as main, renderWorkspaceArea as renderArea, renderWorkspaceWithPort } from '@/test/renderWorkspaceArea';
 import { SENTINEL, readStore, resetWorkspace } from '@/test/workspaceAreaFixture';
@@ -73,6 +74,7 @@ describe('Abgrenzung des Anwendungsbereichs', () => {
     expect(await within(main()).findByText(/Anwendungsbereich inzwischen geändert/)).toHaveAttribute('role', 'alert');
     expect(within(main()).getByLabelText('Schnittstellen')).toHaveValue('Portal');
     expect(saveScopeBoundary).toHaveBeenCalledWith(SCOPE.scopeId, SCOPE.savedAt, expect.objectContaining({ interfaces: 'Portal' }));
+    expect(within(main()).getByRole('button', { name: 'Aktuellen Stand laden' })).toBeDisabled();
     fireEvent.click(within(main()).getByRole('button', { name: 'Speichern' }));
     expect(await within(main()).findByText('Lokal speichern fehlgeschlagen. Die Eingabe bleibt erhalten.')).toHaveAttribute('role', 'alert');
     expect(within(main()).getByLabelText('Schnittstellen')).toHaveValue('Portal');
@@ -80,6 +82,49 @@ describe('Abgrenzung des Anwendungsbereichs', () => {
     fireEvent.click(within(main()).getByRole('button', { name: 'Abbrechen' }));
     await waitFor(() => expect(card().getByRole('button', { name: /Abgrenzung erfassen/ })).toHaveFocus());
     expect(saveScopeBoundary).toHaveBeenCalledTimes(2);
+  });
+
+  it('übernimmt nach einem Konflikt den neueren Stand nur ausdrücklich und überschreibt ihn nie mit veralteter Eingabe', async () => {
+    const created = await readStore((store) => store.createScope('Netzbetrieb'));
+    renderArea(buildScopeUrl(created.scopeId));
+    const edit = await (await findCard()).findByRole('button', { name: /Abgrenzung erfassen/ });
+    await waitFor(() => expect(edit).toBeEnabled());
+    fireEvent.click(edit);
+    type('Schnittstellen', 'Alt');
+    // Ein anderer Tab speichert inzwischen eine Abgrenzung.
+    const [current] = await readStore((store) => store.listScopes());
+    await readStore((store) => store.saveScopeBoundary(current.scopeId, current.savedAt, { ...scopeBoundaryInput(undefined), interfaces: 'Neu' }));
+    fireEvent.click(within(main()).getByRole('button', { name: 'Speichern' }));
+    expect(await within(main()).findByText(/Anwendungsbereich inzwischen geändert/)).toHaveAttribute('role', 'alert');
+    expect(within(main()).getByLabelText('Schnittstellen')).toHaveValue('Alt');
+    // Ein erneutes Speichern der alten Eingabe bleibt ein Konflikt, auch nachdem der Bestand neu gelesen wurde.
+    const load = within(main()).getByRole('button', { name: 'Aktuellen Stand laden' });
+    await waitFor(() => expect(load).toBeEnabled());
+    fireEvent.click(within(main()).getByRole('button', { name: 'Speichern' }));
+    await waitFor(() => expect(within(main()).getByRole('button', { name: 'Speichern' })).toBeEnabled());
+    expect((await readStore((store) => store.listScopes()))[0].items[0]?.details.interfaces).toBe('Neu');
+    fireEvent.click(load);
+    expect(within(main()).getByLabelText('Schnittstellen')).toHaveValue('Neu');
+    type('Ausschlüsse', 'Messstellenbetrieb');
+    fireEvent.click(within(main()).getByRole('button', { name: 'Speichern' }));
+    await waitFor(() => expect(within(main()).queryByRole('heading', { level: 1, name: 'Abgrenzung bearbeiten' })).toBeNull());
+    expect((await readStore((store) => store.listScopes()))[0].items[0]?.details).toMatchObject({ interfaces: 'Neu', exclusions: 'Messstellenbetrieb' });
+  });
+
+  it('behält eine ungespeicherte Eingabe über einen Routenwechsel', async () => {
+    const { router } = renderWorkspaceWithPort(fakePort({ listScopes: () => ok([SCOPE]) }), buildScopeUrl(SCOPE.scopeId));
+    const edit = await (await findCard()).findByRole('button', { name: /Abgrenzung erfassen/ });
+    await waitFor(() => expect(edit).toBeEnabled());
+    fireEvent.click(edit);
+    type('Schnittstellen', 'Portal');
+    await router.navigate(buildWorkspaceIndexUrl());
+    await within(main()).findByRole('heading', { level: 1, name: 'Arbeitsbereich' });
+    await router.navigate(buildScopeUrl(SCOPE.scopeId));
+    fireEvent.click(await (await findCard()).findByRole('button', { name: /Abgrenzung erfassen/ }));
+    expect(within(main()).getByLabelText('Schnittstellen')).toHaveValue('Portal');
+    fireEvent.click(within(main()).getByRole('button', { name: 'Abbrechen' }));
+    fireEvent.click(await (await findCard()).findByRole('button', { name: /Abgrenzung erfassen/ }));
+    expect(within(main()).getByLabelText('Schnittstellen')).toHaveValue('');
   });
 
   it('sperrt Erfassen bei Schreibsperre', async () => {

@@ -6,6 +6,7 @@ import {
 } from '@/domain/scopeBoundary';
 import type { WorkspaceScope } from '@/domain/workspaceModel';
 import { useWorkspace } from '@/hooks/useWorkspace';
+import type { ScopeBoundaryDraft } from '@/state/WorkspaceContext';
 import { FOCUS_RING } from '@/features/workspace/DocumentMarks';
 import { INPUT, ROW_BUTTON } from '@/features/workspace/WorkspaceForms';
 import { WorkspaceNotices } from '@/features/workspace/WorkspaceNotices';
@@ -69,27 +70,42 @@ function Field({ label, value, onChange, multiline = false, type = 'text' }: Rea
 }
 
 /**
- * Ansicht „Abgrenzung erfassen“ als lokaler Zustand der Übersicht. Konflikt und Speicherfehler behalten die
- * Eingabe; „Abbrechen“ verwirft sie ohne Schreibvorgang.
+ * Ansicht „Abgrenzung erfassen“ als lokaler Zustand der Übersicht. Konflikt, Speicherfehler und Routenwechsel
+ * behalten die Eingabe; „Abbrechen“ verwirft sie ohne Schreibvorgang.
  */
 export function ScopeBoundaryEditor({ scopeId, onClose, onSaved }: Readonly<{ scopeId: string; onClose: () => void; onSaved: () => void }>) {
-  const { writable, scopes, saveScopeBoundary } = useWorkspace();
+  const { writable, scopes, saveScopeBoundary, boundaryDrafts } = useWorkspace();
   const scope = scopes?.find((entry) => entry.scopeId === scopeId);
   const heading = useRef<HTMLHeadingElement>(null);
   useLayoutEffect(() => { heading.current?.focus(); }, []);
-  const [input, setInput] = useState<ScopeBoundaryInput>(() => scopeBoundaryInput(scope?.items[0]));
+  // Eingabe und Vergleichsstand bleiben ein Paar und überdauern Routenwechsel; nur „Abbrechen“ oder Speichern verwirft sie.
+  const [draft, setDraft] = useState<ScopeBoundaryDraft | undefined>(() => boundaryDrafts.get(scopeId) ?? (scope && { input: scopeBoundaryInput(scope.items[0]), base: scope.savedAt }));
   const [failure, setFailure] = useState<'conflict' | 'failed' | null>(null);
   const [busy, setBusy] = useState(false);
-  const set = (key: keyof ScopeBoundaryInput) => (value: string) => setInput((current) => ({ ...current, [key]: value }));
+  const input = draft?.input ?? scopeBoundaryInput(undefined);
+  const change = (next: ScopeBoundaryDraft) => { boundaryDrafts.set(scopeId, next); setDraft(next); };
+  const set = (key: keyof ScopeBoundaryInput) => (value: string) => { if (draft) change({ ...draft, input: { ...draft.input, [key]: value } }); };
+  // Ein neuer Vergleichsstand gilt erst nach ausdrücklichem Laden und ersetzt dann die Eingabe durch den gespeicherten Inhalt.
+  const newer = scope && draft && scope.savedAt !== draft.base ? scope : undefined;
+  const loadCurrent = () => {
+    if (!newer) return;
+    change({ input: scopeBoundaryInput(newer.items[0]), base: newer.savedAt });
+    setFailure(null);
+  };
 
   const save = async () => {
-    if (busy || !scope) return;
+    if (busy || !scope || !draft) return;
     setBusy(true);
-    // Vergleichsstand ist der angezeigte: Hat ein anderer Tab inzwischen geschrieben, scheitert das Speichern als Konflikt.
-    const result = await saveScopeBoundary(scope.scopeId, scope.savedAt, input);
+    const result = await saveScopeBoundary(scope.scopeId, draft.base, draft.input);
     setBusy(false);
-    if (result.ok) onSaved();
-    else setFailure(result.diagnostic.code === 'WORKSPACE_SAVE_CONFLICT' ? 'conflict' : 'failed');
+    if (result.ok) {
+      boundaryDrafts.delete(scopeId);
+      onSaved();
+    } else setFailure(result.diagnostic.code === 'WORKSPACE_SAVE_CONFLICT' ? 'conflict' : 'failed');
+  };
+  const cancel = () => {
+    boundaryDrafts.delete(scopeId);
+    onClose();
   };
 
   return (
@@ -97,7 +113,7 @@ export function ScopeBoundaryEditor({ scopeId, onClose, onSaved }: Readonly<{ sc
       <h1 ref={heading} tabIndex={-1} className="type-page-title focus:outline-none">{scope?.items[0] ? 'Abgrenzung bearbeiten' : 'Abgrenzung erfassen'}</h1>
       <WorkspaceNotices />
       <form className="max-w-3xl space-y-4" onSubmit={(event) => { event.preventDefault(); void save(); }}>
-        <fieldset disabled={!writable || busy || !scope} className="space-y-4">
+        <fieldset disabled={!writable || busy || !draft} className="space-y-4">
           <section aria-labelledby="abgrenzung-inhalt" className={`${PANEL} space-y-3 p-4`}>
             <h2 id="abgrenzung-inhalt" className="text-base font-semibold">Abgrenzung</h2>
             <Field label="Zusammenfassung" value={input.content} onChange={set('content')} multiline />
@@ -118,13 +134,16 @@ export function ScopeBoundaryEditor({ scopeId, onClose, onSaved }: Readonly<{ sc
           </section>
         </fieldset>
         {failure === 'conflict' && (
-          <p role="alert" className="text-sm text-[var(--color-danger-text)]">Anwendungsbereich inzwischen geändert. Nichts gespeichert. Die Eingabe bleibt erhalten; aktuellen Stand laden und erneut speichern.</p>
+          <div className="space-y-2">
+            <p role="alert" className="text-sm text-[var(--color-danger-text)]">Anwendungsbereich inzwischen geändert. Nichts gespeichert. Die Eingabe bleibt erhalten; „Aktuellen Stand laden“ ersetzt sie durch die gespeicherte Abgrenzung.</p>
+            <Button variant="secondary" className={ROW_BUTTON} disabled={busy || !newer} onClick={loadCurrent}>Aktuellen Stand laden</Button>
+          </div>
         )}
         {failure === 'failed' && <p role="alert" className="text-sm text-[var(--color-danger-text)]">Lokal speichern fehlgeschlagen. Die Eingabe bleibt erhalten.</p>}
         <div className="flex flex-wrap gap-2">
-          <Button type="submit" className={ROW_BUTTON} disabled={!writable || busy || !scope}>Speichern</Button>
+          <Button type="submit" className={ROW_BUTTON} disabled={!writable || busy || !draft}>Speichern</Button>
           {/* Gesperrt während des Speicherns: Ein später eintreffendes Ergebnis darf keine neu geöffnete Ansicht schließen. */}
-          <Button variant="secondary" className={ROW_BUTTON} disabled={busy} onClick={onClose}>Abbrechen</Button>
+          <Button variant="secondary" className={ROW_BUTTON} disabled={busy} onClick={cancel}>Abbrechen</Button>
         </div>
       </form>
     </div>

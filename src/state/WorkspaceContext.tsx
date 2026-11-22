@@ -8,6 +8,7 @@ import { catalogDelivery, verifiedCatalogArtifacts } from '@/state/workspaceCata
 import type { WorkspaceClass1Artifact } from '@/domain/workspaceGraphModel';
 import type { LocalId, VerbundId, VerbundWriteExpectation, WorkspaceResult, WorkspaceScope, WorkspaceVerbund } from '@/domain/workspaceModel';
 import type { RequirementPackageState } from '@/domain/requirementPackage';
+import type { ScopeBoundaryInput } from '@/domain/scopeBoundary';
 import {
   NEW_SCOPE_DRAFT, collectRestoreInputs, discardReplacedInputs, scopeDraftKey, scopedVerbundDraftKey,
   type RestoreInput, type RestorePreview, type RestoreScope,
@@ -47,6 +48,12 @@ function packageMap(
 
 /** Speichert einen offenen Entwurf; Stationen registrieren ihn für den Bereichswechsel. */
 export type AutosaveFlush = () => Promise<WorkspaceResult<unknown>>;
+
+/** Editoreingabe der Abgrenzung und das `savedAt` des Anwendungsbereichs, auf dem sie beruht. */
+export interface ScopeBoundaryDraft {
+  readonly input: ScopeBoundaryInput;
+  readonly base: string;
+}
 
 export interface VerbundViewState {
   readonly verbundId: string;
@@ -121,6 +128,8 @@ export interface WorkspaceContextValue {
    * oder Anlage eines Verbunds in einem Bereich. Löschen oder Ersetzen des Bereichs verwirft seine Eingaben.
    */
   readonly scopeDrafts: Map<string, string>;
+  /** Offene Abgrenzungsentwürfe je `scopeId` mit dem Vergleichsstand, auf dem sie beruhen; Löschen des Bereichs verwirft sie. */
+  readonly boundaryDrafts: Map<string, ScopeBoundaryDraft>;
   /**
    * Laufender Schreibvorgang zu einem Schlüssel aus `scopeDrafts`; er überdauert die Formularinstanz,
    * damit ein nach Routenwechsel neu aufgebautes Formular bis zu seinem Ergebnis gesperrt bleibt.
@@ -173,6 +182,7 @@ export const WorkspaceContext = createContext<WorkspaceContextValue>({
   discardRestoreInput: () => undefined,
   renameDrafts: new Map(),
   scopeDrafts: new Map(),
+  boundaryDrafts: new Map(),
   pendingScopeWrite: () => undefined,
   pendingVerbundWrite: () => undefined,
   registerAutosave: () => () => undefined,
@@ -235,6 +245,7 @@ export function WorkspaceProvider({ open = openWorkspaceStore, session: provided
   const [importTargets] = useState(() => new Map<LocalId, Map<string, PendingImportTarget>>());
   const [renameDrafts] = useState(() => new Map<string, string>());
   const [scopeDrafts] = useState(() => new Map<string, string>());
+  const [boundaryDrafts] = useState(() => new Map<string, ScopeBoundaryDraft>());
   const [scopesFailed, setScopesFailed] = useState(false);
   // Laufende Namensschreibvorgänge bis zu ihrem Ergebnis: je `NEW_SCOPE_DRAFT` oder `scopeId`, je `verbundId`.
   const pendingScopes = useRef(new Map<string, PendingWrite<WorkspaceScope>>());
@@ -330,6 +341,7 @@ export function WorkspaceProvider({ open = openWorkspaceStore, session: provided
       if (listed.ok) {
         const draftKeys = new Set([NEW_SCOPE_DRAFT, ...listed.value.flatMap(({ scopeId }) => [scopeId, scopedVerbundDraftKey(scopeId)])]);
         for (const key of scopeDrafts.keys()) if (!draftKeys.has(key)) scopeDrafts.delete(key);
+        for (const key of boundaryDrafts.keys()) if (!draftKeys.has(key)) boundaryDrafts.delete(key);
       } else {
         report(listed.diagnostic);
       }
@@ -350,7 +362,7 @@ export function WorkspaceProvider({ open = openWorkspaceStore, session: provided
         : withoutNotice(notices, 'quota-warning'));
     });
     return () => { current = false; };
-  }, [port, revision, report, renameDrafts, scopeDrafts]);
+  }, [port, revision, report, renameDrafts, scopeDrafts, boundaryDrafts]);
 
   // Nur der asynchrone Rückruf schreibt; Auswahl, Ladezustand und ungültige
   // Identitäten leitet `verbund` unten ab.
@@ -567,12 +579,18 @@ export function WorkspaceProvider({ open = openWorkspaceStore, session: provided
     },
     renameScope: (scopeId, name, expected) =>
       track(pendingScopes.current, scopeId, name, (async () => keepScope(await write((store) => store.renameScope(scopeId, name, expected))))()),
-    saveScopeBoundary: async (scopeId, expected, input) => keepScope(await write((store) => store.saveScopeBoundary(scopeId, expected, input))),
+    saveScopeBoundary: async (scopeId, expected, input) => {
+      const result = keepScope(await write((store) => store.saveScopeBoundary(scopeId, expected, input)));
+      // Nach einem Konflikt liest der Bestand den neueren Stand, den der Editor ausdrücklich übernehmen kann.
+      if (!result.ok && result.diagnostic.code === 'WORKSPACE_SAVE_CONFLICT') setRevision(current => current + 1);
+      return result;
+    },
     deleteScope: async (scopeId, expected, confirmation) => {
       const result = await write(store => store.deleteScope(scopeId, expected, confirmation).catch(storageFailed));
       if (result.ok) {
         scopeDrafts.delete(scopeId);
         scopeDrafts.delete(scopedVerbundDraftKey(scopeId));
+        boundaryDrafts.delete(scopeId);
       }
       else if (result.diagnostic.code === 'WORKSPACE_SAVE_CONFLICT') setRevision(current => current + 1);
       return result;
@@ -697,9 +715,10 @@ export function WorkspaceProvider({ open = openWorkspaceStore, session: provided
     analysisRevision,
     renameDrafts,
     scopeDrafts,
+    boundaryDrafts,
     pendingScopeWrite: (key) => pendingScopes.current.get(key)?.run,
     pendingVerbundWrite: (key) => pendingVerbuende.current.get(key)?.run,
-  }), [status, verbuende, scopes, scopesFailed, packages, scopeDrafts, keepScope, verbundExpectation, writable, delivery, notices, verbund, activate, openStore, checkSchema, write, writeTo, writeMembership, deletion, enterWorkspaceDeletion, leaveWorkspaceDeletion, deleteWorkspace, freeze, quiet, listDocuments, port, report, registerAutosave, flushAutosaves, documents, importTargets, invalidateAnalysis, analysisRevision, renameDrafts]);
+  }), [status, verbuende, scopes, scopesFailed, packages, scopeDrafts, boundaryDrafts, keepScope, verbundExpectation, writable, delivery, notices, verbund, activate, openStore, checkSchema, write, writeTo, writeMembership, deletion, enterWorkspaceDeletion, leaveWorkspaceDeletion, deleteWorkspace, freeze, quiet, listDocuments, port, report, registerAutosave, flushAutosaves, documents, importTargets, invalidateAnalysis, analysisRevision, renameDrafts]);
 
   return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>;
 }
