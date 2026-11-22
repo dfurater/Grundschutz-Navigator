@@ -22,6 +22,13 @@ const PARTY_SAVED_AS_DRAFT = 'Die Partei ist gespeichert. Das SSP ist dabei als 
 function hashFailedText(code: string): string {
   return `Der gebundene Stand ist nicht berechenbar. Befund: ${code}. Der Prozess verweist auf eine Anwendung, Rolle oder Partei, die im SSP fehlt, doppelt vorkommt oder keinen Namen beziehungsweise Titel hat. Korrigiere den Verweis am Prozess, an der Anwendung oder unter Metadaten und speichere das SSP; der Dialog berechnet den Stand danach neu.`;
 }
+/** Nach einem abgewiesenen Bestätigen steht der Fokus im ersten fehlerhaften Feld; dessen Meldung liest der Screenreader mit. */
+function useFocusFirstInvalid<T extends HTMLElement>() {
+  const container = useRef<T>(null);
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => { if (attempt) container.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus(); }, [attempt]);
+  return [container, () => setAttempt(count => count + 1)] as const;
+}
 const PARTY_TYPES = [{ value: 'organization', label: 'Organisation' }, { value: 'person', label: 'Person' }];
 const TEXT = {
   approved: { title: 'Freigabe dokumentieren', remarks: 'Begründung', missing: 'Begründung fehlt.', variant: 'primary' },
@@ -61,9 +68,9 @@ function useBoundHash(source: unknown, processUuid: string, party: string, enabl
 /** Legt eine Partei im SSP an; sie wird mit dem SSP gespeichert, bevor eine Entscheidung sie bindet. */
 function NewPartyFields({ value, onChange, onSave, onCancel }: Readonly<{ value: NewParty; onChange: (party: NewParty) => void; onSave: () => void; onCancel: () => void }>) {
   const [tried, setTried] = useState(false);
-  const box = useRef<HTMLDivElement>(null);
+  const [box, rejected] = useFocusFirstInvalid<HTMLDivElement>();
   // Der auslösende Knopf verschwindet; der Fokus geht in das erste Feld statt aus dem Dialog.
-  useEffect(() => { box.current?.querySelector('input')?.focus(); }, []);
+  useEffect(() => { box.current?.querySelector('input')?.focus(); }, [box]);
   return <div ref={box} className={`${BOX} space-y-3`}>
     <p className="text-sm font-medium">Partei im SSP anlegen</p>
     <div className="grid gap-3 sm:grid-cols-2">
@@ -72,7 +79,7 @@ function NewPartyFields({ value, onChange, onSave, onCancel }: Readonly<{ value:
     </div>
     <p className="text-sm">Die Partei wird mit dem SSP gespeichert und steht danach unter Metadaten.</p>
     <div className="flex flex-col gap-2 sm:flex-row">
-      <Button variant="secondary" className="min-h-touch desktop:min-h-0" onClick={() => { setTried(true); if (value.name.trim()) onSave(); }}>Partei speichern</Button>
+      <Button variant="secondary" className="min-h-touch desktop:min-h-0" onClick={() => { setTried(true); if (value.name.trim()) onSave(); else rejected(); }}>Partei speichern</Button>
       <Button variant="ghost" className="min-h-touch desktop:min-h-0" onClick={onCancel}>Anlegen abbrechen</Button>
     </div>
   </div>;
@@ -129,6 +136,7 @@ export function SspProcessApprovalDialog({ localId, mode, label, processUuid, so
     onClose();
   };
   const [tried, setTried] = useState(false);
+  const [fields, rejected] = useFocusFirstInvalid<HTMLFieldSetElement>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   const addButton = useRef<HTMLButtonElement>(null);
@@ -149,7 +157,7 @@ export function SspProcessApprovalDialog({ localId, mode, label, processUuid, so
   if (party) boundLabel = bound === undefined && hashFailed === undefined ? 'wird berechnet …' : shortHash(bound);
   const confirm = async () => {
     setTried(true);
-    if (!party || !remarks.trim()) return;
+    if (!party || !remarks.trim()) { rejected(); return; }
     const submitted = draft;
     setBusy(true);
     setError(undefined);
@@ -183,8 +191,8 @@ export function SspProcessApprovalDialog({ localId, mode, label, processUuid, so
     if (result.code) setError(PARTY_SAVED_AS_DRAFT);
   };
   return <ConfirmDialog open title={`${text.title} · ${label}`} confirmLabel={text.title} confirmVariant={text.variant}
-    busy={busy} wide confirmDisabled={creating || (approve && party !== '' && bound === undefined)} onCancel={discard} onDismiss={onClose} onConfirm={() => { void confirm(); }}>
-    <fieldset disabled={busy} className="min-w-0 space-y-3 text-[var(--color-text-primary)]">
+    busy={busy} form confirmDisabled={creating || (approve && party !== '' && bound === undefined)} onCancel={discard} onDismiss={onClose} onConfirm={() => { void confirm(); }}>
+    <fieldset ref={fields} disabled={busy} className="min-w-0 space-y-3 text-[var(--color-text-primary)]">
       {approve && <div className={BOX}>
         <p className="font-medium">Gebundener Stand</p>
         <p>Die Freigabe gilt für den Prozess in diesem gespeicherten Stand: <span className="break-all font-mono text-xs">{boundLabel}</span>. Ändert sich der Prozess, wird sie „überholt“.</p>

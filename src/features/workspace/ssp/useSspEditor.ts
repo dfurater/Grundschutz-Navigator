@@ -222,15 +222,9 @@ export function useSspEditor(localId: LocalId): SspEditor {
     return targetDeletionUses(latest.current.working, path, localId, members, bindings.value);
   }, [documents, latest, localId]);
   const { adopt } = core;
-  // Eine ausgehängte Station übernimmt nichts mehr: Die geöffnete übernimmt den Stand über `decisionWrites`, ein Autosave hier wäre verwaist.
-  const mounted = useRef(true);
-  useEffect(() => {
-    mounted.current = true;
-    return () => { mounted.current = false; };
-  }, []);
   // Ohne offene Eingaben übernimmt der Editor den Stand; mit ihnen führt er die Aktionskette in den Arbeitsstand zusammen.
+  // Eine ausgehängte Station übernimmt nichts (`adopt` meldet `blocked`); die geöffnete übernimmt den Stand über `decisionWrites`.
   const adoptOrRebase = useCallback(async (document: WorkspaceEnvelope) => {
-    if (!mounted.current) return 'adopted';
     const adopted = await adopt(document);
     if (adopted !== 'blocked') return adopted;
     const { working: current, envelope } = latest.current;

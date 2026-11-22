@@ -19,11 +19,8 @@ vi.mock('@/adapters/oscalImportGate', async () => (await import('@/test/workspac
 vi.mock('@/adapters/reviewTrailWork', async () => (await import('@/test/workspaceNodeWorkers')).inProcessReviewTrailWork());
 vi.mock('@/hooks/useMediaQuery', () => ({ useMediaQuery: () => true }));
 
-/*
- * Leitungsfreigabe je Geschäftsprozess (GSPP-684) auf dem synthetischen Fall F1
- * aus dem Datenvertrag Prozess-CIA: Anzeige des gespeicherten Freigabestands,
- * Rücknahme und neue Freigabe über den Writer aus GSPP-682.
- */
+// Leitungsfreigabe je Geschäftsprozess (GSPP-684) auf dem synthetischen Fall F1 aus dem Datenvertrag Prozess-CIA:
+// Anzeige des gespeicherten Freigabestands, Rücknahme und neue Freigabe über den Writer aus GSPP-682.
 
 const WAIT = { timeout: 4000 };
 let seeded: SeededWorkspace;
@@ -86,10 +83,12 @@ describe('Leitungsfreigabe je Prozess', () => {
 
     fireEvent.click(region.getByRole('button', { name: 'Freigabe zurücknehmen…' }));
     const withdraw = within(await screen.findByRole('alertdialog', { name: /^Freigabe zurücknehmen · P-01/ }));
+    expect(withdraw.getByRole('heading', { name: /^Freigabe zurücknehmen · P-01/ })).toHaveFocus();
     expect(withdraw.getByText(/Weder Identität noch Befugnis werden geprüft/)).toBeInTheDocument();
     expect(withdraw.getByText(/^process-cia\/3:sha-256:24db…f640$/)).toBeInTheDocument();
     fireEvent.click(withdraw.getByRole('button', { name: 'Freigabe zurücknehmen' }));
     expect(withdraw.getByText('Anlass fehlt.')).toBeInTheDocument();
+    expect(withdraw.getByLabelText('Anlass der Rücknahme')).toHaveFocus();
     expect(await actions(localId)).toHaveLength(1);
     fireEvent.change(withdraw.getByLabelText('Anlass der Rücknahme'), { target: { value: 'Verfügbarkeit wird neu bewertet.' } });
     fireEvent.click(withdraw.getByRole('button', { name: 'Freigabe zurücknehmen' }));
@@ -129,8 +128,10 @@ describe('Leitungsfreigabe je Prozess', () => {
     fireEvent.click(await region.findByRole('button', { name: 'Freigabe dokumentieren…' }));
     const dialog = within(await screen.findByRole('alertdialog'));
     fireEvent.click(dialog.getByRole('button', { name: '+ Partei im SSP anlegen' }));
+    dialog.getByRole('button', { name: 'Partei speichern' }).focus();
     fireEvent.click(dialog.getByRole('button', { name: 'Partei speichern' }));
     expect(dialog.getByText('Name fehlt.')).toBeInTheDocument();
+    expect(dialog.getByLabelText('Name der Partei')).toHaveFocus();
     fireEvent.change(dialog.getByLabelText('Name der Partei'), { target: { value: 'Behördenleitung' } });
     fireEvent.click(dialog.getByRole('button', { name: 'Partei speichern' }));
     await waitFor(() => expect(dialog.queryByRole('button', { name: 'Partei speichern' })).not.toBeInTheDocument(), WAIT);

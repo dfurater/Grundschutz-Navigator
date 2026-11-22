@@ -178,9 +178,12 @@ export function useDocumentEditor<M extends string>({ localId, rootType, sameCon
   useEffect(() => registerAutosave(flush), [registerAutosave, flush]);  // Wer den Editor innerhalb des Bereichs verlässt, sichert offene Eingaben sofort statt nach der Wartezeit.
   const flushRef = useRef(flush);
   useEffect(() => { flushRef.current = flush; }, [flush]);
+  // Ein ausgehängter Editor übernimmt keinen Stand mehr und plant keinen Autosave: Die geöffnete Ansicht trägt den Arbeitsstand.
+  const mounted = useRef(true);
   useEffect(() => {
     const pendingFlush = flushRef;
-    return () => { void pendingFlush.current(); };
+    mounted.current = true;
+    return () => { mounted.current = false; void pendingFlush.current(); };
   }, []);
 
   const schedule = useCallback(() => {
@@ -190,7 +193,7 @@ export function useDocumentEditor<M extends string>({ localId, rootType, sameCon
 
   const adopt = useCallback<DocumentEditorCore<M>['adopt']>(async (document, merge) => {
     const before = latest.current;
-    if (saving.current || (!merge && options.current.hasPendingBindings?.(before.working, before.envelope))) return 'blocked';
+    if (!mounted.current || saving.current || (!merge && options.current.hasPendingBindings?.(before.working, before.envelope))) return 'blocked';
     if (!before.envelope) return 'failed';
     if (document.savedAt <= before.envelope.savedAt) return 'adopted';
     const merged = merge?.(before.envelope.source, document.source, before.working);
@@ -198,6 +201,7 @@ export function useDocumentEditor<M extends string>({ localId, rootType, sameCon
     const store = documentsRef.current;
     const [draft, bindings] = await Promise.all([store.getDraft(localId), store.listBindings()]);
     if (!draft.ok || !bindings.ok) return 'failed';
+    if (!mounted.current) return 'blocked';
     const current = latest.current;
     // Eingaben, ein Entwurf oder ein anderer Übernahmeversuch während des Lesens: nicht still überschreiben.
     if (merge && (draft.value || saving.current || current !== before)) return 'blocked';
