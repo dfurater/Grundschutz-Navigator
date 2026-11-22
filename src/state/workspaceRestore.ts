@@ -3,7 +3,8 @@ import type {
   LocalId, ScopeId, VerbundId, WorkspaceDocumentSummary, WorkspaceRestorePreview, WorkspaceScope, WorkspaceVerbund,
   WorkspaceVerbundRestorePreview,
 } from '@/domain/workspaceModel';
-import type { WorkspaceContextValue } from '@/state/WorkspaceContext';
+import { scopeBoundaryInput } from '@/domain/scopeBoundary';
+import type { ScopeBoundaryDraft, WorkspaceContextValue } from '@/state/WorkspaceContext';
 
 /** Schlüssel der offenen Anlage eines Anwendungsbereichs unter den Namensentwürfen; keine `scopeId` hat diese Form. */
 export const NEW_SCOPE_DRAFT = 'neu';
@@ -32,7 +33,9 @@ export type RestoreInput =
   | { readonly kind: 'orphan'; readonly localId: LocalId; readonly count: number }
   /** Offener Name eines Anwendungsbereichs: Umbenennung mit Vergleichsstand oder, ohne `scope`, eine Anlage. */
   | { readonly kind: 'scope'; readonly scope: ScopeName | null; readonly draft: string; readonly newVerbund?: never }
-  | { readonly kind: 'scope'; readonly scope: ScopeName; readonly draft: string; readonly newVerbund: true };
+  | { readonly kind: 'scope'; readonly scope: ScopeName; readonly draft: string; readonly newVerbund: true }
+  /** Offener Abgrenzungsentwurf eines Anwendungsbereichs; die Klärung kann ihn nur verwerfen. */
+  | { readonly kind: 'boundary'; readonly scope: ScopeName; readonly draft: ScopeBoundaryDraft };
 
 /** Schlüssel eines Scope-Eintrags unter den Namensentwürfen. */
 export function scopeDraftKey(entry: Extract<RestoreInput, { kind: 'scope' }>): string {
@@ -45,11 +48,13 @@ export function scopeDraftKey(entry: Extract<RestoreInput, { kind: 'scope' }>): 
  * ändert nichts; Eingaben unbeteiligter Verbünde gehören beim Verbund-Restore nicht dazu. Der Gesamt-Restore
  * ersetzt alle Importziele, auch solche, deren Dokument weder der Speicher noch die Sicherung kennt.
  */
-export function collectRestoreInputs({ scope, renameDrafts, rowDrafts = new Map(), scopeDrafts = new Map(), scopes = [], importTargets, verbuende, documents }: Readonly<{
+export function collectRestoreInputs({ scope, renameDrafts, rowDrafts = new Map(), scopeDrafts = new Map(), boundaryDrafts = new Map(), scopes = [], importTargets, verbuende, documents }: Readonly<{
   scope: RestoreScope;
   renameDrafts: ReadonlyMap<string, string>;
   /** Offene Namen zu Anwendungsbereichen; nur der Gesamt-Restore ersetzt Anwendungsbereiche. */
   scopeDrafts?: ReadonlyMap<string, string>;
+  /** Offene Abgrenzungsentwürfe je `scopeId`; ebenfalls nur vom Gesamt-Restore ersetzt. */
+  boundaryDrafts?: ReadonlyMap<string, ScopeBoundaryDraft>;
   scopes?: readonly WorkspaceScope[];
   /** Offene Umbenennungen in den Zeilen der Übersicht, getrennt von `renameDrafts` geführt. */
   rowDrafts?: ReadonlyMap<string, string>;
@@ -68,7 +73,7 @@ export function collectRestoreInputs({ scope, renameDrafts, rowDrafts = new Map(
   };
   renames(renameDrafts, false);
   renames(rowDrafts, true);
-  if (scope.kind === 'workspace') inputs.push(...scopeInputs(scopeDrafts, scopes));
+  if (scope.kind === 'workspace') inputs.push(...scopeInputs(scopeDrafts, scopes), ...boundaryInputs(boundaryDrafts, scopes));
   // Gespeicherte Dokumente gehen vor; aus der Sicherung kommen nur die, die der Speicher nicht mehr kennt.
   const candidates = new Map<LocalId, ScopeDocument>(scope.documents.map((document) => [document.localId, document]));
   for (const document of documents) candidates.set(document.localId, document);
@@ -100,6 +105,18 @@ function scopeInputs(drafts: ReadonlyMap<string, string>, scopes: readonly Works
     if (key === stored.scopeId) {
       if (draft.trim() !== stored.name) inputs.push({ kind: 'scope', scope, draft });
     } else if (draft.trim() !== '') inputs.push({ kind: 'scope', scope, draft, newVerbund: true });
+  }
+  return inputs;
+}
+
+/** Abgrenzungsentwürfe gespeicherter Bereiche, die vom gespeicherten Stand abweichen. */
+function boundaryInputs(drafts: ReadonlyMap<string, ScopeBoundaryDraft>, scopes: readonly WorkspaceScope[]): RestoreInput[] {
+  const inputs: RestoreInput[] = [];
+  for (const [scopeId, draft] of drafts) {
+    const stored = scopes.find((candidate) => candidate.scopeId === scopeId);
+    if (!stored) continue;
+    const unchanged = draft.base === stored.savedAt && JSON.stringify(draft.input) === JSON.stringify(scopeBoundaryInput(stored.items[0]));
+    if (!unchanged) inputs.push({ kind: 'boundary', scope: { scopeId: stored.scopeId, name: stored.name, savedAt: stored.savedAt }, draft });
   }
   return inputs;
 }

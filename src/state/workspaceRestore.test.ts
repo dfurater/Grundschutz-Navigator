@@ -59,3 +59,16 @@ it('führt offene Namen von Anwendungsbereichen nur beim Gesamt-Restore und nur 
   const unchanged = new Map([['55555555-5555-4555-8555-555555555555', ' Netz '], [NEW_SCOPE_DRAFT, '  ']]);
   expect(collectRestoreInputs({ ...base, scopeDrafts: unchanged, scope: { kind: 'workspace', documents: [] } })).toEqual([]);
 });
+
+it('führt geänderte Abgrenzungsentwürfe gespeicherter Bereiche nur beim Gesamt-Restore als Eingabe', async () => {
+  const { scopeBoundaryInput } = await import('@/domain/scopeBoundary');
+  const scope = { scopeId: '66666666-6666-4666-8666-666666666666' as ScopeId, name: 'Netz', createdAt: '', savedAt: 's1', items: [], evidence: [] } as WorkspaceScope;
+  const unchanged = { input: scopeBoundaryInput(undefined), base: 's1' };
+  const changed = { input: { ...scopeBoundaryInput(undefined), interfaces: 'Portal' }, base: 's1' };
+  const gone = { input: changed.input, base: 's0' };
+  const base = { renameDrafts: new Map(), importTargets: new Map(), verbuende: [], documents: [], scopes: [scope] };
+  expect(collectRestoreInputs({ ...base, scope: { kind: 'workspace', documents: [] }, boundaryDrafts: new Map([[scope.scopeId, unchanged]]) })).toEqual([]);
+  expect(collectRestoreInputs({ ...base, scope: { kind: 'workspace', documents: [] }, boundaryDrafts: new Map([[scope.scopeId, changed], ['77777777-7777-4777-8777-777777777777', gone]]) }))
+    .toEqual([{ kind: 'boundary', scope: { scopeId: scope.scopeId, name: 'Netz', savedAt: 's1' }, draft: changed }]);
+  expect(collectRestoreInputs({ ...base, scope: { kind: 'verbund', verbundId: target.verbundId, documents: [] }, boundaryDrafts: new Map([[scope.scopeId, changed]]) })).toEqual([]);
+});

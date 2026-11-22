@@ -36,6 +36,14 @@ const loadView = (port: WorkspacePort, verbundId: VerbundId, class1: readonly Wo
 
 const byName = (a: { readonly name: string }, b: { readonly name: string }) => a.name.localeCompare(b.name, 'de');
 
+/** Verwirft Namens- und Abgrenzungsentwürfe zu Bereichen, die der gelesene Bestand nicht mehr kennt. */
+function pruneScopeDrafts(scopes: readonly WorkspaceScope[], scopeDrafts: Map<string, string>, boundaryDrafts: Map<string, unknown>): void {
+  const keys = new Set([NEW_SCOPE_DRAFT, ...scopes.flatMap(({ scopeId }) => [scopeId, scopedVerbundDraftKey(scopeId)])]);
+  for (const drafts of [scopeDrafts, boundaryDrafts]) {
+    for (const key of drafts.keys()) if (!keys.has(key)) drafts.delete(key);
+  }
+}
+
 /** Paketzustände je `verbundId`; ein Lesefehler wird gemeldet und ergibt `null`, nie einen leeren Bestand. */
 function packageMap(
   states: Awaited<ReturnType<WorkspacePort['listRequirementPackages']>>,
@@ -339,9 +347,7 @@ export function WorkspaceProvider({ open = openWorkspaceStore, session: provided
       if (!current) return;
       setScopesFailed(!listed.ok);
       if (listed.ok) {
-        const draftKeys = new Set([NEW_SCOPE_DRAFT, ...listed.value.flatMap(({ scopeId }) => [scopeId, scopedVerbundDraftKey(scopeId)])]);
-        for (const key of scopeDrafts.keys()) if (!draftKeys.has(key)) scopeDrafts.delete(key);
-        for (const key of boundaryDrafts.keys()) if (!draftKeys.has(key)) boundaryDrafts.delete(key);
+        pruneScopeDrafts(listed.value, scopeDrafts, boundaryDrafts);
       } else {
         report(listed.diagnostic);
       }
@@ -471,6 +477,7 @@ export function WorkspaceProvider({ open = openWorkspaceStore, session: provided
           importTargets.clear();
           renameDrafts.clear();
           scopeDrafts.clear();
+          boundaryDrafts.clear();
           setScopesFailed(false);
           setLoaded(null);
           setVerbuende([]);
@@ -496,7 +503,7 @@ export function WorkspaceProvider({ open = openWorkspaceStore, session: provided
         else settle(first);
       });
     });
-  }, [port, importTargets, renameDrafts, scopeDrafts, invalidateAnalysis, freeze]);
+  }, [port, importTargets, renameDrafts, scopeDrafts, boundaryDrafts, invalidateAnalysis, freeze]);
 
   const quiet = useCallback(async <T,>(operation: (store: WorkspacePort) => Promise<WorkspaceResult<T>>): Promise<WorkspaceResult<T>> => {
     if (!port) return storageFailed();
@@ -672,7 +679,10 @@ export function WorkspaceProvider({ open = openWorkspaceStore, session: provided
       }
       discardReplacedInputs(preview, importTargets, renameDrafts);
       // Der Gesamt-Restore ersetzt alle Anwendungsbereiche; offene Namenseingaben dazu gelten nicht mehr.
-      if (preview.kind === 'workspace') scopeDrafts.clear();
+      if (preview.kind === 'workspace') {
+        scopeDrafts.clear();
+        boundaryDrafts.clear();
+      }
       setLoaded((current) => preview.kind === 'workspace' || current?.verbundId === preview.verbundId ? null : current);
       invalidateAnalysis();
       setRevision((value) => value + 1);
@@ -692,10 +702,15 @@ export function WorkspaceProvider({ open = openWorkspaceStore, session: provided
       if (!listed.ok) return listed;
       if (!storedScopes.ok) return storedScopes;
       return { ok: true, value: collectRestoreInputs({
-        scope, renameDrafts, rowDrafts, scopeDrafts, scopes: storedScopes.value, importTargets, verbuende: stored.value, documents: listed.value,
+        scope, renameDrafts, rowDrafts, scopeDrafts, boundaryDrafts, scopes: storedScopes.value, importTargets, verbuende: stored.value, documents: listed.value,
       }) };
     },
     discardRestoreInput: (input, rowDrafts) => {
+      if (input.kind === 'boundary') {
+        // Ein während der Klärung weiterbearbeiteter Entwurf bleibt offen.
+        if (boundaryDrafts.get(input.scope.scopeId) === input.draft) boundaryDrafts.delete(input.scope.scopeId);
+        return;
+      }
       if (input.kind === 'scope') {
         // Eine während des Speicherns weitergetippte Eingabe bleibt offen.
         if (scopeDrafts.get(scopeDraftKey(input)) === input.draft) scopeDrafts.delete(scopeDraftKey(input));

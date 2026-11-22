@@ -1,5 +1,6 @@
 // Gemeinsamer Sicherungs- und Restoreablauf der Übersicht (GSPP-677).
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { scopeBoundaryInput } from '@/domain/scopeBoundary';
 import { describe, expect, it, vi } from 'vitest';
 import { AppShell } from '@/app/AppShell';
 import { buildWorkspaceIndexUrl } from '@/app/routes';
@@ -323,6 +324,20 @@ describe('Sicherung wiederherstellen', () => {
     fireEvent.click(within(created).getByRole('button', { name: 'Verwerfen' }));
     expect(await sheet.findByRole('button', { name: 'Gesamten Bestand ersetzen' })).toBeInTheDocument();
     expect(workspace.scopeDrafts.size).toBe(0);
+  });
+
+  it('klärt beim Gesamt-Restore einen ungespeicherten Abgrenzungsentwurf nur durch Verwerfen', async () => {
+    const scope = { scopeId: '3c2b1a00-5b3f-4c6d-8e9f-0a1b2c3d4e5f' as ScopeId, name: 'Netz', createdAt: TODAY, savedAt: '2026-11-14T00:00:00.000Z', items: [], evidence: [] } as const;
+    renderWith(fakePort({ previewRestore: () => ok(workspacePreview), listScopes: () => ok([scope]) }));
+    await screen.findByRole('link', { name: VERBUND.name });
+    workspace.boundaryDrafts.set(scope.scopeId, { input: { ...scopeBoundaryInput(undefined), interfaces: 'Portal' }, base: scope.savedAt });
+    const sheet = await choose();
+    const row = (await sheet.findByText(/^Abgrenzung$/)).closest('li')!;
+    expect(row).toHaveTextContent('Abgrenzung · „Netz“ · nicht gespeichert');
+    expect(within(row).queryByRole('button', { name: 'Speichern' })).toBeNull();
+    fireEvent.click(within(row).getByRole('button', { name: 'Verwerfen' }));
+    expect(await sheet.findByRole('button', { name: 'Gesamten Bestand ersetzen' })).toBeInTheDocument();
+    expect(workspace.boundaryDrafts.size).toBe(0);
   });
 
   it('klärt eine Anlage, deren Speichern noch läuft, erst mit deren Ergebnis', async () => {
