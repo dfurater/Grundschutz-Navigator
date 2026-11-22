@@ -25,6 +25,7 @@ export function useProfileAnalysis(verbundId: VerbundId, localId: LocalId, sourc
 } {
   const { documents, analysisRevision } = useWorkspace();
   const { requestCatalog } = useContext(CatalogContext);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Dokument- oder Verbundwechsel starten eine neue Session und geben Worker und Verbundbasis der alten frei.
   const session = useMemo(() => createProfileAnalysisSession(), [verbundId, localId]);
   const [state, setState] = useState<{ analysis: ProfileAnalysis | null; failed: boolean; source: unknown; bindings: readonly WorkspaceBinding[]; documents?: WorkspaceDocuments; session?: typeof session; revision?: number }>({ analysis: null, failed: false, source: undefined, bindings: [] });
 

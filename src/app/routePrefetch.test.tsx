@@ -1,6 +1,14 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { useGlobalEventListener } from '@/hooks/useGlobalEventListener';
 import { createRoutePrefetcher, findLazyRoutePreload, internalRoutePath } from './routePrefetch';
+
+function PrefetchListeners({ handle }: { handle: (event: Event) => void }) {
+  useGlobalEventListener('document', 'pointerover', handle, true, undefined, true);
+  useGlobalEventListener('document', 'pointerdown', handle, true, undefined, true);
+  useGlobalEventListener('document', 'focusin', handle, true, undefined, true);
+  return null;
+}
 
 function setup(basename?: string) {
   const preload = vi.fn(() => Promise.resolve());
@@ -10,18 +18,11 @@ function setup(basename?: string) {
       : undefined
   ));
   const handle = createRoutePrefetcher(basename, lookup);
-  for (const type of PREFETCH_EVENTS) document.addEventListener(type, handle, true);
-  registeredHandlers.push(handle);
+  render(<PrefetchListeners handle={handle} />);
   return { preload, lookup };
 }
 
-const PREFETCH_EVENTS = ['pointerover', 'focusin', 'pointerdown'] as const;
-const registeredHandlers: EventListener[] = [];
-
 afterEach(() => {
-  for (const handle of registeredHandlers.splice(0)) {
-    for (const type of PREFETCH_EVENTS) document.removeEventListener(type, handle, true);
-  }
   vi.unstubAllGlobals();
 });
 
