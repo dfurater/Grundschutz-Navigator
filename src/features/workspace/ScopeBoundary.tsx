@@ -31,6 +31,11 @@ function Row({ term, children }: Readonly<{ term: string; children: ReactNode }>
   );
 }
 
+function boundaryAction(writable: boolean, present: boolean): string {
+  if (!present) return 'Abgrenzung erfassen';
+  return writable ? 'Abgrenzung bearbeiten' : 'Abgrenzung ansehen';
+}
+
 /** Karte „Abgrenzung“ der Anwendungsbereichsübersicht; der Quellenstand stammt nur aus `source`, nie aus `savedAt`. */
 export function ScopeBoundaryCard({ scope, writable, onEdit }: Readonly<{ scope: WorkspaceScope; writable: boolean; onEdit: (trigger: HTMLButtonElement) => void }>) {
   const item: ScopeBoundaryItem | undefined = scope.items[0];
@@ -46,9 +51,10 @@ export function ScopeBoundaryCard({ scope, writable, onEdit }: Readonly<{ scope:
         {state.kind === 'open' && <Row term="Noch offen">{state.missing.join(', ')}</Row>}
         <Row term="Zuständigkeit">{responsibility ? <span>{responsibility}</span> : <BoundaryChip kind="missing" />}</Row>
       </dl>
-      <button type="button" disabled={!writable} onClick={(event) => onEdit(event.currentTarget)}
+      {/* Bei Schreibsperre bleibt eine vorhandene Abgrenzung im schreibgeschützten Editor lesbar. */}
+      <button type="button" disabled={!writable && !item} onClick={(event) => onEdit(event.currentTarget)}
         className={`flex min-h-touch items-center rounded text-sm font-semibold catalog-prose-link disabled:cursor-not-allowed disabled:opacity-60 desktop:min-h-0 ${FOCUS_RING}`}>
-        {item ? 'Abgrenzung bearbeiten' : 'Abgrenzung erfassen'}<span aria-hidden="true">&nbsp;→</span>
+        {boundaryAction(writable, item !== undefined)}<span aria-hidden="true">&nbsp;→</span>
       </button>
     </section>
   );
@@ -96,10 +102,12 @@ export function ScopeBoundaryEditor({ scopeId, onClose, onSaved }: Readonly<{ sc
   const save = async () => {
     if (busy || !scope || !draft) return;
     setBusy(true);
-    const result = await saveScopeBoundary(scope.scopeId, draft.base, draft.input);
+    const saved = draft;
+    const result = await saveScopeBoundary(scope.scopeId, saved.base, saved.input);
     setBusy(false);
     if (result.ok) {
-      boundaryDrafts.delete(scopeId);
+      // Ein nach einem Routenwechsel neu begonnener Entwurf ersetzt den Eintrag und bleibt erhalten.
+      if (boundaryDrafts.get(scopeId) === saved) boundaryDrafts.delete(scopeId);
       onSaved();
     } else setFailure(result.diagnostic.code === 'WORKSPACE_SAVE_CONFLICT' ? 'conflict' : 'failed');
   };
@@ -110,7 +118,7 @@ export function ScopeBoundaryEditor({ scopeId, onClose, onSaved }: Readonly<{ sc
 
   return (
     <div className="mx-auto w-full max-w-screen-2xl space-y-4 p-4 desktop:px-7 desktop:py-6">
-      <h1 ref={heading} tabIndex={-1} className="type-page-title focus:outline-none">{scope?.items[0] ? 'Abgrenzung bearbeiten' : 'Abgrenzung erfassen'}</h1>
+      <h1 ref={heading} tabIndex={-1} className="type-page-title focus:outline-none">{boundaryAction(writable, scope?.items[0] !== undefined)}</h1>
       <WorkspaceNotices />
       <form className="max-w-3xl space-y-4" onSubmit={(event) => { event.preventDefault(); void save(); }}>
         <fieldset disabled={!writable || busy || !draft} className="space-y-4">

@@ -2,7 +2,8 @@ import 'fake-indexeddb/auto';
 import { fireEvent, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { buildScopeUrl, buildWorkspaceIndexUrl } from '@/app/routes';
-import { scopeBoundaryInput } from '@/domain/scopeBoundary';
+import { buildScopeBoundary, scopeBoundaryInput } from '@/domain/scopeBoundary';
+import type { WorkspaceResult, WorkspaceScope } from '@/domain/workspaceModel';
 import { SCOPE, fail, fakePort, ok } from '@/test/fakeWorkspacePort';
 import { mainLandmark as main, renderWorkspaceArea as renderArea, renderWorkspaceWithPort } from '@/test/renderWorkspaceArea';
 import { SENTINEL, readStore, resetWorkspace } from '@/test/workspaceAreaFixture';
@@ -127,8 +128,40 @@ describe('Abgrenzung des Anwendungsbereichs', () => {
     expect(within(main()).getByLabelText('Schnittstellen')).toHaveValue('');
   });
 
-  it('sperrt Erfassen bei Schreibsperre', async () => {
-    renderWorkspaceWithPort(fakePort({ schemaStatus: () => ok('newer' as const), listScopes: () => ok([SCOPE]) }), buildScopeUrl(SCOPE.scopeId));
+  it('sperrt Erfassen bei Schreibsperre und zeigt eine vorhandene Abgrenzung schreibgeschützt', async () => {
+    const first = renderWorkspaceWithPort(fakePort({ schemaStatus: () => ok('newer' as const), listScopes: () => ok([SCOPE]) }), buildScopeUrl(SCOPE.scopeId));
     expect(await (await findCard()).findByRole('button', { name: /Abgrenzung erfassen/ })).toBeDisabled();
+    first.unmount();
+    const item = buildScopeBoundary('88888888-8888-4888-8888-888888888888', { ...scopeBoundaryInput(undefined), interfaces: 'Portal' });
+    const stored = { ...SCOPE, items: [item] } as unknown as WorkspaceScope;
+    renderWorkspaceWithPort(fakePort({ schemaStatus: () => ok('newer' as const), listScopes: () => ok([stored]) }), buildScopeUrl(SCOPE.scopeId));
+    const view = await (await findCard()).findByRole('button', { name: /Abgrenzung ansehen/ });
+    expect(view).toBeEnabled();
+    fireEvent.click(view);
+    expect(within(main()).getByLabelText('Schnittstellen')).toHaveValue('Portal');
+    expect(within(main()).getByLabelText('Schnittstellen')).toBeDisabled();
+    expect(within(main()).getByRole('button', { name: 'Speichern' })).toBeDisabled();
+  });
+
+  it('löscht nach dem Speichern keinen inzwischen neu begonnenen Entwurf', async () => {
+    let finish: (value: WorkspaceResult<WorkspaceScope>) => void = () => undefined;
+    const saveScopeBoundary = vi.fn(() => new Promise<WorkspaceResult<WorkspaceScope>>((resolve) => { finish = resolve; }));
+    const { router } = renderWorkspaceWithPort(fakePort({ listScopes: () => ok([SCOPE]), saveScopeBoundary }), buildScopeUrl(SCOPE.scopeId));
+    const edit = await (await findCard()).findByRole('button', { name: /Abgrenzung erfassen/ });
+    await waitFor(() => expect(edit).toBeEnabled());
+    fireEvent.click(edit);
+    type('Schnittstellen', 'Erste');
+    fireEvent.click(within(main()).getByRole('button', { name: 'Speichern' }));
+    await router.navigate(buildWorkspaceIndexUrl());
+    await within(main()).findByRole('heading', { level: 1, name: 'Arbeitsbereich' });
+    await router.navigate(buildScopeUrl(SCOPE.scopeId));
+    fireEvent.click(await (await findCard()).findByRole('button', { name: /Abgrenzung erfassen/ }));
+    type('Schnittstellen', 'Zweite');
+    finish({ ok: true, value: SCOPE });
+    await router.navigate(buildWorkspaceIndexUrl());
+    await within(main()).findByRole('heading', { level: 1, name: 'Arbeitsbereich' });
+    await router.navigate(buildScopeUrl(SCOPE.scopeId));
+    fireEvent.click(await (await findCard()).findByRole('button', { name: /Abgrenzung erfassen/ }));
+    expect(within(main()).getByLabelText('Schnittstellen')).toHaveValue('Zweite');
   });
 });
