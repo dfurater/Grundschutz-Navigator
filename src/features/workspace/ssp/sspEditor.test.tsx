@@ -2,6 +2,7 @@ import 'fake-indexeddb/auto';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildStationUrl, buildWorkspaceDocumentUrl } from '@/app/routes';
+import { PROJECT_PROPS_NAMESPACE } from '@/domain/projectProps';
 import { readSspValue } from '@/domain/sspAuthoring';
 import { downloadBlob } from '@/adapters/browserDownload';
 import type { CatalogState, LoadedCatalogState } from '@/domain/models';
@@ -192,6 +193,102 @@ describe('Zielobjektbestand', () => {
 });
 
 describe('Geschäftsprozesse', () => {
+  it('bietet den Status auch nach explizitem Wechsel zum Geschäftsprozess an', async () => {
+    const ssp = await addSsp(seeded.verbundId, makeFullSsp());
+    renderArea(buildWorkspaceDocumentUrl(seeded.verbundId, ssp.localId), withGspp());
+    await click('Komponente hinzufügen');
+    const component = within(within(main()).getByRole('listitem', { name: 'Komponente 3' }));
+    fireEvent.change(component.getByLabelText(/^Typ/), { target: { value: 'business-process' } });
+    const section = within(within(main()).getByRole('region', { name: 'Geschäftsprozesse' }));
+    fireEvent.click(section.getByText('Geschäftsprozess ohne Namen'));
+    expect(section.getByLabelText('Status')).toHaveValue('');
+    fireEvent.change(section.getByLabelText('Status'), { target: { value: 'operational' } });
+    await click('Prozess übernehmen');
+    expect(section.getByLabelText('Status')).toHaveValue('operational');
+  });
+
+  it('speichert eine vollständige Bewertung mit Verantwortung, Anwendung und eigener Kategorie', async () => {
+    const ssp = await addSsp(seeded.verbundId, makeFullSsp());
+    renderArea(buildWorkspaceDocumentUrl(seeded.verbundId, ssp.localId), withGspp());
+    await click('Geschäftsprozess hinzufügen');
+    const section = within(within(main()).getByRole('region', { name: 'Geschäftsprozesse' }));
+    const change = (label: string, value: string) => fireEvent.change(section.getByLabelText(label), { target: { value } });
+    change('Prozess-ID', 'P-02');
+    change('Name', 'Rechnungsprüfung');
+    change('Kurzbeschreibung', 'Prüft Rechnungen und vermeidet Doppelzahlungen.');
+    change('Zweck', 'Zahlungen freigeben');
+    fireEvent.click(section.getByRole('checkbox', { name: /Partei.*Beispielorganisation/ }));
+    fireEvent.click(section.getByRole('checkbox', { name: /Anwendung.*Fachanwendung/ }));
+    for (const goal of ['Vertraulichkeit', 'Integrität', 'Verfügbarkeit']) {
+      change(goal, 'hoch');
+      change(`Begründung für ${goal}`, 'Ausfall verzögert Zahlungen.');
+    }
+    fireEvent.click(section.getByText('Eigene Schutzbedarfskategorie'));
+    fireEvent.click(section.getAllByRole('button', { name: 'Kategorie anlegen' })[1]);
+    const apply = section.getByRole('button', { name: 'Prozess übernehmen' });
+    expect(section.getByText(/GS\+\+-Zuordnung fehlt. Effektiver Wert unbekannt/)).toBeInTheDocument();
+    expect(apply).toBeDisabled();
+    change('Kategoriename', 'Kritisch');
+    change('Definition', 'Verzögerung gefährdet den Betrieb.');
+    change('GS++-Zuordnung', 'normal');
+    change('Begründung der Zuordnung', 'Zahlungen können verspätet sein.');
+    expect(section.getByText('Konflikt mit der GS++-Zuordnung (normal).')).toBeInTheDocument();
+    expect(apply).toBeDisabled();
+    change('GS++-Zuordnung', 'hoch');
+    fireEvent.click(apply);
+    expect(within(main()).getByText(/Prozess-Schutzbedarf: 1 von 1 Prozessen vollständig/)).toBeInTheDocument();
+    await click('Speichern');
+    await waitFor(async () => expect((await readStore(store => store.getDocument(ssp.localId)))?.documentState).toBe('export-ready'), WAIT);
+    await click('Export');
+    await waitFor(() => expect(downloadBlob).toHaveBeenCalled(), WAIT);
+    const exported = JSON.parse(await vi.mocked(downloadBlob).mock.calls[0][0].text());
+    const path = ['system-implementation', 'components', 2];
+    expect(readSspValue(exported, [...path, 'responsible-roles'])).toEqual([{ 'role-id': 'process-owner', 'party-uuids': [SSP_FIXTURE_IDS.party] }]);
+    expect(readSspValue(exported, [...path, 'props'])).toContainEqual(expect.objectContaining({ name: 'process-application-uuid', value: SSP_FIXTURE_IDS.software }));
+    expect(readSspValue(exported, ['metadata', 'props'])).toContainEqual(expect.objectContaining({ name: 'process-category-mapping', value: 'hoch' }));
+
+    fireEvent.click(section.getByRole('button', { name: 'Prozess entfernen…' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Prozess entfernen' }));
+    expect(await within(main()).findByText('Prozess-Schutzbedarf offen')).toBeInTheDocument();
+  });
+
+  it('behält bei konkurrierenden Änderungen an einer Kategorie beide Entwürfe sichtbar', async () => {
+    const ns = PROJECT_PROPS_NAMESPACE;
+    const category = 'cat-intern';
+    const source = withSspBody(makeFullSsp(), body => {
+      body.metadata.props = [
+        { ns, name: 'process-category-label', group: category, value: 'Intern' },
+        { ns, name: 'process-category-definition', group: category, value: 'Interne Definition' },
+        { ns, name: 'process-category-mapping', group: category, value: 'hoch', remarks: 'Begründung' },
+      ];
+      body['system-implementation'].components = body['system-implementation'].components.map((component, index) => ({
+        ...component, type: 'business-process',
+        props: [
+          { ns, name: 'process-id', value: `P-0${index + 1}` },
+          { ns, name: 'process-protection-integrity', value: 'hoch', remarks: 'Ausfallfolge' },
+          { ns, name: 'process-protection-category', group: 'integrity', value: category },
+        ],
+      }));
+    });
+    const ssp = await addSsp(seeded.verbundId, source);
+    renderArea(buildWorkspaceDocumentUrl(seeded.verbundId, ssp.localId), withGspp());
+    const rows = await within(main()).findAllByText(/^P-0[12]$/);
+    const [first, second] = rows.map(row => {
+      fireEvent.click(row);
+      return within(row.closest('details')!);
+    });
+    const update = (row: ReturnType<typeof within>, value: string) =>
+      fireEvent.change(row.getByLabelText('Definition'), { target: { value } });
+    update(first, 'Definition A');
+    update(second, 'Definition B');
+    fireEvent.click(first.getByRole('button', { name: 'Prozess übernehmen' }));
+    expect(second.getByRole('alert')).toHaveTextContent('Eine andere Prozesszeile hat die Kategorie geändert');
+    expect(second.getByLabelText('Definition')).toHaveValue('Definition B');
+    expect(second.getByRole('button', { name: 'Prozess übernehmen' })).toBeDisabled();
+    fireEvent.click(second.getByRole('button', { name: 'Eingaben zurücksetzen' }));
+    expect(second.getByLabelText('Definition')).toHaveValue('Definition A');
+  });
+
   it('übernimmt die Schutzziele einzeln und speichert den Prozess getrennt von Komponenten', async () => {
     const ssp = await addSsp(seeded.verbundId, makeFullSsp());
     renderArea(buildWorkspaceDocumentUrl(seeded.verbundId, ssp.localId), withGspp());

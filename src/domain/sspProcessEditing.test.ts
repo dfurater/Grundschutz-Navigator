@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { makeFullSsp, withSspBody } from '@/test/fixtures/systemSecurityPlans';
+import { makeFullSsp, SSP_FIXTURE_IDS, withSspBody } from '@/test/fixtures/systemSecurityPlans';
 import type { RawOscalProp } from '@/domain/models';
 import { PROJECT_PROPS_NAMESPACE as ns } from '@/domain/projectProps';
 import { readSspValue } from '@/domain/sspAuthoring';
@@ -37,6 +37,43 @@ describe('Geschäftsprozess im SSP bearbeiten', () => {
     expect(deriveSspProcessProtection(after).processes[0].riskConsideration).toBe('required');
     const exported = await exportSspDocument({ source: after, rootType: 'system-security-plan', documentState: 'export-ready' });
     expect(exported.ok && JSON.parse(exported.json)).toEqual(after);
+  });
+
+  it('verwirft konkurrierende Kategorienänderungen und erhält fachlich unabhängige Felder', () => {
+    const source = sourceWith([], true);
+    const before = readProcessDraft(source, path);
+    const category = before.categories[0];
+    const draft = { ...before, categories: [{ ...category, level: 'hoch' }] };
+    const changed = writeProcessDraft(source, path, draft);
+    const withReason = writeProcessDraft(changed, path, { ...before, categories: [{ ...category, reason: 'Präzisierung' }] }, before);
+    expect(readProcessDraft(withReason, path).categories[0]).toMatchObject({ level: 'hoch', reason: 'Präzisierung' });
+    expect(() => writeProcessDraft(withReason, path, { ...before, categories: [{ ...category, reason: 'Veralteter Entwurf' }] }, before))
+      .toThrow('SSP_PROCESS_CATEGORY_EDIT_CONFLICT');
+  });
+
+  it('wechselt zwischen wesentlicher Anwendung und begründetem Nullfall und erhält native Erweiterungen', () => {
+    const initial = withSspBody(sourceWith([legacy, objective]), body => {
+      const process = body['system-implementation'].components[0];
+      process.status.remarks = 'Erhalten';
+    });
+    const before = readProcessDraft(initial, path);
+    const assigned = writeProcessDraft(initial, path, { ...before,
+      owners: [SSP_FIXTURE_IDS.party], applications: [SSP_FIXTURE_IDS.software], status: 'other',
+    });
+    expect(readSspValue(assigned, [...path, 'status'])).toEqual({ state: 'other', remarks: 'Erhalten' });
+    expect(readSspValue(assigned, ['metadata', 'roles'])).toContainEqual(expect.objectContaining({ id: 'process-owner' }));
+
+    const current = readProcessDraft(assigned, path);
+    const none = writeProcessDraft(assigned, path, { ...current, owners: [], applications: [], noApplications: true,
+      noApplicationsReason: 'Papierakte', title: '', status: '', objectives: { ...current.objectives,
+        integrity: { ...current.objectives.integrity, level: '', reason: '' },
+      },
+    });
+    expect(readSspValue(none, [...path, 'props'])).toEqual([legacy, { ns, name: 'process-applications-none', value: 'true', remarks: 'Papierakte' }]);
+    expect(readSspValue(none, [...path, 'status'])).toEqual({ remarks: 'Erhalten' });
+    expect(readSspValue(none, [...path, 'responsible-roles'])).toEqual(readSspValue(initial, [...path, 'responsible-roles']));
+    const reassigned = writeProcessDraft(none, path, { ...readProcessDraft(none, path), applications: [SSP_FIXTURE_IDS.software], noApplications: false });
+    expect(readSspValue(reassigned, [...path, 'props'])).toEqual([legacy, { ns, name: 'process-application-uuid', value: SSP_FIXTURE_IDS.software }]);
   });
 
   it.each([

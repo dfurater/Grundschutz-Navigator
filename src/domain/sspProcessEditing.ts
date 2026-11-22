@@ -33,6 +33,7 @@ export interface ProcessDraft {
   readonly title: string;
   readonly description: string;
   readonly purpose: string;
+  readonly status: string;
   readonly owners: readonly string[];
   readonly applications: readonly string[];
   readonly noApplications: boolean;
@@ -77,6 +78,7 @@ export function readProcessDraft(source: unknown, path: SspPath): ProcessDraft {
     title: readString(item.title) ?? '',
     description: readString(item.description) ?? '',
     purpose: readString(item.purpose) ?? '',
+    status: readString(readSspValue(source, [...path, 'status', 'state'])) ?? '',
     owners: readArray(owner?.['party-uuids']).filter((party): party is string => typeof party === 'string'),
     applications: targetProps(item, 'process-application-uuid').map(prop => prop.value),
     noApplications: none !== undefined,
@@ -140,6 +142,38 @@ function writeApplications(item: JsonObject, before: ProcessDraft, after: Proces
   }
 }
 
+const CATEGORY_FIELDS = ['label', 'definition', 'level', 'reason'] as const;
+
+function mergeCategory(current: ProcessCategoryDraft, before: ProcessCategoryDraft, draft: ProcessCategoryDraft): ProcessCategoryDraft | undefined {
+  const next = { ...current };
+  for (const field of CATEGORY_FIELDS) {
+    if (draft[field] === before[field]) continue;
+    if (current[field] !== before[field] && current[field] !== draft[field]) return undefined;
+    next[field] = draft[field];
+  }
+  return next;
+}
+
+/** Führt unabhängige Änderungen an derselben Kategorie zusammen und erkennt konkurrierende Eingaben. */
+export function rebaseProcessCategories(
+  current: readonly ProcessCategoryDraft[],
+  before: readonly ProcessCategoryDraft[],
+  draft: readonly ProcessCategoryDraft[],
+): ProcessCategoryDraft[] | undefined {
+  const merged = new Map(current.map(category => [category.id, category]));
+  for (const proposed of draft) {
+    const previous = before.find(category => category.id === proposed.id);
+    if (previous && CATEGORY_FIELDS.every(field => previous[field] === proposed[field])) continue;
+    const live = merged.get(proposed.id);
+    if (!previous && !live) { merged.set(proposed.id, proposed); continue; }
+    if (!previous || !live) return undefined;
+    const next = mergeCategory(live, previous, proposed);
+    if (!next) return undefined;
+    merged.set(proposed.id, next);
+  }
+  return [...merged.values()];
+}
+
 function writeCategory(metadata: JsonObject, category: ProcessCategoryDraft, previous?: ProcessCategoryDraft): void {
   const group = category.id;
   if (category.label !== previous?.label) setProp(metadata, 'process-category-label', category.label.trim(), { group });
@@ -160,6 +194,26 @@ function writeObjectives(item: JsonObject, before: ProcessDraft['objectives'], a
   }
 }
 
+function writeStatus(item: JsonObject, state: string): void {
+  const status = isJsonObject(item.status) ? item.status : {};
+  if (state) {
+    item.status = { ...status, state };
+    return;
+  }
+  delete status.state;
+  if (Object.keys(status).length) item.status = status;
+  else delete item.status;
+}
+
+function writeCategories(source: unknown, metadata: JsonObject, before: ProcessDraft, draft: ProcessDraft): void {
+  const current = readProcessCategories(source);
+  const categories = rebaseProcessCategories(current, before.categories, draft.categories);
+  if (!categories) throw new SspPatchError('SSP_PROCESS_CATEGORY_EDIT_CONFLICT');
+  for (const category of categories) {
+    writeCategory(metadata, category, current.find(previous => previous.id === category.id));
+  }
+}
+
 /** Gezielter Quellpatch. Die Vorschau und der Schreibpfad prüfen denselben Quellgraphen. */
 export function writeProcessDraft(source: unknown, path: SspPath, draft: ProcessDraft, before = readProcessDraft(source, path)): unknown {
   if (JSON.stringify(before) === JSON.stringify(draft)) return source;
@@ -173,12 +227,11 @@ export function writeProcessDraft(source: unknown, path: SspPath, draft: Process
     if (draft[field].trim()) item[field] = draft[field];
     else delete item[field];
   }
+  if (before.status !== draft.status) writeStatus(item, draft.status);
   if (before.id !== draft.id) setProp(item, 'process-id', draft.id.normalize('NFC').trim());
   if (JSON.stringify(before.owners) !== JSON.stringify(draft.owners)) writeOwners(item, metadata, draft.owners);
   writeApplications(item, before, draft);
   writeObjectives(item, before.objectives, draft.objectives);
-  for (const category of draft.categories) {
-    writeCategory(metadata, category, before.categories.find(previous => previous.id === category.id));
-  }
+  writeCategories(source, metadata, before, draft);
   return copy;
 }

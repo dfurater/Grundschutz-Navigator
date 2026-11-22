@@ -2,12 +2,14 @@ import { useId } from 'react';
 import { Button } from '@/components/Button';
 import { CheckboxLabel } from '@/components/CheckboxLabel';
 import { PROCESS_GOALS, PROCESS_GOAL_KEYS, type ProcessCategoryDraft, type ProcessDraft, type ProcessGoal } from '@/domain/sspProcessEditing';
+import { SSP_COMPONENT_STATES } from '@/domain/sspAuthoring';
 import type { ProcessProtection } from '@/domain/sspProcessProtection';
 import { INPUT } from '@/features/workspace/profile/ProfileMarks';
 
 const GRID = 'grid gap-3 desktop:grid-cols-2';
 const FIELD_LABEL = 'block text-sm font-medium';
 const EFFECTIVE_VALUES = { normal: 'normal', hoch: 'hoch', unknown: 'unbekannt', conflict: 'widersprüchlich' };
+const COMPONENT_STATES = SSP_COMPONENT_STATES.map(value => ({ value, label: value }));
 const LEVELS = [{ value: 'normal', label: 'normal' }, { value: 'hoch', label: 'hoch' }];
 const ERROR = 'text-sm text-[var(--color-danger-text)]';
 
@@ -106,6 +108,7 @@ export function ProcessFields({ draft, update, parties, applications, protection
       </div>
       <ProcessText label="Kurzbeschreibung" multiline value={draft.description} onChange={description => update({ ...draft, description })} />
       <ProcessText label="Zweck" value={draft.purpose} onChange={purpose => update({ ...draft, purpose })} />
+      <ProcessSelect label="Status" value={draft.status} options={COMPONENT_STATES} onChange={status => update({ ...draft, status })} />
     </fieldset>
     <fieldset className="space-y-1">
       <legend className="text-sm font-semibold">Fachliche Verantwortung</legend>

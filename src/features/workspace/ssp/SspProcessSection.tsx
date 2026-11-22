@@ -6,7 +6,7 @@ import { isJsonObject, readArray, readString } from '@/domain/jsonGuards';
 import { isOscalUuid } from '@/domain/identifierQuery';
 import { BUSINESS_PROCESS_COMPONENT_TYPE } from '@/domain/projectProps';
 import { addSspItem, readSspValue, removeSspComponent, type SspPath } from '@/domain/sspAuthoring';
-import { PROCESS_GOALS, PROCESS_GOAL_KEYS, readProcessDraft, SSP_COMPONENT_PATH, writeProcessDraft, type ProcessDraft } from '@/domain/sspProcessEditing';
+import { PROCESS_GOALS, PROCESS_GOAL_KEYS, readProcessDraft, rebaseProcessCategories, SSP_COMPONENT_PATH, writeProcessDraft, type ProcessDraft } from '@/domain/sspProcessEditing';
 import { deriveSspProcessProtection, processProtectionFailure, type ProcessProtection, type SspProcessProtection } from '@/domain/sspProcessProtection';
 import { targetProps } from '@/domain/sspTargetObjects';
 import { FOCUS_RING } from '@/features/workspace/DocumentMarks';
@@ -111,9 +111,11 @@ function ProcessRow({ editor, path, protection, autoOpen, parties, applications 
     details.current.open = true;
     summary.current?.focus();
   }, [autoOpen]);
-  const draft = pending?.value ?? base;
-  const before = pending?.before ?? base;
-  const preview = pending ? deriveSspProcessProtection(writeProcessDraft(editor.working, path, draft, before))
+  const categories = pending ? rebaseProcessCategories(base.categories, pending.before.categories, pending.value.categories) : base.categories;
+  const categoryConflict = categories === undefined;
+  const draft = pending ? { ...pending.value, categories: categories ?? pending.value.categories } : base;
+  const before = pending ? { ...pending.before, categories: categoryConflict ? pending.before.categories : base.categories } : base;
+  const preview = pending && !categoryConflict ? deriveSspProcessProtection(writeProcessDraft(editor.working, path, draft, before))
     .processes.find(process => process.path === protection.path) ?? protection : protection;
   const errors = reasonLines(draft, preview);
   const incompleteInput = hasIncompleteProcessInput(draft, before);
@@ -156,9 +158,10 @@ function ProcessRow({ editor, path, protection, autoOpen, parties, applications 
         {errors.length > 0 && <span className="block text-sm text-[var(--color-text-secondary)]">{errors.join(' · ')}</span>}
       </output>
       <ProcessFields draft={draft} update={update} parties={parties} applications={applications} protection={preview} />
-      {pending && (invalid || incompleteInput) && <p role="alert" className="text-sm text-[var(--color-danger-text)]">Prozess kann noch nicht übernommen werden. Angaben und Zuordnungen prüfen.</p>}
+      {categoryConflict && <p role="alert" className="text-sm text-[var(--color-danger-text)]">Eine andere Prozesszeile hat die Kategorie geändert. Eingaben prüfen oder zurücksetzen.</p>}
+      {pending && !categoryConflict && (invalid || incompleteInput) && <p role="alert" className="text-sm text-[var(--color-danger-text)]">Prozess kann noch nicht übernommen werden. Angaben und Zuordnungen prüfen.</p>}
       <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-        <Button variant="secondary" className="min-h-touch" disabled={!pending || invalid || incompleteInput} onClick={() => {
+        <Button variant="secondary" className="min-h-touch" disabled={!pending || categoryConflict || invalid || incompleteInput} onClick={() => {
           if (editor.apply(source => writeProcessDraft(source, path, draft, before))) reset();
         }}>Prozess übernehmen</Button>
         <Button variant="ghost" className="min-h-touch" disabled={!pending} onClick={reset}>Eingaben zurücksetzen</Button>
