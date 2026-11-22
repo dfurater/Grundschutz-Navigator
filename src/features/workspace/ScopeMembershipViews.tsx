@@ -15,7 +15,7 @@ type MembershipView =
   | { readonly kind: 'assign' | 'create'; readonly scope: WorkspaceScope }
   | { readonly kind: 'move'; readonly verbundId: VerbundId; readonly remove?: boolean };
 
-type OpenMembershipView = (view: MembershipView, trigger: HTMLButtonElement) => void;
+export type OpenMembershipView = (view: MembershipView, trigger: HTMLButtonElement) => void;
 type ViewActions = Readonly<{ onClose: () => void; onSaved: () => void }>;
 type InventoryRefresh = 'save' | 'conflict';
 

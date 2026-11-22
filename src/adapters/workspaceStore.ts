@@ -22,6 +22,7 @@ import { exportWorkspaceBackupSnapshot, restoreWorkspaceBackupSnapshot, exportVe
 import { StorageFailure, failure, reject, timestamp } from '@/adapters/workspaceStorageFailure';
 import { deleteDatabase, storedDatabaseShape, withinDeadline } from '@/adapters/workspaceDatabaseLifecycle';
 import { migrateWorkspaceStorage } from '@/adapters/workspaceMigration';
+import { buildScopeBoundary, type ScopeBoundaryInput } from '@/domain/scopeBoundary';
 import { validWorkspaceScope } from '@/adapters/workspaceBackupStructure';
 import { reviewTrailInWorker } from '@/adapters/reviewTrailWork';
 import { appendDecisionError, deriveReviewState, documentStamp, resolveActionReferences, REVIEW_ACTIONS_SYSTEM, REVIEW_ACTION_TYPE_APPROVED } from '@/domain/reviewTrail';
@@ -48,7 +49,7 @@ export const WORKSPACE_SCHEMA_V3 = Object.freeze({
   workspaceMeta: 'id',
 });
 
-/** Layout from v4 on; v5 adds only the optional `requirementPackage` field of `verbuende`. */
+/** Layout from v4 on; v5 adds only the optional `requirementPackage` field of `verbuende`, v6 only the boundary entry in `methodikScopes.items`. */
 export const WORKSPACE_SCHEMA = Object.freeze({ ...WORKSPACE_SCHEMA_V3, methodikScopes: 'scopeId' });
 
 export const WORKSPACE_SCHEMA_V1 = Object.freeze({
@@ -205,7 +206,7 @@ export class WorkspaceStore {
   /** Declared steps share one atomic versionchange transaction. */
   private static declareVersions(db: Dexie): void {
     db.version(1).stores(WORKSPACE_SCHEMA_V1);
-    for (const version of [2, 3, 4, STORAGE_SCHEMA_VERSION]) {
+    for (const version of [2, 3, 4, 5, STORAGE_SCHEMA_VERSION]) {
       db.version(version).stores(schemaForVersion(version)).upgrade(async transaction => {
         try { await migrateWorkspaceStorage(transaction, version - 1, version); }
         catch { reject('WORKSPACE_MIGRATION_FAILED'); }
@@ -298,6 +299,19 @@ export class WorkspaceStore {
       const scope = await this.expectedScope({ scopeId, savedAt: expectedSavedAt });
       if (scope.name === name) return scope;
       const updated = { ...writtenRow(scope), name, savedAt: stamp };
+      if (!validWorkspaceScope(updated)) reject('WORKSPACE_SCOPE_INVALID');
+      await this.scopes.put(updated);
+      return updated;
+    });
+  }
+
+  /** Speichert die Abgrenzung unter CAS auf `savedAt` des Anwendungsbereichs; die `itemId` bleibt über Überarbeitungen stabil. */
+  saveScopeBoundary(scopeId: ScopeId, expectedSavedAt: string, input: ScopeBoundaryInput): Promise<WorkspaceResult<WorkspaceScope>> {
+    return this.write(async stamp => {
+      const scope = await this.expectedScope({ scopeId, savedAt: expectedSavedAt });
+      const item = buildScopeBoundary(scope.items[0]?.itemId ?? crypto.randomUUID(), input);
+      if (!item) reject('WORKSPACE_SCOPE_INVALID');
+      const updated: WorkspaceScope = { ...writtenRow(scope), items: [item], savedAt: stamp };
       if (!validWorkspaceScope(updated)) reject('WORKSPACE_SCOPE_INVALID');
       await this.scopes.put(updated);
       return updated;

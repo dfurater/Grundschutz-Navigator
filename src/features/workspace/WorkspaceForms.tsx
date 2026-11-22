@@ -3,7 +3,7 @@ import { Button } from '@/components/Button';
 import { isVerbundName } from '@/domain/workspaceModel';
 import { FOCUS_RING } from '@/features/workspace/DocumentMarks';
 
-const INPUT = `min-h-touch w-full rounded-md border border-[var(--color-border-strong)] bg-[var(--color-surface-base)] px-3 py-2 text-base text-[var(--color-text-primary)] shadow-sm placeholder:text-[var(--color-text-muted)] focus-visible:border-[var(--color-focus-ring)] sm:text-sm desktop:min-h-0 ${FOCUS_RING}`;
+export const INPUT = `min-h-touch w-full rounded-md border border-[var(--color-border-strong)] bg-[var(--color-surface-base)] px-3 py-2 text-base text-[var(--color-text-primary)] shadow-sm placeholder:text-[var(--color-text-muted)] focus-visible:border-[var(--color-focus-ring)] sm:text-sm desktop:min-h-0 ${FOCUS_RING}`;
 export const ROW_BUTTON = 'min-h-touch desktop:min-h-0';
 /** Namensfeld für Anlegen und Umbenennen; `onCancel` macht daraus ein Umbenennen-Formular. */
 export function NameForm({ label, submitLabel, initial = '', disabled, busy = false, onSubmit, onCancel, onChange }: Readonly<{

@@ -79,6 +79,7 @@ export interface WorkspaceContextValue {
   readonly listDocuments: WorkspacePort['listDocuments'];
   readonly createScope: WorkspacePort['createScope'];
   readonly renameScope: WorkspacePort['renameScope'];
+  readonly saveScopeBoundary: WorkspacePort['saveScopeBoundary'];
   readonly deleteScope: WorkspacePort['deleteScope'];
   readonly assignVerbuende: WorkspacePort['assignVerbuende'];
   readonly changeVerbundScope: WorkspacePort['changeVerbundScope'];
@@ -150,6 +151,7 @@ export const WorkspaceContext = createContext<WorkspaceContextValue>({
   listDocuments: unavailable,
   createScope: unavailable,
   renameScope: unavailable,
+  saveScopeBoundary: unavailable,
   deleteScope: unavailable,
   assignVerbuende: unavailable,
   changeVerbundScope: unavailable,
@@ -565,6 +567,7 @@ export function WorkspaceProvider({ open = openWorkspaceStore, session: provided
     },
     renameScope: (scopeId, name, expected) =>
       track(pendingScopes.current, scopeId, name, (async () => keepScope(await write((store) => store.renameScope(scopeId, name, expected))))()),
+    saveScopeBoundary: async (scopeId, expected, input) => keepScope(await write((store) => store.saveScopeBoundary(scopeId, expected, input))),
     deleteScope: async (scopeId, expected, confirmation) => {
       const result = await write(store => store.deleteScope(scopeId, expected, confirmation).catch(storageFailed));
       if (result.ok) {

@@ -1,6 +1,7 @@
 import type { OscalRootKey } from '@/domain/oscalVersionMatrix';
 import type { OscalDiagnostic } from '@/domain/oscalDiagnostics';
 import type { DocumentDiff } from '@/domain/documentDiff';
+import type { ScopeBoundaryItem } from '@/domain/scopeBoundary';
 
 declare const localIdBrand: unique symbol;
 declare const verbundIdBrand: unique symbol;
@@ -8,7 +9,7 @@ declare const scopeIdBrand: unique symbol;
 export type LocalId = string & { readonly [localIdBrand]: 'LocalId' };
 export type VerbundId = string & { readonly [verbundIdBrand]: 'VerbundId' };
 export type ScopeId = string & { readonly [scopeIdBrand]: 'ScopeId' };
-export const STORAGE_SCHEMA_VERSION = 5;
+export const STORAGE_SCHEMA_VERSION = 6;
 export type DocumentState = 'imported' | 'draft' | 'export-ready';
 
 /** A verbund name carries at least one non-whitespace character. */
@@ -55,7 +56,8 @@ export interface WorkspaceScope {
   readonly createdAt: string;
   readonly savedAt: string;
   readonly backupSavedAt?: string;
-  readonly items: readonly [];
+  /** Ab Schemaversion 6 höchstens die Abgrenzung (`category: 'scope'`); andere Kategorien sind nicht zulässig. */
+  readonly items: readonly [] | readonly [ScopeBoundaryItem];
   readonly evidence: readonly [];
 }
 

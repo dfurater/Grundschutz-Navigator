@@ -245,14 +245,14 @@ test('verweigert Migration in einer gewöhnlichen Schreibtransaktion', async () 
   expect(await rows(db)).toEqual(before);
 });
 
-test.each([1, 2, 3, 4] as const)('öffnet v%i atomar als v5 mit Datenbank-ID und unveränderten Quellen', async version => {
+test.each([1, 2, 3, 4, 5] as const)('öffnet v%i atomar als v6 mit Datenbank-ID und unveränderten Quellen', async version => {
   const legacy = fixture();
   const data = version === 1 ? legacy : {
     ...legacy, storageSchemaVersion: version,
     documents: legacy.documents.map(row => ({ ...row, storageSchemaVersion: version })),
     workspaceMeta: legacy.workspaceMeta.map(row => ({ ...row, storageSchemaVersion: version, ...(version >= 3 && { databaseId: crypto.randomUUID() }) })),
     reviewTrail: [] as WorkspaceBackup['reviewTrail'], reviewBaseline: [] as WorkspaceBackup['reviewBaseline'],
-    ...(version === 4 && { methodikScopes: [{ scopeId: crypto.randomUUID(), name: 'Bereich', createdAt: now, savedAt: now, items: [], evidence: [] }] }),
+    ...(version >= 4 && { methodikScopes: [{ scopeId: crypto.randomUUID(), name: 'Bereich', createdAt: now, savedAt: now, items: [], evidence: [] }] }),
   };
   if ('reviewTrail' in data) {
     const doc = data.documents[0];
@@ -263,7 +263,7 @@ test.each([1, 2, 3, 4] as const)('öffnet v%i atomar als v5 mit Datenbank-ID und
   }
   names.push(WORKSPACE_DATABASE_NAME);
   const seedDb = new Dexie(WORKSPACE_DATABASE_NAME);
-  seedDb.version(version).stores(version === 1 ? WORKSPACE_SCHEMA_V1 : version === 4 ? WORKSPACE_SCHEMA : WORKSPACE_SCHEMA_V3);
+  seedDb.version(version).stores(version === 1 ? WORKSPACE_SCHEMA_V1 : version >= 4 ? WORKSPACE_SCHEMA : WORKSPACE_SCHEMA_V3);
   await seedDb.open();
   for (const table of seedDb.tables) await table.bulkAdd(data[table.name as keyof typeof data] as object[]);
   seedDb.close();
@@ -273,12 +273,12 @@ test.each([1, 2, 3, 4] as const)('öffnet v%i atomar als v5 mit Datenbank-ID und
     const exported = await opened.value.exportBackup();
     if (!exported.ok) throw new Error(exported.diagnostic.code);
     const result = JSON.parse(exported.value);
-    expect(result.storageSchemaVersion).toBe(5);
+    expect(result.storageSchemaVersion).toBe(6);
     expect(result.methodikScopes).toEqual('methodikScopes' in data ? data.methodikScopes : []);
     expect(result.verbuende).toEqual(legacy.verbuende);
     expect(result.bindings).toEqual(legacy.bindings);
-    expect(result.workspaceMeta[0]).toEqual({ ...legacy.workspaceMeta[0], storageSchemaVersion: 5, databaseId: version >= 3 && 'databaseId' in data.workspaceMeta[0] ? data.workspaceMeta[0].databaseId : expect.stringMatching(/^[0-9a-f-]{36}$/) });
-    expect(result.documents).toEqual([...legacy.documents].sort((a, b) => a.localId.localeCompare(b.localId)).map(row => ({ ...row, storageSchemaVersion: 5 })));
+    expect(result.workspaceMeta[0]).toEqual({ ...legacy.workspaceMeta[0], storageSchemaVersion: 6, databaseId: version >= 3 && 'databaseId' in data.workspaceMeta[0] ? data.workspaceMeta[0].databaseId : expect.stringMatching(/^[0-9a-f-]{36}$/) });
+    expect(result.documents).toEqual([...legacy.documents].sort((a, b) => a.localId.localeCompare(b.localId)).map(row => ({ ...row, storageSchemaVersion: 6 })));
     expect(result.drafts).toEqual(legacy.drafts);
     expect(result.reviewTrail).toEqual('reviewTrail' in data ? data.reviewTrail : []);
     expect(result.reviewBaseline).toEqual('reviewBaseline' in data ? data.reviewBaseline : []);
