@@ -59,6 +59,25 @@ const PROCESS = 'aaaaaaaa-0000-4000-8000-000000000002';
 const PARTY = 'aaaaaaaa-0000-4000-8000-000000000005';
 const changeReason: Change = ssp => { Object.assign(props(ssp.process).find(prop => prop.name === 'process-protection-integrity')!, { remarks: 'Geänderter Grund' }); };
 
+/** Gibt einen überholten Prozess frei, hält den Worker an und öffnet die Station während des Schreibens neu. */
+async function approveWhileReopening() {
+  const { localId, region, router } = await open(changeReason);
+  fireEvent.click(await region.findByRole('button', { name: 'Neu freigeben…' }));
+  const dialog = within(await screen.findByRole('alertdialog'));
+  await dialog.findByText(/^process-cia\/3:sha-256:/);
+  fireEvent.change(dialog.getByLabelText('Begründung'), { target: { value: 'Während des Wechsels' } });
+  let resolve = () => {};
+  workHold.until = new Promise(done => { resolve = done; });
+  fireEvent.click(dialog.getByRole('button', { name: 'Freigabe dokumentieren' }));
+  await router.navigate(buildStationUrl(seeded.verbundId, 'ssp'));
+  await waitFor(() => expect(within(main()).queryByRole('region', { name: 'Leitungsfreigabe' })).not.toBeInTheDocument(), WAIT);
+  await router.navigate(buildWorkspaceDocumentUrl(seeded.verbundId, localId));
+  const back = within(await within(main()).findByRole('region', { name: 'Leitungsfreigabe' }, WAIT));
+  expect(await back.findByText('Überholt', undefined, WAIT)).toBeInTheDocument();
+  const release = () => { resolve(); workHold.until = Promise.resolve(); };
+  return { localId, back, release };
+}
+
 describe('Leitungsfreigabe je Prozess', () => {
   it('nimmt eine aktuelle Freigabe mit Anlass zurück und gibt den Prozess neu frei', async () => {
     const { localId, region } = await open();
@@ -245,55 +264,24 @@ describe('Leitungsfreigabe je Prozess', () => {
   });
 
   it('zeigt nach einem Routenwechsel während des Schreibens die geschriebene Entscheidung', async () => {
-    const { localId, region, router } = await open(changeReason);
-    fireEvent.click(await region.findByRole('button', { name: 'Neu freigeben…' }));
-    const dialog = within(await screen.findByRole('alertdialog'));
-    await dialog.findByText(/^process-cia\/3:sha-256:/);
-    fireEvent.change(dialog.getByLabelText('Begründung'), { target: { value: 'Während des Wechsels' } });
-    let release = () => {};
-    workHold.until = new Promise(resolve => { release = resolve; });
-    fireEvent.click(dialog.getByRole('button', { name: 'Freigabe dokumentieren' }));
-    await router.navigate(buildStationUrl(seeded.verbundId, 'ssp'));
-    await waitFor(() => expect(within(main()).queryByRole('region', { name: 'Leitungsfreigabe' })).not.toBeInTheDocument(), WAIT);
-    await router.navigate(buildWorkspaceDocumentUrl(seeded.verbundId, localId));
-    const back = within(await within(main()).findByRole('region', { name: 'Leitungsfreigabe' }, WAIT));
-    expect(await back.findByText('Überholt', undefined, WAIT)).toBeInTheDocument();
+    const { localId, back, release } = await approveWhileReopening();
     release();
-    workHold.until = Promise.resolve();
     expect(await back.findByText('Aktuell', undefined, WAIT)).toBeInTheDocument();
     expect(back.getByText('Während des Wechsels')).toBeInTheDocument();
     expect(await actions(localId)).toHaveLength(2);
   });
 
-  it('hält eine während offener Eingaben geschriebene Entscheidung fest und übernimmt sie nach dem Verwerfen', async () => {
-    // Freigabe statt Rücknahme: Nur die Freigabe läuft über den anhaltbaren Worker; die Übernahme ist für beide dieselbe.
-    const { localId, region, router } = await open(changeReason);
-    fireEvent.click(await region.findByRole('button', { name: 'Neu freigeben…' }));
-    const dialog = within(await screen.findByRole('alertdialog'));
-    await dialog.findByText(/^process-cia\/3:sha-256:/);
-    fireEvent.change(dialog.getByLabelText('Begründung'), { target: { value: 'Freigabe bei offener Eingabe' } });
-    let release = () => {};
-    workHold.until = new Promise(resolve => { release = resolve; });
-    fireEvent.click(dialog.getByRole('button', { name: 'Freigabe dokumentieren' }));
-    await router.navigate(buildStationUrl(seeded.verbundId, 'ssp'));
-    await waitFor(() => expect(within(main()).queryByRole('region', { name: 'Leitungsfreigabe' })).not.toBeInTheDocument(), WAIT);
-    await router.navigate(buildWorkspaceDocumentUrl(seeded.verbundId, localId));
-    const back = within(await within(main()).findByRole('region', { name: 'Leitungsfreigabe' }, WAIT));
-    expect(await back.findByText('Überholt', undefined, WAIT)).toBeInTheDocument();
-    const purpose = within(main()).getByLabelText('Zweck') as HTMLInputElement;
-    const original = purpose.value;
-    fireEvent.change(purpose, { target: { value: 'Offene Eingabe' } });
+  it('führt eine während offener Eingaben geschriebene Entscheidung in den Arbeitsstand zusammen und speichert beides', async () => {
+    const { localId, back, release } = await approveWhileReopening();
+    const title = within(main()).getAllByRole('textbox', { name: /^Titel/ })[0] as HTMLInputElement;
+    fireEvent.change(title, { target: { value: 'Titel während der Freigabe' } });
     release();
-    workHold.until = Promise.resolve();
-    // Angezeigt wird der gespeicherte Stand; Entscheidungen und Export bleiben bis zur Übernahme gesperrt.
     expect(await back.findByText('Aktuell', undefined, WAIT)).toBeInTheDocument();
-    expect(back.getByText(/noch nicht in den Editor übernommen/)).toBeInTheDocument();
-    expect(back.getByRole('button', { name: 'Freigabe zurücknehmen…' })).toBeDisabled();
-    expect(within(main()).getByRole('button', { name: 'Export' })).toBeDisabled();
-    fireEvent.change(purpose, { target: { value: original } });
-    await waitFor(() => expect(back.queryByText(/noch nicht in den Editor übernommen/)).not.toBeInTheDocument(), WAIT);
-    expect(back.getByText('Aktuell')).toBeInTheDocument();
-    expect(back.getByRole('button', { name: 'Freigabe zurücknehmen…' })).toBeEnabled();
+    expect(back.queryByText(/noch nicht in den Editor übernommen/)).not.toBeInTheDocument();
+    expect(title).toHaveValue('Titel während der Freigabe');
+    fireEvent.click(within(main()).getByRole('button', { name: 'Speichern' }));
+    await waitFor(async () => expect(readSspValue((await readStore(store => store.getDocument(localId)))?.source, ['metadata', 'title'])).toBe('Titel während der Freigabe'), WAIT);
     expect(await actions(localId)).toHaveLength(2);
+    expect(back.getByText('Aktuell')).toBeInTheDocument();
   });
 });

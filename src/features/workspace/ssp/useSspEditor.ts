@@ -4,7 +4,7 @@ import { isJsonObject, readArray, readString } from '@/domain/jsonGuards';
 import { SSP_ADAPTER_DIAGNOSTIC_CODES } from '@/adapters/oscalSspReaders';
 import { addSspItem, readSspValue, setBaselineTitle, setSspValue, sspBaselineBindable, SspPatchError, SSP_IMPORT_PROFILE_POINTER } from '@/domain/sspAuthoring';
 import { catalogPinsForSave } from '@/domain/workspaceCatalogPin';
-import { commitSspSave, sameSspContent, sspReadinessBlocker, sspSaveBlocker } from '@/domain/sspSave';
+import { commitSspSave, mergeProcessDecision, sameSspContent, sspReadinessBlocker, sspSaveBlocker } from '@/domain/sspSave';
 import type { BindingTarget, LocalId, WorkspaceBinding, WorkspaceEnvelope } from '@/domain/workspaceModel';
 import { downloadBlob } from '@/adapters/browserDownload';
 import { serializeWorkspaceJson } from '@/domain/workspaceJson';
@@ -222,22 +222,27 @@ export function useSspEditor(localId: LocalId): SspEditor {
     return targetDeletionUses(latest.current.working, path, localId, members, bindings.value);
   }, [documents, latest, localId]);
   const { adopt } = core;
-  const adoptDecision = useCallback(async (document: WorkspaceEnvelope) => {
+  // Ohne offene Eingaben übernimmt der Editor den Stand; mit ihnen führt er die Aktionskette in den Arbeitsstand zusammen.
+  const adoptOrRebase = useCallback(async (document: WorkspaceEnvelope) => {
     const adopted = await adopt(document);
+    return adopted === 'blocked' ? adopt(document, mergeProcessDecision) : adopted;
+  }, [adopt]);
+  const adoptDecision = useCallback(async (document: WorkspaceEnvelope) => {
+    const adopted = await adoptOrRebase(document);
     setUnadoptedDecision(adopted === 'adopted' ? undefined : document);
     return adopted;
-  }, [adopt]);
+  }, [adoptOrRebase]);
   const pendingDecision = useMemo(() => decisionWrites.get(localId), [localId]);
   useEffect(() => {
     if (core.status !== 'ready' || !pendingDecision) return;
     void pendingDecision.then(document => { if (document) void adoptDecision(document); });
   }, [adoptDecision, core.status, pendingDecision]);
-  // Sind die offenen Eingaben gespeichert oder verworfen, übernimmt der Editor die gehaltene Entscheidung erneut.
+  // Ändern sich die offenen Eingaben, versucht der Editor die gehaltene Entscheidung erneut zu übernehmen.
   const saveKind = core.saveState.kind;
   useEffect(() => {
-    if (!unadoptedDecision || dirty || core.busy || saveKind === 'pending') return;
-    void adopt(unadoptedDecision).then(adopted => { if (adopted === 'adopted') setUnadoptedDecision(undefined); });
-  }, [adopt, core.busy, dirty, saveKind, unadoptedDecision]);
+    if (!unadoptedDecision || core.busy || saveKind === 'pending') return;
+    void adoptOrRebase(unadoptedDecision).then(adopted => { if (adopted === 'adopted') setUnadoptedDecision(undefined); });
+  }, [adoptOrRebase, core.busy, dirty, saveKind, unadoptedDecision, working]);
   const decideProcess = useCallback(async (input: ProcessDecisionInput) => {
     const { envelope, draftSavedAt, working: current, unsaved } = latest.current;
     // Offene Eingaben gehören nicht zum gebundenen Stand; die Entscheidung schreibt dann nichts.
@@ -267,9 +272,11 @@ export function useSspEditor(localId: LocalId): SspEditor {
     return result.documentState === 'draft' ? { uuid, code: 'SSP_PARTY_SAVED_AS_DRAFT' } : { uuid };
   }, [apply, commitSsp, latest]);
   const targetFailure = core.envelope ? validateSspTargets(core.envelope.source, categories) : undefined;
+  // Eine gehaltene Entscheidung ist der gespeicherte Stand; der Erhaltungs-Export enthält sie.
   const exportPreserved = useCallback(() => {
-    if (latest.current.envelope) downloadBlob(new Blob([serializeWorkspaceJson(latest.current.envelope.source)], { type: 'application/json' }), 'ssp-ungeprueft.json');
-  }, [latest]);
+    const document = unadoptedDecision ?? latest.current.envelope;
+    if (document) downloadBlob(new Blob([serializeWorkspaceJson(document.source)], { type: 'application/json' }), 'ssp-ungeprueft.json');
+  }, [latest, unadoptedDecision]);
 
   return {
     localId, categories, targetFailure, checkTargetRemoval, exportPreserved, hasPendingTargetForms: hasPendingForms, setTargetFormPending,
