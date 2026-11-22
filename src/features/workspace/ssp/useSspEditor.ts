@@ -11,6 +11,7 @@ import { serializeWorkspaceJson } from '@/domain/workspaceJson';
 import { sspCategoryContext } from '@/domain/sspCategoryContext';
 import { prepareSspTargets, validateSspTargets, type TargetCategoryContext, type TargetFailure } from '@/domain/sspTargetObjects';
 import { deriveSspProcessProtection, processProtectionFailure } from '@/domain/sspProcessProtection';
+import type { ProcessDecisionInput } from '@/domain/sspProcessApproval';
 import { targetDeletionUses } from '@/domain/sspTargetDeletion';
 import type { SspPath } from '@/domain/sspAuthoring';
 import { useCatalog } from '@/hooks/useCatalog';
@@ -49,6 +50,8 @@ export interface SspEditor {
   readonly setTargetFormPending: (id: string, pending: boolean) => void;
   readonly checkTargetRemoval: (path: SspPath) => Promise<readonly string[]>;
   readonly exportPreserved: () => void;
+  /** Hängt eine Prozessentscheidung an den gespeicherten Stand; liefert den Fehlercode oder `undefined`. */
+  readonly decideProcess: (input: ProcessDecisionInput) => Promise<string | undefined>;
   /** Übernimmt einen neueren gespeicherten Stand nur ohne offene Eingaben. */
   readonly adopt: (document: WorkspaceEnvelope) => Promise<'adopted' | 'blocked' | 'failed'>;
 }
@@ -202,6 +205,15 @@ export function useSspEditor(localId: LocalId): SspEditor {
     }
     return targetDeletionUses(latest.current.working, path, localId, members, bindings.value);
   }, [documents, latest, localId]);
+  const { adopt } = core;
+  const decideProcess = useCallback(async (input: ProcessDecisionInput) => {
+    const { envelope, draftSavedAt } = latest.current;
+    if (!envelope) return 'SSP_PROCESS_DECISION_BLOCKED';
+    const result = await documents.saveProcessDecision(localId, envelope.savedAt, draftSavedAt, input, categories);
+    if (!result.ok) return result.diagnostic.code;
+    // Die Entscheidung ist geschrieben; offene Eingaben verhindern nur die Anzeige des neuen Stands.
+    return await adopt(result.value) === 'adopted' ? undefined : 'SSP_PROCESS_DECISION_NOT_SHOWN';
+  }, [adopt, categories, documents, latest, localId]);
   const targetFailure = core.envelope ? validateSspTargets(core.envelope.source, categories) : undefined;
   const exportPreserved = useCallback(() => {
     if (latest.current.envelope) downloadBlob(new Blob([serializeWorkspaceJson(latest.current.envelope.source)], { type: 'application/json' }), 'ssp-ungeprueft.json');
@@ -210,6 +222,6 @@ export function useSspEditor(localId: LocalId): SspEditor {
   return {
     categories, targetFailure, checkTargetRemoval, exportPreserved, hasPendingTargetForms: hasPendingForms, setTargetFormPending,
     status: core.status, envelope: core.envelope, working, dirty, saveState: core.saveState, busy: core.busy, message: core.message,
-    baseline, baselineBindable, apply, chooseBaseline, save, bindCatalogStand, exportDocument, remove, adopt: core.adopt,
+    baseline, baselineBindable, apply, chooseBaseline, save, bindCatalogStand, exportDocument, remove, adopt, decideProcess,
   };
 }

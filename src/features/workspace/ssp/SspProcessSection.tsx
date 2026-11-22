@@ -14,6 +14,9 @@ import { FormSection } from '@/features/workspace/ssp/SspFormSections';
 import { hasIncompleteProcessInput, ProcessFields, StatusChip } from '@/features/workspace/ssp/SspProcessFields';
 import { SspProtocolFields } from '@/features/workspace/ssp/SspFormControls';
 import { SspTargetFields, TargetResponsibility } from '@/features/workspace/ssp/SspTargetFields';
+import { ApprovalChip, decisionGate, ProcessApprovalBlock, type DecisionGate, useProcessApprovals, type ProcessApprovalView } from '@/features/workspace/ssp/SspProcessApproval';
+import { SspProcessApprovalDialog, type ProcessDecisionMode } from '@/features/workspace/ssp/SspProcessApprovalDialog';
+import type { ProcessDecisionInput } from '@/domain/sspProcessApproval';
 import type { SspEditor } from '@/features/workspace/ssp/useSspEditor';
 
 function protectionCount(protection: ProcessProtection): number {
@@ -111,13 +114,19 @@ function referenceOptions(value: unknown, name: string, include: (item: Record<s
   });
 }
 
-function ProcessRow({ editor, protection, allProtection, autoOpen, parties, applications }: Readonly<{
+interface DecisionContext extends DecisionGate {
+  readonly approval?: ProcessApprovalView;
+  readonly parties: ReturnType<typeof referenceOptions>;
+}
+
+function ProcessRow({ editor, protection, allProtection, autoOpen, parties, applications, decision }: Readonly<{
   editor: SspEditor;
   protection: ProcessProtection;
   allProtection: SspProcessProtection;
   autoOpen: boolean;
   parties: ReturnType<typeof referenceOptions>;
   applications: ReturnType<typeof referenceOptions>;
+  decision: DecisionContext;
 }>) {
   const summary = useRef<HTMLElement>(null);
   const details = useRef<HTMLDetailsElement>(null);
@@ -127,6 +136,8 @@ function ProcessRow({ editor, protection, allProtection, autoOpen, parties, appl
   const [confirming, setConfirming] = useState(false);
   const [checking, setChecking] = useState(false);
   const [uses, setUses] = useState<readonly string[]>([]);
+  const [deciding, setDeciding] = useState<ProcessDecisionMode>();
+  const [notice, setNotice] = useState<string>();
   const { setTargetFormPending } = editor;
   const id = useId();
   const uuid = protection.uuid;
@@ -164,6 +175,16 @@ function ProcessRow({ editor, protection, allProtection, autoOpen, parties, appl
       setTargetFormPending(id, true);
     }
   };
+  const decide = async (input: ProcessDecisionInput) => {
+    const code = await editor.decideProcess(input);
+    if (code === 'SSP_PROCESS_DECISION_NOT_SHOWN') {
+      setNotice('Die Entscheidung ist gespeichert. Offene Eingaben verhindern die Anzeige des neuen Stands.');
+      return undefined;
+    }
+    return code;
+  };
+  const label = [base.id.trim(), base.title.trim()].filter(Boolean).join(' ') || 'Geschäftsprozess ohne Namen';
+  const { approval } = decision;
   const requestRemoval = async () => {
     setChecking(true);
     const found = await editor.checkTargetRemoval(path);
@@ -180,9 +201,18 @@ function ProcessRow({ editor, protection, allProtection, autoOpen, parties, appl
       <IconChevronDown aria-hidden="true" className="size-4 shrink-0 -rotate-90 group-open/process:rotate-0" />
       {base.id && <span className="break-all font-mono text-xs">{base.id}</span>}
       <span className="min-w-0 flex-1 break-words text-sm font-medium">{base.title || 'Geschäftsprozess ohne Namen'}</span>
-      <span className="w-full group-open/process:hidden desktop:w-auto"><ProcessStatus protection={protection} /></span>
+      <span className="flex w-full flex-wrap gap-2 group-open/process:hidden desktop:w-auto">
+        <ProcessStatus protection={protection} />
+        {uuid && approval && <ApprovalChip approval={approval} possible={errors.length === 0 && decision.reasons.length === 0} />}
+      </span>
     </summary>
     <div className="space-y-4 border-t border-[var(--color-border-subtle)] p-3">
+      {uuid && <ProcessApprovalBlock approval={approval} processReasons={errors} decisionReasons={decision.reasons} blocked={decision.blocked}
+        risk={protection.riskConsideration === 'required'} notice={notice} onAddRole={decision.onAddRole}
+        onApprove={() => { setNotice(undefined); setDeciding('approved'); }} onWithdraw={() => { setNotice(undefined); setDeciding('withdrawn'); }} />}
+      {uuid && deciding && <SspProcessApprovalDialog mode={deciding} label={label} processUuid={uuid} source={editor.envelope?.source}
+        protection={protection} parties={decision.parties} affected={deciding === 'withdrawn' ? approval?.withdrawable : approval?.last}
+        onDecide={decide} onClose={() => setDeciding(undefined)} />}
       <output className="block space-y-2">
         <ProcessStatus protection={preview} labelled />
         {errors.length > 0 && <span className="block text-sm text-[var(--color-text-secondary)]">{errors.join(' · ')}</span>}
@@ -230,8 +260,13 @@ function ProcessRow({ editor, protection, allProtection, autoOpen, parties, appl
   </details>;
 }
 
-export function SspProcessSection({ editor, protection }: Readonly<{ editor: SspEditor; protection: SspProcessProtection }>) {
+export function SspProcessSection({ editor, protection, decisionLock }: Readonly<{ editor: SspEditor; protection: SspProcessProtection; decisionLock?: string }>) {
   const [added, setAdded] = useState<string>();
+  const saved = editor.envelope?.source;
+  const approvals = useProcessApprovals(saved, protection.processes.flatMap(process => process.uuid ? [process.uuid] : []));
+  const decisionParties = referenceOptions(readSspValue(saved, ['metadata', 'parties']), 'name',
+    item => item.type === 'person' || item.type === 'organization');
+  const gate = decisionGate(editor, decisionLock, decisionParties.length > 0);
   const parties = referenceOptions(readSspValue(editor.working, ['metadata', 'parties']), 'name',
     item => item.type === 'person' || item.type === 'organization');
   const applications = referenceOptions(readSspValue(editor.working, SSP_COMPONENT_PATH), 'title',
@@ -249,7 +284,8 @@ export function SspProcessSection({ editor, protection }: Readonly<{ editor: Ssp
       : <div className="rounded-md border border-[var(--color-border-default)]">
         {protection.processes.map(process => (
           <ProcessRow key={process.uuid ?? process.path} editor={editor} allProtection={protection}
-            protection={process} autoOpen={process.uuid !== undefined && process.uuid === added} parties={parties} applications={applications} />
+            protection={process} autoOpen={process.uuid !== undefined && process.uuid === added} parties={parties} applications={applications}
+            decision={{ ...gate, approval: process.uuid ? approvals?.get(process.uuid.toLowerCase()) : undefined, parties: decisionParties }} />
         ))}
       </div>}
   </FormSection>;

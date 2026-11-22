@@ -123,7 +123,8 @@ export function SspEditorPage({ view, document }: Readonly<{ view: VerbundView; 
             <MetadataSection editor={editor} />
             <BaselineSection editor={editor} options={options} />
             <CharacteristicsSection editor={editor} />
-            <SspProcessSection editor={editor} protection={protection} />
+            <SspProcessSection editor={editor} protection={protection}
+              decisionLock={reviewLocked(document.catalogPin) ? 'Schreibsperre: Der Katalogstand gibt Freigaben und Rücknahmen nicht frei.' : undefined} />
             <ImplementationSection editor={editor} />
             {/* Ein Baseline-Wechsel setzt die offene Anforderungswahl zurück. */}
             <ControlImplementationSection key={editor.baseline ? targetKey(editor.baseline) : 'ohne-baseline'} editor={editor} controls={controls} />

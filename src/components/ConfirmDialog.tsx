@@ -15,12 +15,14 @@ export interface ConfirmDialogProps {
   readonly confirmVariant?: ButtonVariant;
   readonly confirmDisabled?: boolean;
   readonly busy?: boolean;
+  /** Breiter für Dialoge mit Formular; mobil bleibt die volle Breite. */
+  readonly wide?: boolean;
   readonly onConfirm: () => void;
   readonly onCancel: () => void;
 }
 
 /** Ausdrückliche Bestätigung mit Abbrechen als anfänglichem Fokus. */
-export function ConfirmDialog({ open, title, children, confirmLabel, confirmVariant = 'danger', confirmDisabled = false, busy = false, onConfirm, onCancel }: ConfirmDialogProps) {
+export function ConfirmDialog({ open, title, children, confirmLabel, confirmVariant = 'danger', confirmDisabled = false, busy = false, wide = false, onConfirm, onCancel }: ConfirmDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const titleId = useId();
   const descriptionId = useId();
@@ -47,7 +49,7 @@ export function ConfirmDialog({ open, title, children, confirmLabel, confirmVari
           aria-busy={busy || undefined}
           aria-labelledby={titleId}
           aria-describedby={descriptionId}
-          className="pointer-events-auto static m-0 flex max-h-[calc(100dvh-2rem)] w-full max-w-md flex-col rounded-lg border border-[var(--color-border-default)] bg-[var(--color-surface-overlay)] p-4 text-inherit shadow-overlay"
+          className={`pointer-events-auto static m-0 flex max-h-[calc(100dvh-2rem)] w-full ${wide ? 'max-w-2xl' : 'max-w-md'} flex-col rounded-lg border border-[var(--color-border-default)] bg-[var(--color-surface-overlay)] p-4 text-inherit shadow-overlay`}
         >
           <h2 id={titleId} className="shrink-0 text-base font-semibold leading-snug text-[var(--color-text-primary)]">{title}</h2>
           {/* Ein langer Name scrollt im Text; die Aktionen bleiben im Bild. */}
