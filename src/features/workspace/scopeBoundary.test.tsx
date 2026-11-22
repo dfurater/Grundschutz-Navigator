@@ -126,8 +126,8 @@ describe('Abgrenzung des Anwendungsbereichs', () => {
     expect(await within(main()).findByText(/Anwendungsbereich inzwischen geändert/)).toHaveAttribute('role', 'alert');
     await waitFor(() => expect(within(main()).getByRole('button', { name: 'Speichern' })).toBeEnabled());
     expect(within(main()).queryByRole('button', { name: 'Aktuellen Stand laden' })).toBeNull();
-    // Nach dem Neulesen gilt der neue Stempel, weil die Abgrenzung unverändert ist.
-    await waitFor(async () => expect((await readStore((store) => store.listScopes()))[0].savedAt).not.toBe(current.savedAt));
+    // Der Provider hat neu gelesen, sobald er den neuen Verbund führt; `setVerbuende` folgt auf `setScopes`.
+    await waitFor(() => expect(within(main()).getByText('Mitglied')).toBeInTheDocument());
     fireEvent.click(within(main()).getByRole('button', { name: 'Speichern' }));
     await waitFor(() => expect(within(main()).queryByRole('heading', { level: 1, name: 'Abgrenzung erfassen' })).toBeNull());
     expect((await readStore((store) => store.listScopes()))[0].items[0]?.details.interfaces).toBe('Portal');

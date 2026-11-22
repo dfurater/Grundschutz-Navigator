@@ -49,5 +49,9 @@ describe('Abgrenzungsentwurf', () => {
     expect(boundaryDraftBase(draft, { savedAt: 's2', items: [item] })).toBe('s2');
     expect(boundaryDraftBase(draft, { savedAt: 's2', items: [{ ...item, details: { ...item.details, interfaces: 'Neu' } }] })).toBeNull();
     expect(boundaryDraftBase(draft, { savedAt: 's2', items: [] })).toBeNull();
+    // Ein neu angelegter Eintrag mit gleichem Inhalt ist nicht die Abgrenzung, auf der der Entwurf beruht.
+    expect(boundaryDraftBase(draft, { savedAt: 's2', items: [{ ...item, itemId: '22222222-2222-4222-8222-222222222222' }] })).toBeNull();
+    const fresh = startBoundaryDraft({ savedAt: 's1', items: [] });
+    expect(boundaryDraftBase(fresh, { savedAt: 's2', items: [{ ...item, details: { organization: '', processCoverage: '', infrastructure: '', externalParties: '', interfaces: '', exclusions: '' } }] })).toBeNull();
   });
 });

@@ -91,21 +91,24 @@ export interface ScopeBoundaryDraft {
   readonly input: ScopeBoundaryInput;
   readonly base: string;
   readonly baseInput: ScopeBoundaryInput;
+  /** `itemId` des gespeicherten Eintrags oder `null` ohne Eintrag. */
+  readonly baseItemId: string | null;
 }
 
 /** Neuer Entwurf aus dem gespeicherten Stand eines Anwendungsbereichs. */
 export function startBoundaryDraft(scope: { readonly savedAt: string; readonly items: readonly ScopeBoundaryItem[] }): ScopeBoundaryDraft {
   const input = scopeBoundaryInput(scope.items[0]);
-  return { input, base: scope.savedAt, baseInput: input };
+  return { input, base: scope.savedAt, baseInput: input, baseItemId: scope.items[0]?.itemId ?? null };
 }
 
 /**
- * Vergleichsstand, mit dem ein Entwurf speichern darf: Ist die gespeicherte Abgrenzung noch die, auf der er
- * beruht, gilt der neuere Stempel (etwa nach einer Zuordnungsänderung); sonst `null`, weil neuerer Inhalt vorliegt.
+ * Vergleichsstand, mit dem ein Entwurf speichern darf: Ist die gespeicherte Abgrenzung noch derselbe Eintrag mit
+ * demselben Inhalt, auf dem er beruht, gilt der neuere Stempel (etwa nach einer Zuordnungsänderung); sonst `null`, weil neuerer Inhalt vorliegt.
  */
 export function boundaryDraftBase(draft: ScopeBoundaryDraft, scope: { readonly savedAt: string; readonly items: readonly ScopeBoundaryItem[] }): string | null {
   if (scope.savedAt === draft.base) return draft.base;
-  return sameBoundaryInput(scopeBoundaryInput(scope.items[0]), draft.baseInput) ? scope.savedAt : null;
+  const item = scope.items[0];
+  return (item?.itemId ?? null) === draft.baseItemId && sameBoundaryInput(scopeBoundaryInput(item), draft.baseInput) ? scope.savedAt : null;
 }
 
 /** „Fehlt“ ohne Eintrag, „Erfasst“ bei vollständigen Angaben, sonst „Offen“ mit den fehlenden Feldern in Formularreihenfolge. */

@@ -335,8 +335,8 @@ describe('Sicherung wiederherstellen', () => {
     const empty = scopeBoundaryInput(undefined);
     const input = { ...empty, interfaces: 'Portal' };
     // Der Netz-Entwurf beruht auf einem älteren Stempel mit unverändertem Inhalt und speichert mit dem aktuellen.
-    workspace.boundaryDrafts.set(netz.scopeId, { input, base: '2026-11-13T00:00:00.000Z', baseInput: empty });
-    workspace.boundaryDrafts.set(portal.scopeId, { input, base: portal.savedAt, baseInput: empty });
+    workspace.boundaryDrafts.set(netz.scopeId, { input, base: '2026-11-13T00:00:00.000Z', baseInput: empty, baseItemId: null });
+    workspace.boundaryDrafts.set(portal.scopeId, { input, base: portal.savedAt, baseInput: empty, baseItemId: null });
     const sheet = await choose();
     const rows = await sheet.findAllByText(/^Abgrenzung$/);
     const [first, second] = rows.map((row) => row.closest('li')!);
@@ -354,7 +354,7 @@ describe('Sicherung wiederherstellen', () => {
     renderWith(fakePort({ restoreBackup, restoreVerbundBackup: () => ok(undefined) }));
     await screen.findByRole('link', { name: VERBUND.name });
     const empty = scopeBoundaryInput(undefined);
-    workspace.boundaryDrafts.set('3c2b1a00-5b3f-4c6d-8e9f-0a1b2c3d4e5f', { input: { ...empty, interfaces: 'Portal' }, base: 's1', baseInput: empty });
+    workspace.boundaryDrafts.set('3c2b1a00-5b3f-4c6d-8e9f-0a1b2c3d4e5f', { input: { ...empty, interfaces: 'Portal' }, base: 's1', baseInput: empty, baseItemId: null });
     expect(await workspace.restoreBackup(verbundPreview())).toMatchObject({ ok: true });
     expect(workspace.boundaryDrafts.size).toBe(1);
     expect(await workspace.restoreBackup(workspacePreview)).toMatchObject({ ok: false });

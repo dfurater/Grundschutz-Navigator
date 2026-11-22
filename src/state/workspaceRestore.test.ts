@@ -67,11 +67,11 @@ it('führt nur vom gespeicherten Stand abweichende Abgrenzungsentwürfe und nur 
   const empty = scopeBoundaryInput(undefined);
   const portal = { ...empty, interfaces: 'Portal' };
   // Veralteter Vergleichsstand, aber Eingabe gleich dem gespeicherten Inhalt: nichts geht verloren.
-  const unchanged = { input: empty, base: 's1', baseInput: empty };
+  const unchanged = { input: empty, base: 's1', baseInput: empty, baseItemId: null };
   // Nur der Stempel ist fortgeschrieben (etwa durch eine Zuordnung): gespeichert wird mit dem neuen Stempel.
-  const restamped = { input: portal, base: 's1', baseInput: empty };
+  const restamped = { input: portal, base: 's1', baseInput: empty, baseItemId: null };
   // Ein anderer Tab hat die Abgrenzung geändert: gespeichert wird mit dem alten Stempel und scheitert als Konflikt.
-  const outdated = { input: portal, base: 's1', baseInput: { ...empty, interfaces: 'Alt' } };
+  const outdated = { input: portal, base: 's1', baseInput: { ...empty, interfaces: 'Alt' }, baseItemId: null };
   const base = { renameDrafts: new Map(), importTargets: new Map(), verbuende: [], documents: [], scopes: [scope] };
   const whole = { kind: 'workspace', documents: [] } as const;
   expect(collectRestoreInputs({ ...base, scope: whole, boundaryDrafts: new Map([[scope.scopeId, unchanged]]) })).toEqual([]);
@@ -80,14 +80,14 @@ it('führt nur vom gespeicherten Stand abweichende Abgrenzungsentwürfe und nur 
   expect(collectRestoreInputs({ ...base, scope: whole, boundaryDrafts: new Map([[scope.scopeId, outdated]]) }))
     .toEqual([{ kind: 'boundary', scope: name, draft: outdated, base: 's1' }]);
   expect(collectRestoreInputs({ ...base, scope: { kind: 'verbund', verbundId: target.verbundId, documents: [] }, boundaryDrafts: new Map([[scope.scopeId, restamped]]) })).toEqual([]);
-  expect(startBoundaryDraft(scope)).toEqual({ input: empty, base: 's2', baseInput: empty });
+  expect(startBoundaryDraft(scope)).toEqual({ input: empty, base: 's2', baseInput: empty, baseItemId: null });
 });
 
 it('speichert einen Abgrenzungsentwurf aus der Klärung mit dessen Vergleichsstand', async () => {
   const { scopeBoundaryInput } = await import('@/domain/scopeBoundary');
   const input = { ...scopeBoundaryInput(undefined), interfaces: 'Portal' };
   const saveScopeBoundary = vi.fn(() => Promise.resolve({ ok: true as const, value: {} as WorkspaceScope }));
-  const entry = { kind: 'boundary' as const, scope: { scopeId: '66666666-6666-4666-8666-666666666666' as ScopeId, name: 'Netz', savedAt: 's2' }, draft: { input, base: 's1', baseInput: input }, base: 's2' };
+  const entry = { kind: 'boundary' as const, scope: { scopeId: '66666666-6666-4666-8666-666666666666' as ScopeId, name: 'Netz', savedAt: 's2' }, draft: { input, base: 's1', baseInput: input, baseItemId: null }, base: 's2' };
   const unused = vi.fn();
   expect(await saveNamedInput(entry, { renameVerbund: unused, renameScope: unused, createScope: unused, createVerbund: unused, saveScopeBoundary })).toBe(true);
   expect(saveScopeBoundary).toHaveBeenCalledExactlyOnceWith(entry.scope.scopeId, 's2', input);
