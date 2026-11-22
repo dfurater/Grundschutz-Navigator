@@ -30,11 +30,15 @@ function rowTitle(kind: string, field: string) {
   };
 }
 
-export function FormSection({ title, children }: Readonly<{ title: string; children: ReactNode }>) {
+export function FormSection({ title, children, count, action }: Readonly<{ title: string; children: ReactNode; count?: number; action?: ReactNode }>) {
   const id = useId();
   return (
     <section aria-labelledby={id} className="space-y-4 rounded-md border border-[var(--color-border-default)] bg-[var(--color-surface-base)] p-4">
-      <h2 id={id} className="text-base font-semibold text-[var(--color-text-primary)]">{title}</h2>
+      <div className="flex flex-wrap items-center gap-2">
+        <h2 id={id} className="text-base font-semibold text-[var(--color-text-primary)]">{title}</h2>
+        {count !== undefined && <span className="text-sm tabular-nums text-[var(--color-text-secondary)]">{count}</span>}
+        {action && <div className="ml-auto">{action}</div>}
+      </div>
       {children}
     </section>
   );

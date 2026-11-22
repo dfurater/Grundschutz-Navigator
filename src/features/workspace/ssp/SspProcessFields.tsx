@@ -1,6 +1,7 @@
-import { useId } from 'react';
+import { useId, useState } from 'react';
 import { Button } from '@/components/Button';
 import { CheckboxLabel } from '@/components/CheckboxLabel';
+import { FOCUS_RING } from '@/features/workspace/DocumentMarks';
 import { PROCESS_GOALS, PROCESS_GOAL_KEYS, type ProcessCategoryDraft, type ProcessDraft, type ProcessGoal } from '@/domain/sspProcessEditing';
 import { SSP_COMPONENT_STATES } from '@/domain/sspAuthoring';
 import type { ProcessProtection } from '@/domain/sspProcessProtection';
@@ -12,6 +13,22 @@ const EFFECTIVE_VALUES = { normal: 'normal', hoch: 'hoch', unknown: 'unbekannt',
 const COMPONENT_STATES = SSP_COMPONENT_STATES.map(value => ({ value, label: value }));
 const LEVELS = [{ value: 'normal', label: 'normal' }, { value: 'hoch', label: 'hoch' }];
 const ERROR = 'text-sm text-[var(--color-danger-text)]';
+const STATUS_TONES = {
+  open: 'border-[var(--color-warning)] text-[var(--color-warning-text)]',
+  error: 'border-[var(--color-danger-border)] bg-[var(--color-danger-surface)] text-[var(--color-danger-text)]',
+  complete: 'border-[var(--color-success)] text-[var(--color-success-text)]',
+  neutral: 'border-[var(--color-border-default)] text-[var(--color-text-secondary)]',
+};
+const OBJECTIVE_STATUS = {
+  normal: { text: 'Bewertet', tone: 'complete' },
+  hoch: { text: 'Bewertet', tone: 'complete' },
+  unknown: { text: 'Bewertung offen', tone: 'open' },
+  conflict: { text: 'Konflikt', tone: 'error' },
+} as const;
+
+export function StatusChip({ text, tone }: Readonly<{ text: string; tone: keyof typeof STATUS_TONES }>) {
+  return <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${STATUS_TONES[tone]}`}>{text}</span>;
+}
 
 type Option = { readonly value: string; readonly label: string };
 type TextFieldProps = {
@@ -96,9 +113,15 @@ export function ProcessFields({ draft, update, parties, applications, protection
   applications: readonly Option[];
   protection: ProcessProtection;
 }>) {
+  const [categoryInitiallyOpen] = useState(() => PROCESS_GOAL_KEYS.some(goal => Boolean(draft.objectives[goal].category)));
   const setGoal = (goal: ProcessGoal, next: ProcessDraft['objectives'][ProcessGoal]) =>
     update({ ...draft, objectives: { ...draft.objectives, [goal]: next } });
   const categories = draft.categories.map(category => ({ value: category.id, label: category.label || category.id }));
+  const availableParties = parties.filter(party => !draft.owners.some(owner => owner.toLowerCase() === party.value.toLowerCase()));
+  const ownerFields = [
+    { key: 'primary', owner: draft.owners[0] ?? '' },
+    ...draft.owners.slice(1).map(owner => ({ key: owner, owner })),
+  ];
   return <>
     <fieldset className="space-y-3">
       <legend className="mb-2 text-sm font-semibold">Prozess</legend>
@@ -114,7 +137,14 @@ export function ProcessFields({ draft, update, parties, applications, protection
       <legend className="text-sm font-semibold">Fachliche Verantwortung</legend>
       <p className="text-sm text-[var(--color-text-secondary)]">Rolle <span className="font-mono">process-owner</span></p>
       {parties.length === 0 && <p className="text-sm">Verantwortliche zuerst unter Metadaten als Partei erfassen.</p>}
-      <ReferenceChoices label="Partei" options={parties} current={draft.owners} update={owners => update({ ...draft, owners })} />
+      {ownerFields.map(({ key, owner }, index) => {
+        const selected = parties.find(party => party.value.toLowerCase() === owner.toLowerCase());
+        return <ProcessSelect key={key} label={index === 0 ? 'Partei' : `Partei ${index + 1}`} value={selected?.value ?? owner}
+          options={selected ? [selected, ...availableParties] : availableParties}
+          onChange={value => update({ ...draft, owners: draft.owners.toSpliced(index, 1, value).filter(Boolean) })} />;
+      })}
+      {draft.owners.length > 0 && availableParties.length > 0 && <ProcessSelect label="Weitere Partei" value="" options={availableParties}
+        onChange={owner => { if (owner) update({ ...draft, owners: [...draft.owners, owner] }); }} />}
     </fieldset>
     <fieldset className="space-y-1">
       <legend className="text-sm font-semibold">Wesentliche Anwendungen</legend>
@@ -132,18 +162,26 @@ export function ProcessFields({ draft, update, parties, applications, protection
         const name = PROCESS_GOALS[goal];
         const row = draft.objectives[goal];
         const effective = protection.objectives[goal].value;
+        const mappingMissing = Boolean(row.category && !draft.categories.find(category => category.id === row.category)?.level);
+        const status = OBJECTIVE_STATUS[effective];
+        const statusText = effective === 'unknown' && mappingMissing ? 'Mapping fehlt' : status.text;
         return <div key={goal} className={`${GRID} items-start rounded-md border border-[var(--color-border-subtle)] p-3`}>
           <ProcessSelect label={name} options={LEVELS} value={row.level} onChange={level => setGoal(goal, { ...row, level })}
             error={!row.level && row.reason.trim() ? 'Schutzbedarf wählen.' : undefined} />
           <ProcessText label={`Begründung für ${name}`} multiline value={row.reason} onChange={reason => setGoal(goal, { ...row, reason })}
             error={row.level && !row.reason.trim() ? 'Begründung fehlt.' : undefined} />
-          <p className="text-sm text-[var(--color-text-secondary)]">Effektiver Wert {EFFECTIVE_VALUES[effective]}
-            {effective === 'normal' || effective === 'hoch' ? ' · Bewertet' : ''}</p>
+          <div className="flex flex-wrap items-center gap-2 desktop:col-span-2">
+            <StatusChip text={statusText} tone={status.tone} />
+            <p className="text-sm text-[var(--color-text-secondary)]">Effektiver Wert {EFFECTIVE_VALUES[effective]}</p>
+          </div>
         </div>;
       })}
     </fieldset>
-    <details className="space-y-2" open={PROCESS_GOAL_KEYS.some(goal => Boolean(draft.objectives[goal].category)) || undefined}>
-      <summary className="min-h-touch cursor-pointer py-2 text-sm font-semibold">Eigene Schutzbedarfskategorie</summary>
+    <details className="group/categories space-y-2" open={categoryInitiallyOpen}>
+      <summary className={`min-h-touch cursor-pointer py-2 text-sm font-semibold ${FOCUS_RING}`}>
+        <span>Eigene Schutzbedarfskategorie</span>
+        <span className="ml-2 font-medium text-[var(--color-text-secondary)] group-open/categories:hidden">Kategorie zuordnen…</span>
+      </summary>
       {PROCESS_GOAL_KEYS.map(goal => {
         const row = draft.objectives[goal];
         return <div className="flex flex-wrap items-end gap-2" key={goal}>

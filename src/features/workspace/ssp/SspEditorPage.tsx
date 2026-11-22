@@ -23,7 +23,7 @@ import { targetKey, useImportTargets } from '@/features/workspace/profile/useImp
 import {
   BaselineSection, CharacteristicsSection, ControlImplementationSection, ImplementationSection, MetadataSection,
 } from '@/features/workspace/ssp/SspFormSections';
-import { SspProcessSection } from '@/features/workspace/ssp/SspProcessSection';
+import { openProcessStructure, SspProcessSection } from '@/features/workspace/ssp/SspProcessSection';
 import { SspDocumentContent } from '@/features/workspace/ssp/SspDocumentContent';
 import { useBaselineControls } from '@/features/workspace/ssp/useBaselineControls';
 import { useSspEditor, type SspEditorMessage } from '@/features/workspace/ssp/useSspEditor';
@@ -42,19 +42,23 @@ const MESSAGES: Readonly<Record<SspEditorMessage, string>> = {
   'catalog-locked': 'Der gebundene Katalogstand gibt das Speichern nicht frei; das SSP wurde nicht gespeichert.',
 };
 
-/** Offene Pflichtstruktur des Arbeitsstands als Liste mit OSCAL-Pfad. */
-function OpenStructure({ missing }: Readonly<{ missing: readonly string[] }>) {
+function OpenStructure({ missing, processItems }: Readonly<{
+  missing: readonly string[];
+  processItems: ReturnType<typeof openProcessStructure>;
+}>) {
+  const count = missing.length + processItems.length;
   return (
-    <section aria-label="Offene Pflichtstruktur" className="space-y-2">
+    <section aria-label="Offene Struktur" className="space-y-2">
       <h2 className={`${SECTION_LABEL} flex justify-between gap-2`}>
-        <span>Offene Pflichtstruktur</span>
-        <span className="tabular-nums">{missing.length}</span>
+        <span>Offene Struktur</span>
+        <span className="tabular-nums">{count}</span>
       </h2>
-      {missing.length === 0
-        ? <p className="text-sm text-[var(--color-text-secondary)]">Keine offene Pflichtstruktur.</p>
+      {count === 0
+        ? <p className="text-sm text-[var(--color-text-secondary)]">Keine offene Struktur.</p>
         : (
           <ul className="divide-y divide-[var(--color-border-subtle)]">
             {missing.map((path) => <li key={path} className="break-all py-1.5 font-mono text-xs text-[var(--color-text-primary)]">{path}</li>)}
+            {processItems.map(({ key, text }) => <li key={key} className="break-words py-1.5 text-sm text-[var(--color-text-primary)]">{text}</li>)}
           </ul>
         )}
     </section>
@@ -82,6 +86,7 @@ export function SspEditorPage({ view, document }: Readonly<{ view: VerbundView; 
     return <output className="block p-4 text-sm text-[var(--color-text-secondary)]">{editor.status === 'failed' ? 'Das SSP konnte nicht gelesen werden.' : 'SSP wird geladen…'}</output>;
   }
   const missing = missingSspStructure(editor.working);
+  const processItems = openProcessStructure(editor.working, protection);
   const state = editor.envelope.documentState === 'draft' || editor.dirty ? 'draft' : 'export-ready';
   const coverage = targetCoverage(editor.working);
   const processFailure = processProtectionFailure(protection);
@@ -113,7 +118,7 @@ export function SspEditorPage({ view, document }: Readonly<{ view: VerbundView; 
             {editor.targetFailure && <output className="block">Projektregelbefund: <span className="font-mono text-xs">{editor.targetFailure.code} · {editor.targetFailure.path}</span>. Semantische Änderungen und validierter Export sind gesperrt.</output>}
             <Button variant="ghost" size="sm" className="min-h-touch desktop:min-h-0" onClick={editor.exportPreserved}>Ungeprüften Erhaltungs-Export herunterladen</Button>
           </section>
-          {!desktop && <OpenStructure missing={missing} />}
+          {!desktop && <OpenStructure missing={missing} processItems={processItems} />}
           <fieldset disabled={locked} className="min-w-0 space-y-4">
             <MetadataSection editor={editor} />
             <BaselineSection editor={editor} options={options} />
@@ -136,7 +141,7 @@ export function SspEditorPage({ view, document }: Readonly<{ view: VerbundView; 
       </div>
       {desktop && (
         <EditorPanel label="Speichern und Export" footer={<PackageActions saveState={editor.saveState} dirty={editor.dirty} canExport={canExport} busy={editor.busy || locked || processFailure !== undefined} onSave={save} onExport={exportDocument} />}>
-          <OpenStructure missing={missing} />
+          <OpenStructure missing={missing} processItems={processItems} />
         </EditorPanel>
       )}
       <ConfirmDialog

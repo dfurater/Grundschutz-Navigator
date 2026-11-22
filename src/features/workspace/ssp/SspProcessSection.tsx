@@ -5,33 +5,22 @@ import { IconChevronDown } from '@/components/icons';
 import { isJsonObject, readArray, readString } from '@/domain/jsonGuards';
 import { isOscalUuid } from '@/domain/identifierQuery';
 import { BUSINESS_PROCESS_COMPONENT_TYPE } from '@/domain/projectProps';
-import { addSspItem, readSspValue, removeSspComponent, type SspPath } from '@/domain/sspAuthoring';
+import { addSspItem, readSspValue, removeSspComponent, SspPatchError } from '@/domain/sspAuthoring';
 import { PROCESS_GOALS, PROCESS_GOAL_KEYS, PROCESS_OWNER_ROLE, readProcessDraft, rebaseProcessCategories, SSP_COMPONENT_PATH, writeProcessDraft, type ProcessDraft } from '@/domain/sspProcessEditing';
-import { deriveSspProcessProtection, processProtectionFailure, type ProcessProtection, type SspProcessProtection } from '@/domain/sspProcessProtection';
+import { deriveSspProcessProtection, isProcessProtectionBlocker, type ProcessProtection, type SspProcessProtection } from '@/domain/sspProcessProtection';
 import { targetProps } from '@/domain/sspTargetObjects';
 import { FOCUS_RING } from '@/features/workspace/DocumentMarks';
 import { FormSection } from '@/features/workspace/ssp/SspFormSections';
-import { hasIncompleteProcessInput, ProcessFields } from '@/features/workspace/ssp/SspProcessFields';
+import { hasIncompleteProcessInput, ProcessFields, StatusChip } from '@/features/workspace/ssp/SspProcessFields';
 import { SspProtocolFields } from '@/features/workspace/ssp/SspFormControls';
 import { SspTargetFields, TargetResponsibility } from '@/features/workspace/ssp/SspTargetFields';
 import type { SspEditor } from '@/features/workspace/ssp/useSspEditor';
-
-const STATUS_TONES = {
-  open: 'border-[var(--color-warning)] text-[var(--color-warning-text)]',
-  error: 'border-[var(--color-danger-border)] bg-[var(--color-danger-surface)] text-[var(--color-danger-text)]',
-  complete: 'border-[var(--color-success)] text-[var(--color-success-text)]',
-  neutral: 'border-[var(--color-border-default)] text-[var(--color-text-secondary)]',
-};
 
 function protectionCount(protection: ProcessProtection): number {
   return Object.values(protection.objectives).filter(({ value }) => value === 'normal' || value === 'hoch').length;
 }
 
-function StatusChip({ text, tone }: Readonly<{ text: string; tone: keyof typeof STATUS_TONES }>) {
-  return <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${STATUS_TONES[tone]}`}>{text}</span>;
-}
-
-function ProcessStatus({ protection }: Readonly<{ protection: ProcessProtection }>) {
+function ProcessStatus({ protection, labelled }: Readonly<{ protection: ProcessProtection; labelled?: boolean }>) {
   const { context, cia, riskConsideration } = protection;
   const risk = {
     required: 'Explizite Risikobetrachtung erforderlich',
@@ -46,10 +35,16 @@ function ProcessStatus({ protection }: Readonly<{ protection: ProcessProtection 
   const contextTone = { invalid: 'error', 'context-complete': 'complete', 'context-open': 'open', unclassified: 'open' } as const;
   const goalTone = { conflict: 'error', complete: 'complete', partial: 'open', unknown: 'open' } as const;
   const goals = cia === 'conflict' ? 'Schutzziele im Konflikt' : `Schutzziele ${protectionCount(protection)} von 3`;
-  return <span className="flex flex-wrap gap-1.5">
-    <StatusChip text={contextLabels[context]} tone={contextTone[context]} />
-    <StatusChip text={goals} tone={goalTone[cia]} />
-    <StatusChip text={risk} tone={riskConsideration === 'no-high-trigger' ? 'neutral' : 'open'} />
+  const statuses = [
+    { label: 'Kontext', text: contextLabels[context], tone: contextTone[context] },
+    { label: 'Schutzziele', text: goals, tone: goalTone[cia] },
+    { label: 'Risikoanlass', text: risk, tone: riskConsideration === 'no-high-trigger' ? 'neutral' : 'open' },
+  ] as const;
+  return <span className={`flex flex-wrap gap-2 ${labelled ? 'max-sm:flex-col max-sm:items-start' : ''}`}>
+    {statuses.map(({ label, text, tone }) => <span key={label} className="inline-flex items-center gap-1.5">
+      {labelled && <span className="text-xs font-medium text-[var(--color-text-secondary)]">{label}</span>}
+      <StatusChip text={text} tone={tone} />
+    </span>)}
   </span>;
 }
 
@@ -65,18 +60,46 @@ function objectiveReasons(draft: ProcessDraft, protection: ProcessProtection): s
   });
 }
 
-function reasonLines(draft: ProcessDraft, protection: ProcessProtection): string[] {
+function contextReasons(draft: ProcessDraft, protection: ProcessProtection): string[] {
   const missing = [
     !draft.id.trim() && 'Prozess-ID fehlt',
     !draft.title.trim() && 'Name fehlt',
     !draft.description.trim() && 'Kurzbeschreibung fehlt',
     !draft.purpose.trim() && 'Zweck fehlt',
     draft.owners.length === 0 && 'Fachliche Verantwortung fehlt',
-    draft.applications.length === 0 && !draft.noApplications && 'Wesentliche Anwendungen oder begründeter Nullfall fehlen',
+    draft.applications.length === 0 && !draft.noApplications && 'Anwendungen fehlen',
   ].filter(reason => reason !== false);
   if (protection.context === 'invalid') missing.push('Prozess-ID, Quelldaten oder lokale Verweise prüfen');
   if (protection.context === 'context-open' && !missing.length) missing.push('Kategoriedefinition prüfen');
-  return [...missing, ...objectiveReasons(draft, protection)];
+  return missing;
+}
+
+function componentPath(process: ProcessProtection) {
+  return [...SSP_COMPONENT_PATH, Number(process.path.split('/').at(-1))];
+}
+
+function processLabel(draft: ProcessDraft, process: ProcessProtection): string {
+  return draft.id.trim() || draft.title.trim() || `in Zeile ${Number(process.path.split('/').at(-1)) + 1}`;
+}
+
+export function openProcessStructure(source: unknown, { processes }: SspProcessProtection) {
+  if (processes.length === 0) return [{ key: 'no-processes', text: 'Prozess-Schutzbedarf: kein Geschäftsprozess erfasst' }];
+  return processes.flatMap(process => {
+    const remaining = PROCESS_GOAL_KEYS.length - protectionCount(process);
+    if (process.context === 'context-complete' && remaining === 0) return [];
+    const draft = readProcessDraft(source, componentPath(process));
+    const label = processLabel(draft, process);
+    const reasons = contextReasons(draft, process);
+    if (remaining) reasons.push(remaining === 1 ? '1 Schutzziel nicht bewertet' : `${remaining} Schutzziele nicht bewertet`);
+    return reasons.map(reason => ({ key: `${process.path}:${reason}`, text: `Prozess ${label}: ${reason}` }));
+  });
+}
+
+function affectedProcesses(before: SspProcessProtection, after: SspProcessProtection, editedPath: string) {
+  const originals = new Map(before.processes.map(process => [process.path, process]));
+  return after.processes.filter(process => process.path !== editedPath && process.diagnostics.some(diagnostic =>
+    isProcessProtectionBlocker(diagnostic) && !originals.get(process.path)?.diagnostics.some(previous =>
+      previous.code === diagnostic.code && previous.path === diagnostic.path && previous.objective === diagnostic.objective)));
 }
 
 function referenceOptions(value: unknown, name: string, include: (item: Record<string, unknown>) => boolean) {
@@ -88,16 +111,17 @@ function referenceOptions(value: unknown, name: string, include: (item: Record<s
   });
 }
 
-function ProcessRow({ editor, path, protection, autoOpen, parties, applications }: Readonly<{
+function ProcessRow({ editor, protection, allProtection, autoOpen, parties, applications }: Readonly<{
   editor: SspEditor;
-  path: SspPath;
   protection: ProcessProtection;
+  allProtection: SspProcessProtection;
   autoOpen: boolean;
   parties: ReturnType<typeof referenceOptions>;
   applications: ReturnType<typeof referenceOptions>;
 }>) {
   const summary = useRef<HTMLElement>(null);
   const details = useRef<HTMLDetailsElement>(null);
+  const path = componentPath(protection);
   const base = readProcessDraft(editor.working, path);
   const [pending, setPending] = useState<{ before: ProcessDraft; value: ProcessDraft }>();
   const [confirming, setConfirming] = useState(false);
@@ -116,11 +140,13 @@ function ProcessRow({ editor, path, protection, autoOpen, parties, applications 
   const categoryConflict = categories === undefined;
   const draft = pending ? { ...pending.value, categories: categories ?? pending.value.categories } : base;
   const before = pending ? { ...pending.before, categories: categoryConflict ? pending.before.categories : base.categories } : base;
-  const preview = pending && !categoryConflict ? deriveSspProcessProtection(writeProcessDraft(editor.working, path, draft, before))
-    .processes.find(process => process.path === protection.path) ?? protection : protection;
-  const errors = reasonLines(draft, preview);
+  const patched = pending && !categoryConflict ? writeProcessDraft(editor.working, path, draft, before) : editor.working;
+  const projected = patched === editor.working ? allProtection : deriveSspProcessProtection(patched);
+  const preview = projected === allProtection ? protection : projected.processes.find(process => process.path === protection.path) ?? protection;
+  const affected = projected === allProtection ? [] : affectedProcesses(allProtection, projected, protection.path);
+  const errors = [...contextReasons(draft, preview), ...objectiveReasons(draft, preview)];
   const incompleteInput = hasIncompleteProcessInput(draft, before);
-  const invalid = processProtectionFailure({ ...preview, processes: [preview] }) !== undefined;
+  const invalid = preview.diagnostics.some(isProcessProtectionBlocker);
   const reset = () => {
     setPending(undefined);
     setTargetFormPending(id, false);
@@ -158,15 +184,21 @@ function ProcessRow({ editor, path, protection, autoOpen, parties, applications 
     </summary>
     <div className="space-y-4 border-t border-[var(--color-border-subtle)] p-3">
       <output className="block space-y-2">
-        <ProcessStatus protection={preview} />
+        <ProcessStatus protection={preview} labelled />
         {errors.length > 0 && <span className="block text-sm text-[var(--color-text-secondary)]">{errors.join(' · ')}</span>}
       </output>
       <ProcessFields draft={draft} update={update} parties={parties} applications={applications} protection={preview} />
       {categoryConflict && <p role="alert" className="text-sm text-[var(--color-danger-text)]">Eine andere Prozesszeile hat die Kategorie geändert. Eingaben prüfen oder zurücksetzen.</p>}
       {pending && !categoryConflict && (invalid || incompleteInput) && <p role="alert" className="text-sm text-[var(--color-danger-text)]">Prozess kann noch nicht übernommen werden. Angaben und Zuordnungen prüfen.</p>}
+      {affected.length > 0 && <p role="alert" className="text-sm text-[var(--color-danger-text)]">
+        Die Änderung erzeugt einen neuen Sperrbefund bei {affected.map(process => `Prozess ${processLabel(readProcessDraft(patched, componentPath(process)), process)}`).join(', ')}.
+      </p>}
       <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-        <Button variant="secondary" className="min-h-touch" disabled={!pending || categoryConflict || invalid || incompleteInput} onClick={() => {
-          if (editor.apply(source => writeProcessDraft(source, path, draft, before))) reset();
+        <Button variant="secondary" className="min-h-touch" disabled={!pending || categoryConflict || invalid || incompleteInput || affected.length > 0} onClick={() => {
+          if (editor.apply(source => {
+            if (source !== editor.working) throw new SspPatchError('SSP_PROCESS_CATEGORY_EDIT_CONFLICT');
+            return patched;
+          })) reset();
         }}>Prozess übernehmen</Button>
         <Button variant="ghost" className="min-h-touch" disabled={!pending} onClick={reset}>Eingaben zurücksetzen</Button>
         <Button variant="ghost" className="min-h-touch" disabled={checking || !uuid} onClick={() => { void requestRemoval(); }}>Prozess entfernen…</Button>
@@ -204,21 +236,19 @@ export function SspProcessSection({ editor, protection }: Readonly<{ editor: Ssp
     item => item.type === 'person' || item.type === 'organization');
   const applications = referenceOptions(readSspValue(editor.working, SSP_COMPONENT_PATH), 'title',
     item => item.type !== BUSINESS_PROCESS_COMPONENT_TYPE);
-  return <FormSection title="Geschäftsprozesse">
-    <div className="flex flex-wrap items-center justify-between gap-2">
-      <span className="text-sm tabular-nums text-[var(--color-text-secondary)]">{protection.processes.length} erfasst</span>
+  return <FormSection title="Geschäftsprozesse" count={protection.processes.length} action={
       <Button variant="secondary" className="min-h-touch" onClick={() => {
         const uuid = crypto.randomUUID();
         if (editor.apply(source => addSspItem(source, SSP_COMPONENT_PATH, {
           uuid, type: BUSINESS_PROCESS_COMPONENT_TYPE, status: { state: 'under-development' },
         }))) setAdded(uuid);
       }}>Geschäftsprozess hinzufügen</Button>
-    </div>
+    }>
     {protection.processes.length === 0
       ? <p className="rounded-md border border-dashed border-[var(--color-border-default)] p-4 text-sm">Noch kein Geschäftsprozess erfasst</p>
       : <div className="rounded-md border border-[var(--color-border-default)]">
         {protection.processes.map(process => (
-          <ProcessRow key={process.uuid ?? process.path} editor={editor} path={[...SSP_COMPONENT_PATH, Number(process.path.split('/').at(-1))]}
+          <ProcessRow key={process.uuid ?? process.path} editor={editor} allProtection={protection}
             protection={process} autoOpen={process.uuid !== undefined && process.uuid === added} parties={parties} applications={applications} />
         ))}
       </div>}

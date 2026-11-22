@@ -159,6 +159,7 @@ describe.each(LAYOUTS)('$name ($width px)', ({ name, width, height, touch }) => 
     await userEvent.fill(section.getByLabelText('Name', { exact: true }), SENTINEL);
     await userEvent.fill(section.getByLabelText('Kurzbeschreibung'), 'Anträge prüfen und Bescheide erstellen.');
     await userEvent.fill(section.getByLabelText('Zweck'), 'Fristgerechte Entscheidungen');
+    await userEvent.selectOptions(section.getByLabelText('Partei', { exact: true }), SSP_FIXTURE_IDS.party);
     (section.getByRole('checkbox', { name: 'Keine wesentliche Anwendung' }).element() as HTMLElement).focus();
     await userEvent.keyboard(' ');
     await userEvent.fill(section.getByLabelText('Begründung für keine wesentliche Anwendung'), 'Der Prozess läuft auf Papier.');
@@ -168,11 +169,14 @@ describe.each(LAYOUTS)('$name ($width px)', ({ name, width, height, touch }) => 
     (apply.element() as HTMLElement).focus();
     await userEvent.keyboard('{Enter}');
     await expect.poll(() => section.getByRole('status').getByText('Explizite Risikobetrachtung erforderlich').query()?.checkVisibility()).toBe(true);
+    const openStructure = page.getByRole('region', { name: 'Offene Struktur' });
+    await expect.poll(() => openStructure.getByText('Prozess P-01: 2 Schutzziele nicht bewertet').query()?.checkVisibility()).toBe(true);
     await assertNoAxeViolations(shell, `Geschäftsprozesse (${name})`, 'all');
     if (touch) {
       expect(add.getBoundingClientRect().height).toBeGreaterThanOrEqual(44);
       expect(apply.element().getBoundingClientRect().height).toBeGreaterThanOrEqual(44);
       expect(section.getByLabelText('Integrität', { exact: true }).element().getBoundingClientRect().height).toBeGreaterThanOrEqual(44);
+      expect(section.getByLabelText('Partei', { exact: true }).element().getBoundingClientRect().height).toBeGreaterThanOrEqual(44);
     }
     await expect.poll(() => section.getByText(SENTINEL, { exact: true }).query()?.checkVisibility()).toBe(true);
     await userEvent.click(page.getByRole('button', { name: 'Speichern', exact: true }));
@@ -263,7 +267,9 @@ test('Neuanlage per Tastatur, Speichern und Export im echten Worker bleiben loka
   if (requirement instanceof HTMLSelectElement) await userEvent.selectOptions(requirement, requirement.options[1].value);
   else await userEvent.fill(requirement, 'GC.1.1');
   button(shell, 'Anforderung hinzufügen')!.click();
-  await expect.poll(() => shell.textContent).toContain('Keine offene Pflichtstruktur.');
+  const openStructure = page.getByRole('region', { name: 'Offene Struktur' });
+  await expect.poll(() => openStructure.getByRole('listitem').all().length).toBe(1);
+  expect(openStructure.getByText('Prozess-Schutzbedarf: kein Geschäftsprozess erfasst').element()).toBeVisible();
 
   button(shell, 'Speichern')!.click();
   await expect.poll(async () => (await sspSource(localId)).documentState, { timeout: 15_000 }).toBe('export-ready');

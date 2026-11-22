@@ -10,7 +10,7 @@ type ContextState = 'unclassified' | 'context-open' | 'context-complete' | 'inva
 type CiaState = 'unknown' | 'partial' | 'complete' | 'conflict';
 type RiskConsideration = 'required' | 'no-high-trigger' | 'unknown';
 
-export interface ProcessProtectionDiagnostic { readonly code: string; readonly path: string }
+export interface ProcessProtectionDiagnostic { readonly code: string; readonly path: string; readonly objective?: Objective }
 export interface EffectiveProcessObjective {
   readonly value: 'normal' | 'hoch' | 'unknown' | 'conflict';
   readonly remarks?: string;
@@ -230,13 +230,16 @@ export function deriveSspProcessProtection(source: unknown): SspProcessProtectio
     if (!isJsonObject(process) || process.type !== BUSINESS_PROCESS_COMPONENT_TYPE) return [];
     const path = `${COMPONENT_PATH}/${index}`;
     const context = processContext(process, contextIndex, metadata, path, duplicateIds);
-    const confidentiality = effectiveObjective(process, metadata, 'confidentiality', path);
-    const integrity = effectiveObjective(process, metadata, 'integrity', path);
-    const availability = effectiveObjective(process, metadata, 'availability', path);
-    const objectives = { confidentiality: confidentiality.result, integrity: integrity.result, availability: availability.result };
+    const goals = {
+      confidentiality: effectiveObjective(process, metadata, 'confidentiality', path),
+      integrity: effectiveObjective(process, metadata, 'integrity', path),
+      availability: effectiveObjective(process, metadata, 'availability', path),
+    };
+    const objectives = { confidentiality: goals.confidentiality.result, integrity: goals.integrity.result, availability: goals.availability.result };
     const values = Object.values(objectives).map(result => result.value);
     return [{ uuid: readString(process.uuid), path, context: context.state, cia: ciaState(values), riskConsideration: riskConsideration(values), objectives,
-      diagnostics: [...context.diagnostics, ...confidentiality.diagnostics, ...integrity.diagnostics, ...availability.diagnostics] }];
+      diagnostics: [...context.diagnostics, ...OBJECTIVES.flatMap(objective =>
+        goals[objective].diagnostics.map(diagnostic => ({ ...diagnostic, objective })))] }];
   });
   const values = processes.flatMap(process => Object.values(process.objectives).map(result => result.value));
   let context: ContextState = processes.length > 0 ? 'context-complete' : 'unclassified';
@@ -247,6 +250,9 @@ export function deriveSspProcessProtection(source: unknown): SspProcessProtectio
 
 /** Fehlende Angaben bleiben offen. Ein fehlerhafter Bezug oder eine verwendete Kategorie ohne Mapping sperrt den Schreibpfad. */
 export function processProtectionFailure(protection: SspProcessProtection): ProcessProtectionDiagnostic | undefined {
-  return protection.processes.flatMap(process => process.diagnostics).find(({ code }) =>
-    code !== 'SSP_PROCESS_CONTEXT_REQUIRED' && code !== 'SSP_PROCESS_OBJECTIVE_REQUIRED');
+  return protection.processes.flatMap(process => process.diagnostics).find(isProcessProtectionBlocker);
+}
+
+export function isProcessProtectionBlocker({ code }: ProcessProtectionDiagnostic): boolean {
+  return code !== 'SSP_PROCESS_CONTEXT_REQUIRED' && code !== 'SSP_PROCESS_OBJECTIVE_REQUIRED';
 }
