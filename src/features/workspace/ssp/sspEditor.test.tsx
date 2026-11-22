@@ -2,6 +2,8 @@ import 'fake-indexeddb/auto';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildStationUrl, buildWorkspaceDocumentUrl } from '@/app/routes';
+import { PROJECT_PROPS_NAMESPACE } from '@/domain/projectProps';
+import { readSspValue } from '@/domain/sspAuthoring';
 import { downloadBlob } from '@/adapters/browserDownload';
 import type { CatalogState, LoadedCatalogState } from '@/domain/models';
 import { PINNED_OSCAL_VERSIONS, type PinnedOscalVersion } from '@/domain/oscalVersionMatrix';
@@ -9,7 +11,7 @@ import type { CatalogKey } from '@/domain/sourceRegistry';
 import type { LocalId, VerbundId, WorkspaceEnvelope } from '@/domain/workspaceModel';
 import { makeSchemaValidOscalDocument } from '@/test/fixtures/oscalSchemaFixtures';
 import { WorkspaceStore } from '@/adapters/workspaceStore';
-import { makeFullSsp, makeMinimalSsp, SSP_FIXTURE_IDS, withSspBody } from '@/test/fixtures/systemSecurityPlans';
+import { makeFullSsp, makeMinimalSsp, SSP_FIXTURE_IDS, SSP_FIXTURE_ROLE_ID, withSspBody } from '@/test/fixtures/systemSecurityPlans';
 import { mainLandmark as main, renderWorkspaceArea as renderArea, withLoadedCatalog } from '@/test/renderWorkspaceArea';
 import { readStore, resetWorkspace, seedWorkspace, type SeededWorkspace } from '@/test/workspaceAreaFixture';
 import { withSspCategories, SSP_CATEGORY_IDS } from '@/test/fixtures/sspCategories';
@@ -101,7 +103,7 @@ describe('Zielobjektbestand', () => {
     });
     const ssp = await addSsp(seeded.verbundId, source);
     renderArea(buildWorkspaceDocumentUrl(seeded.verbundId, ssp.localId), withGspp());
-    const first = await within(main()).findByRole('listitem', { name: /^Informationsart 1/ });
+    const first = await within(main()).findByRole('listitem', { name: /^Informationsart 1/ }, WAIT);
     fireEvent.change(within(first).getByLabelText('Begründung des Schutzbedarfs'), { target: { value: 'Eingabe für Betriebsdaten' } });
     const newer = withSspBody(source, body => { body['system-characteristics']['system-information']!['information-types']!.reverse(); });
     await readStore(store => store.saveDocument(ssp.localId, ssp.savedAt, null, { source: JSON.parse(JSON.stringify(newer)), context: { trustClass: 'class-2-local-user' }, rootType: 'system-security-plan', oscalVersion: '1.2.2' }));
@@ -175,7 +177,7 @@ describe('Zielobjektbestand', () => {
   it('zeigt offene Abdeckung und erfasst Schutzbedarf mit Begründung im gespeicherten SSP', async () => {
     const ssp = await addSsp(seeded.verbundId, makeFullSsp());
     renderArea(buildWorkspaceDocumentUrl(seeded.verbundId, ssp.localId), withGspp());
-    expect(await within(main()).findByText('Schutzbedarf: 0 von 4 Objekten bewertet')).toBeInTheDocument();
+    expect(await within(main()).findByText('Objektbewertung (bisher): 0 von 4 Objekten bewertet')).toBeInTheDocument();
     const component = await within(main()).findByRole('listitem', { name: /Komponente 1/ });
     fireEvent.change(within(component).getByLabelText('Schutzbedarf'), { target: { value: 'hoch' } });
     fireEvent.change(within(component).getByLabelText('Begründung des Schutzbedarfs'), { target: { value: 'Synthetischer Ausfall' } });
@@ -186,7 +188,252 @@ describe('Zielobjektbestand', () => {
       expect(JSON.stringify(saved?.source)).toContain('Synthetischer Ausfall');
       expect(JSON.stringify(saved?.source)).toContain('protection-need-coverage');
     }, WAIT);
-    expect(within(main()).getByText('Schutzbedarf: 1 von 4 Objekten bewertet')).toBeInTheDocument();
+    expect(within(main()).getByText('Objektbewertung (bisher): 1 von 4 Objekten bewertet')).toBeInTheDocument();
+  });
+});
+
+describe('Geschäftsprozesse', () => {
+  it('hält die Typwahl gesperrt, solange eine bisherige Objektbewertung offen ist', async () => {
+    const ssp = await addSsp(seeded.verbundId, makeFullSsp());
+    renderArea(buildWorkspaceDocumentUrl(seeded.verbundId, ssp.localId), withGspp());
+    const row = within(await within(main()).findByRole('listitem', { name: /Komponente 1/ }));
+    const typeField = row.getByLabelText(/^Typ/);
+    fireEvent.change(row.getByLabelText('Schutzbedarf'), { target: { value: 'hoch' } });
+    expect(typeField).toBeDisabled();
+    fireEvent.click(row.getByRole('button', { name: 'Eingaben zurücksetzen' }));
+    expect(typeField).toBeEnabled();
+  });
+
+  it('zeigt bei numerischer Prozess-ID im Entwurf einen Befund und erhält die Quelle', async () => {
+    const source = withSspBody(makeFullSsp(), body => {
+      const component = body['system-implementation'].components[0];
+      component.type = 'business-process';
+      component.props = [{ ns: PROJECT_PROPS_NAMESPACE, name: 'process-id', value: 7 as unknown as string }];
+    });
+    const ssp = await readStore(store => store.addDocument(seeded.verbundId, {
+      source: JSON.parse(JSON.stringify(source)), context: { trustClass: 'class-2-local-user' }, rootType: 'system-security-plan', oscalVersion: '1.2.2',
+    }, 'draft'));
+    renderArea(buildWorkspaceDocumentUrl(seeded.verbundId, ssp.localId), withGspp());
+    expect(await within(main()).findByText(/Projektregelbefund/)).toBeInTheDocument();
+    expect(within(main()).getByRole('button', { name: 'Speichern' })).toBeDisabled();
+    await click('Ungeprüften Erhaltungs-Export herunterladen');
+    const preserved = JSON.parse(await vi.mocked(downloadBlob).mock.calls[0][0].text());
+    expect(preserved).toEqual(source);
+  });
+
+  it('bindet einen unbelegten Katalogstand und erhält den korrigierbaren Prozessentwurf', async () => {
+    const source = withSspBody(makeFullSsp(), body => {
+      const component = body['system-implementation'].components[0];
+      component.type = 'business-process';
+      component['responsible-roles'] = [{ 'role-id': 'process-owner', 'party-uuids': [crypto.randomUUID()] }];
+      body.metadata.roles!.push({ id: 'process-owner', title: 'Verantwortung' });
+    });
+    const href = readSspValue(source, ['import-profile', 'href']) as string;
+    const ssp = await readStore(store => store.addDocument(seeded.verbundId, {
+      source: JSON.parse(JSON.stringify(source)), context: { trustClass: 'class-2-local-user' }, rootType: 'system-security-plan', oscalVersion: '1.2.2',
+    }, 'imported', [{ pointer: '/system-security-plan/import-profile/href', href, target: { kind: 'class-1', artifactKey: 'catalog-gspp' } }]));
+    const draft = withSspBody(source, body => { body.metadata.title = 'SSP mit offenem Entwurf'; });
+    await readStore(store => store.autosaveDraft(ssp.localId, ssp.savedAt, null, JSON.parse(JSON.stringify(draft))));
+    renderArea(buildWorkspaceDocumentUrl(seeded.verbundId, ssp.localId), withGspp());
+    await click('An ausgelieferten Stand binden');
+    await waitFor(async () => {
+      const stored = await readStore(store => store.getDocument(ssp.localId));
+      expect(stored?.documentState).toBe('draft');
+      expect(readSspValue(stored?.source, ['metadata', 'title'])).toBe('SSP mit offenem Entwurf');
+    }, WAIT);
+    await waitFor(() => expect(within(main()).getByRole('button', { name: 'Geschäftsprozess hinzufügen' })).toBeEnabled(), WAIT);
+    expect(within(main()).getByRole('button', { name: 'Speichern' })).toBeDisabled();
+    expect(within(main()).getByRole('button', { name: 'Export' })).toBeDisabled();
+  });
+
+  it('hält das Pflichtfeld für einen Protokollnamen aus OSCAL 1.1.2 erreichbar', async () => {
+    const source = withSspBody(makeFullSsp(), body => {
+      body.metadata['oscal-version'] = '1.1.2';
+      const component = body['system-implementation'].components[0];
+      component.type = 'business-process';
+      component.protocols = [{}];
+    });
+    const ssp = await readStore(store => store.addDocument(seeded.verbundId, {
+      source: JSON.parse(JSON.stringify(source)), context: { trustClass: 'class-2-local-user' },
+      rootType: 'system-security-plan', oscalVersion: '1.1.2',
+    }, 'draft'));
+    renderArea(buildWorkspaceDocumentUrl(seeded.verbundId, ssp.localId), withGspp());
+    const section = within(await within(main()).findByRole('region', { name: 'Geschäftsprozesse' }));
+    fireEvent.click(section.getByText('Gesamtsystem'));
+    fireEvent.click(section.getByText('Technische Angaben'));
+    expect(section.getByLabelText('Verantwortliche Rolle')).toHaveValue(SSP_FIXTURE_ROLE_ID);
+    const name = section.getByLabelText(/^Protokoll 1/);
+    expect(name).toHaveAttribute('aria-required', 'true');
+    fireEvent.change(name, { target: { value: 'TLS' } });
+    expect(within(main()).queryByText(/components\/0\/protocols\/0\/name/)).not.toBeInTheDocument();
+  });
+
+  it('behält beim reservierten Prozesstyp die technische Komponente und ihren Typ', async () => {
+    const ssp = await addSsp(seeded.verbundId, makeFullSsp());
+    renderArea(buildWorkspaceDocumentUrl(seeded.verbundId, ssp.localId), withGspp());
+    const component = within(await within(main()).findByRole('listitem', { name: /Komponente 2.*Fachanwendung/ }, WAIT));
+    const typeField = component.getByLabelText(/^Typ/);
+    fireEvent.change(typeField, { target: { value: 'business-process' } });
+    expect(typeField).toHaveValue('software');
+    expect(typeField).toHaveAccessibleDescription(/Geschäftsprozess hinzufügen/);
+    expect(typeField).toHaveAttribute('aria-invalid', 'true');
+    expect(within(main()).getByText('Noch kein Geschäftsprozess erfasst')).toBeInTheDocument();
+    fireEvent.change(typeField, { target: { value: 'service' } });
+    expect(typeField).toHaveValue('service');
+    expect(typeField).not.toHaveAttribute('aria-invalid', 'true');
+  });
+
+  it('speichert eine vollständige Bewertung mit Verantwortung, Anwendung und eigener Kategorie', async () => {
+    const ssp = await addSsp(seeded.verbundId, makeFullSsp());
+    renderArea(buildWorkspaceDocumentUrl(seeded.verbundId, ssp.localId), withGspp());
+    await click('Geschäftsprozess hinzufügen');
+    const section = within(within(main()).getByRole('region', { name: 'Geschäftsprozesse' }));
+    const change = (label: string, value: string) => fireEvent.change(section.getByLabelText(label), { target: { value } });
+    change('Prozess-ID', 'P-02');
+    change('Name', 'Rechnungsprüfung');
+    change('Kurzbeschreibung', 'Prüft Rechnungen und vermeidet Doppelzahlungen.');
+    change('Zweck', 'Zahlungen freigeben');
+    change('Partei', SSP_FIXTURE_IDS.party);
+    fireEvent.click(section.getByRole('checkbox', { name: /Anwendung.*Fachanwendung/ }));
+    for (const goal of ['Vertraulichkeit', 'Integrität', 'Verfügbarkeit']) {
+      change(goal, 'hoch');
+      change(`Begründung für ${goal}`, 'Ausfall verzögert Zahlungen.');
+    }
+    fireEvent.click(section.getByText('Eigene Schutzbedarfskategorie'));
+    fireEvent.click(section.getAllByRole('button', { name: 'Kategorie anlegen' })[1]);
+    const apply = section.getByRole('button', { name: 'Prozess übernehmen' });
+    expect(section.getByText(/GS\+\+-Zuordnung fehlt. Effektiver Wert unbekannt/)).toBeInTheDocument();
+    expect(apply).toBeDisabled();
+    change('Kategoriename', 'Kritisch');
+    change('Definition', 'Verzögerung gefährdet den Betrieb.');
+    change('GS++-Zuordnung', 'normal');
+    change('Begründung der Zuordnung', 'Zahlungen können verspätet sein.');
+    expect(section.getByText('Konflikt mit der GS++-Zuordnung (normal).')).toBeInTheDocument();
+    expect(apply).toBeDisabled();
+    change('GS++-Zuordnung', 'hoch');
+    fireEvent.click(apply);
+    expect(within(main()).getByText(/Prozess-Schutzbedarf: 1 von 1 Prozessen vollständig/)).toBeInTheDocument();
+    await click('Speichern');
+    await waitFor(async () => expect((await readStore(store => store.getDocument(ssp.localId)))?.documentState).toBe('export-ready'), WAIT);
+    await click('Export');
+    await waitFor(() => expect(downloadBlob).toHaveBeenCalled(), WAIT);
+    const exported = JSON.parse(await vi.mocked(downloadBlob).mock.calls[0][0].text());
+    const path = ['system-implementation', 'components', 2];
+    expect(readSspValue(exported, [...path, 'responsible-roles'])).toEqual([{ 'role-id': 'process-owner', 'party-uuids': [SSP_FIXTURE_IDS.party] }]);
+    expect(readSspValue(exported, [...path, 'props'])).toContainEqual(expect.objectContaining({ name: 'process-application-uuid', value: SSP_FIXTURE_IDS.software }));
+    expect(readSspValue(exported, ['metadata', 'props'])).toContainEqual(expect.objectContaining({ name: 'process-category-mapping', value: 'hoch' }));
+
+    fireEvent.click(section.getByRole('button', { name: 'Prozess entfernen…' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Prozess entfernen' }));
+    expect(await within(main()).findByText('Prozess-Schutzbedarf offen')).toBeInTheDocument();
+  });
+
+  it('behält bei konkurrierenden Änderungen an einer Kategorie beide Entwürfe sichtbar', async () => {
+    const ns = PROJECT_PROPS_NAMESPACE;
+    const category = 'cat-intern';
+    const source = withSspBody(makeFullSsp(), body => {
+      body.metadata.props = [
+        { ns, name: 'process-category-label', group: category, value: 'Intern' },
+        { ns, name: 'process-category-definition', group: category, value: 'Interne Definition' },
+        { ns, name: 'process-category-mapping', group: category, value: 'hoch', remarks: 'Begründung' },
+      ];
+      body['system-implementation'].components = body['system-implementation'].components.map((component, index) => ({
+        ...component, type: 'business-process',
+        props: [
+          { ns, name: 'process-id', value: `P-0${index + 1}` },
+          { ns, name: 'process-protection-integrity', value: 'hoch', remarks: 'Ausfallfolge' },
+          { ns, name: 'process-protection-category', group: 'integrity', value: category },
+        ],
+      }));
+    });
+    const ssp = await addSsp(seeded.verbundId, source);
+    renderArea(buildWorkspaceDocumentUrl(seeded.verbundId, ssp.localId), withGspp());
+    const rows = await within(main()).findAllByText(/^P-0[12]$/);
+    const [first, second] = rows.map(row => {
+      fireEvent.click(row);
+      return within(row.closest('details')!);
+    });
+    const update = (row: ReturnType<typeof within>, value: string) =>
+      fireEvent.change(row.getByLabelText('Definition'), { target: { value } });
+    update(first, 'Definition A');
+    update(second, 'Definition B');
+    fireEvent.click(first.getByRole('button', { name: 'Prozess übernehmen' }));
+    expect(second.getByRole('alert')).toHaveTextContent('Eine andere Prozesszeile hat die Kategorie geändert');
+    expect(second.getByLabelText('Definition')).toHaveValue('Definition B');
+    expect(second.getByRole('button', { name: 'Prozess übernehmen' })).toBeDisabled();
+    fireEvent.click(second.getByRole('button', { name: 'Eingaben zurücksetzen' }));
+    expect(second.getByLabelText('Definition')).toHaveValue('Definition A');
+  });
+
+  it('übernimmt die Schutzziele einzeln und speichert den Prozess getrennt von Komponenten', async () => {
+    const ssp = await addSsp(seeded.verbundId, makeFullSsp());
+    renderArea(buildWorkspaceDocumentUrl(seeded.verbundId, ssp.localId), withGspp());
+    expect(await within(main()).findByText('Prozess-Schutzbedarf offen')).toBeInTheDocument();
+    await click('Geschäftsprozess hinzufügen');
+    const section = within(within(main()).getByRole('region', { name: 'Geschäftsprozesse' }));
+    const change = (label: string, value: string) => fireEvent.change(section.getByLabelText(label), { target: { value } });
+    expect(section.getByLabelText('Vertraulichkeit')).toHaveValue('');
+    change('Prozess-ID', 'P-01');
+    change('Name', 'Antragsbearbeitung');
+    change('Kurzbeschreibung', 'Prüft Anträge und erstellt Bescheide.');
+    change('Zweck', 'Fristgerechte Entscheidung');
+    change('Integrität', 'hoch');
+    change('Begründung für Integrität', 'Fehlerhafte Bescheide');
+    await click('Speichern');
+    expect(await within(main()).findByText(/Bitte die offenen Schutzbedarfseingaben/)).toBeInTheDocument();
+    await click('Prozess übernehmen');
+    expect(section.getAllByText('Explizite Risikobetrachtung erforderlich').length).toBeGreaterThan(0);
+    const openStructure = within(main()).getByRole('region', { name: 'Offene Struktur' });
+    expect(openStructure).toHaveTextContent('Prozess P-01: Anwendungen fehlen');
+    expect(openStructure).toHaveTextContent('Prozess P-01: 2 Schutzziele nicht bewertet');
+    expect(within(main()).queryByRole('listitem', { name: /Komponente.*Antragsbearbeitung/ })).not.toBeInTheDocument();
+    await click('Speichern');
+    await waitFor(async () => {
+      const saved = await readStore(store => store.getDocument(ssp.localId));
+      expect(readSspValue(saved?.source, ['system-implementation', 'components', 2])).toMatchObject({
+        type: 'business-process', title: 'Antragsbearbeitung',
+        props: [expect.objectContaining({ name: 'process-id', value: 'P-01' }),
+          expect.objectContaining({ name: 'process-protection-integrity', value: 'hoch', remarks: 'Fehlerhafte Bescheide' })],
+      });
+    }, WAIT);
+  });
+
+  it.each([false, true])('prüft neue Sperrbefunde in anderen Prozessen (Vorbefund: %s)', async existingConflict => {
+    const ns = PROJECT_PROPS_NAMESPACE;
+    const source = withSspBody(makeFullSsp(), body => {
+      body.metadata.props = ['cat-intern', 'cat-alt'].flatMap(group => [
+        { ns, name: 'process-category-label', group, value: group },
+        { ns, name: 'process-category-definition', group, value: 'Interne Definition' },
+        { ns, name: 'process-category-mapping', group, value: 'normal', remarks: 'Begründung' },
+      ]);
+      body['system-implementation'].components.forEach((component, index) => {
+        component.type = 'business-process';
+        component.props = [
+          { ns, name: 'process-id', value: `P-0${index + 1}` },
+          { ns, name: 'process-protection-integrity', value: 'normal', remarks: 'Ausfallfolge' },
+          { ns, name: 'process-protection-category', group: 'integrity', value: 'cat-intern' },
+        ];
+        if (index === 1 && existingConflict) component.props.push(
+          { ns, name: 'process-protection-confidentiality', value: 'hoch', remarks: 'Schadensfolge' },
+          { ns, name: 'process-protection-category', group: 'confidentiality', value: 'cat-alt' },
+        );
+      });
+    });
+    const ssp = await addSsp(seeded.verbundId, source);
+    renderArea(buildWorkspaceDocumentUrl(seeded.verbundId, ssp.localId), withGspp());
+    const id = await within(main()).findByText('P-01');
+    fireEvent.click(id);
+    const row = within(id.closest('details')!);
+    const apply = row.getByRole('button', { name: 'Prozess übernehmen' });
+    fireEvent.change(row.getByLabelText('Definition'), { target: { value: 'Neue Definition' } });
+    expect(apply).toBeEnabled();
+    fireEvent.change(row.getByLabelText('Integrität'), { target: { value: 'hoch' } });
+    fireEvent.change(row.getByLabelText('GS++-Zuordnung'), { target: { value: 'hoch' } });
+    expect(apply).toBeDisabled();
+    expect(row.getByRole('alert')).toHaveTextContent('Prozess P-02');
+    fireEvent.click(row.getByRole('button', { name: 'Eingaben zurücksetzen' }));
+    expect(row.queryByRole('alert')).not.toBeInTheDocument();
+    expect(row.getByLabelText('GS++-Zuordnung')).toHaveValue('normal');
   });
 });
 
@@ -214,7 +461,7 @@ describe('Neuanlage mit Baseline-Wahl', () => {
       { fromLocalId: localId, pointer: '/system-security-plan/import-profile/href', href: body['import-profile'].href, target: { kind: 'class-1', artifactKey: 'catalog-gspp' } },
     ]);
     expect(await within(main()).findByText('Entwurf')).toBeInTheDocument();
-    expect(within(main()).getByRole('region', { name: 'Offene Pflichtstruktur' })).toHaveTextContent('/system-security-plan/system-implementation/components');
+    expect(within(main()).getByRole('region', { name: 'Offene Struktur' })).toHaveTextContent('/system-security-plan/system-implementation/components');
     expect(within(main()).getByRole('button', { name: 'Export' })).toBeDisabled();
     expect(fetch).not.toHaveBeenCalled();
     expect(JSON.stringify(router.state.location)).not.toContain('Plan Rechenzentrum');
@@ -230,7 +477,9 @@ describe('Formulare, Speichern und Export', () => {
     fireEvent.click(within(main()).getByRole('button', { name: 'SSP anlegen' }));
     const { localId, document: start } = await created(router);
     await fillRequired();
-    expect(await within(main()).findByText('Keine offene Pflichtstruktur.')).toBeInTheDocument();
+    const openStructure = within(main()).getByRole('region', { name: 'Offene Struktur' });
+    expect(within(openStructure).getAllByRole('listitem')).toHaveLength(1);
+    expect(openStructure).toHaveTextContent('Prozess-Schutzbedarf: kein Geschäftsprozess erfasst');
     // Autosave schreibt den Entwurf und lässt UUID und last-modified unverändert.
     await waitFor(async () => expect(await readStore((store) => store.getDraft(localId))).toBeDefined(), WAIT);
     const draft = await readStore((store) => store.getDraft(localId));

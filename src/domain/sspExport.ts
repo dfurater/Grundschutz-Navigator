@@ -15,6 +15,7 @@ import type { DerivedJsonTree } from '@/domain/oscalDerivedGraph';
 import { processClass2OscalValue } from '@/domain/oscalObjectPipeline';
 import { toDerivedOscalTree } from '@/domain/profileExport';
 import { validateSspTargets, type TargetCategoryContext } from '@/domain/sspTargetObjects';
+import { deriveSspProcessProtection, processProtectionFailure } from '@/domain/sspProcessProtection';
 import { sspReadinessBlocker } from '@/domain/sspSave';
 import { serializeWorkspaceJson } from '@/domain/workspaceJson';
 import type { DocumentState } from '@/domain/workspaceModel';
@@ -46,7 +47,8 @@ export async function validateSspExportTree(tree: unknown, categories?: TargetCa
   const processed = await processClass2OscalValue(tree, { trustClass: 'class-2-local-user' });
   if (!processed.ok) return fail(processed.diagnostic.code, processed.diagnostic.path);
   if (processed.document.rootType !== 'system-security-plan') return fail(SSP_EXPORT_CODES.rootNotSsp);
-  const blocker = validateSspTargets(processed.document.source, categories) ?? sspReadinessBlocker(processed.document.source);
+  const source = processed.document.source;
+  const blocker = validateSspTargets(source, categories) ?? processProtectionFailure(deriveSspProcessProtection(source)) ?? sspReadinessBlocker(source);
   if (blocker) return fail(blocker.code, blocker.path);
   return {
     ok: true,

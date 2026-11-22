@@ -89,11 +89,13 @@ export function InventoryReferences({ editor, path }: Readonly<{ editor: SspEdit
 }
 
 /** Rollen und Parteien sind native lokale Referenzen; vorhandene Zuweisungsfelder bleiben erhalten. */
-export function TargetResponsibility({ editor, path, inventory = false }: Readonly<{ editor: SspEditor; path: SspPath; inventory?: boolean }>) {
+export function TargetResponsibility({ editor, path, inventory = false, excludeRole }: Readonly<{ editor: SspEditor; path: SspPath; inventory?: boolean; excludeRole?: string }>) {
   const id = useId();
-  const roles = readArray(readSspValue(editor.working, ['metadata', 'roles'])).filter(isJsonObject);
+  const roles = readArray(readSspValue(editor.working, ['metadata', 'roles'])).filter(isJsonObject)
+    .filter(role => excludeRole === undefined || role.id !== excludeRole);
   const parties = readArray(readSspValue(editor.working, ['metadata', 'parties'])).filter(isJsonObject);
-  return <SspRowList editor={editor} path={[...path, inventory ? 'responsible-parties' : 'responsible-roles']} title="Verantwortlichkeiten" uuidKeyed={false} addLabel="Verantwortlichkeit hinzufügen" newItem={() => ({})} rowTitle={(_, index) => `Verantwortlichkeit ${index + 1}`} renderRow={(row, item) => {
+  return <SspRowList editor={editor} path={[...path, inventory ? 'responsible-parties' : 'responsible-roles']} title="Verantwortlichkeiten" uuidKeyed={false} addLabel="Verantwortlichkeit hinzufügen" newItem={() => ({})} rowTitle={(_, index) => `Verantwortlichkeit ${index + 1}`}
+    include={item => excludeRole === undefined || !isJsonObject(item) || item['role-id'] !== excludeRole} renderRow={(row, item) => {
     const value = isJsonObject(item) ? readString(item['role-id']) ?? '' : '';
     const fieldId = `${id}-${row.at(-1)}`;
     return <div className="space-y-2">

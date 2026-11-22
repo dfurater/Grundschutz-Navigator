@@ -2,7 +2,7 @@ import { useId, useState, type ReactNode } from 'react';
 import { Button } from '@/components/Button';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { isJsonObject, readArray, readString } from '@/domain/jsonGuards';
-import { addSspItem, moveSspItem, readSspValue, removeSspItem, setSspValue, type SspPath } from '@/domain/sspAuthoring';
+import { addSspItem, moveSspItem, readSspValue, removeSspItem, setSspValue, sspOscalVersion, sspProtocolNameRequired, type SspPath } from '@/domain/sspAuthoring';
 import { INPUT, OscalKey, SECTION_LABEL } from '@/features/workspace/profile/ProfileMarks';
 import type { SspEditor } from '@/features/workspace/ssp/useSspEditor';
 
@@ -17,7 +17,7 @@ function keyOf(path: SspPath): string {
 }
 
 /** Ein Textfeld auf genau einen Wert der Quelle; Leerraum allein entfernt den Wert. */
-export function SspTextField({ editor, path, label, required = false, multiline = false, mono = false, list }: Readonly<{
+export function SspTextField({ editor, path, label, required = false, multiline = false, mono = false, list, validate }: Readonly<{
   editor: SspEditor;
   path: SspPath;
   label: string;
@@ -26,10 +26,17 @@ export function SspTextField({ editor, path, label, required = false, multiline 
   mono?: boolean;
   /** `id` einer `datalist` mit Vorschlägen. */
   list?: string;
+  validate?: (value: string) => string | undefined;
 }>) {
   const id = useId();
+  const [error, setError] = useState<string>();
   const value = readString(readSspValue(editor.working, path)) ?? '';
-  const onChange = (next: string) => { editor.apply((source) => setSspValue(source, path, next)); };
+  const onChange = (next: string) => {
+    const message = validate?.(next);
+    setError(message);
+    if (!message) editor.apply((source) => setSspValue(source, path, next));
+  };
+  const accessibility = { 'aria-invalid': error ? true : undefined, 'aria-describedby': error ? `${id}-error` : undefined };
   const className = `${INPUT} ${mono ? 'font-mono' : ''}`;
   return (
     <div className="min-w-0 space-y-1">
@@ -37,8 +44,9 @@ export function SspTextField({ editor, path, label, required = false, multiline 
         {label} <OscalKey>{keyOf(path)}</OscalKey>{required && <span className={REQUIRED_MARK}>Pflicht</span>}
       </label>
       {multiline
-        ? <textarea id={id} className={`${className} min-h-20`} value={value} aria-required={required} onChange={(event) => onChange(event.target.value)} />
-        : <input id={id} className={className} value={value} aria-required={required} autoComplete="off" list={list} onChange={(event) => onChange(event.target.value)} />}
+        ? <textarea id={id} className={`${className} min-h-20`} value={value} aria-required={required} onChange={(event) => onChange(event.target.value)} {...accessibility} />
+        : <input id={id} className={className} value={value} aria-required={required} autoComplete="off" list={list} onChange={(event) => onChange(event.target.value)} {...accessibility} />}
+      {error && <p id={`${id}-error`} role="alert" className="text-sm text-[var(--color-danger-text)]">{error}</p>}
     </div>
   );
 }
@@ -65,6 +73,16 @@ export function SspSelectField({ editor, path, label, options, required = false 
       </select>
     </div>
   );
+}
+
+export function SspProtocolFields({ editor, path }: Readonly<{ editor: SspEditor; path: SspPath }>) {
+  const protocols = readArray(readSspValue(editor.working, [...path, 'protocols']));
+  const required = protocols.length > 0 && sspProtocolNameRequired(sspOscalVersion(editor.working));
+  return protocols.map((protocol, index) => {
+    const uuid = isJsonObject(protocol) ? readString(protocol.uuid) : undefined;
+    return <SspTextField key={uuid ?? `protocol-${index}`} editor={editor} path={[...path, 'protocols', index, 'name']}
+      label={`Protokoll ${index + 1}`} required={required} mono />;
+  });
 }
 
 /**
@@ -102,7 +120,7 @@ function useRowKeys(items: readonly unknown[], uuidKeyed: boolean) {
  * stabile lokale Kennung als Schlüssel; Eingaben bleiben beim Hinzufügen,
  * Entfernen und Verschieben an ihrer Zeile.
  */
-export function SspRowList({ editor, path, title, required = false, uuidKeyed, newItem, addLabel, remove, renderRow, rowTitle, protectedTarget = false }: Readonly<{
+export function SspRowList({ editor, path, title, required = false, uuidKeyed, newItem, addLabel, remove, renderRow, rowTitle, protectedTarget = false, include }: Readonly<{
   editor: SspEditor;
   path: SspPath;
   title: string;
@@ -117,10 +135,12 @@ export function SspRowList({ editor, path, title, required = false, uuidKeyed, n
   renderRow: (rowPath: SspPath, item: unknown) => ReactNode;
   rowTitle: (item: unknown, index: number) => string;
   protectedTarget?: boolean;
+  include?: (item: unknown) => boolean;
 }>) {
   const headingId = useId();
   const items = readArray(readSspValue(editor.working, path));
   const rows = useRowKeys(items, uuidKeyed);
+  const indices = items.flatMap((item, index) => !include || include(item) ? [index] : []);
   const [visible, setVisible] = useState(ROW_PAGE);
   const [pending, setPending] = useState<{ index: number; key: string; item: string }>();
   const [uses, setUses] = useState<readonly string[]>([]);
@@ -146,20 +166,21 @@ export function SspRowList({ editor, path, title, required = false, uuidKeyed, n
     <section aria-labelledby={headingId} className="space-y-2">
       <h3 id={headingId} className={`${SECTION_LABEL} flex flex-wrap items-baseline gap-x-2`}>
         <span>{title}</span>
-        <span className="tabular-nums">{items.length}</span>
+        <span className="tabular-nums">{indices.length}</span>
         <OscalKey>{keyOf(path)}</OscalKey>
         {required && <span className={REQUIRED_MARK}>Pflicht</span>}
       </h3>
-      {items.length > 0 && (
+      {indices.length > 0 && (
         <ul className="divide-y divide-[var(--color-border-subtle)] rounded-md border border-[var(--color-border-default)]">
-          {items.slice(0, visible).map((item, index) => {
-            const label = rowTitle(item, index);
+          {indices.slice(0, visible).map((index, position) => {
+            const item = items[index];
+            const label = rowTitle(item, position);
             return (
               <li key={rows.keyAt(item, index)} aria-label={label} className="space-y-3 p-3">
                 {renderRow([...path, index], item)}
                 <div className="flex flex-wrap gap-1">
-                  <Button variant="ghost" size="sm" className="min-h-touch desktop:min-h-0" disabled={index === 0} aria-label={`${label} nach oben`} onClick={() => move(index, index - 1)}>Nach oben</Button>
-                  <Button variant="ghost" size="sm" className="min-h-touch desktop:min-h-0" disabled={index === items.length - 1} aria-label={`${label} nach unten`} onClick={() => move(index, index + 1)}>Nach unten</Button>
+                  <Button variant="ghost" size="sm" className="min-h-touch desktop:min-h-0" disabled={position === 0} aria-label={`${label} nach oben`} onClick={() => move(index, indices[position - 1])}>Nach oben</Button>
+                  <Button variant="ghost" size="sm" className="min-h-touch desktop:min-h-0" disabled={position === indices.length - 1} aria-label={`${label} nach unten`} onClick={() => move(index, indices[position + 1])}>Nach unten</Button>
                   <Button variant="ghost" size="sm" className="min-h-touch desktop:min-h-0" disabled={checking} aria-label={`${label} entfernen`} onClick={() => { void requestRemoval(index); }}>Entfernen</Button>
                 </div>
               </li>
@@ -167,9 +188,9 @@ export function SspRowList({ editor, path, title, required = false, uuidKeyed, n
           })}
         </ul>
       )}
-      {visible < items.length && (
+      {visible < indices.length && (
         <Button variant="secondary" size="sm" className="min-h-touch tabular-nums desktop:min-h-0" onClick={() => setVisible((count) => count + ROW_PAGE)}>
-          Weitere Einträge · {visible} von {items.length}
+          Weitere Einträge · {visible} von {indices.length}
         </Button>
       )}
       {newItem && (
