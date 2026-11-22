@@ -5,7 +5,7 @@ import type {
 } from '@/domain/workspaceModel';
 import { boundaryDraftBase, sameBoundaryInput, scopeBoundaryInput, type ScopeBoundaryDraft } from '@/domain/scopeBoundary';
 import type { WorkspaceContextValue } from '@/state/WorkspaceContext';
-import { discardDecisionDrafts } from '@/state/processDecisionDrafts';
+import { discardDecisionDrafts, retainDecisionDrafts } from '@/state/processDecisionDrafts';
 
 /** Schlüssel der offenen Anlage eines Anwendungsbereichs unter den Namensentwürfen; keine `scopeId` hat diese Form. */
 export const NEW_SCOPE_DRAFT = 'neu';
@@ -126,17 +126,20 @@ function boundaryInputs(drafts: ReadonlyMap<string, ScopeBoundaryDraft>, scopes:
   return inputs;
 }
 
-/** Verwirft nach erfolgreichem Restore alle Sitzungseingaben des ersetzten Bereichs; unbeteiligte bleiben. */
+/**
+ * Verwirft nach erfolgreichem Restore alle Sitzungseingaben des ersetzten Bereichs; unbeteiligte bleiben. Entwürfe der
+ * Freigabedialoge bleiben für Dokumente, die der Restore zurückbringt, und gehen nur mit entfernten Dokumenten.
+ */
 export function discardReplacedInputs(preview: RestorePreview, importTargets: Map<LocalId, unknown>, renameDrafts: Map<string, string>): void {
   if (preview.kind === 'workspace') {
     importTargets.clear();
-    discardDecisionDrafts();
+    retainDecisionDrafts(new Set(preview.backup.documents.map(({ localId }) => localId)));
     renameDrafts.clear();
     return;
   }
-  const replaced = [...preview.target.documents, ...preview.backup.documents].map(({ localId }) => localId);
-  for (const localId of replaced) importTargets.delete(localId);
-  discardDecisionDrafts(replaced);
+  for (const { localId } of [...preview.target.documents, ...preview.backup.documents]) importTargets.delete(localId);
+  const restored = new Set(preview.backup.documents.map(({ localId }) => localId));
+  discardDecisionDrafts(preview.target.documents.map(({ localId }) => localId).filter(localId => !restored.has(localId)));
   renameDrafts.delete(preview.verbundId);
 }
 

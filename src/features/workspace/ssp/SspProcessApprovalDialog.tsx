@@ -116,6 +116,12 @@ export function SspProcessApprovalDialog({ localId, mode, label, processUuid, so
   const setRemarks = (value: string) => setDraft(current => ({ ...current, remarks: value }));
   const creating = newParty !== undefined;
   const discard = () => { decisionDrafts(localId).delete(draftKey); onClose(); };
+  // Ein spät eintreffender Erfolg verwirft nur den abgesendeten Entwurf, nie einen inzwischen neueren.
+  const finish = (submitted: DialogDraft) => {
+    const store = decisionDrafts(localId);
+    if (store.get(draftKey) === submitted) store.delete(draftKey);
+    onClose();
+  };
   const [tried, setTried] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
@@ -135,18 +141,31 @@ export function SspProcessApprovalDialog({ localId, mode, label, processUuid, so
   const confirm = async () => {
     setTried(true);
     if (!party || !remarks.trim()) return;
+    const submitted = draft;
     setBusy(true);
     setError(undefined);
-    const code = await onDecide({ processUuid, type: mode, uuid: crypto.randomUUID(), date: new Date().toISOString(), partyUuids: [party], remarks: remarks.trim() });
-    setBusy(false);
+    let code: string | undefined;
+    try {
+      code = await onDecide({ processUuid, type: mode, uuid: crypto.randomUUID(), date: new Date().toISOString(), partyUuids: [party], remarks: remarks.trim() });
+    } catch {
+      code = 'WORKSPACE_STORAGE_FAILED';
+    } finally {
+      setBusy(false);
+    }
     if (code) setError(errorText(code));
-    else discard();
+    else finish(submitted);
   };
   const addParty = async (next: NewParty) => {
     setBusy(true);
     setError(undefined);
-    const result = await onAddParty(next);
-    setBusy(false);
+    let result: { readonly uuid?: string; readonly code?: string };
+    try {
+      result = await onAddParty(next);
+    } catch {
+      result = { code: 'WORKSPACE_STORAGE_FAILED' };
+    } finally {
+      setBusy(false);
+    }
     if (result.uuid) closeCreation(result.uuid);
     else setError(`${errorText(result.code ?? 'WORKSPACE_STORAGE_FAILED')} Die Partei steht im Arbeitsstand unter Metadaten.`);
   };
