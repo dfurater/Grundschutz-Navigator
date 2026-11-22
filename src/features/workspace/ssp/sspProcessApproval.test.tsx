@@ -4,6 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildWorkspaceDocumentUrl } from '@/app/routes';
 import type { JsonObject } from '@/domain/jsonGuards';
 import { readSspValue } from '@/domain/sspAuthoring';
+import { appendProcessDecision } from '@/domain/sspProcessApproval';
+import { processContentHash } from '@/domain/sspProcessProjection';
 import type { LocalId } from '@/domain/workspaceModel';
 import { makeProcessCiaSsp } from '@/test/fixtures/processCia';
 import { mainLandmark as main, renderWorkspaceArea, withLoadedCatalog } from '@/test/renderWorkspaceArea';
@@ -26,10 +28,14 @@ afterEach(async () => { vi.restoreAllMocks(); await resetWorkspace(); });
 
 type Change = (ssp: { metadata: JsonObject; process: JsonObject }) => void;
 
-async function open(change?: Change) {
+function fixture(change?: Change) {
   const source = makeProcessCiaSsp('1.2.2');
   const ssp = (source as { 'system-security-plan': JsonObject })['system-security-plan'];
   change?.({ metadata: ssp.metadata as JsonObject, process: (readSspValue(source, ['system-implementation', 'components']) as JsonObject[])[0] });
+  return source;
+}
+
+async function open(change?: Change, source: unknown = fixture(change)) {
   const document = await readStore(store => store.addDocument(seeded.verbundId, { source, context: { trustClass: 'class-2-local-user' }, rootType: 'system-security-plan', oscalVersion: '1.2.2' }));
   renderWorkspaceArea(buildWorkspaceDocumentUrl(seeded.verbundId, document.localId), withLoadedCatalog(true));
   const region = await within(main()).findByRole('region', { name: 'Leitungsfreigabe' }, WAIT);
@@ -42,6 +48,9 @@ async function actions(localId: LocalId) {
 }
 
 const props = (node: JsonObject) => node.props as JsonObject[];
+const PROCESS = 'aaaaaaaa-0000-4000-8000-000000000002';
+const PARTY = 'aaaaaaaa-0000-4000-8000-000000000005';
+const changeReason: Change = ssp => { Object.assign(props(ssp.process).find(prop => prop.name === 'process-protection-integrity')!, { remarks: 'Geänderter Grund' }); };
 
 describe('Leitungsfreigabe je Prozess', () => {
   it('nimmt eine aktuelle Freigabe mit Anlass zurück und gibt den Prozess neu frei', async () => {
@@ -78,7 +87,7 @@ describe('Leitungsfreigabe je Prozess', () => {
   });
 
   it.each([
-    ['Überholt', 'Neu freigeben…', ((ssp) => { Object.assign(props(ssp.process).find(prop => prop.name === 'process-protection-integrity')!, { remarks: 'Geänderter Grund' }); }) as Change],
+    ['Überholt', 'Neu freigeben…', changeReason],
     ['Aktuell', 'Freigabe zurücknehmen…', ((ssp) => { Object.assign(props(ssp.process).find(prop => prop.name === 'process-priority')!, { value: '7' }); }) as Change],
     ['Fehlt', 'Freigabe dokumentieren…', ((ssp) => {
       // Eine allgemeine Dokumentfreigabe ist keine Prozessfreigabe.
@@ -113,6 +122,25 @@ describe('Leitungsfreigabe je Prozess', () => {
     expect((await actions(localId))[0]).toMatchObject({ 'responsible-parties': [{ 'role-id': 'institution-management', 'party-uuids': [created!.uuid] }] });
   });
 
+  it('nimmt nach A1, A2 und Rücknahme von A2 auch A1 ausdrücklich zurück, ohne sie zu reaktivieren', async () => {
+    const stale = fixture(changeReason);
+    const hash = await processContentHash(stale, PROCESS, [{ 'role-id': 'institution-management', 'party-uuids': [PARTY] }]);
+    const decision = { processUuid: PROCESS, date: '2026-11-20T10:00:00Z', partyUuids: [PARTY] };
+    const second = appendProcessDecision(stale, { ...decision, type: 'approved', uuid: 'bbbbbbbb-0000-4000-8000-000000000001', remarks: 'A2' }, hash);
+    const { localId, region } = await open(undefined, appendProcessDecision(second, { ...decision, type: 'withdrawn', uuid: 'bbbbbbbb-0000-4000-8000-000000000002', remarks: 'W(A2)' }));
+    expect(await region.findByText('Zurückgenommen')).toBeInTheDocument();
+    fireEvent.click(region.getByRole('button', { name: 'Freigabe zurücknehmen…' }));
+    const dialog = within(await screen.findByRole('alertdialog'));
+    expect(dialog.getByText(/^process-cia\/3:sha-256:24db…f640$/)).toBeInTheDocument();
+    fireEvent.change(dialog.getByLabelText('Anlass der Rücknahme'), { target: { value: 'Ältere Freigabe beenden.' } });
+    fireEvent.click(dialog.getByRole('button', { name: 'Freigabe zurücknehmen' }));
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument(), WAIT);
+    expect(await region.findByText('Ältere Freigabe beenden.', undefined, WAIT)).toBeInTheDocument();
+    expect(region.getByText('Zurückgenommen')).toBeInTheDocument();
+    expect(region.queryByRole('button', { name: 'Freigabe zurücknehmen…' })).not.toBeInTheDocument();
+    expect((await actions(localId)).at(-1)).toMatchObject({ type: 'withdrawn', props: expect.arrayContaining([expect.objectContaining({ name: 'process-cia-withdraws', value: 'aaaaaaaa-0000-4000-8000-000000000006' })]) });
+  });
+
   it('zeigt eine ungültige importierte Kette mit Befund und lässt sie unverändert', async () => {
     const { localId, region } = await open(ssp => {
       Object.assign(props((ssp.metadata.actions as JsonObject[])[0]).find(prop => prop.name === 'process-cia-sequence')!, { value: '2' });
@@ -140,10 +168,11 @@ describe('Leitungsfreigabe je Prozess', () => {
     const dialog = within(await screen.findByRole('alertdialog'));
     fireEvent.change(dialog.getByLabelText('Anlass der Rücknahme'), { target: { value: 'Anlass' } });
     // Ein anderer Tab speichert denselben Inhalt neu: Der gebundene Stand ist veraltet.
-    await readStore(store => store.saveDocument(localId, stored!.savedAt, null, { source: structuredClone(stored!.source), context: { trustClass: 'class-2-local-user' }, rootType: 'system-security-plan', oscalVersion: '1.2.2' }));
+    const foreign = await readStore(store => store.saveDocument(localId, stored!.savedAt, null, { source: structuredClone(stored!.source), context: { trustClass: 'class-2-local-user' }, rootType: 'system-security-plan', oscalVersion: '1.2.2' }));
     fireEvent.click(dialog.getByRole('button', { name: 'Freigabe zurücknehmen' }));
     expect(await dialog.findByRole('alert', undefined, WAIT)).toHaveTextContent('Das Dokument wurde in einem anderen Tab geändert');
-    expect(await actions(localId)).toHaveLength(1);
+    expect(dialog.getByLabelText('Anlass der Rücknahme')).toHaveValue('Anlass');
+    expect(await readStore(store => store.getDocument(localId))).toEqual(foreign);
     fireEvent.click(dialog.getByRole('button', { name: 'Abbrechen' }));
 
     fireEvent.change(within(main()).getByLabelText('Zweck'), { target: { value: 'Geänderter Zweck' } });

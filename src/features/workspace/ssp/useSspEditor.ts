@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { exportSspInWorker } from '@/adapters/sspWorkbench';
-import { readString } from '@/domain/jsonGuards';
+import { isJsonObject, readArray, readString } from '@/domain/jsonGuards';
 import { SSP_ADAPTER_DIAGNOSTIC_CODES } from '@/adapters/oscalSspReaders';
-import { addSspItem, readSspValue, setBaselineTitle, sspBaselineBindable, SspPatchError, SSP_IMPORT_PROFILE_POINTER } from '@/domain/sspAuthoring';
+import { addSspItem, readSspValue, setBaselineTitle, setSspValue, sspBaselineBindable, SspPatchError, SSP_IMPORT_PROFILE_POINTER } from '@/domain/sspAuthoring';
 import { catalogPinsForSave } from '@/domain/workspaceCatalogPin';
 import { commitSspSave, sameSspContent, sspReadinessBlocker, sspSaveBlocker } from '@/domain/sspSave';
 import type { BindingTarget, LocalId, WorkspaceBinding, WorkspaceEnvelope } from '@/domain/workspaceModel';
@@ -23,6 +23,7 @@ import type { PendingImportTarget } from '@/state/workspaceDocuments';
 type SspMessage = 'saved-as-draft' | 'component-unresolved' | 'component-referenced' | 'patch-failed' | 'catalog-locked' | 'target-invalid' | 'target-delete-blocked' | 'target-form-pending';
 
 export type SspEditorMessage = DocumentEditorCoreMessage | SspMessage;
+export interface DecisionParty { readonly uuid: string; readonly type: 'organization' | 'person'; readonly name: string }
 
 export interface SspEditor {
   readonly status: 'loading' | 'ready' | 'failed';
@@ -52,8 +53,8 @@ export interface SspEditor {
   readonly exportPreserved: () => void;
   /** Hängt eine Prozessentscheidung an den gespeicherten Stand; liefert den Fehlercode oder `undefined`. */
   readonly decideProcess: (input: ProcessDecisionInput) => Promise<string | undefined>;
-  /** Legt eine Partei an und speichert das SSP, damit eine Entscheidung sie binden kann. */
-  readonly addDecisionParty: (party: { readonly type: 'organization' | 'person'; readonly name: string }) => Promise<{ readonly uuid?: string; readonly code?: string }>;
+  /** Legt eine Partei an oder aktualisiert sie nach einem Fehlversuch und speichert das SSP, damit eine Entscheidung sie binden kann. */
+  readonly addDecisionParty: (party: DecisionParty) => Promise<{ readonly uuid?: string; readonly code?: string }>;
   /** Übernimmt einen neueren gespeicherten Stand nur ohne offene Eingaben. */
   readonly adopt: (document: WorkspaceEnvelope) => Promise<'adopted' | 'blocked' | 'failed'>;
 }
@@ -210,21 +211,27 @@ export function useSspEditor(localId: LocalId): SspEditor {
   }, [documents, latest, localId]);
   const { adopt } = core;
   const decideProcess = useCallback(async (input: ProcessDecisionInput) => {
-    const { envelope, draftSavedAt } = latest.current;
-    if (!envelope) return 'SSP_PROCESS_DECISION_BLOCKED';
+    const { envelope, draftSavedAt, working: current, unsaved } = latest.current;
+    // Offene Eingaben gehören nicht zum gebundenen Stand; die Entscheidung schreibt dann nichts.
+    if (!envelope || unsaved || hasPendingBindings(current, envelope) || !sameSspContent(envelope.source, current)) return 'SSP_PROCESS_DECISION_BLOCKED';
     const result = await documents.saveProcessDecision(localId, envelope.savedAt, draftSavedAt, input, categories);
     if (!result.ok) return result.diagnostic.code;
     // Die Entscheidung ist geschrieben; offene Eingaben verhindern nur die Anzeige des neuen Stands.
     return await adopt(result.value) === 'adopted' ? undefined : 'SSP_PROCESS_DECISION_NOT_SHOWN';
-  }, [adopt, categories, documents, latest, localId]);
-  const addDecisionParty = useCallback(async (party: { readonly type: 'organization' | 'person'; readonly name: string }) => {
-    const uuid = crypto.randomUUID();
-    if (!apply(source => addSspItem(source, ['metadata', 'parties'], { uuid, type: party.type, name: party.name }))) return { code: 'SSP_PARTY_NOT_ADDED' };
+  }, [adopt, categories, documents, hasPendingBindings, latest, localId]);
+  const addDecisionParty = useCallback(async ({ uuid, type, name }: DecisionParty) => {
+    const path = ['metadata', 'parties'];
+    // Ein erneuter Versuch nach einem Fehler aktualisiert dieselbe Partei, statt sie zu verdoppeln.
+    const index = readArray(readSspValue(latest.current.working, path)).findIndex(item => isJsonObject(item) && item.uuid === uuid);
+    const added = apply(source => index < 0
+      ? addSspItem(source, path, { uuid, type, name })
+      : setSspValue(setSspValue(source, [...path, index, 'type'], type), [...path, index, 'name'], name));
+    if (!added) return { code: 'SSP_PARTY_NOT_ADDED' };
     const result = await commitSsp(false);
     if (!result.ok) return { code: result.code };
     // Eine Entscheidung braucht einen technisch gültigen gespeicherten Stand.
     return result.documentState === 'draft' ? { code: 'SSP_PROCESS_DECISION_BLOCKED' } : { uuid };
-  }, [apply, commitSsp]);
+  }, [apply, commitSsp, latest]);
   const targetFailure = core.envelope ? validateSspTargets(core.envelope.source, categories) : undefined;
   const exportPreserved = useCallback(() => {
     if (latest.current.envelope) downloadBlob(new Blob([serializeWorkspaceJson(latest.current.envelope.source)], { type: 'application/json' }), 'ssp-ungeprueft.json');

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/Button';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import type { ProcessDecisionInput } from '@/domain/sspProcessApproval';
@@ -7,6 +7,7 @@ import { processContentHash } from '@/domain/sspProcessProjection';
 import type { ProcessProtection } from '@/domain/sspProcessProtection';
 import { DECISION_ROLE, formatDecisionDate, shortHash, type ProcessDecisionView } from '@/features/workspace/ssp/SspProcessApproval';
 import { ProcessSelect, ProcessText } from '@/features/workspace/ssp/SspProcessFields';
+import type { DecisionParty } from '@/features/workspace/ssp/useSspEditor';
 
 const ERRORS: Readonly<Record<string, string>> = {
   WORKSPACE_SAVE_CONFLICT: 'Nicht gespeichert. Das Dokument wurde in einem anderen Tab geändert. Die Entscheidung wurde nicht geschrieben; Dokument und Eingaben sind unverändert.',
@@ -27,7 +28,7 @@ const FACTS = 'grid gap-x-4 gap-y-1 sm:grid-cols-[12rem_minmax(0,1fr)]';
 
 export type ProcessDecisionMode = keyof typeof TEXT;
 type PartyOption = { readonly value: string; readonly label: string };
-type NewParty = { readonly type: 'organization' | 'person'; readonly name: string };
+type NewParty = DecisionParty;
 
 function initialParty(parties: readonly PartyOption[], affected: ProcessDecisionView | undefined): string {
   const previous = parties.find(option => affected?.partyUuids.some(uuid => uuid.toLowerCase() === option.value.toLowerCase()));
@@ -54,7 +55,12 @@ function NewPartyFields({ onSave, onCancel }: Readonly<{ onSave: (party: NewPart
   const [name, setName] = useState('');
   const [type, setType] = useState<NewParty['type']>('organization');
   const [tried, setTried] = useState(false);
-  return <div className={`${BOX} space-y-3`}>
+  // Die UUID bleibt über Fehlversuche gleich; ein erneutes Speichern legt keine zweite Partei an.
+  const [uuid] = useState(() => crypto.randomUUID());
+  const box = useRef<HTMLDivElement>(null);
+  // Der auslösende Knopf verschwindet; der Fokus geht in das erste Feld statt aus dem Dialog.
+  useEffect(() => { box.current?.querySelector('input')?.focus(); }, []);
+  return <div ref={box} className={`${BOX} space-y-3`}>
     <p className="text-sm font-medium">Partei im SSP anlegen</p>
     <div className="grid gap-3 sm:grid-cols-2">
       <ProcessText label="Name der Partei" value={name} onChange={setName} error={tried && !name.trim() ? 'Name fehlt.' : undefined} />
@@ -62,8 +68,8 @@ function NewPartyFields({ onSave, onCancel }: Readonly<{ onSave: (party: NewPart
     </div>
     <p className="text-sm">Die Partei wird mit dem SSP gespeichert und steht danach unter Metadaten.</p>
     <div className="flex flex-col gap-2 sm:flex-row">
-      <Button variant="secondary" className="min-h-touch desktop:min-h-0" onClick={() => { setTried(true); if (name.trim()) onSave({ type, name: name.trim() }); }}>Partei speichern</Button>
-      <Button variant="ghost" className="min-h-touch desktop:min-h-0" onClick={onCancel}>Abbrechen</Button>
+      <Button variant="secondary" className="min-h-touch desktop:min-h-0" onClick={() => { setTried(true); if (name.trim()) onSave({ uuid, type, name: name.trim() }); }}>Partei speichern</Button>
+      <Button variant="ghost" className="min-h-touch desktop:min-h-0" onClick={onCancel}>Anlegen abbrechen</Button>
     </div>
   </div>;
 }
@@ -108,6 +114,14 @@ export function SspProcessApprovalDialog({ mode, label, processUuid, source, pro
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   const [creating, setCreating] = useState(false);
+  const addButton = useRef<HTMLButtonElement>(null);
+  const returnFocus = useRef(false);
+  useEffect(() => {
+    if (creating || !returnFocus.current) return;
+    returnFocus.current = false;
+    addButton.current?.focus();
+  }, [creating]);
+  const closeCreation = () => { returnFocus.current = true; setCreating(false); };
   const computed = useBoundHash(source, processUuid, party, approve);
   const bound = approve ? computed : affected?.hash;
   const confirm = async () => {
@@ -127,7 +141,7 @@ export function SspProcessApprovalDialog({ mode, label, processUuid, source, pro
     setBusy(false);
     if (result.uuid) {
       setParty(result.uuid);
-      setCreating(false);
+      closeCreation();
     } else setError(`${errorText(result.code ?? 'WORKSPACE_STORAGE_FAILED')} Die Partei steht im Arbeitsstand unter Metadaten.`);
   };
   return <ConfirmDialog open title={`${text.title} · ${label}`} confirmLabel={text.title} confirmVariant={text.variant}
@@ -146,8 +160,8 @@ export function SspProcessApprovalDialog({ mode, label, processUuid, source, pro
         <ProcessSelect label="Partei" value={party} options={parties} onChange={setParty} emptyLabel="Partei wählen" error={tried && !party ? 'Partei wählen.' : undefined} />
       </div>
       {creating
-        ? <NewPartyFields onSave={next => { void addParty(next); }} onCancel={() => setCreating(false)} />
-        : <Button variant="secondary" size="sm" className="min-h-touch desktop:min-h-0" onClick={() => setCreating(true)}>+ Partei im SSP anlegen</Button>}
+        ? <NewPartyFields onSave={next => { void addParty(next); }} onCancel={closeCreation} />
+        : <Button ref={addButton} variant="secondary" className="min-h-touch w-full sm:w-auto desktop:min-h-0" onClick={() => setCreating(true)}>+ Partei im SSP anlegen</Button>}
       <ProcessText label={text.remarks} multiline value={remarks} onChange={setRemarks} error={tried && !remarks.trim() ? text.missing : undefined} />
       <p className={BOX}>Die Anwendung dokumentiert die erklärte Entscheidung der Institutionsleitung. Weder Identität noch Befugnis werden geprüft; es entsteht keine Signatur.</p>
       {error && <p role="alert" className="text-sm text-[var(--color-danger-text)]">{error}</p>}

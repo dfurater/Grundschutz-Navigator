@@ -152,7 +152,8 @@ export function ProcessApprovalBlock({ approval, processReasons, decisionReasons
   const { state, last } = approval;
   const reasons = [...processReasons, ...decisionReasons];
   const canApprove = state !== 'current' && state !== 'invalid' && reasons.length === 0;
-  const canWithdraw = (state === 'current' || state === 'stale') && approval.withdrawable !== undefined && decisionReasons.length === 0;
+  // Auch nach einer Rücknahme bleibt eine ältere, noch nicht zurückgenommene Freigabe ausdrücklich zurücknehmbar.
+  const canWithdraw = state !== 'missing' && state !== 'invalid' && approval.withdrawable !== undefined && decisionReasons.length === 0;
   const { text, tone } = STATES[chipState(approval, reasons.length === 0)];
   const detail = explanation(approval);
   return frame(<>
