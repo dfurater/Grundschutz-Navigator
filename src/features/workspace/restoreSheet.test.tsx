@@ -326,17 +326,40 @@ describe('Sicherung wiederherstellen', () => {
     expect(workspace.scopeDrafts.size).toBe(0);
   });
 
-  it('klärt beim Gesamt-Restore einen ungespeicherten Abgrenzungsentwurf nur durch Verwerfen', async () => {
-    const scope = { scopeId: '3c2b1a00-5b3f-4c6d-8e9f-0a1b2c3d4e5f' as ScopeId, name: 'Netz', createdAt: TODAY, savedAt: '2026-11-14T00:00:00.000Z', items: [], evidence: [] } as const;
-    renderWith(fakePort({ previewRestore: () => ok(workspacePreview), listScopes: () => ok([scope]) }));
+  it('klärt beim Gesamt-Restore Abgrenzungsentwürfe durch Speichern oder Verwerfen', async () => {
+    const netz = { scopeId: '3c2b1a00-5b3f-4c6d-8e9f-0a1b2c3d4e5f' as ScopeId, name: 'Netz', createdAt: TODAY, savedAt: '2026-11-14T00:00:00.000Z', items: [], evidence: [] } as const;
+    const portal = { ...netz, scopeId: '4d3c2b11-5b3f-4c6d-8e9f-0a1b2c3d4e5f' as ScopeId, name: 'Portal' };
+    const saveScopeBoundary = vi.fn(() => ok(netz));
+    renderWith(fakePort({ previewRestore: () => ok(workspacePreview), listScopes: () => ok([netz, portal]), saveScopeBoundary }));
     await screen.findByRole('link', { name: VERBUND.name });
-    workspace.boundaryDrafts.set(scope.scopeId, { input: { ...scopeBoundaryInput(undefined), interfaces: 'Portal' }, base: scope.savedAt });
+    const empty = scopeBoundaryInput(undefined);
+    const input = { ...empty, interfaces: 'Portal' };
+    // Der Netz-Entwurf beruht auf einem älteren Stempel mit unverändertem Inhalt und speichert mit dem aktuellen.
+    workspace.boundaryDrafts.set(netz.scopeId, { input, base: '2026-11-13T00:00:00.000Z', baseInput: empty });
+    workspace.boundaryDrafts.set(portal.scopeId, { input, base: portal.savedAt, baseInput: empty });
     const sheet = await choose();
-    const row = (await sheet.findByText(/^Abgrenzung$/)).closest('li')!;
-    expect(row).toHaveTextContent('Abgrenzung · „Netz“ · nicht gespeichert');
-    expect(within(row).queryByRole('button', { name: 'Speichern' })).toBeNull();
-    fireEvent.click(within(row).getByRole('button', { name: 'Verwerfen' }));
+    const rows = await sheet.findAllByText(/^Abgrenzung$/);
+    const [first, second] = rows.map((row) => row.closest('li')!);
+    expect(first).toHaveTextContent('Abgrenzung · „Netz“ · nicht gespeichert');
+    fireEvent.click(within(first).getByRole('button', { name: 'Speichern' }));
+    await waitFor(() => expect(saveScopeBoundary).toHaveBeenCalledExactlyOnceWith(netz.scopeId, netz.savedAt, input));
+    expect(second).toHaveTextContent('Abgrenzung · „Portal“ · nicht gespeichert');
+    fireEvent.click(within(await waitFor(() => (sheet.getByText(/„Portal“ · nicht gespeichert/).closest('li')!))).getByRole('button', { name: 'Verwerfen' }));
     expect(await sheet.findByRole('button', { name: 'Gesamten Bestand ersetzen' })).toBeInTheDocument();
+    expect(workspace.boundaryDrafts.size).toBe(0);
+  });
+
+  it('verwirft Abgrenzungsentwürfe nur nach erfolgreichem Gesamt-Restore', async () => {
+    const restoreBackup = vi.fn().mockReturnValueOnce(fail('WORKSPACE_QUOTA_EXCEEDED')).mockReturnValueOnce(ok(undefined));
+    renderWith(fakePort({ restoreBackup, restoreVerbundBackup: () => ok(undefined) }));
+    await screen.findByRole('link', { name: VERBUND.name });
+    const empty = scopeBoundaryInput(undefined);
+    workspace.boundaryDrafts.set('3c2b1a00-5b3f-4c6d-8e9f-0a1b2c3d4e5f', { input: { ...empty, interfaces: 'Portal' }, base: 's1', baseInput: empty });
+    expect(await workspace.restoreBackup(verbundPreview())).toMatchObject({ ok: true });
+    expect(workspace.boundaryDrafts.size).toBe(1);
+    expect(await workspace.restoreBackup(workspacePreview)).toMatchObject({ ok: false });
+    expect(workspace.boundaryDrafts.size).toBe(1);
+    expect(await workspace.restoreBackup(workspacePreview)).toMatchObject({ ok: true });
     expect(workspace.boundaryDrafts.size).toBe(0);
   });
 

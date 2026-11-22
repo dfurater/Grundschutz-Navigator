@@ -208,7 +208,7 @@ export function ClarifyRow({ entry, verbundName, failed, writable, onSave, onDis
   onOpen: (entry: Extract<RestoreInput, { kind: 'import' }>) => void;
 }>) {
   const [saving, setSaving] = useState(false);
-  const named = entry.kind === 'rename' || entry.kind === 'scope' ? entry : null;
+  const named = entry.kind === 'rename' || entry.kind === 'scope' || entry.kind === 'boundary' ? entry : null;
   let label: ReactNode;
   if (entry.kind === 'rename') label = <><span className="font-semibold">Umbenennung</span> · „{entry.name}“ → „{entry.draft}“</>;
   else if (entry.kind === 'import') label = <><span className="font-semibold">Importzuordnung</span> · {ROOT_TYPE_LABELS[entry.rootType]} in „{verbundName}“ · {plural(entry.count, 'Verweis', 'Verweise')}</>;
@@ -220,7 +220,7 @@ export function ClarifyRow({ entry, verbundName, failed, writable, onSave, onDis
   return (
     <ClarifyItem label={label} failed={failed}>
       {named && (
-        <Button variant="secondary" size="sm" className={BUTTON} disabled={!writable || saving || !isVerbundName(named.draft)} onClick={() => { setSaving(true); void onSave(named).finally(() => setSaving(false)); }}>
+        <Button variant="secondary" size="sm" className={BUTTON} disabled={!writable || saving || (named.kind !== 'boundary' && !isVerbundName(named.draft))} onClick={() => { setSaving(true); void onSave(named).finally(() => setSaving(false)); }}>
           {named.kind === 'scope' && (!named.scope || named.newVerbund) ? 'Anlegen' : 'Speichern'}
         </Button>
       )}

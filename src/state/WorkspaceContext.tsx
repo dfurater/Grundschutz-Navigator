@@ -8,7 +8,7 @@ import { catalogDelivery, verifiedCatalogArtifacts } from '@/state/workspaceCata
 import type { WorkspaceClass1Artifact } from '@/domain/workspaceGraphModel';
 import type { LocalId, VerbundId, VerbundWriteExpectation, WorkspaceResult, WorkspaceScope, WorkspaceVerbund } from '@/domain/workspaceModel';
 import type { RequirementPackageState } from '@/domain/requirementPackage';
-import type { ScopeBoundaryInput } from '@/domain/scopeBoundary';
+import type { ScopeBoundaryDraft } from '@/domain/scopeBoundary';
 import {
   NEW_SCOPE_DRAFT, collectRestoreInputs, discardReplacedInputs, scopeDraftKey, scopedVerbundDraftKey,
   type RestoreInput, type RestorePreview, type RestoreScope,
@@ -57,11 +57,6 @@ function packageMap(
 /** Speichert einen offenen Entwurf; Stationen registrieren ihn für den Bereichswechsel. */
 export type AutosaveFlush = () => Promise<WorkspaceResult<unknown>>;
 
-/** Editoreingabe der Abgrenzung und das `savedAt` des Anwendungsbereichs, auf dem sie beruht. */
-export interface ScopeBoundaryDraft {
-  readonly input: ScopeBoundaryInput;
-  readonly base: string;
-}
 
 export interface VerbundViewState {
   readonly verbundId: string;

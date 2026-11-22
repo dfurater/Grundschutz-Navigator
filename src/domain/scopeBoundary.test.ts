@@ -38,3 +38,16 @@ describe('scopeBoundary', () => {
     expect(scopeBoundarySourceText(undefined)).toBe('');
   });
 });
+
+describe('Abgrenzungsentwurf', () => {
+  it('übernimmt einen neueren Vergleichsstand nur bei unveränderter gespeicherter Abgrenzung', async () => {
+    const { boundaryDraftBase, startBoundaryDraft } = await import('@/domain/scopeBoundary');
+    const item = buildScopeBoundary(ID, COMPLETE);
+    if (!item) throw new Error('fixture');
+    const draft = startBoundaryDraft({ savedAt: 's1', items: [item] });
+    expect(boundaryDraftBase(draft, { savedAt: 's1', items: [item] })).toBe('s1');
+    expect(boundaryDraftBase(draft, { savedAt: 's2', items: [item] })).toBe('s2');
+    expect(boundaryDraftBase(draft, { savedAt: 's2', items: [{ ...item, details: { ...item.details, interfaces: 'Neu' } }] })).toBeNull();
+    expect(boundaryDraftBase(draft, { savedAt: 's2', items: [] })).toBeNull();
+  });
+});

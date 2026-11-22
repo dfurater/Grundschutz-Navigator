@@ -3,8 +3,8 @@ import type {
   LocalId, ScopeId, VerbundId, WorkspaceDocumentSummary, WorkspaceRestorePreview, WorkspaceScope, WorkspaceVerbund,
   WorkspaceVerbundRestorePreview,
 } from '@/domain/workspaceModel';
-import { scopeBoundaryInput } from '@/domain/scopeBoundary';
-import type { ScopeBoundaryDraft, WorkspaceContextValue } from '@/state/WorkspaceContext';
+import { boundaryDraftBase, sameBoundaryInput, scopeBoundaryInput, type ScopeBoundaryDraft } from '@/domain/scopeBoundary';
+import type { WorkspaceContextValue } from '@/state/WorkspaceContext';
 
 /** Schlüssel der offenen Anlage eines Anwendungsbereichs unter den Namensentwürfen; keine `scopeId` hat diese Form. */
 export const NEW_SCOPE_DRAFT = 'neu';
@@ -34,8 +34,8 @@ export type RestoreInput =
   /** Offener Name eines Anwendungsbereichs: Umbenennung mit Vergleichsstand oder, ohne `scope`, eine Anlage. */
   | { readonly kind: 'scope'; readonly scope: ScopeName | null; readonly draft: string; readonly newVerbund?: never }
   | { readonly kind: 'scope'; readonly scope: ScopeName; readonly draft: string; readonly newVerbund: true }
-  /** Offener Abgrenzungsentwurf eines Anwendungsbereichs; die Klärung kann ihn nur verwerfen. */
-  | { readonly kind: 'boundary'; readonly scope: ScopeName; readonly draft: ScopeBoundaryDraft };
+  /** Offener Abgrenzungsentwurf eines Anwendungsbereichs; `base` ist der Vergleichsstand, mit dem die Klärung ihn speichert. */
+  | { readonly kind: 'boundary'; readonly scope: ScopeName; readonly draft: ScopeBoundaryDraft; readonly base: string };
 
 /** Schlüssel eines Scope-Eintrags unter den Namensentwürfen. */
 export function scopeDraftKey(entry: Extract<RestoreInput, { kind: 'scope' }>): string {
@@ -109,14 +109,18 @@ function scopeInputs(drafts: ReadonlyMap<string, string>, scopes: readonly Works
   return inputs;
 }
 
-/** Abgrenzungsentwürfe gespeicherter Bereiche, die vom gespeicherten Stand abweichen. */
+/**
+ * Abgrenzungsentwürfe gespeicherter Bereiche, deren Eingabe von der gespeicherten Abgrenzung abweicht. Liegt
+ * inzwischen neuerer Inhalt vor, speichert die Klärung mit dem alten Vergleichsstand und scheitert als Konflikt.
+ */
 function boundaryInputs(drafts: ReadonlyMap<string, ScopeBoundaryDraft>, scopes: readonly WorkspaceScope[]): RestoreInput[] {
   const inputs: RestoreInput[] = [];
   for (const [scopeId, draft] of drafts) {
     const stored = scopes.find((candidate) => candidate.scopeId === scopeId);
     if (!stored) continue;
-    const unchanged = draft.base === stored.savedAt && JSON.stringify(draft.input) === JSON.stringify(scopeBoundaryInput(stored.items[0]));
-    if (!unchanged) inputs.push({ kind: 'boundary', scope: { scopeId: stored.scopeId, name: stored.name, savedAt: stored.savedAt }, draft });
+    if (sameBoundaryInput(draft.input, scopeBoundaryInput(stored.items[0]))) continue;
+    const base = boundaryDraftBase(draft, stored) ?? draft.base;
+    inputs.push({ kind: 'boundary', scope: { scopeId: stored.scopeId, name: stored.name, savedAt: stored.savedAt }, draft, base });
   }
   return inputs;
 }
@@ -132,11 +136,12 @@ export function discardReplacedInputs(preview: RestorePreview, importTargets: Ma
   renameDrafts.delete(preview.verbundId);
 }
 
-/** Offene Namenseingabe, die die Klärung speichern kann. */
-export type NamedInput = Extract<RestoreInput, { kind: 'rename' | 'scope' }>;
+/** Offene Eingabe, die die Klärung speichern kann. */
+export type NamedInput = Extract<RestoreInput, { kind: 'rename' | 'scope' | 'boundary' }>;
 
-/** Speichert eine offene Namenseingabe aus der Klärung; `true` erst nach bestätigtem Schreiben. */
-export async function saveNamedInput(entry: NamedInput, writers: Pick<WorkspaceContextValue, 'renameVerbund' | 'renameScope' | 'createScope' | 'createVerbund'>): Promise<boolean> {
+/** Speichert eine offene Eingabe aus der Klärung; `true` erst nach bestätigtem Schreiben. */
+export async function saveNamedInput(entry: NamedInput, writers: Pick<WorkspaceContextValue, 'renameVerbund' | 'renameScope' | 'createScope' | 'createVerbund' | 'saveScopeBoundary'>): Promise<boolean> {
+  if (entry.kind === 'boundary') return (await writers.saveScopeBoundary(entry.scope.scopeId, entry.base, entry.draft.input)).ok;
   const name = entry.draft.trim();
   if (entry.kind === 'rename') return (await writers.renameVerbund(entry.verbundId, name)).ok;
   if (entry.newVerbund) return (await writers.createVerbund(name, entry.scope)).ok;

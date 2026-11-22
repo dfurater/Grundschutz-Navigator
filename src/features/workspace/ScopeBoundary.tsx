@@ -2,11 +2,10 @@ import { useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { Button } from '@/components/Button';
 import {
   SCOPE_BOUNDARY_DETAILS, scopeBoundaryInput, scopeBoundarySourceText, scopeBoundaryState,
-  type ScopeBoundaryInput, type ScopeBoundaryItem,
+  boundaryDraftBase, startBoundaryDraft, type ScopeBoundaryDraft, type ScopeBoundaryInput, type ScopeBoundaryItem,
 } from '@/domain/scopeBoundary';
 import type { WorkspaceScope } from '@/domain/workspaceModel';
 import { useWorkspace } from '@/hooks/useWorkspace';
-import type { ScopeBoundaryDraft } from '@/state/WorkspaceContext';
 import { FOCUS_RING } from '@/features/workspace/DocumentMarks';
 import { INPUT, ROW_BUTTON } from '@/features/workspace/WorkspaceForms';
 import { WorkspaceNotices } from '@/features/workspace/WorkspaceNotices';
@@ -85,17 +84,18 @@ export function ScopeBoundaryEditor({ scopeId, onClose, onSaved }: Readonly<{ sc
   const heading = useRef<HTMLHeadingElement>(null);
   useLayoutEffect(() => { heading.current?.focus(); }, []);
   // Eingabe und Vergleichsstand bleiben ein Paar und überdauern Routenwechsel; nur „Abbrechen“ oder Speichern verwirft sie.
-  const [draft, setDraft] = useState<ScopeBoundaryDraft | undefined>(() => boundaryDrafts.get(scopeId) ?? (scope && { input: scopeBoundaryInput(scope.items[0]), base: scope.savedAt }));
+  const [draft, setDraft] = useState<ScopeBoundaryDraft | undefined>(() => boundaryDrafts.get(scopeId) ?? (scope && startBoundaryDraft(scope)));
   const [failure, setFailure] = useState<'conflict' | 'failed' | null>(null);
   const [busy, setBusy] = useState(false);
   const input = draft?.input ?? scopeBoundaryInput(undefined);
   const change = (next: ScopeBoundaryDraft) => { boundaryDrafts.set(scopeId, next); setDraft(next); };
   const set = (key: keyof ScopeBoundaryInput) => (value: string) => { if (draft) change({ ...draft, input: { ...draft.input, [key]: value } }); };
-  // Ein neuer Vergleichsstand gilt erst nach ausdrücklichem Laden und ersetzt dann die Eingabe durch den gespeicherten Inhalt.
-  const newer = scope && draft && scope.savedAt !== draft.base ? scope : undefined;
+  // Neuerer Inhalt gilt erst nach ausdrücklichem Laden und ersetzt dann die Eingabe; ein nur fortgeschriebener Stempel gilt sofort.
+  const base = scope && draft ? boundaryDraftBase(draft, scope) : null;
+  const newer = scope && draft && base === null ? scope : undefined;
   const loadCurrent = () => {
     if (!newer) return;
-    change({ input: scopeBoundaryInput(newer.items[0]), base: newer.savedAt });
+    change(startBoundaryDraft(newer));
     setFailure(null);
   };
 
@@ -103,7 +103,7 @@ export function ScopeBoundaryEditor({ scopeId, onClose, onSaved }: Readonly<{ sc
     if (busy || !scope || !draft) return;
     setBusy(true);
     const saved = draft;
-    const result = await saveScopeBoundary(scope.scopeId, saved.base, saved.input);
+    const result = await saveScopeBoundary(scope.scopeId, base ?? saved.base, saved.input);
     setBusy(false);
     if (result.ok) {
       // Ein nach einem Routenwechsel neu begonnener Entwurf ersetzt den Eintrag und bleibt erhalten.
@@ -143,8 +143,12 @@ export function ScopeBoundaryEditor({ scopeId, onClose, onSaved }: Readonly<{ sc
         </fieldset>
         {failure === 'conflict' && (
           <div className="space-y-2">
-            <p role="alert" className="text-sm text-[var(--color-danger-text)]">Anwendungsbereich inzwischen geändert. Nichts gespeichert. Die Eingabe bleibt erhalten; „Aktuellen Stand laden“ ersetzt sie durch die gespeicherte Abgrenzung.</p>
-            <Button variant="secondary" className={ROW_BUTTON} disabled={busy || !newer} onClick={loadCurrent}>Aktuellen Stand laden</Button>
+            <p role="alert" className="text-sm text-[var(--color-danger-text)]">
+              {newer
+                ? 'Abgrenzung inzwischen geändert. Nichts gespeichert. Die Eingabe bleibt erhalten; „Aktuellen Stand laden“ ersetzt sie durch die gespeicherte Abgrenzung.'
+                : 'Anwendungsbereich inzwischen geändert. Nichts gespeichert. Die Eingabe bleibt erhalten.'}
+            </p>
+            {newer && <Button variant="secondary" className={ROW_BUTTON} disabled={busy} onClick={loadCurrent}>Aktuellen Stand laden</Button>}
           </div>
         )}
         {failure === 'failed' && <p role="alert" className="text-sm text-[var(--color-danger-text)]">Lokal speichern fehlgeschlagen. Die Eingabe bleibt erhalten.</p>}

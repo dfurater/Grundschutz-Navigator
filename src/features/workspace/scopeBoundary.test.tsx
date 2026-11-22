@@ -75,7 +75,7 @@ describe('Abgrenzung des Anwendungsbereichs', () => {
     expect(await within(main()).findByText(/Anwendungsbereich inzwischen geändert/)).toHaveAttribute('role', 'alert');
     expect(within(main()).getByLabelText('Schnittstellen')).toHaveValue('Portal');
     expect(saveScopeBoundary).toHaveBeenCalledWith(SCOPE.scopeId, SCOPE.savedAt, expect.objectContaining({ interfaces: 'Portal' }));
-    expect(within(main()).getByRole('button', { name: 'Aktuellen Stand laden' })).toBeDisabled();
+    expect(within(main()).queryByRole('button', { name: 'Aktuellen Stand laden' })).toBeNull();
     fireEvent.click(within(main()).getByRole('button', { name: 'Speichern' }));
     expect(await within(main()).findByText('Lokal speichern fehlgeschlagen. Die Eingabe bleibt erhalten.')).toHaveAttribute('role', 'alert');
     expect(within(main()).getByLabelText('Schnittstellen')).toHaveValue('Portal');
@@ -99,8 +99,8 @@ describe('Abgrenzung des Anwendungsbereichs', () => {
     expect(await within(main()).findByText(/Anwendungsbereich inzwischen geändert/)).toHaveAttribute('role', 'alert');
     expect(within(main()).getByLabelText('Schnittstellen')).toHaveValue('Alt');
     // Ein erneutes Speichern der alten Eingabe bleibt ein Konflikt, auch nachdem der Bestand neu gelesen wurde.
-    const load = within(main()).getByRole('button', { name: 'Aktuellen Stand laden' });
-    await waitFor(() => expect(load).toBeEnabled());
+    const load = await within(main()).findByRole('button', { name: 'Aktuellen Stand laden' });
+    expect(load).toBeEnabled();
     fireEvent.click(within(main()).getByRole('button', { name: 'Speichern' }));
     await waitFor(() => expect(within(main()).getByRole('button', { name: 'Speichern' })).toBeEnabled());
     expect((await readStore((store) => store.listScopes()))[0].items[0]?.details.interfaces).toBe('Neu');
@@ -110,6 +110,27 @@ describe('Abgrenzung des Anwendungsbereichs', () => {
     fireEvent.click(within(main()).getByRole('button', { name: 'Speichern' }));
     await waitFor(() => expect(within(main()).queryByRole('heading', { level: 1, name: 'Abgrenzung bearbeiten' })).toBeNull());
     expect((await readStore((store) => store.listScopes()))[0].items[0]?.details).toMatchObject({ interfaces: 'Neu', exclusions: 'Messstellenbetrieb' });
+  });
+
+  it('speichert nach einer reinen Zuordnungsänderung ohne Laden eines neuen Stands', async () => {
+    const created = await readStore((store) => store.createScope('Netzbetrieb'));
+    renderArea(buildScopeUrl(created.scopeId));
+    const edit = await (await findCard()).findByRole('button', { name: /Abgrenzung erfassen/ });
+    await waitFor(() => expect(edit).toBeEnabled());
+    fireEvent.click(edit);
+    type('Schnittstellen', 'Portal');
+    // Ein anderer Tab legt im Bereich einen Verbund an: Der Stempel des Bereichs steigt, die Abgrenzung bleibt.
+    const [current] = await readStore((store) => store.listScopes());
+    await readStore((store) => store.createVerbund('Mitglied', current));
+    fireEvent.click(within(main()).getByRole('button', { name: 'Speichern' }));
+    expect(await within(main()).findByText(/Anwendungsbereich inzwischen geändert/)).toHaveAttribute('role', 'alert');
+    await waitFor(() => expect(within(main()).getByRole('button', { name: 'Speichern' })).toBeEnabled());
+    expect(within(main()).queryByRole('button', { name: 'Aktuellen Stand laden' })).toBeNull();
+    // Nach dem Neulesen gilt der neue Stempel, weil die Abgrenzung unverändert ist.
+    await waitFor(async () => expect((await readStore((store) => store.listScopes()))[0].savedAt).not.toBe(current.savedAt));
+    fireEvent.click(within(main()).getByRole('button', { name: 'Speichern' }));
+    await waitFor(() => expect(within(main()).queryByRole('heading', { level: 1, name: 'Abgrenzung erfassen' })).toBeNull());
+    expect((await readStore((store) => store.listScopes()))[0].items[0]?.details.interfaces).toBe('Portal');
   });
 
   it('behält eine ungespeicherte Eingabe über einen Routenwechsel', async () => {

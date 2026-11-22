@@ -81,6 +81,33 @@ export function scopeBoundaryInput(item: ScopeBoundaryItem | undefined): ScopeBo
   };
 }
 
+/** Gleiche Formularwerte in allen Feldern. */
+export function sameBoundaryInput(a: ScopeBoundaryInput, b: ScopeBoundaryInput): boolean {
+  return (Object.keys(a) as (keyof ScopeBoundaryInput)[]).every((key) => a[key] === b[key]);
+}
+
+/** Editorentwurf mit dem `savedAt` und dem Inhalt des Anwendungsbereichs, auf denen er beruht. */
+export interface ScopeBoundaryDraft {
+  readonly input: ScopeBoundaryInput;
+  readonly base: string;
+  readonly baseInput: ScopeBoundaryInput;
+}
+
+/** Neuer Entwurf aus dem gespeicherten Stand eines Anwendungsbereichs. */
+export function startBoundaryDraft(scope: { readonly savedAt: string; readonly items: readonly ScopeBoundaryItem[] }): ScopeBoundaryDraft {
+  const input = scopeBoundaryInput(scope.items[0]);
+  return { input, base: scope.savedAt, baseInput: input };
+}
+
+/**
+ * Vergleichsstand, mit dem ein Entwurf speichern darf: Ist die gespeicherte Abgrenzung noch die, auf der er
+ * beruht, gilt der neuere Stempel (etwa nach einer Zuordnungsänderung); sonst `null`, weil neuerer Inhalt vorliegt.
+ */
+export function boundaryDraftBase(draft: ScopeBoundaryDraft, scope: { readonly savedAt: string; readonly items: readonly ScopeBoundaryItem[] }): string | null {
+  if (scope.savedAt === draft.base) return draft.base;
+  return sameBoundaryInput(scopeBoundaryInput(scope.items[0]), draft.baseInput) ? scope.savedAt : null;
+}
+
 /** „Fehlt“ ohne Eintrag, „Erfasst“ bei vollständigen Angaben, sonst „Offen“ mit den fehlenden Feldern in Formularreihenfolge. */
 export function scopeBoundaryState(item: ScopeBoundaryItem | undefined): ScopeBoundaryState {
   if (!item) return { kind: 'missing' };
