@@ -140,7 +140,9 @@ export function ImplementationSection({ editor }: Readonly<{ editor: SspEditor }
             <div className={GRID}>
               <SspTextField editor={editor} path={[...path, 'title']} label="Titel" required />
               <fieldset disabled={editor.hasPendingTargetForms} aria-describedby={editor.hasPendingTargetForms ? `${typesId}-pending` : undefined} className="min-w-0">
-                <SspTextField editor={editor} path={[...path, 'type']} label="Typ" required mono list={typesId} />
+                <SspTextField editor={editor} path={[...path, 'type']} label="Typ" required mono list={typesId}
+                  validate={value => value.trim() === BUSINESS_PROCESS_COMPONENT_TYPE
+                    ? 'Geschäftsprozesse über „Geschäftsprozess hinzufügen“ erfassen.' : undefined} />
               </fieldset>
             </div>
             <SspTextField editor={editor} path={[...path, 'description']} label="Beschreibung" required multiline />

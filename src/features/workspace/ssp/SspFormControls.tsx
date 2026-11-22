@@ -17,7 +17,7 @@ function keyOf(path: SspPath): string {
 }
 
 /** Ein Textfeld auf genau einen Wert der Quelle; Leerraum allein entfernt den Wert. */
-export function SspTextField({ editor, path, label, required = false, multiline = false, mono = false, list }: Readonly<{
+export function SspTextField({ editor, path, label, required = false, multiline = false, mono = false, list, validate }: Readonly<{
   editor: SspEditor;
   path: SspPath;
   label: string;
@@ -26,10 +26,17 @@ export function SspTextField({ editor, path, label, required = false, multiline 
   mono?: boolean;
   /** `id` einer `datalist` mit Vorschlägen. */
   list?: string;
+  validate?: (value: string) => string | undefined;
 }>) {
   const id = useId();
+  const [error, setError] = useState<string>();
   const value = readString(readSspValue(editor.working, path)) ?? '';
-  const onChange = (next: string) => { editor.apply((source) => setSspValue(source, path, next)); };
+  const onChange = (next: string) => {
+    const message = validate?.(next);
+    setError(message);
+    if (!message) editor.apply((source) => setSspValue(source, path, next));
+  };
+  const accessibility = { 'aria-invalid': error ? true : undefined, 'aria-describedby': error ? `${id}-error` : undefined };
   const className = `${INPUT} ${mono ? 'font-mono' : ''}`;
   return (
     <div className="min-w-0 space-y-1">
@@ -37,8 +44,9 @@ export function SspTextField({ editor, path, label, required = false, multiline 
         {label} <OscalKey>{keyOf(path)}</OscalKey>{required && <span className={REQUIRED_MARK}>Pflicht</span>}
       </label>
       {multiline
-        ? <textarea id={id} className={`${className} min-h-20`} value={value} aria-required={required} onChange={(event) => onChange(event.target.value)} />
-        : <input id={id} className={className} value={value} aria-required={required} autoComplete="off" list={list} onChange={(event) => onChange(event.target.value)} />}
+        ? <textarea id={id} className={`${className} min-h-20`} value={value} aria-required={required} onChange={(event) => onChange(event.target.value)} {...accessibility} />
+        : <input id={id} className={className} value={value} aria-required={required} autoComplete="off" list={list} onChange={(event) => onChange(event.target.value)} {...accessibility} />}
+      {error && <p id={`${id}-error`} role="alert" className="text-sm text-[var(--color-danger-text)]">{error}</p>}
     </div>
   );
 }

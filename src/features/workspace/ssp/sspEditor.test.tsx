@@ -103,7 +103,7 @@ describe('Zielobjektbestand', () => {
     });
     const ssp = await addSsp(seeded.verbundId, source);
     renderArea(buildWorkspaceDocumentUrl(seeded.verbundId, ssp.localId), withGspp());
-    const first = await within(main()).findByRole('listitem', { name: /^Informationsart 1/ });
+    const first = await within(main()).findByRole('listitem', { name: /^Informationsart 1/ }, WAIT);
     fireEvent.change(within(first).getByLabelText('Begründung des Schutzbedarfs'), { target: { value: 'Eingabe für Betriebsdaten' } });
     const newer = withSspBody(source, body => { body['system-characteristics']['system-information']!['information-types']!.reverse(); });
     await readStore(store => store.saveDocument(ssp.localId, ssp.savedAt, null, { source: JSON.parse(JSON.stringify(newer)), context: { trustClass: 'class-2-local-user' }, rootType: 'system-security-plan', oscalVersion: '1.2.2' }));
@@ -268,18 +268,19 @@ describe('Geschäftsprozesse', () => {
     expect(within(main()).queryByText(/components\/0\/protocols\/0\/name/)).not.toBeInTheDocument();
   });
 
-  it('bietet den Status auch nach explizitem Wechsel zum Geschäftsprozess an', async () => {
+  it('behält beim reservierten Prozesstyp die technische Komponente und ihren Typ', async () => {
     const ssp = await addSsp(seeded.verbundId, makeFullSsp());
     renderArea(buildWorkspaceDocumentUrl(seeded.verbundId, ssp.localId), withGspp());
-    await click('Komponente hinzufügen');
-    const component = within(within(main()).getByRole('listitem', { name: 'Komponente 3' }));
-    fireEvent.change(component.getByLabelText(/^Typ/), { target: { value: 'business-process' } });
-    const section = within(within(main()).getByRole('region', { name: 'Geschäftsprozesse' }));
-    fireEvent.click(section.getByText('Geschäftsprozess ohne Namen'));
-    expect(section.getByLabelText('Status')).toHaveValue('');
-    fireEvent.change(section.getByLabelText('Status'), { target: { value: 'operational' } });
-    await click('Prozess übernehmen');
-    expect(section.getByLabelText('Status')).toHaveValue('operational');
+    const component = within(await within(main()).findByRole('listitem', { name: /Komponente 2.*Fachanwendung/ }, WAIT));
+    const typeField = component.getByLabelText(/^Typ/);
+    fireEvent.change(typeField, { target: { value: 'business-process' } });
+    expect(typeField).toHaveValue('software');
+    expect(typeField).toHaveAccessibleDescription(/Geschäftsprozess hinzufügen/);
+    expect(typeField).toHaveAttribute('aria-invalid', 'true');
+    expect(within(main()).getByText('Noch kein Geschäftsprozess erfasst')).toBeInTheDocument();
+    fireEvent.change(typeField, { target: { value: 'service' } });
+    expect(typeField).toHaveValue('service');
+    expect(typeField).not.toHaveAttribute('aria-invalid', 'true');
   });
 
   it('speichert eine vollständige Bewertung mit Verantwortung, Anwendung und eigener Kategorie', async () => {
