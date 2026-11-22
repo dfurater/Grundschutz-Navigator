@@ -2,6 +2,7 @@ import 'fake-indexeddb/auto';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildStationUrl, buildWorkspaceDocumentUrl } from '@/app/routes';
+import { readSspValue } from '@/domain/sspAuthoring';
 import { downloadBlob } from '@/adapters/browserDownload';
 import type { CatalogState, LoadedCatalogState } from '@/domain/models';
 import { PINNED_OSCAL_VERSIONS, type PinnedOscalVersion } from '@/domain/oscalVersionMatrix';
@@ -175,7 +176,7 @@ describe('Zielobjektbestand', () => {
   it('zeigt offene Abdeckung und erfasst Schutzbedarf mit Begründung im gespeicherten SSP', async () => {
     const ssp = await addSsp(seeded.verbundId, makeFullSsp());
     renderArea(buildWorkspaceDocumentUrl(seeded.verbundId, ssp.localId), withGspp());
-    expect(await within(main()).findByText('Schutzbedarf: 0 von 4 Objekten bewertet')).toBeInTheDocument();
+    expect(await within(main()).findByText('Objektbewertung (bisher): 0 von 4 Objekten bewertet')).toBeInTheDocument();
     const component = await within(main()).findByRole('listitem', { name: /Komponente 1/ });
     fireEvent.change(within(component).getByLabelText('Schutzbedarf'), { target: { value: 'hoch' } });
     fireEvent.change(within(component).getByLabelText('Begründung des Schutzbedarfs'), { target: { value: 'Synthetischer Ausfall' } });
@@ -186,7 +187,39 @@ describe('Zielobjektbestand', () => {
       expect(JSON.stringify(saved?.source)).toContain('Synthetischer Ausfall');
       expect(JSON.stringify(saved?.source)).toContain('protection-need-coverage');
     }, WAIT);
-    expect(within(main()).getByText('Schutzbedarf: 1 von 4 Objekten bewertet')).toBeInTheDocument();
+    expect(within(main()).getByText('Objektbewertung (bisher): 1 von 4 Objekten bewertet')).toBeInTheDocument();
+  });
+});
+
+describe('Geschäftsprozesse', () => {
+  it('übernimmt die Schutzziele einzeln und speichert den Prozess getrennt von Komponenten', async () => {
+    const ssp = await addSsp(seeded.verbundId, makeFullSsp());
+    renderArea(buildWorkspaceDocumentUrl(seeded.verbundId, ssp.localId), withGspp());
+    expect(await within(main()).findByText('Prozess-Schutzbedarf offen')).toBeInTheDocument();
+    await click('Geschäftsprozess hinzufügen');
+    const section = within(within(main()).getByRole('region', { name: 'Geschäftsprozesse' }));
+    const change = (label: string, value: string) => fireEvent.change(section.getByLabelText(label), { target: { value } });
+    expect(section.getByLabelText('Vertraulichkeit')).toHaveValue('');
+    change('Prozess-ID', 'P-01');
+    change('Name', 'Antragsbearbeitung');
+    change('Kurzbeschreibung', 'Prüft Anträge und erstellt Bescheide.');
+    change('Zweck', 'Fristgerechte Entscheidung');
+    change('Integrität', 'hoch');
+    change('Begründung für Integrität', 'Fehlerhafte Bescheide');
+    await click('Speichern');
+    expect(await within(main()).findByText(/Bitte die offenen Schutzbedarfseingaben/)).toBeInTheDocument();
+    await click('Prozess übernehmen');
+    expect(section.getAllByText('Explizite Risikobetrachtung erforderlich').length).toBeGreaterThan(0);
+    expect(within(main()).queryByRole('listitem', { name: /Komponente.*Antragsbearbeitung/ })).not.toBeInTheDocument();
+    await click('Speichern');
+    await waitFor(async () => {
+      const saved = await readStore(store => store.getDocument(ssp.localId));
+      expect(readSspValue(saved?.source, ['system-implementation', 'components', 2])).toMatchObject({
+        type: 'business-process', title: 'Antragsbearbeitung',
+        props: [expect.objectContaining({ name: 'process-id', value: 'P-01' }),
+          expect.objectContaining({ name: 'process-protection-integrity', value: 'hoch', remarks: 'Fehlerhafte Bescheide' })],
+      });
+    }, WAIT);
   });
 });
 

@@ -129,7 +129,7 @@ describe.each(LAYOUTS)('$name ($width px)', ({ name, width, height, touch }) => 
     const apply = [...component.querySelectorAll('button')].find(button => button.textContent === 'Bewertung übernehmen')!;
     apply.focus();
     await userEvent.keyboard('{Enter}');
-    await expect.poll(() => shell.textContent).toContain('Schutzbedarf: 1 von 4 Objekten bewertet');
+    await expect.poll(() => shell.textContent).toContain('Objektbewertung (bisher): 1 von 4 Objekten bewertet');
     expect(component.textContent).toContain('Synthetische Elternkategorie · abgeleitet');
     await assertNoAxeViolations(shell, `Zielobjekte (${name})`, 'all');
     button(shell, 'Speichern')!.click();
@@ -142,6 +142,44 @@ describe.each(LAYOUTS)('$name ($width px)', ({ name, width, height, touch }) => 
     expect(document.title).not.toContain(SENTINEL);
     expect(await commands.assertNoBrowserEgress()).toBeUndefined();
   }, 60_000);
+  test('Geschäftsprozesse sind mit Tastatur erreichbar und bleiben im Browser lokal', async () => {
+    const seeded = await seedWorkspace();
+    const stored = await addSsp(seeded.verbundId, makeFullSsp());
+    const { shell, router: current } = await renderAt(buildWorkspaceDocumentUrl(seeded.verbundId, stored.localId), width, height, touch);
+    await editorReady(shell);
+    const add = button(shell, 'Geschäftsprozess hinzufügen')!;
+    add.focus();
+    await userEvent.keyboard('{Enter}');
+    const section = page.getByRole('region', { name: 'Geschäftsprozesse' });
+    await expect.poll(() => section.getByLabelText('Prozess-ID').query()?.checkVisibility()).toBe(true);
+    expect(document.activeElement?.tagName).toBe('SUMMARY');
+
+    await userEvent.fill(section.getByLabelText('Prozess-ID'), 'P-01');
+    await userEvent.fill(section.getByLabelText('Name', { exact: true }), SENTINEL);
+    await userEvent.fill(section.getByLabelText('Kurzbeschreibung'), 'Anträge prüfen und Bescheide erstellen.');
+    await userEvent.fill(section.getByLabelText('Zweck'), 'Fristgerechte Entscheidungen');
+    (section.getByRole('checkbox', { name: 'Keine wesentliche Anwendung' }).element() as HTMLElement).focus();
+    await userEvent.keyboard(' ');
+    await userEvent.fill(section.getByLabelText('Begründung für keine wesentliche Anwendung'), 'Der Prozess läuft auf Papier.');
+    await userEvent.selectOptions(section.getByLabelText('Integrität', { exact: true }), 'hoch');
+    await userEvent.fill(section.getByLabelText('Begründung für Integrität'), 'Fehlerhafte Bescheide');
+    const apply = section.getByRole('button', { name: 'Prozess übernehmen' });
+    (apply.element() as HTMLElement).focus();
+    await userEvent.keyboard('{Enter}');
+    await expect.poll(() => section.getByRole('status').getByText('Explizite Risikobetrachtung erforderlich').query()?.checkVisibility()).toBe(true);
+    await assertNoAxeViolations(shell, `Geschäftsprozesse (${name})`, 'all');
+    if (touch) {
+      expect(add.getBoundingClientRect().height).toBeGreaterThanOrEqual(44);
+      expect(apply.element().getBoundingClientRect().height).toBeGreaterThanOrEqual(44);
+      expect(section.getByLabelText('Integrität', { exact: true }).element().getBoundingClientRect().height).toBeGreaterThanOrEqual(44);
+    }
+    button(shell, 'Speichern')!.click();
+    await expect.poll(async () => JSON.stringify((await sspSource(stored.localId)).source)).toContain(SENTINEL);
+    expect(JSON.stringify(current.state.location)).not.toContain(SENTINEL);
+    expect(document.title).not.toContain(SENTINEL);
+    expect(await commands.assertNoBrowserEgress()).toBeUndefined();
+  }, 60_000);
+
   test('Axe meldet auf Neuanlage und Bearbeitungsansicht keinen Befund; Touchziele messen 44 px', async () => {
     const seeded = await seedWorkspace();
     const full = await addSsp(seeded.verbundId, makeFullSsp());

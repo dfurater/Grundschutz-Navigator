@@ -5,6 +5,7 @@ import { readSspValue, sspBody, SspPatchError, type SspPath } from '@/domain/ssp
 import { readCatalogPins } from '@/domain/workspaceCatalogPin';
 import { closeTargetCategories, type CategoryClosure } from '@/domain/targetObjectCategories';
 import { compareStringsByCodeUnit } from '@/domain/codeUnitOrder.mjs';
+import { deriveSspProcessProtection, processProtectionFailure } from '@/domain/sspProcessProtection';
 import { processActionFailure } from '@/domain/sspProcessApproval';
 
 export interface TargetCategoryContext { readonly commit: string; readonly namespace: VocabularyNamespaceData }
@@ -157,7 +158,7 @@ export function validateSspTargets(source: unknown, context?: TargetCategoryCont
 }
 
 export function prepareSspTargets(source: unknown, context?: TargetCategoryContext): { ok: true; source: unknown } | ({ ok: false } & TargetFailure) {
-  const failure = validateSspTargets(source, context, false);
+  const failure = validateSspTargets(source, context, false) ?? processProtectionFailure(deriveSspProcessProtection(source));
   if (failure) return { ok: false, ...failure };
   let copy = structuredClone(source);
   for (const { item, path } of sspTargets(copy)) {

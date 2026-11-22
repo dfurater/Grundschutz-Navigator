@@ -102,7 +102,7 @@ function useRowKeys(items: readonly unknown[], uuidKeyed: boolean) {
  * stabile lokale Kennung als Schlüssel; Eingaben bleiben beim Hinzufügen,
  * Entfernen und Verschieben an ihrer Zeile.
  */
-export function SspRowList({ editor, path, title, required = false, uuidKeyed, newItem, addLabel, remove, renderRow, rowTitle, protectedTarget = false }: Readonly<{
+export function SspRowList({ editor, path, title, required = false, uuidKeyed, newItem, addLabel, remove, renderRow, rowTitle, protectedTarget = false, include }: Readonly<{
   editor: SspEditor;
   path: SspPath;
   title: string;
@@ -117,10 +117,12 @@ export function SspRowList({ editor, path, title, required = false, uuidKeyed, n
   renderRow: (rowPath: SspPath, item: unknown) => ReactNode;
   rowTitle: (item: unknown, index: number) => string;
   protectedTarget?: boolean;
+  include?: (item: unknown) => boolean;
 }>) {
   const headingId = useId();
   const items = readArray(readSspValue(editor.working, path));
   const rows = useRowKeys(items, uuidKeyed);
+  const indices = items.flatMap((item, index) => !include || include(item) ? [index] : []);
   const [visible, setVisible] = useState(ROW_PAGE);
   const [pending, setPending] = useState<{ index: number; key: string; item: string }>();
   const [uses, setUses] = useState<readonly string[]>([]);
@@ -146,20 +148,21 @@ export function SspRowList({ editor, path, title, required = false, uuidKeyed, n
     <section aria-labelledby={headingId} className="space-y-2">
       <h3 id={headingId} className={`${SECTION_LABEL} flex flex-wrap items-baseline gap-x-2`}>
         <span>{title}</span>
-        <span className="tabular-nums">{items.length}</span>
+        <span className="tabular-nums">{indices.length}</span>
         <OscalKey>{keyOf(path)}</OscalKey>
         {required && <span className={REQUIRED_MARK}>Pflicht</span>}
       </h3>
-      {items.length > 0 && (
+      {indices.length > 0 && (
         <ul className="divide-y divide-[var(--color-border-subtle)] rounded-md border border-[var(--color-border-default)]">
-          {items.slice(0, visible).map((item, index) => {
-            const label = rowTitle(item, index);
+          {indices.slice(0, visible).map((index, position) => {
+            const item = items[index];
+            const label = rowTitle(item, position);
             return (
               <li key={rows.keyAt(item, index)} aria-label={label} className="space-y-3 p-3">
                 {renderRow([...path, index], item)}
                 <div className="flex flex-wrap gap-1">
-                  <Button variant="ghost" size="sm" className="min-h-touch desktop:min-h-0" disabled={index === 0} aria-label={`${label} nach oben`} onClick={() => move(index, index - 1)}>Nach oben</Button>
-                  <Button variant="ghost" size="sm" className="min-h-touch desktop:min-h-0" disabled={index === items.length - 1} aria-label={`${label} nach unten`} onClick={() => move(index, index + 1)}>Nach unten</Button>
+                  <Button variant="ghost" size="sm" className="min-h-touch desktop:min-h-0" disabled={position === 0} aria-label={`${label} nach oben`} onClick={() => move(index, indices[position - 1])}>Nach oben</Button>
+                  <Button variant="ghost" size="sm" className="min-h-touch desktop:min-h-0" disabled={position === indices.length - 1} aria-label={`${label} nach unten`} onClick={() => move(index, indices[position + 1])}>Nach unten</Button>
                   <Button variant="ghost" size="sm" className="min-h-touch desktop:min-h-0" disabled={checking} aria-label={`${label} entfernen`} onClick={() => { void requestRemoval(index); }}>Entfernen</Button>
                 </div>
               </li>
@@ -167,9 +170,9 @@ export function SspRowList({ editor, path, title, required = false, uuidKeyed, n
           })}
         </ul>
       )}
-      {visible < items.length && (
+      {visible < indices.length && (
         <Button variant="secondary" size="sm" className="min-h-touch tabular-nums desktop:min-h-0" onClick={() => setVisible((count) => count + ROW_PAGE)}>
-          Weitere Einträge · {visible} von {items.length}
+          Weitere Einträge · {visible} von {indices.length}
         </Button>
       )}
       {newItem && (

@@ -148,7 +148,10 @@ function processContext(process: JsonObject, index: ContextIndex, metadata: Json
   if (key === undefined || index.components.get(key)?.length !== 1) contextFinding(check, 'invalid', `${path}/uuid`);
   for (const field of ['title', 'description', 'purpose']) requiredText(check, process, field, path);
   const ids = selectedProps(process, 'business-process', prop => prop.name === 'process-id').projectProps;
-  if (ids.some(prop => hasText(prop.value) && duplicateIds.has(textKey(prop.value)))) contextFinding(check, 'invalid', `${path}/props`);
+  if (ids.some(prop => hasText(prop.value) && duplicateIds.has(textKey(prop.value)))) {
+    check.invalid = true;
+    check.diagnostics.push({ code: 'SSP_PROCESS_ID_DUPLICATE', path: `${path}/props` });
+  }
   ownerContext(process, index, path, check);
   applicationsContext(process, index.components, path, check);
   categoryContext(process, metadata, index.categoryLabels, check);
@@ -240,4 +243,10 @@ export function deriveSspProcessProtection(source: unknown): SspProcessProtectio
   if (processes.some(process => process.context === 'context-open')) context = 'context-open';
   if (processes.some(process => process.context === 'invalid')) context = 'invalid';
   return { processes, context, cia: ciaState(values), riskConsideration: riskConsideration(values) };
+}
+
+/** Fehlende Angaben bleiben offen. Ein fehlerhafter Bezug oder eine verwendete Kategorie ohne Mapping sperrt den Schreibpfad. */
+export function processProtectionFailure(protection: SspProcessProtection): ProcessProtectionDiagnostic | undefined {
+  return protection.processes.flatMap(process => process.diagnostics).find(({ code }) =>
+    code !== 'SSP_PROCESS_CONTEXT_REQUIRED' && code !== 'SSP_PROCESS_OBJECTIVE_REQUIRED');
 }

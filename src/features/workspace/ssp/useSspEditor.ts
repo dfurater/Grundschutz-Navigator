@@ -10,6 +10,7 @@ import { downloadBlob } from '@/adapters/browserDownload';
 import { serializeWorkspaceJson } from '@/domain/workspaceJson';
 import { sspCategoryContext } from '@/domain/sspCategoryContext';
 import { prepareSspTargets, validateSspTargets, type TargetCategoryContext, type TargetFailure } from '@/domain/sspTargetObjects';
+import { deriveSspProcessProtection, processProtectionFailure } from '@/domain/sspProcessProtection';
 import { targetDeletionUses } from '@/domain/sspTargetDeletion';
 import type { SspPath } from '@/domain/sspAuthoring';
 import { useCatalog } from '@/hooks/useCatalog';
@@ -137,6 +138,8 @@ export function useSspEditor(localId: LocalId): SspEditor {
     const result = await commit(latest.current.working, async (storedSource, snapshot) => {
       const importedFailure = validateSspTargets(storedSource, categories);
       if (importedFailure) { setMessage('target-invalid'); return { ok: false, code: importedFailure.code }; }
+      const processFailure = processProtectionFailure(deriveSspProcessProtection(snapshot));
+      if (processFailure) { setMessage('target-invalid'); return { ok: false, code: processFailure.code }; }
       const targets = sameSspContent(storedSource, snapshot) ? { ok: true as const, source: snapshot } : prepareSspTargets(snapshot, categories);
       if (!targets.ok) { setMessage('target-invalid'); return targets; }
       snapshot = targets.source;

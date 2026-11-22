@@ -1,5 +1,6 @@
 import { useId, useState, type ReactNode } from 'react';
 import { Button } from '@/components/Button';
+import { BUSINESS_PROCESS_COMPONENT_TYPE } from '@/domain/projectProps';
 import { isJsonObject, readArray, readString } from '@/domain/jsonGuards';
 import {
   addSspItem, readSspValue, removeSspComponent, sspOscalVersion, sspProtocolNameRequired, sspUsersRequired,
@@ -14,7 +15,7 @@ import { InventoryReferences, SspTargetFields, TargetResponsibility } from '@/fe
 import type { SspEditor } from '@/features/workspace/ssp/useSspEditor';
 
 /** Übliche Komponententypen des Metaschemas; der Typ ist freier Text. */
-const COMPONENT_TYPES = ['this-system', 'system', 'interconnection', 'software', 'hardware', 'service', 'policy', 'physical', 'process-procedure', 'plan', 'guidance', 'standard', 'validation', 'business-process', 'virtual-system', 'network', 'room', 'site'];
+const COMPONENT_TYPES = ['this-system', 'system', 'interconnection', 'software', 'hardware', 'service', 'policy', 'physical', 'process-procedure', 'plan', 'guidance', 'standard', 'validation', 'virtual-system', 'network', 'room', 'site'];
 
 export const NOT_RESOLVABLE_LABEL = 'nicht auflösbar im aktuellen Kontext';
 
@@ -125,6 +126,7 @@ export function ImplementationSection({ editor }: Readonly<{ editor: SspEditor }
     <FormSection title="Systemimplementierung">
       <datalist id={typesId}>{COMPONENT_TYPES.map((type) => <option key={type} value={type} />)}</datalist>
       <SspRowList editor={editor} path={[si, 'components']} title="Komponenten" required uuidKeyed protectedTarget addLabel="Komponente hinzufügen"
+        include={item => !isJsonObject(item) || item.type !== BUSINESS_PROCESS_COMPONENT_TYPE}
         newItem={() => ({ uuid: crypto.randomUUID() })} remove={removeSspComponent} rowTitle={rowTitle('Komponente', 'title')}
         renderRow={(path, item) => (
           <>

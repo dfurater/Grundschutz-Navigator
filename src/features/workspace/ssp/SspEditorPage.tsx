@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { buildStationUrl } from '@/app/routes';
 import { Button } from '@/components/Button';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { IconDownload } from '@/components/icons';
+import { deriveSspProcessProtection, processProtectionFailure } from '@/domain/sspProcessProtection';
 import { targetCoverage } from '@/domain/sspTargetObjects';
 import { missingSspStructure } from '@/domain/sspRequirements';
 import { editLocked, reviewLocked } from '@/domain/workspaceCatalogPin';
@@ -22,13 +23,14 @@ import { targetKey, useImportTargets } from '@/features/workspace/profile/useImp
 import {
   BaselineSection, CharacteristicsSection, ControlImplementationSection, ImplementationSection, MetadataSection,
 } from '@/features/workspace/ssp/SspFormSections';
+import { SspProcessSection } from '@/features/workspace/ssp/SspProcessSection';
 import { SspDocumentContent } from '@/features/workspace/ssp/SspDocumentContent';
 import { useBaselineControls } from '@/features/workspace/ssp/useBaselineControls';
 import { useSspEditor, type SspEditorMessage } from '@/features/workspace/ssp/useSspEditor';
 
 const MESSAGES: Readonly<Record<SspEditorMessage, string>> = {
   'target-form-pending': 'Bitte die offenen Schutzbedarfseingaben zuerst übernehmen oder zurücksetzen.',
-  'target-invalid': 'Die Projektregeln für Zielobjekte sind nicht erfüllt. Quelle und Backup bleiben erhalten.',
+  'target-invalid': 'Die Projektregeln für Zielobjekte und Prozesse sind nicht erfüllt. Quelle und Backup bleiben erhalten.',
   'target-delete-blocked': 'Das Zielobjekt bleibt gespeichert: Verwendungen oder Bindungen haben sich geändert. Bestand neu prüfen.',
   'saved-as-draft': 'Schema oder Referenzprüfung sind nicht bestanden; das SSP ist als Entwurf gespeichert.',
   'save-failed': 'Das SSP wurde nicht gespeichert.',
@@ -74,6 +76,7 @@ export function SspEditorPage({ view, document }: Readonly<{ view: VerbundView; 
   const controls = useBaselineControls(view.verbund.verbundId as VerbundId, editor.baseline, document.catalogPin);
   const [confirming, setConfirming] = useState(false);
   const navigate = useNavigate();
+  const protection = useMemo(() => deriveSspProcessProtection(editor.working), [editor.working]);
 
   if (editor.status !== 'ready' || !editor.envelope) {
     return <output className="block p-4 text-sm text-[var(--color-text-secondary)]">{editor.status === 'failed' ? 'Das SSP konnte nicht gelesen werden.' : 'SSP wird geladen…'}</output>;
@@ -81,7 +84,10 @@ export function SspEditorPage({ view, document }: Readonly<{ view: VerbundView; 
   const missing = missingSspStructure(editor.working);
   const state = editor.envelope.documentState === 'draft' || editor.dirty ? 'draft' : 'export-ready';
   const coverage = targetCoverage(editor.working);
-  const canExport = !editor.targetFailure && editor.envelope.documentState === 'export-ready' && !editor.dirty && !editor.busy;
+  const processFailure = processProtectionFailure(protection);
+  const completeProcesses = protection.processes.filter(process => process.context === 'context-complete' && process.cia === 'complete').length;
+  const riskTriggers = protection.processes.filter(process => process.riskConsideration === 'required').length;
+  const canExport = !processFailure && !editor.targetFailure && editor.envelope.documentState === 'export-ready' && !editor.dirty && !editor.busy;
   // Schreibschutz durch den Katalogstand: Lesen, Export und Löschen bleiben, Bearbeiten und Prüfen nicht.
   const locked = editLocked(document.catalogPin) || editor.targetFailure !== undefined;
   const save = () => { void editor.save(); };
@@ -96,8 +102,13 @@ export function SspEditorPage({ view, document }: Readonly<{ view: VerbundView; 
           <CatalogPinNotice pin={document.catalogPin} busy={editor.busy} onBind={() => { void editor.bindCatalogStand(); }} />
           {editor.message && <output className="block text-sm text-[var(--color-text-primary)]">{MESSAGES[editor.message]}</output>}
           <section aria-label="Schutzbedarfsabdeckung" className="space-y-1 text-sm text-[var(--color-text-secondary)]">
-            <p>{editor.envelope.documentState === 'export-ready' && !editor.dirty && !editor.targetFailure ? 'Technisch gültig' : 'Technische Gültigkeit noch nicht bestätigt'}</p>
-            <p className="tabular-nums">{`Schutzbedarf: ${coverage.assessed} von ${coverage.total} Objekten bewertet`}</p>
+            <p>{editor.envelope.documentState === 'export-ready' && !editor.dirty && !editor.targetFailure && !processFailure ? 'Technisch gültig' : 'Technische Gültigkeit noch nicht bestätigt'}</p>
+            <p className="tabular-nums">{`Objektbewertung (bisher): ${coverage.assessed} von ${coverage.total} Objekten bewertet`}</p>
+            {protection.processes.length === 0
+              ? <p>Prozess-Schutzbedarf offen</p>
+              : <p className="tabular-nums">{`Prozess-Schutzbedarf: ${completeProcesses} von ${protection.processes.length} Prozessen vollständig`}
+                {riskTriggers > 0 && ` · ${riskTriggers} ${riskTriggers === 1 ? 'Anlass' : 'Anlässe'} zur Risikobetrachtung`}</p>}
+            {processFailure && <p role="alert" className="text-[var(--color-danger-text)]">Speichern und validierter Export sind gesperrt. Prozessangaben und GS++-Zuordnungen prüfen.</p>}
             {coverage.value === 'incomplete' && <p>Arbeitsstand mit offenen Bewertungen. Die Abdeckung beschreibt ausschließlich die erfassten Objekte.</p>}
             {editor.targetFailure && <output className="block">Projektregelbefund: <span className="font-mono text-xs">{editor.targetFailure.code} · {editor.targetFailure.path}</span>. Semantische Änderungen und validierter Export sind gesperrt.</output>}
             <Button variant="ghost" size="sm" className="min-h-touch desktop:min-h-0" onClick={editor.exportPreserved}>Ungeprüften Erhaltungs-Export herunterladen</Button>
@@ -107,6 +118,7 @@ export function SspEditorPage({ view, document }: Readonly<{ view: VerbundView; 
             <MetadataSection editor={editor} />
             <BaselineSection editor={editor} options={options} />
             <CharacteristicsSection editor={editor} />
+            <SspProcessSection editor={editor} protection={protection} />
             <ImplementationSection editor={editor} />
             {/* Ein Baseline-Wechsel setzt die offene Anforderungswahl zurück. */}
             <ControlImplementationSection key={editor.baseline ? targetKey(editor.baseline) : 'ohne-baseline'} editor={editor} controls={controls} />
@@ -118,12 +130,12 @@ export function SspEditorPage({ view, document }: Readonly<{ view: VerbundView; 
         {!desktop && (
           <div className="sticky bottom-0 z-10 grid shrink-0 grid-cols-2 gap-2 border-t border-[var(--color-border-default)] bg-[var(--color-surface-base)] p-3 pb-safe shadow-footer">
             <Button variant="secondary" icon={IconDownload} className="min-h-touch" disabled={!canExport} onClick={exportDocument}>Export</Button>
-            <Button className="min-h-touch" disabled={editor.busy || locked} onClick={save}>Speichern</Button>
+            <Button className="min-h-touch" disabled={editor.busy || locked || processFailure !== undefined} onClick={save}>Speichern</Button>
           </div>
         )}
       </div>
       {desktop && (
-        <EditorPanel label="Speichern und Export" footer={<PackageActions saveState={editor.saveState} dirty={editor.dirty} canExport={canExport} busy={editor.busy || locked} onSave={save} onExport={exportDocument} />}>
+        <EditorPanel label="Speichern und Export" footer={<PackageActions saveState={editor.saveState} dirty={editor.dirty} canExport={canExport} busy={editor.busy || locked || processFailure !== undefined} onSave={save} onExport={exportDocument} />}>
           <OpenStructure missing={missing} />
         </EditorPanel>
       )}
