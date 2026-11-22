@@ -82,17 +82,17 @@ function hasDecisionRole(source: unknown): boolean {
 }
 
 export interface DecisionGate {
-  /** Fehlende Rolle oder Partei im gespeicherten SSP. */
+  /** Fehlende Rolle im gespeicherten SSP; eine fehlende Partei legt der Dialog an. */
   readonly reasons: readonly string[];
   readonly blocked?: string;
   readonly onAddRole?: () => void;
 }
 
 /** Was eine Entscheidung im gespeicherten Stand verhindert; gilt für alle Prozesse eines SSP. */
-export function decisionGate(editor: SspEditor, lock: string | undefined, hasParty: boolean): DecisionGate {
+export function decisionGate(editor: SspEditor, lock: string | undefined): DecisionGate {
   const saved = editor.envelope?.source;
   const role = hasDecisionRole(saved);
-  const reasons = [!role && `Rolle ${DECISION_ROLE} unter Metadaten`, !hasParty && 'Partei der Institutionsleitung unter Metadaten'].filter(reason => reason !== false);
+  const reasons = role ? [] : [`Rolle ${DECISION_ROLE} unter Metadaten`];
   let blocked = lock;
   if (!blocked && editor.dirty) blocked = 'Ungespeicherte Änderungen: Der Freigabestand gilt für den gespeicherten Stand. Bitte zuerst speichern; Freigabe und Rücknahme sind bis dahin nicht verfügbar.';
   if (!blocked && editor.envelope?.documentState === 'draft') blocked = 'Das SSP ist als Entwurf gespeichert. Freigabe und Rücknahme brauchen einen technisch gültigen gespeicherten Stand.';
@@ -134,7 +134,7 @@ export function ProcessApprovalBlock({ approval, processReasons, decisionReasons
   approval: ProcessApprovalView | undefined;
   /** Fehlende Prozessangaben; sie sperren nur eine neue Freigabe. */
   processReasons: readonly string[];
-  /** Fehlende Rolle oder Partei im gespeicherten SSP; sie sperren Freigabe und Rücknahme. */
+  /** Fehlende Rolle im gespeicherten SSP; sie sperrt Freigabe und Rücknahme. */
   decisionReasons: readonly string[];
   /** Grund, warum gerade keine Entscheidung geschrieben werden kann. */
   blocked?: string;

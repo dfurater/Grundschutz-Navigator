@@ -5,6 +5,7 @@ import type {
 } from '@/domain/workspaceModel';
 import { boundaryDraftBase, sameBoundaryInput, scopeBoundaryInput, type ScopeBoundaryDraft } from '@/domain/scopeBoundary';
 import type { WorkspaceContextValue } from '@/state/WorkspaceContext';
+import { discardDecisionDrafts } from '@/state/processDecisionDrafts';
 
 /** Schlüssel der offenen Anlage eines Anwendungsbereichs unter den Namensentwürfen; keine `scopeId` hat diese Form. */
 export const NEW_SCOPE_DRAFT = 'neu';
@@ -129,10 +130,13 @@ function boundaryInputs(drafts: ReadonlyMap<string, ScopeBoundaryDraft>, scopes:
 export function discardReplacedInputs(preview: RestorePreview, importTargets: Map<LocalId, unknown>, renameDrafts: Map<string, string>): void {
   if (preview.kind === 'workspace') {
     importTargets.clear();
+    discardDecisionDrafts();
     renameDrafts.clear();
     return;
   }
-  for (const { localId } of [...preview.target.documents, ...preview.backup.documents]) importTargets.delete(localId);
+  const replaced = [...preview.target.documents, ...preview.backup.documents].map(({ localId }) => localId);
+  for (const localId of replaced) importTargets.delete(localId);
+  discardDecisionDrafts(replaced);
   renameDrafts.delete(preview.verbundId);
 }
 

@@ -8,6 +8,7 @@ import { appendProcessDecision } from '@/domain/sspProcessApproval';
 import { processContentHash } from '@/domain/sspProcessProjection';
 import type { LocalId } from '@/domain/workspaceModel';
 import { makeProcessCiaSsp } from '@/test/fixtures/processCia';
+import { decisionDrafts } from '@/state/processDecisionDrafts';
 import { mainLandmark as main, renderWorkspaceArea, withLoadedCatalog } from '@/test/renderWorkspaceArea';
 import { readStore, resetWorkspace, seedWorkspace, type SeededWorkspace } from '@/test/workspaceAreaFixture';
 
@@ -161,6 +162,20 @@ describe('Leitungsfreigabe je Prozess', () => {
     dialog = within(await screen.findByRole('alertdialog'));
     expect(dialog.getByLabelText('Anlass der Rücknahme')).toHaveValue('');
     expect(dialog.queryByLabelText('Name der Partei')).not.toBeInTheDocument();
+  });
+
+  it('verwirft offene Dialogentwürfe mit dem Löschen des SSP', async () => {
+    const { localId, region, router } = await open();
+    fireEvent.click(await region.findByRole('button', { name: 'Freigabe zurücknehmen…' }));
+    fireEvent.change(within(await screen.findByRole('alertdialog')).getByLabelText('Anlass der Rücknahme'), { target: { value: 'Vertraulicher Entwurf' } });
+    await router.navigate(buildStationUrl(seeded.verbundId, 'ssp'));
+    await router.navigate(buildWorkspaceDocumentUrl(seeded.verbundId, localId));
+    await within(main()).findByRole('region', { name: 'Leitungsfreigabe' }, WAIT);
+    expect([...decisionDrafts(localId).values()]).toContainEqual(expect.objectContaining({ remarks: 'Vertraulicher Entwurf' }));
+    fireEvent.click(await within(main()).findByRole('button', { name: 'SSP löschen…' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Endgültig löschen' }));
+    await waitFor(() => expect(router.state.location.pathname).not.toMatch(/\/dokument\//), WAIT);
+    expect(decisionDrafts(localId).size).toBe(0);
   });
 
   it('zeigt eine ungültige importierte Kette mit Befund und lässt sie unverändert', async () => {

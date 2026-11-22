@@ -214,7 +214,7 @@ function ProcessRow({ editor, protection, allProtection, autoOpen, parties, appl
       {uuid && <ProcessApprovalBlock approval={approval} processReasons={errors} decisionReasons={decision.reasons} blocked={decision.blocked}
         risk={protection.riskConsideration === 'required'} notice={notice} onAddRole={decision.onAddRole}
         onApprove={() => { setNotice(undefined); setDeciding('approved'); }} onWithdraw={() => { setNotice(undefined); setDeciding('withdrawn'); }} />}
-      {uuid && deciding && <SspProcessApprovalDialog draftKey={`${editor.localId}:${uuid}:${deciding}`} mode={deciding} label={label} processUuid={uuid} source={editor.envelope?.source}
+      {uuid && deciding && <SspProcessApprovalDialog localId={editor.localId} mode={deciding} label={label} processUuid={uuid} source={editor.envelope?.source}
         protection={protection} parties={decision.parties} affected={deciding === 'withdrawn' ? approval?.withdrawable : approval?.last}
         onDecide={decide} onAddParty={editor.addDecisionParty} onClose={() => setDeciding(undefined)} />}
       <output className="block space-y-2">
@@ -270,7 +270,7 @@ export function SspProcessSection({ editor, protection, decisionLock }: Readonly
   const approvals = useProcessApprovals(saved, protection.processes.flatMap(process => process.uuid ? [process.uuid] : []));
   const decisionParties = referenceOptions(readSspValue(saved, ['metadata', 'parties']), 'name',
     item => item.type === 'person' || item.type === 'organization');
-  const gate = decisionGate(editor, decisionLock, decisionParties.length > 0);
+  const gate = decisionGate(editor, decisionLock);
   const parties = referenceOptions(readSspValue(editor.working, ['metadata', 'parties']), 'name',
     item => item.type === 'person' || item.type === 'organization');
   const applications = referenceOptions(readSspValue(editor.working, SSP_COMPONENT_PATH), 'title',

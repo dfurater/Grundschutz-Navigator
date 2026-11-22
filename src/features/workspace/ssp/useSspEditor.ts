@@ -19,11 +19,12 @@ import { StorageFailure, UNSAVED_INPUT_CODE, failure } from '@/adapters/workspac
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { useDocumentEditor, type DocumentEditorCoreMessage, type DocumentSaveState } from '@/features/workspace/useDocumentEditor';
 import type { PendingImportTarget } from '@/state/workspaceDocuments';
+import type { DecisionParty } from '@/state/processDecisionDrafts';
 
 type SspMessage = 'saved-as-draft' | 'component-unresolved' | 'component-referenced' | 'patch-failed' | 'catalog-locked' | 'target-invalid' | 'target-delete-blocked' | 'target-form-pending';
 
 export type SspEditorMessage = DocumentEditorCoreMessage | SspMessage;
-export interface DecisionParty { readonly uuid: string; readonly type: 'organization' | 'person'; readonly name: string }
+export type { DecisionParty } from '@/state/processDecisionDrafts';
 
 export interface SspEditor {
   readonly localId: LocalId;

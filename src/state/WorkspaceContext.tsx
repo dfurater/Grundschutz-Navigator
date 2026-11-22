@@ -18,6 +18,7 @@ import {
   noticeForDiagnostic, quotaNearlyExhausted, withNotice, withoutNotice, type WorkspaceNotice,
 } from '@/state/workspaceNotices';
 import { createWorkspaceDocuments, type PendingImportTarget, type WorkspaceDocuments } from '@/state/workspaceDocuments';
+import { discardDecisionDrafts } from '@/state/processDecisionDrafts';
 import type { VerbundView, WorkspacePort } from '@/state/workspaceVerbundView';
 import { createWorkspaceSession, type ExclusiveEntry, type WorkspaceSession } from '@/state/workspaceSession';
 
@@ -470,6 +471,7 @@ export function WorkspaceProvider({ open = openWorkspaceStore, session: provided
         if (result.ok) {
           // Keine Restkopie des gelöschten Bestands im Tab.
           importTargets.clear();
+          discardDecisionDrafts();
           renameDrafts.clear();
           scopeDrafts.clear();
           boundaryDrafts.clear();
@@ -631,6 +633,7 @@ export function WorkspaceProvider({ open = openWorkspaceStore, session: provided
       if (result.ok) {
         setLoaded((current) => current?.verbundId === verbundId ? null : current);
         for (const member of members) importTargets.delete(member.localId);
+        discardDecisionDrafts(members.map(member => member.localId));
         renameDrafts.delete(verbundId);
       }
       return result;

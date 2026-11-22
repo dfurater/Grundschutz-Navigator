@@ -7,7 +7,8 @@ import { processContentHash } from '@/domain/sspProcessProjection';
 import type { ProcessProtection } from '@/domain/sspProcessProtection';
 import { DECISION_ROLE, formatDecisionDate, shortHash, type ProcessDecisionView } from '@/features/workspace/ssp/SspProcessApproval';
 import { ProcessSelect, ProcessText } from '@/features/workspace/ssp/SspProcessFields';
-import type { DecisionParty } from '@/features/workspace/ssp/useSspEditor';
+import type { LocalId } from '@/domain/workspaceModel';
+import { decisionDrafts, type DecisionDialogDraft, type DecisionParty } from '@/state/processDecisionDrafts';
 
 const ERRORS: Readonly<Record<string, string>> = {
   WORKSPACE_SAVE_CONFLICT: 'Nicht gespeichert. Das Dokument wurde in einem anderen Tab geändert. Die Entscheidung wurde nicht geschrieben; Dokument und Eingaben sind unverändert.',
@@ -29,14 +30,7 @@ const FACTS = 'grid gap-x-4 gap-y-1 sm:grid-cols-[12rem_minmax(0,1fr)]';
 export type ProcessDecisionMode = keyof typeof TEXT;
 type PartyOption = { readonly value: string; readonly label: string };
 type NewParty = DecisionParty;
-interface DialogDraft {
-  readonly party: string;
-  readonly remarks: string;
-  /** Offene Eingabe einer neuen Partei; ihre UUID bleibt über Fehlversuche gleich. */
-  readonly newParty?: NewParty;
-}
-// Entwürfe leben im Arbeitsspeicher des Tabs und überstehen Routenwechsel; nur Abbrechen oder ein Schreiberfolg verwirft sie.
-const DRAFTS = new Map<string, DialogDraft>();
+type DialogDraft = DecisionDialogDraft;
 
 function initialParty(parties: readonly PartyOption[], affected: ProcessDecisionView | undefined): string {
   const previous = parties.find(option => affected?.partyUuids.some(uuid => uuid.toLowerCase() === option.value.toLowerCase()));
@@ -96,9 +90,9 @@ function DecisionFacts({ approve, label, protection, affected, bound }: Readonly
 }
 
 /** Prüfblatt vor dem Schreiben: gebundener Stand, feste Rolle, Partei und Begründung. */
-export function SspProcessApprovalDialog({ draftKey, mode, label, processUuid, source, protection, parties, affected, onDecide, onAddParty, onClose }: Readonly<{
-  /** Dokument, Prozess und Art der Entscheidung; trägt den Entwurf über Routenwechsel. */
-  draftKey: string;
+export function SspProcessApprovalDialog({ localId, mode, label, processUuid, source, protection, parties, affected, onDecide, onAddParty, onClose }: Readonly<{
+  /** Dokument, dessen Entwurfsablage den Dialogentwurf über Routenwechsel trägt. */
+  localId: LocalId;
   mode: ProcessDecisionMode;
   label: string;
   processUuid: string;
@@ -114,13 +108,14 @@ export function SspProcessApprovalDialog({ draftKey, mode, label, processUuid, s
 }>) {
   const approve = mode === 'approved';
   const text = TEXT[mode];
-  const [draft, setDraft] = useState<DialogDraft>(() => DRAFTS.get(draftKey) ?? { party: initialParty(parties, affected), remarks: '' });
-  useEffect(() => { DRAFTS.set(draftKey, draft); }, [draftKey, draft]);
+  const draftKey = `${processUuid}:${mode}`;
+  const [draft, setDraft] = useState<DialogDraft>(() => decisionDrafts(localId).get(draftKey) ?? { party: initialParty(parties, affected), remarks: '' });
+  useEffect(() => { decisionDrafts(localId).set(draftKey, draft); }, [localId, draftKey, draft]);
   const { party, remarks, newParty } = draft;
   const setParty = (value: string) => setDraft(current => ({ ...current, party: value }));
   const setRemarks = (value: string) => setDraft(current => ({ ...current, remarks: value }));
   const creating = newParty !== undefined;
-  const discard = () => { DRAFTS.delete(draftKey); onClose(); };
+  const discard = () => { decisionDrafts(localId).delete(draftKey); onClose(); };
   const [tried, setTried] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
