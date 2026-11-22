@@ -212,7 +212,7 @@ function ProcessRow({ editor, protection, allProtection, autoOpen, parties, appl
         onApprove={() => { setNotice(undefined); setDeciding('approved'); }} onWithdraw={() => { setNotice(undefined); setDeciding('withdrawn'); }} />}
       {uuid && deciding && <SspProcessApprovalDialog mode={deciding} label={label} processUuid={uuid} source={editor.envelope?.source}
         protection={protection} parties={decision.parties} affected={deciding === 'withdrawn' ? approval?.withdrawable : approval?.last}
-        onDecide={decide} onClose={() => setDeciding(undefined)} />}
+        onDecide={decide} onAddParty={editor.addDecisionParty} onClose={() => setDeciding(undefined)} />}
       <output className="block space-y-2">
         <ProcessStatus protection={preview} labelled />
         {errors.length > 0 && <span className="block text-sm text-[var(--color-text-secondary)]">{errors.join(' · ')}</span>}

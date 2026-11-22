@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Button } from '@/components/Button';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import type { ProcessDecisionInput } from '@/domain/sspProcessApproval';
 import { PROCESS_GOALS, PROCESS_GOAL_KEYS } from '@/domain/sspProcessEditing';
@@ -12,6 +13,10 @@ const ERRORS: Readonly<Record<string, string>> = {
   SSP_PROCESS_DECISION_BLOCKED: 'Nicht gespeichert. Eine Entscheidung braucht einen gespeicherten, technisch gültigen Stand ohne offenen Entwurf.',
   SSP_CATEGORY_CONTEXT_UNAVAILABLE: 'Nicht gespeichert. Der Kategorienkontext zum gebundenen Katalogstand ist nicht geladen; die Zuordnungen sind nicht prüfbar.',
 };
+function errorText(code: string): string {
+  return ERRORS[code] ?? `Nicht gespeichert. Befund: ${code}.`;
+}
+const PARTY_TYPES = [{ value: 'organization', label: 'Organisation' }, { value: 'person', label: 'Person' }];
 const TEXT = {
   approved: { title: 'Freigabe dokumentieren', remarks: 'Begründung', missing: 'Begründung fehlt.', variant: 'primary' },
   withdrawn: { title: 'Freigabe zurücknehmen', remarks: 'Anlass der Rücknahme', missing: 'Anlass fehlt.', variant: 'danger' },
@@ -22,6 +27,7 @@ const FACTS = 'grid gap-x-4 gap-y-1 sm:grid-cols-[12rem_minmax(0,1fr)]';
 
 export type ProcessDecisionMode = keyof typeof TEXT;
 type PartyOption = { readonly value: string; readonly label: string };
+type NewParty = { readonly type: 'organization' | 'person'; readonly name: string };
 
 function initialParty(parties: readonly PartyOption[], affected: ProcessDecisionView | undefined): string {
   const previous = parties.find(option => affected?.partyUuids.some(uuid => uuid.toLowerCase() === option.value.toLowerCase()));
@@ -29,18 +35,37 @@ function initialParty(parties: readonly PartyOption[], affected: ProcessDecision
   return parties.length === 1 ? parties[0].value : '';
 }
 
-/** Hash des gespeicherten Prozessstands für die gewählte Partei; die Partei gehört zur Bindung. */
+/** Hash des gespeicherten Stands für die gewählte Partei; gilt nur für genau diesen Stand und diese Partei. */
 function useBoundHash(source: unknown, processUuid: string, party: string, enabled: boolean): string | undefined {
-  const [hash, setHash] = useState<{ party: string; value?: string }>();
+  const [hash, setHash] = useState<{ source: unknown; party: string; value?: string }>();
   useEffect(() => {
     if (!enabled || !party) return;
     let active = true;
     void processContentHash(source, processUuid, [{ 'role-id': DECISION_ROLE, 'party-uuids': [party] }])
       .then(value => value, () => undefined)
-      .then(value => { if (active) setHash({ party, value }); });
+      .then(value => { if (active) setHash({ source, party, value }); });
     return () => { active = false; };
   }, [enabled, party, processUuid, source]);
-  return hash?.party === party ? hash.value : undefined;
+  return hash && hash.source === source && hash.party === party ? hash.value : undefined;
+}
+
+/** Legt eine Partei im SSP an; sie wird mit dem SSP gespeichert, bevor eine Entscheidung sie bindet. */
+function NewPartyFields({ onSave, onCancel }: Readonly<{ onSave: (party: NewParty) => void; onCancel: () => void }>) {
+  const [name, setName] = useState('');
+  const [type, setType] = useState<NewParty['type']>('organization');
+  const [tried, setTried] = useState(false);
+  return <div className={`${BOX} space-y-3`}>
+    <p className="text-sm font-medium">Partei im SSP anlegen</p>
+    <div className="grid gap-3 sm:grid-cols-2">
+      <ProcessText label="Name der Partei" value={name} onChange={setName} error={tried && !name.trim() ? 'Name fehlt.' : undefined} />
+      <ProcessSelect label="Art" value={type} options={PARTY_TYPES} onChange={value => setType(value === 'person' ? 'person' : 'organization')} />
+    </div>
+    <p className="text-sm">Die Partei wird mit dem SSP gespeichert und steht danach unter Metadaten.</p>
+    <div className="flex flex-col gap-2 sm:flex-row">
+      <Button variant="secondary" className="min-h-touch desktop:min-h-0" onClick={() => { setTried(true); if (name.trim()) onSave({ type, name: name.trim() }); }}>Partei speichern</Button>
+      <Button variant="ghost" className="min-h-touch desktop:min-h-0" onClick={onCancel}>Abbrechen</Button>
+    </div>
+  </div>;
 }
 
 function DecisionFacts({ approve, label, protection, affected, bound }: Readonly<{
@@ -61,7 +86,7 @@ function DecisionFacts({ approve, label, protection, affected, bound }: Readonly
 }
 
 /** Prüfblatt vor dem Schreiben: gebundener Stand, feste Rolle, Partei und Begründung. */
-export function SspProcessApprovalDialog({ mode, label, processUuid, source, protection, parties, affected, onDecide, onClose }: Readonly<{
+export function SspProcessApprovalDialog({ mode, label, processUuid, source, protection, parties, affected, onDecide, onAddParty, onClose }: Readonly<{
   mode: ProcessDecisionMode;
   label: string;
   processUuid: string;
@@ -72,6 +97,7 @@ export function SspProcessApprovalDialog({ mode, label, processUuid, source, pro
   /** Zurückzunehmende Freigabe; bei einer Freigabe die vorige Entscheidung. */
   affected?: ProcessDecisionView;
   onDecide: (input: ProcessDecisionInput) => Promise<string | undefined>;
+  onAddParty: (party: NewParty) => Promise<{ readonly uuid?: string; readonly code?: string }>;
   onClose: () => void;
 }>) {
   const approve = mode === 'approved';
@@ -81,6 +107,7 @@ export function SspProcessApprovalDialog({ mode, label, processUuid, source, pro
   const [tried, setTried] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
+  const [creating, setCreating] = useState(false);
   const computed = useBoundHash(source, processUuid, party, approve);
   const bound = approve ? computed : affected?.hash;
   const confirm = async () => {
@@ -90,12 +117,22 @@ export function SspProcessApprovalDialog({ mode, label, processUuid, source, pro
     setError(undefined);
     const code = await onDecide({ processUuid, type: mode, uuid: crypto.randomUUID(), date: new Date().toISOString(), partyUuids: [party], remarks: remarks.trim() });
     setBusy(false);
-    if (code) setError(ERRORS[code] ?? `Nicht gespeichert. Befund: ${code}.`);
+    if (code) setError(errorText(code));
     else onClose();
   };
+  const addParty = async (next: NewParty) => {
+    setBusy(true);
+    setError(undefined);
+    const result = await onAddParty(next);
+    setBusy(false);
+    if (result.uuid) {
+      setParty(result.uuid);
+      setCreating(false);
+    } else setError(`${errorText(result.code ?? 'WORKSPACE_STORAGE_FAILED')} Die Partei steht im Arbeitsstand unter Metadaten.`);
+  };
   return <ConfirmDialog open title={`${text.title} · ${label}`} confirmLabel={text.title} confirmVariant={text.variant}
-    busy={busy} wide onCancel={onClose} onConfirm={() => { void confirm(); }}>
-    <div className="space-y-3 text-[var(--color-text-primary)]">
+    busy={busy} wide confirmDisabled={creating || (approve && party !== '' && bound === undefined)} onCancel={onClose} onConfirm={() => { void confirm(); }}>
+    <fieldset disabled={busy} className="min-w-0 space-y-3 text-[var(--color-text-primary)]">
       {approve && <div className={BOX}>
         <p className="font-medium">Gebundener Stand</p>
         <p>Die Freigabe gilt für den Prozess in diesem gespeicherten Stand: <span className="break-all font-mono text-xs">{party ? shortHash(bound) : 'nach Wahl der Partei'}</span>. Ändert sich der Prozess, wird sie „überholt“.</p>
@@ -108,9 +145,12 @@ export function SspProcessApprovalDialog({ mode, label, processUuid, source, pro
         </div>
         <ProcessSelect label="Partei" value={party} options={parties} onChange={setParty} emptyLabel="Partei wählen" error={tried && !party ? 'Partei wählen.' : undefined} />
       </div>
+      {creating
+        ? <NewPartyFields onSave={next => { void addParty(next); }} onCancel={() => setCreating(false)} />
+        : <Button variant="secondary" size="sm" className="min-h-touch desktop:min-h-0" onClick={() => setCreating(true)}>+ Partei im SSP anlegen</Button>}
       <ProcessText label={text.remarks} multiline value={remarks} onChange={setRemarks} error={tried && !remarks.trim() ? text.missing : undefined} />
       <p className={BOX}>Die Anwendung dokumentiert die erklärte Entscheidung der Institutionsleitung. Weder Identität noch Befugnis werden geprüft; es entsteht keine Signatur.</p>
       {error && <p role="alert" className="text-sm text-[var(--color-danger-text)]">{error}</p>}
-    </div>
+    </fieldset>
   </ConfirmDialog>;
 }

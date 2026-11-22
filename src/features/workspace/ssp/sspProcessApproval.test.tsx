@@ -92,6 +92,27 @@ describe('Leitungsfreigabe je Prozess', () => {
     expect(region.getByRole('button', { name: button })).toBeEnabled();
   });
 
+  it('legt im Freigabedialog eine Partei im SSP an, speichert sie und bindet sie an die Freigabe', async () => {
+    const { localId, region } = await open(ssp => { delete ssp.metadata.actions; });
+    fireEvent.click(await region.findByRole('button', { name: 'Freigabe dokumentieren…' }));
+    const dialog = within(await screen.findByRole('alertdialog'));
+    fireEvent.click(dialog.getByRole('button', { name: '+ Partei im SSP anlegen' }));
+    fireEvent.click(dialog.getByRole('button', { name: 'Partei speichern' }));
+    expect(dialog.getByText('Name fehlt.')).toBeInTheDocument();
+    fireEvent.change(dialog.getByLabelText('Name der Partei'), { target: { value: 'Behördenleitung' } });
+    fireEvent.click(dialog.getByRole('button', { name: 'Partei speichern' }));
+    await waitFor(() => expect(dialog.queryByRole('button', { name: 'Partei speichern' })).not.toBeInTheDocument(), WAIT);
+    const stored = await readStore(store => store.getDocument(localId));
+    const created = (readSspValue(stored?.source, ['metadata', 'parties']) as JsonObject[]).find(party => party.name === 'Behördenleitung');
+    expect(created).toMatchObject({ type: 'organization' });
+    expect(dialog.getByLabelText('Partei')).toHaveValue(created!.uuid as string);
+    expect(await dialog.findByText(/^process-cia\/3:sha-256:/, undefined, WAIT)).toBeInTheDocument();
+    fireEvent.change(dialog.getByLabelText('Begründung'), { target: { value: 'Freigegeben.' } });
+    fireEvent.click(dialog.getByRole('button', { name: 'Freigabe dokumentieren' }));
+    expect(await region.findByText('Aktuell', undefined, WAIT)).toBeInTheDocument();
+    expect((await actions(localId))[0]).toMatchObject({ 'responsible-parties': [{ 'role-id': 'institution-management', 'party-uuids': [created!.uuid] }] });
+  });
+
   it('zeigt eine ungültige importierte Kette mit Befund und lässt sie unverändert', async () => {
     const { localId, region } = await open(ssp => {
       Object.assign(props((ssp.metadata.actions as JsonObject[])[0]).find(prop => prop.name === 'process-cia-sequence')!, { value: '2' });
