@@ -222,14 +222,29 @@ export function useSspEditor(localId: LocalId): SspEditor {
     return targetDeletionUses(latest.current.working, path, localId, members, bindings.value);
   }, [documents, latest, localId]);
   const { adopt } = core;
+  // Eine ausgehängte Station übernimmt nichts mehr: Die geöffnete übernimmt den Stand über `decisionWrites`, ein Autosave hier wäre verwaist.
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
   // Ohne offene Eingaben übernimmt der Editor den Stand; mit ihnen führt er die Aktionskette in den Arbeitsstand zusammen.
   const adoptOrRebase = useCallback(async (document: WorkspaceEnvelope) => {
+    if (!mounted.current) return 'adopted';
     const adopted = await adopt(document);
     if (adopted !== 'blocked') return adopted;
-    // Eine offene Baseline-Wahl gilt nur gegen den geladenen Speicherstand; eine Zusammenführung würde sie still verwerfen.
     const { working: current, envelope } = latest.current;
-    if (effectiveChoice(pending.get(SSP_IMPORT_PROFILE_POINTER), baselineHref(current), envelope)) return 'blocked';
-    return adopt(document, mergeProcessDecision);
+    const choice = effectiveChoice(pending.get(SSP_IMPORT_PROFILE_POINTER), baselineHref(current), envelope);
+    const merged = await adopt(document, mergeProcessDecision);
+    // Eine offene Baseline-Wahl gilt gegen den Speicherstand; sie folgt dem zusammengeführten Stand, statt still zu verfallen.
+    // Verglichen wird die Wahl selbst: Eine andere Instanz desselben Dokuments kann sie im Tab-Speicher schon nachgeführt haben.
+    const open = pending.get(SSP_IMPORT_PROFILE_POINTER);
+    if (merged === 'adopted' && choice && open?.href === choice.href && open.target === choice.target) {
+      const moved = { ...choice, basis: document.savedAt };
+      pending.set(SSP_IMPORT_PROFILE_POINTER, moved);
+      setPendingBaseline(moved);
+    }
+    return merged;
   }, [adopt, latest, pending]);
   const adoptDecision = useCallback(async (document: WorkspaceEnvelope) => {
     const adopted = await adoptOrRebase(document);
@@ -245,7 +260,7 @@ export function useSspEditor(localId: LocalId): SspEditor {
   const saveKind = core.saveState.kind;
   useEffect(() => {
     if (!unadoptedDecision || core.busy || saveKind === 'pending') return;
-    void adoptOrRebase(unadoptedDecision).then(adopted => { if (adopted === 'adopted') setUnadoptedDecision(undefined); });
+    void Promise.resolve(unadoptedDecision).then(adoptOrRebase).then(adopted => { if (adopted === 'adopted') setUnadoptedDecision(undefined); });
   }, [adoptOrRebase, core.busy, dirty, saveKind, unadoptedDecision, working]);
   const decideProcess = useCallback(async (input: ProcessDecisionInput) => {
     const { envelope, draftSavedAt, working: current, unsaved } = latest.current;

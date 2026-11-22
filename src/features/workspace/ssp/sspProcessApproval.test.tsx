@@ -1,6 +1,8 @@
 import 'fake-indexeddb/auto';
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { WorkspaceStore } from '@/adapters/workspaceStore';
+import { DOCUMENT_AUTOSAVE_DELAY_MS } from '@/features/workspace/useDocumentEditor';
 import { buildStationUrl, buildWorkspaceDocumentUrl } from '@/app/routes';
 import type { JsonObject } from '@/domain/jsonGuards';
 import { readSspValue } from '@/domain/sspAuthoring';
@@ -14,12 +16,7 @@ import { mainLandmark as main, renderWorkspaceArea, withLoadedCatalog } from '@/
 import { readStore, resetWorkspace, seedWorkspace, type SeededWorkspace } from '@/test/workspaceAreaFixture';
 
 vi.mock('@/adapters/oscalImportGate', async () => (await import('@/test/workspaceNodeWorkers')).inProcessImportGate());
-// Ein Test hält den Worker an, damit eine Station während des Schreibens neu lädt.
-const workHold = vi.hoisted(() => ({ until: Promise.resolve() }));
-vi.mock('@/adapters/reviewTrailWork', async () => {
-  const work = await (await import('@/test/workspaceNodeWorkers')).inProcessReviewTrailWork();
-  return { ...work, reviewTrailInWorker: async (request: Parameters<typeof work.reviewTrailInWorker>[0]) => { await workHold.until; return work.reviewTrailInWorker(request); } };
-});
+vi.mock('@/adapters/reviewTrailWork', async () => (await import('@/test/workspaceNodeWorkers')).inProcessReviewTrailWork());
 vi.mock('@/hooks/useMediaQuery', () => ({ useMediaQuery: () => true }));
 
 /*
@@ -59,22 +56,22 @@ const PROCESS = 'aaaaaaaa-0000-4000-8000-000000000002';
 const PARTY = 'aaaaaaaa-0000-4000-8000-000000000005';
 const changeReason: Change = ssp => { Object.assign(props(ssp.process).find(prop => prop.name === 'process-protection-integrity')!, { remarks: 'Geänderter Grund' }); };
 
-/** Gibt einen überholten Prozess frei, hält den Worker an und öffnet die Station während des Schreibens neu. */
-async function approveWhileReopening() {
-  const { localId, region, router } = await open(changeReason);
-  fireEvent.click(await region.findByRole('button', { name: 'Neu freigeben…' }));
+/** Nimmt die Freigabe zurück, hält das Schreiben im Store an und öffnet die Station währenddessen neu. */
+async function withdrawWhileReopening() {
+  const { localId, region, router } = await open();
+  fireEvent.click(await region.findByRole('button', { name: 'Freigabe zurücknehmen…' }));
   const dialog = within(await screen.findByRole('alertdialog'));
-  await dialog.findByText(/^process-cia\/3:sha-256:/);
-  fireEvent.change(dialog.getByLabelText('Begründung'), { target: { value: 'Während des Wechsels' } });
-  let resolve = () => {};
-  workHold.until = new Promise(done => { resolve = done; });
-  fireEvent.click(dialog.getByRole('button', { name: 'Freigabe dokumentieren' }));
+  fireEvent.change(dialog.getByLabelText('Anlass der Rücknahme'), { target: { value: 'Während des Wechsels' } });
+  let release = () => {};
+  const held = new Promise<void>(done => { release = done; });
+  const write = WorkspaceStore.prototype.saveProcessDecision;
+  vi.spyOn(WorkspaceStore.prototype, 'saveProcessDecision').mockImplementation(async function (this: WorkspaceStore, ...args) { await held; return write.apply(this, args); });
+  fireEvent.click(dialog.getByRole('button', { name: 'Freigabe zurücknehmen' }));
   await router.navigate(buildStationUrl(seeded.verbundId, 'ssp'));
   await waitFor(() => expect(within(main()).queryByRole('region', { name: 'Leitungsfreigabe' })).not.toBeInTheDocument(), WAIT);
   await router.navigate(buildWorkspaceDocumentUrl(seeded.verbundId, localId));
   const back = within(await within(main()).findByRole('region', { name: 'Leitungsfreigabe' }, WAIT));
-  expect(await back.findByText('Überholt', undefined, WAIT)).toBeInTheDocument();
-  const release = () => { resolve(); workHold.until = Promise.resolve(); };
+  expect(await back.findByText('Aktuell', undefined, WAIT)).toBeInTheDocument();
   return { localId, back, release };
 }
 
@@ -263,25 +260,40 @@ describe('Leitungsfreigabe je Prozess', () => {
     expect(await readStore(store => store.getDraft(localId))).toBeUndefined();
   });
 
-  it('zeigt nach einem Routenwechsel während des Schreibens die geschriebene Entscheidung', async () => {
-    const { localId, back, release } = await approveWhileReopening();
+  it('zeigt nach einem Routenwechsel während des Schreibens die geschriebene Rücknahme', async () => {
+    const { localId, back, release } = await withdrawWhileReopening();
     release();
-    expect(await back.findByText('Aktuell', undefined, WAIT)).toBeInTheDocument();
+    expect(await back.findByText('Zurückgenommen', undefined, WAIT)).toBeInTheDocument();
     expect(back.getByText('Während des Wechsels')).toBeInTheDocument();
     expect(await actions(localId)).toHaveLength(2);
   });
 
-  it('führt eine während offener Eingaben geschriebene Entscheidung in den Arbeitsstand zusammen und speichert beides', async () => {
-    const { localId, back, release } = await approveWhileReopening();
+  it('führt eine Rücknahme in zurückgesetzte und offene Eingaben zusammen und speichert beides', async () => {
+    const { localId, back, release } = await withdrawWhileReopening();
     const title = within(main()).getAllByRole('textbox', { name: /^Titel/ })[0] as HTMLInputElement;
-    fireEvent.change(title, { target: { value: 'Titel während der Freigabe' } });
+    const original = title.value;
+    fireEvent.change(title, { target: { value: `${original} geändert` } });
+    fireEvent.change(title, { target: { value: original } });
     release();
-    expect(await back.findByText('Aktuell', undefined, WAIT)).toBeInTheDocument();
+    expect(await back.findByText('Zurückgenommen', undefined, WAIT)).toBeInTheDocument();
     expect(back.queryByText(/noch nicht in den Editor übernommen/)).not.toBeInTheDocument();
-    expect(title).toHaveValue('Titel während der Freigabe');
+    fireEvent.change(title, { target: { value: 'Titel nach der Rücknahme' } });
     fireEvent.click(within(main()).getByRole('button', { name: 'Speichern' }));
-    await waitFor(async () => expect(readSspValue((await readStore(store => store.getDocument(localId)))?.source, ['metadata', 'title'])).toBe('Titel während der Freigabe'), WAIT);
+    await waitFor(async () => expect(readSspValue((await readStore(store => store.getDocument(localId)))?.source, ['metadata', 'title'])).toBe('Titel nach der Rücknahme'), WAIT);
     expect(await actions(localId)).toHaveLength(2);
-    expect(back.getByText('Aktuell')).toBeInTheDocument();
+  });
+
+  it('erhält eine während des Schreibens getroffene Baseline-Wahl', async () => {
+    const { localId, back, release } = await withdrawWhileReopening();
+    fireEvent.click(within(main()).getByRole('radio', { name: /catalog-gspp/ }));
+    release();
+    expect(await back.findByText('Zurückgenommen', undefined, WAIT)).toBeInTheDocument();
+    fireEvent.click(within(main()).getByRole('button', { name: 'Speichern' }));
+    await waitFor(async () => expect((await readStore(store => store.listBindings())).filter(binding => binding.fromLocalId === localId))
+      .toEqual([expect.objectContaining({ target: { kind: 'class-1', artifactKey: 'catalog-gspp' } })]), WAIT);
+    expect(await actions(localId)).toHaveLength(2);
+    // Kein verwaister Autosave der ausgehängten Station meldet danach einen Konflikt.
+    await new Promise(resolve => setTimeout(resolve, DOCUMENT_AUTOSAVE_DELAY_MS + 200));
+    expect(within(main()).queryByText(/In einem anderen Tab geändert/)).not.toBeInTheDocument();
   });
 });
