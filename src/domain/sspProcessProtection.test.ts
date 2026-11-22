@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { deriveSspProcessProtection } from '@/domain/sspProcessProtection';
+import { deriveSspProcessProtection, processProtectionFailure } from '@/domain/sspProcessProtection';
 import { makeProcessCiaSsp } from '@/test/fixtures/processCia';
 import { PINNED_OSCAL_VERSIONS } from '@/domain/oscalVersionMatrix';
 import { PROJECT_PROPS_NAMESPACE as ns } from '@/domain/projectProps';
@@ -81,6 +81,11 @@ describe.each(PINNED_OSCAL_VERSIONS)('Prozess-CIA-Vertrag %s', version => {
     expect(result).toMatchObject({ context: 'context-open', cia: 'partial', riskConsideration: 'required' });
     expect(result.processes[0]).toMatchObject({ context: 'context-complete', cia: 'complete' });
     expect(result.processes[1]).toMatchObject({ context: 'context-open', cia: 'unknown' });
+    expect(result.processes[1].diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'SSP_PROCESS_CONTEXT_REQUIRED' }),
+      expect.objectContaining({ code: 'SSP_PROCESS_OBJECTIVE_REQUIRED' }),
+    ]));
+    expect(processProtectionFailure(result)).toBeUndefined();
   });
 
   it('F4: Kategorie benötigt direkten Wert und gleiches gültiges Mapping', () => {
@@ -156,8 +161,13 @@ describe('Unabhängige Achsen und rein lesende Ableitung', () => {
     other.uuid = 'bbbbbbbb-0000-4000-8000-000000000002';
     set(other, 'process-id', id);
     components.push(other);
-    expect(deriveSspProcessProtection(source).processes.map(row => row.context)).toEqual(['invalid', 'invalid']);
-    expect(deriveSspProcessProtection(source).processes.map(row => row.cia)).toEqual(['complete', 'complete']);
+    const result = deriveSspProcessProtection(source);
+    const duplicate = { code: 'SSP_PROCESS_ID_DUPLICATE' };
+    expect(result.processes).toMatchObject([
+      { context: 'invalid', cia: 'complete', diagnostics: [duplicate] },
+      { context: 'invalid', cia: 'complete', diagnostics: [duplicate] },
+    ]);
+    expect(processProtectionFailure(result)).toMatchObject(duplicate);
   });
 
   it.each([' kritisch ', 'KRÍTISCH'])('ordnet kollidierende Kategorienamen nur den betroffenen Prozessen zu: %s', duplicate => {

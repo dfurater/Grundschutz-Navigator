@@ -12,6 +12,7 @@ import { buildStationUrl, buildWorkspaceDocumentUrl } from '@/app/routes';
 import { WorkspaceStore } from '@/adapters/workspaceStore';
 import type { VerbundId, WorkspaceEnvelope } from '@/domain/workspaceModel';
 import type { CatalogState } from '@/domain/models';
+import { readSspValue } from '@/domain/sspAuthoring';
 import { withSspCategories, SSP_CATEGORY_IDS } from '@/test/fixtures/sspCategories';
 import { bindSspCategories, prepareSspTargets, setTargetCategories } from '@/domain/sspTargetObjects';
 import { sspCategoryContext } from '@/domain/sspCategoryContext';
@@ -173,8 +174,12 @@ describe.each(LAYOUTS)('$name ($width px)', ({ name, width, height, touch }) => 
       expect(apply.element().getBoundingClientRect().height).toBeGreaterThanOrEqual(44);
       expect(section.getByLabelText('Integrität', { exact: true }).element().getBoundingClientRect().height).toBeGreaterThanOrEqual(44);
     }
-    button(shell, 'Speichern')!.click();
-    await expect.poll(async () => JSON.stringify((await sspSource(stored.localId)).source)).toContain(SENTINEL);
+    await expect.poll(() => section.getByText(SENTINEL, { exact: true }).query()?.checkVisibility()).toBe(true);
+    await userEvent.click(page.getByRole('button', { name: 'Speichern', exact: true }));
+    await expect.poll(async () => {
+      const saved = await sspSource(stored.localId);
+      return readSspValue(saved.source, ['system-implementation', 'components', 2, 'title']);
+    }, { timeout: 15_000 }).toBe(SENTINEL);
     expect(JSON.stringify(current.state.location)).not.toContain(SENTINEL);
     expect(document.title).not.toContain(SENTINEL);
     expect(await commands.assertNoBrowserEgress()).toBeUndefined();
