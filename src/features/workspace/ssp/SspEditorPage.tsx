@@ -32,7 +32,7 @@ const MESSAGES: Readonly<Record<SspEditorMessage, string>> = {
   'target-form-pending': 'Bitte die offenen Schutzbedarfseingaben zuerst übernehmen oder zurücksetzen.',
   'target-invalid': 'Die Projektregeln für Zielobjekte und Prozesse sind nicht erfüllt. Quelle und Backup bleiben erhalten.',
   'target-delete-blocked': 'Das Zielobjekt bleibt gespeichert: Verwendungen oder Bindungen haben sich geändert. Bestand neu prüfen.',
-  'saved-as-draft': 'Schema oder Referenzprüfung sind nicht bestanden; das SSP ist als Entwurf gespeichert.',
+  'saved-as-draft': 'Die technische Prüfung ist unvollständig. Das SSP ist als Entwurf gespeichert.',
   'save-failed': 'Das SSP wurde nicht gespeichert.',
   'export-failed': 'Der Export wurde abgelehnt; das Schema oder die Referenzprüfung ist nicht bestanden.',
   'delete-failed': 'Das SSP wurde nicht gelöscht.',

@@ -193,6 +193,59 @@ describe('Zielobjektbestand', () => {
 });
 
 describe('Geschäftsprozesse', () => {
+  it('hält die Typwahl gesperrt, solange eine bisherige Objektbewertung offen ist', async () => {
+    const ssp = await addSsp(seeded.verbundId, makeFullSsp());
+    renderArea(buildWorkspaceDocumentUrl(seeded.verbundId, ssp.localId), withGspp());
+    const row = within(await within(main()).findByRole('listitem', { name: /Komponente 1/ }));
+    const typeField = row.getByLabelText(/^Typ/);
+    fireEvent.change(row.getByLabelText('Schutzbedarf'), { target: { value: 'hoch' } });
+    expect(typeField).toBeDisabled();
+    fireEvent.click(row.getByRole('button', { name: 'Eingaben zurücksetzen' }));
+    expect(typeField).toBeEnabled();
+  });
+
+  it('zeigt bei numerischer Prozess-ID im Entwurf einen Befund und erhält die Quelle', async () => {
+    const source = withSspBody(makeFullSsp(), body => {
+      const component = body['system-implementation'].components[0];
+      component.type = 'business-process';
+      component.props = [{ ns: PROJECT_PROPS_NAMESPACE, name: 'process-id', value: 7 as unknown as string }];
+    });
+    const ssp = await readStore(store => store.addDocument(seeded.verbundId, {
+      source: JSON.parse(JSON.stringify(source)), context: { trustClass: 'class-2-local-user' }, rootType: 'system-security-plan', oscalVersion: '1.2.2',
+    }, 'draft'));
+    renderArea(buildWorkspaceDocumentUrl(seeded.verbundId, ssp.localId), withGspp());
+    expect(await within(main()).findByText(/Projektregelbefund/)).toBeInTheDocument();
+    expect(within(main()).getByRole('button', { name: 'Speichern' })).toBeDisabled();
+    await click('Ungeprüften Erhaltungs-Export herunterladen');
+    const preserved = JSON.parse(await vi.mocked(downloadBlob).mock.calls[0][0].text());
+    expect(preserved).toEqual(source);
+  });
+
+  it('bindet einen unbelegten Katalogstand und erhält den korrigierbaren Prozessentwurf', async () => {
+    const source = withSspBody(makeFullSsp(), body => {
+      const component = body['system-implementation'].components[0];
+      component.type = 'business-process';
+      component['responsible-roles'] = [{ 'role-id': 'process-owner', 'party-uuids': [crypto.randomUUID()] }];
+      body.metadata.roles!.push({ id: 'process-owner', title: 'Verantwortung' });
+    });
+    const href = readSspValue(source, ['import-profile', 'href']) as string;
+    const ssp = await readStore(store => store.addDocument(seeded.verbundId, {
+      source: JSON.parse(JSON.stringify(source)), context: { trustClass: 'class-2-local-user' }, rootType: 'system-security-plan', oscalVersion: '1.2.2',
+    }, 'imported', [{ pointer: '/system-security-plan/import-profile/href', href, target: { kind: 'class-1', artifactKey: 'catalog-gspp' } }]));
+    const draft = withSspBody(source, body => { body.metadata.title = 'SSP mit offenem Entwurf'; });
+    await readStore(store => store.autosaveDraft(ssp.localId, ssp.savedAt, null, JSON.parse(JSON.stringify(draft))));
+    renderArea(buildWorkspaceDocumentUrl(seeded.verbundId, ssp.localId), withGspp());
+    await click('An ausgelieferten Stand binden');
+    await waitFor(async () => {
+      const stored = await readStore(store => store.getDocument(ssp.localId));
+      expect(stored?.documentState).toBe('draft');
+      expect(readSspValue(stored?.source, ['metadata', 'title'])).toBe('SSP mit offenem Entwurf');
+    }, WAIT);
+    await waitFor(() => expect(within(main()).getByRole('button', { name: 'Geschäftsprozess hinzufügen' })).toBeEnabled(), WAIT);
+    expect(within(main()).getByRole('button', { name: 'Speichern' })).toBeDisabled();
+    expect(within(main()).getByRole('button', { name: 'Export' })).toBeDisabled();
+  });
+
   it('bietet den Status auch nach explizitem Wechsel zum Geschäftsprozess an', async () => {
     const ssp = await addSsp(seeded.verbundId, makeFullSsp());
     renderArea(buildWorkspaceDocumentUrl(seeded.verbundId, ssp.localId), withGspp());

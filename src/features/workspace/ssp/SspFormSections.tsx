@@ -125,6 +125,9 @@ export function ImplementationSection({ editor }: Readonly<{ editor: SspEditor }
   return (
     <FormSection title="Systemimplementierung">
       <datalist id={typesId}>{COMPONENT_TYPES.map((type) => <option key={type} value={type} />)}</datalist>
+      {editor.hasPendingTargetForms && <output id={`${typesId}-pending`} className="block text-sm text-[var(--color-text-secondary)]">
+        Für einen Typwechsel zuerst die offenen Schutzbedarfseingaben übernehmen oder zurücksetzen.
+      </output>}
       <SspRowList editor={editor} path={[si, 'components']} title="Komponenten" required uuidKeyed protectedTarget addLabel="Komponente hinzufügen"
         include={item => !isJsonObject(item) || item.type !== BUSINESS_PROCESS_COMPONENT_TYPE}
         newItem={() => ({ uuid: crypto.randomUUID() })} remove={removeSspComponent} rowTitle={rowTitle('Komponente', 'title')}
@@ -132,7 +135,9 @@ export function ImplementationSection({ editor }: Readonly<{ editor: SspEditor }
           <>
             <div className={GRID}>
               <SspTextField editor={editor} path={[...path, 'title']} label="Titel" required />
-              <SspTextField editor={editor} path={[...path, 'type']} label="Typ" required mono list={typesId} />
+              <fieldset disabled={editor.hasPendingTargetForms} aria-describedby={editor.hasPendingTargetForms ? `${typesId}-pending` : undefined} className="min-w-0">
+                <SspTextField editor={editor} path={[...path, 'type']} label="Typ" required mono list={typesId} />
+              </fieldset>
             </div>
             <SspTextField editor={editor} path={[...path, 'description']} label="Beschreibung" required multiline />
             <SspSelectField editor={editor} path={[...path, 'status', 'state']} label="Status" options={SSP_COMPONENT_STATES} required />

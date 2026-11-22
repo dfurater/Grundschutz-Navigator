@@ -47,13 +47,13 @@ export function readProcessCategories(source: unknown): ProcessCategoryDraft[] {
   const labels = targetProps(metadata, 'process-category-label');
   const definitions = targetProps(metadata, 'process-category-definition');
   const mappings = targetProps(metadata, 'process-category-mapping');
-  const ids = new Set([...labels, ...definitions, ...mappings].flatMap(prop => prop.group ? [prop.group] : []));
+  const ids = new Set([...labels, ...definitions, ...mappings].flatMap(prop => typeof prop.group === 'string' ? [prop.group] : []));
   return [...ids].map(id => {
     const mapping = mappings.find(prop => prop.group === id);
     return {
-      id, label: labels.find(prop => prop.group === id)?.value ?? '',
-      definition: definitions.find(prop => prop.group === id)?.value ?? '',
-      level: mapping?.value ?? '', reason: mapping?.remarks ?? '',
+      id, label: readString(labels.find(prop => prop.group === id)?.value) ?? '',
+      definition: readString(definitions.find(prop => prop.group === id)?.value) ?? '',
+      level: readString(mapping?.value) ?? '', reason: readString(mapping?.remarks) ?? '',
     };
   });
 }
@@ -61,7 +61,7 @@ export function readProcessCategories(source: unknown): ProcessCategoryDraft[] {
 function readGoal(item: JsonObject, goal: ProcessGoal): GoalDraft {
   const direct = targetProps(item, `process-protection-${goal}`)[0];
   const category = targetProps(item, 'process-protection-category').find(prop => prop.group === goal);
-  return { level: direct?.value ?? '', reason: direct?.remarks ?? '', category: category?.value ?? '' };
+  return { level: readString(direct?.value) ?? '', reason: readString(direct?.remarks) ?? '', category: readString(category?.value) ?? '' };
 }
 
 function owners(item: JsonObject): JsonObject[] {
@@ -74,15 +74,15 @@ export function readProcessDraft(source: unknown, path: SspPath): ProcessDraft {
   const none = targetProps(item, 'process-applications-none')[0];
   const owner = owners(item).find(role => role['role-id'] === PROCESS_OWNER_ROLE);
   return {
-    id: targetProps(item, 'process-id')[0]?.value ?? '',
+    id: readString(targetProps(item, 'process-id')[0]?.value) ?? '',
     title: readString(item.title) ?? '',
     description: readString(item.description) ?? '',
     purpose: readString(item.purpose) ?? '',
     status: readString(readSspValue(source, [...path, 'status', 'state'])) ?? '',
     owners: readArray(owner?.['party-uuids']).filter((party): party is string => typeof party === 'string'),
-    applications: targetProps(item, 'process-application-uuid').map(prop => prop.value),
+    applications: targetProps(item, 'process-application-uuid').map(prop => prop.value).filter(value => typeof value === 'string'),
     noApplications: none !== undefined,
-    noApplicationsReason: none?.remarks ?? '',
+    noApplicationsReason: readString(none?.remarks) ?? '',
     objectives: {
       confidentiality: readGoal(item, 'confidentiality'),
       integrity: readGoal(item, 'integrity'),

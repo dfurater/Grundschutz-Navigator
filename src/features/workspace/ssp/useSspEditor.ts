@@ -45,6 +45,7 @@ export interface SspEditor {
   readonly remove: () => Promise<boolean>;
   readonly categories?: TargetCategoryContext;
   readonly targetFailure?: TargetFailure;
+  readonly hasPendingTargetForms: boolean;
   readonly setTargetFormPending: (id: string, pending: boolean) => void;
   readonly checkTargetRemoval: (path: SspPath) => Promise<readonly string[]>;
   readonly exportPreserved: () => void;
@@ -139,8 +140,8 @@ export function useSspEditor(localId: LocalId): SspEditor {
       const importedFailure = validateSspTargets(storedSource, categories);
       if (importedFailure) { setMessage('target-invalid'); return { ok: false, code: importedFailure.code }; }
       const processFailure = processProtectionFailure(deriveSspProcessProtection(snapshot));
-      if (processFailure) { setMessage('target-invalid'); return { ok: false, code: processFailure.code }; }
-      const targets = sameSspContent(storedSource, snapshot) ? { ok: true as const, source: snapshot } : prepareSspTargets(snapshot, categories);
+      if (processFailure && !rebind) { setMessage('target-invalid'); return { ok: false, code: processFailure.code }; }
+      const targets = sameSspContent(storedSource, snapshot) ? { ok: true as const, source: snapshot } : prepareSspTargets(snapshot, categories, { allowInvalidProcessDraft: rebind });
       if (!targets.ok) { setMessage('target-invalid'); return targets; }
       snapshot = targets.source;
       const blocker = sspSaveBlocker(snapshot);
@@ -153,7 +154,7 @@ export function useSspEditor(localId: LocalId): SspEditor {
       }
       const { source } = commitSspSave(storedSource, pinned.source, new Date().toISOString());
       const schema = await documents.checkProfileSchema(source);
-      const ready = schema.status === 'passed' && sspReadinessBlocker(source) === undefined;
+      const ready = !processFailure && schema.status === 'passed' && sspReadinessBlocker(source) === undefined;
       return { ok: true, source, documentState: ready ? 'export-ready' : 'draft', bindings };
     }, (saved, savedAt) => {
       const written = saved.find((binding) => binding.pointer === SSP_IMPORT_PROFILE_POINTER);
@@ -207,7 +208,7 @@ export function useSspEditor(localId: LocalId): SspEditor {
   }, [latest]);
 
   return {
-    categories, targetFailure, checkTargetRemoval, exportPreserved, setTargetFormPending,
+    categories, targetFailure, checkTargetRemoval, exportPreserved, hasPendingTargetForms: hasPendingForms, setTargetFormPending,
     status: core.status, envelope: core.envelope, working, dirty, saveState: core.saveState, busy: core.busy, message: core.message,
     baseline, baselineBindable, apply, chooseBaseline, save, bindCatalogStand, exportDocument, remove, adopt: core.adopt,
   };

@@ -157,8 +157,13 @@ export function validateSspTargets(source: unknown, context?: TargetCategoryCont
   return validateBusinessProcessProjectProps(processReads).diagnostics[0] ?? processActionFailure(source);
 }
 
-export function prepareSspTargets(source: unknown, context?: TargetCategoryContext): { ok: true; source: unknown } | ({ ok: false } & TargetFailure) {
-  const failure = validateSspTargets(source, context, false) ?? processProtectionFailure(deriveSspProcessProtection(source));
+export function prepareSspTargets(
+  source: unknown,
+  context?: TargetCategoryContext,
+  options?: Readonly<{ allowInvalidProcessDraft: boolean }>,
+): { ok: true; source: unknown } | ({ ok: false } & TargetFailure) {
+  const failure = validateSspTargets(source, context, false)
+    ?? (options?.allowInvalidProcessDraft ? undefined : processProtectionFailure(deriveSspProcessProtection(source)));
   if (failure) return { ok: false, ...failure };
   let copy = structuredClone(source);
   for (const { item, path } of sspTargets(copy)) {
