@@ -25,7 +25,7 @@ function Row({ term, children }: Readonly<{ term: string; children: ReactNode }>
   return (
     <>
       <dt className="text-[var(--color-text-secondary)]">{term}</dt>
-      <dd className="mb-2 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 break-words text-[var(--color-text-primary)] sm:mb-0">{children}</dd>
+      <dd className="mb-2 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 wrap-anywhere text-[var(--color-text-primary)] sm:mb-0">{children}</dd>
     </>
   );
 }
@@ -85,7 +85,11 @@ export function ScopeBoundaryEditor({ scopeId, onClose, onSaved }: Readonly<{ sc
   useLayoutEffect(() => { heading.current?.focus(); }, []);
   // Eingabe und Vergleichsstand bleiben ein Paar und überdauern Routenwechsel; nur „Abbrechen“ oder Speichern verwirft sie.
   const [draft, setDraft] = useState<ScopeBoundaryDraft | undefined>(() => boundaryDrafts.get(scopeId) ?? (scope && startBoundaryDraft(scope)));
-  const [failure, setFailure] = useState<'conflict' | 'failed' | null>(null);
+  // Jedes Ergebnis ist ein neues Objekt, damit auch ein wiederholter Fehlschlag den Fokus erneut setzt.
+  const [failure, setFailure] = useState<{ kind: 'conflict' | 'failed' } | null>(null);
+  const failureRef = useRef<HTMLDivElement>(null);
+  // Während des Speicherns ist „Speichern“ gesperrt und verliert den Fokus; er geht auf die Fehlerstelle, von der Tab zur Wiederherstellungsaktion führt.
+  useLayoutEffect(() => { if (failure) failureRef.current?.focus(); }, [failure]);
   const [busy, setBusy] = useState(false);
   const input = draft?.input ?? scopeBoundaryInput(undefined);
   const change = (next: ScopeBoundaryDraft) => { boundaryDrafts.set(scopeId, next); setDraft(next); };
@@ -97,6 +101,8 @@ export function ScopeBoundaryEditor({ scopeId, onClose, onSaved }: Readonly<{ sc
     if (!newer) return;
     change(startBoundaryDraft(newer));
     setFailure(null);
+    // Die Aktion verschwindet mit dem Laden; der Fokus geht an den Anfang der Ansicht.
+    heading.current?.focus();
   };
 
   const save = async () => {
@@ -109,7 +115,7 @@ export function ScopeBoundaryEditor({ scopeId, onClose, onSaved }: Readonly<{ sc
       // Ein nach einem Routenwechsel neu begonnener Entwurf ersetzt den Eintrag und bleibt erhalten.
       if (boundaryDrafts.get(scopeId) === saved) boundaryDrafts.delete(scopeId);
       onSaved();
-    } else setFailure(result.diagnostic.code === 'WORKSPACE_SAVE_CONFLICT' ? 'conflict' : 'failed');
+    } else setFailure({ kind: result.diagnostic.code === 'WORKSPACE_SAVE_CONFLICT' ? 'conflict' : 'failed' });
   };
   const cancel = () => {
     boundaryDrafts.delete(scopeId);
@@ -141,17 +147,21 @@ export function ScopeBoundaryEditor({ scopeId, onClose, onSaved }: Readonly<{ sc
             <Field label="Zuständige Stelle" value={input.party} onChange={set('party')} />
           </section>
         </fieldset>
-        {failure === 'conflict' && (
-          <div className="space-y-2">
-            <p role="alert" className="text-sm text-[var(--color-danger-text)]">
-              {newer
-                ? 'Abgrenzung inzwischen geändert. Nichts gespeichert. Die Eingabe bleibt erhalten; „Aktuellen Stand laden“ ersetzt sie durch die gespeicherte Abgrenzung.'
-                : 'Anwendungsbereich inzwischen geändert. Nichts gespeichert. Die Eingabe bleibt erhalten.'}
-            </p>
-            {newer && <Button variant="secondary" className={ROW_BUTTON} disabled={busy} onClick={loadCurrent}>Aktuellen Stand laden</Button>}
+        {failure && (
+          <div ref={failureRef} tabIndex={-1} className="space-y-2 focus:outline-none">
+            {failure.kind === 'failed' && <p role="alert" className="text-sm text-[var(--color-danger-text)]">Lokal speichern fehlgeschlagen. Die Eingabe bleibt erhalten.</p>}
+            {failure.kind === 'conflict' && (
+              <>
+                <p role="alert" className="text-sm text-[var(--color-danger-text)]">
+                  {newer
+                    ? 'Abgrenzung inzwischen geändert. Nichts gespeichert. Die Eingabe bleibt erhalten; „Aktuellen Stand laden“ ersetzt sie durch die gespeicherte Abgrenzung.'
+                    : 'Anwendungsbereich inzwischen geändert. Nichts gespeichert. Die Eingabe bleibt erhalten.'}
+                </p>
+                {newer && <Button variant="secondary" className={ROW_BUTTON} disabled={busy} onClick={loadCurrent}>Aktuellen Stand laden</Button>}
+              </>
+            )}
           </div>
         )}
-        {failure === 'failed' && <p role="alert" className="text-sm text-[var(--color-danger-text)]">Lokal speichern fehlgeschlagen. Die Eingabe bleibt erhalten.</p>}
         <div className="flex flex-wrap gap-2">
           <Button type="submit" className={ROW_BUTTON} disabled={!writable || busy || !draft}>Speichern</Button>
           {/* Gesperrt während des Speicherns: Ein später eintreffendes Ergebnis darf keine neu geöffnete Ansicht schließen. */}
