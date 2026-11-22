@@ -1,5 +1,5 @@
 import 'fake-indexeddb/auto';
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildStationUrl, buildWorkspaceDocumentUrl } from '@/app/routes';
 import type { JsonObject } from '@/domain/jsonGuards';
@@ -8,12 +8,18 @@ import { appendProcessDecision } from '@/domain/sspProcessApproval';
 import { processContentHash } from '@/domain/sspProcessProjection';
 import type { LocalId } from '@/domain/workspaceModel';
 import { makeProcessCiaSsp } from '@/test/fixtures/processCia';
+import { dismissModalDialogs } from '@/hooks/useModalDialog';
 import { decisionDrafts } from '@/state/processDecisionDrafts';
 import { mainLandmark as main, renderWorkspaceArea, withLoadedCatalog } from '@/test/renderWorkspaceArea';
 import { readStore, resetWorkspace, seedWorkspace, type SeededWorkspace } from '@/test/workspaceAreaFixture';
 
 vi.mock('@/adapters/oscalImportGate', async () => (await import('@/test/workspaceNodeWorkers')).inProcessImportGate());
-vi.mock('@/adapters/reviewTrailWork', async () => (await import('@/test/workspaceNodeWorkers')).inProcessReviewTrailWork());
+// Ein Test hält den Worker an, damit eine Station während des Schreibens neu lädt.
+const workHold = vi.hoisted(() => ({ until: Promise.resolve() }));
+vi.mock('@/adapters/reviewTrailWork', async () => {
+  const work = await (await import('@/test/workspaceNodeWorkers')).inProcessReviewTrailWork();
+  return { ...work, reviewTrailInWorker: async (request: Parameters<typeof work.reviewTrailInWorker>[0]) => { await workHold.until; return work.reviewTrailInWorker(request); } };
+});
 vi.mock('@/hooks/useMediaQuery', () => ({ useMediaQuery: () => true }));
 
 /*
@@ -149,6 +155,10 @@ describe('Leitungsfreigabe je Prozess', () => {
     fireEvent.change(dialog.getByLabelText('Anlass der Rücknahme'), { target: { value: 'Noch nicht bestätigt' } });
     fireEvent.click(dialog.getByRole('button', { name: '+ Partei im SSP anlegen' }));
     fireEvent.change(dialog.getByLabelText('Name der Partei'), { target: { value: 'Entwurfspartei' } });
+    // Das Suchkürzel schließt Dialoge über `dismissModalDialogs()`; das ist kein Abbrechen.
+    act(() => { dismissModalDialogs(); });
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    expect([...decisionDrafts(localId).values()]).toContainEqual(expect.objectContaining({ remarks: 'Noch nicht bestätigt' }));
     await router.navigate(buildStationUrl(seeded.verbundId, 'ssp'));
     await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument(), WAIT);
     await router.navigate(buildWorkspaceDocumentUrl(seeded.verbundId, localId));
@@ -215,5 +225,38 @@ describe('Leitungsfreigabe je Prozess', () => {
     fireEvent.change(within(main()).getByLabelText('Zweck'), { target: { value: 'Geänderter Zweck' } });
     await waitFor(() => expect(region.getByRole('button', { name: 'Freigabe zurücknehmen…' })).toBeDisabled());
     expect(region.getByText(/Ungespeicherte Änderungen/)).toBeInTheDocument();
+  });
+
+  it('sperrt Entscheidungen bei einem automatisch gesicherten Entwurf ohne inhaltliche Änderung', async () => {
+    const { region } = await open();
+    expect(await region.findByRole('button', { name: 'Freigabe zurücknehmen…' })).toBeEnabled();
+    const title = within(main()).getAllByRole('textbox', { name: /^Titel/ })[0] as HTMLInputElement;
+    const original = title.value;
+    fireEvent.change(title, { target: { value: `${original} geändert` } });
+    // Zurückgesetzt ist der Inhalt gleich, der automatisch gesicherte Entwurf bleibt und sperrt weiter.
+    fireEvent.change(title, { target: { value: original } });
+    expect(await region.findByText(/automatisch gesicherter Entwurf liegt vor/, undefined, WAIT)).toBeInTheDocument();
+    expect(region.getByRole('button', { name: 'Freigabe zurücknehmen…' })).toBeDisabled();
+  });
+
+  it('zeigt nach einem Routenwechsel während des Schreibens die geschriebene Entscheidung', async () => {
+    const { localId, region, router } = await open(changeReason);
+    fireEvent.click(await region.findByRole('button', { name: 'Neu freigeben…' }));
+    const dialog = within(await screen.findByRole('alertdialog'));
+    await dialog.findByText(/^process-cia\/3:sha-256:/);
+    fireEvent.change(dialog.getByLabelText('Begründung'), { target: { value: 'Während des Wechsels' } });
+    let release = () => {};
+    workHold.until = new Promise(resolve => { release = resolve; });
+    fireEvent.click(dialog.getByRole('button', { name: 'Freigabe dokumentieren' }));
+    await router.navigate(buildStationUrl(seeded.verbundId, 'ssp'));
+    await waitFor(() => expect(within(main()).queryByRole('region', { name: 'Leitungsfreigabe' })).not.toBeInTheDocument(), WAIT);
+    await router.navigate(buildWorkspaceDocumentUrl(seeded.verbundId, localId));
+    const back = within(await within(main()).findByRole('region', { name: 'Leitungsfreigabe' }, WAIT));
+    expect(await back.findByText('Überholt', undefined, WAIT)).toBeInTheDocument();
+    release();
+    workHold.until = Promise.resolve();
+    expect(await back.findByText('Aktuell', undefined, WAIT)).toBeInTheDocument();
+    expect(back.getByText('Während des Wechsels')).toBeInTheDocument();
+    expect(await actions(localId)).toHaveLength(2);
   });
 });

@@ -18,6 +18,10 @@ const ERRORS: Readonly<Record<string, string>> = {
 function errorText(code: string): string {
   return ERRORS[code] ?? `Nicht gespeichert. Befund: ${code}.`;
 }
+const PARTY_SAVED_AS_DRAFT = 'Die Partei ist gespeichert. Das SSP ist dabei als Entwurf gespeichert worden; eine Entscheidung braucht einen technisch gültigen gespeicherten Stand. Behebe die Befunde im SSP und speichere es erneut.';
+function hashFailedText(code: string): string {
+  return `Der gebundene Stand ist nicht berechenbar. Befund: ${code}. Der Prozess verweist auf eine Anwendung, Rolle oder Partei, die im SSP fehlt, doppelt vorkommt oder keinen Namen beziehungsweise Titel hat. Korrigiere den Verweis am Prozess, an der Anwendung oder unter Metadaten und speichere das SSP; der Dialog berechnet den Stand danach neu.`;
+}
 const PARTY_TYPES = [{ value: 'organization', label: 'Organisation' }, { value: 'person', label: 'Person' }];
 const TEXT = {
   approved: { title: 'Freigabe dokumentieren', remarks: 'Begründung', missing: 'Begründung fehlt.', variant: 'primary' },
@@ -38,18 +42,20 @@ function initialParty(parties: readonly PartyOption[], affected: ProcessDecision
   return parties.length === 1 ? parties[0].value : '';
 }
 
+type BoundHash = { readonly value?: string; readonly failed?: string };
+
 /** Hash des gespeicherten Stands für die gewählte Partei; gilt nur für genau diesen Stand und diese Partei. */
-function useBoundHash(source: unknown, processUuid: string, party: string, enabled: boolean): string | undefined {
-  const [hash, setHash] = useState<{ source: unknown; party: string; value?: string }>();
+function useBoundHash(source: unknown, processUuid: string, party: string, enabled: boolean): BoundHash {
+  const [hash, setHash] = useState<{ source: unknown; party: string } & BoundHash>();
   useEffect(() => {
     if (!enabled || !party) return;
     let active = true;
     void processContentHash(source, processUuid, [{ 'role-id': DECISION_ROLE, 'party-uuids': [party] }])
-      .then(value => value, () => undefined)
-      .then(value => { if (active) setHash({ source, party, value }); });
+      .then((value): BoundHash => ({ value }), (error: unknown): BoundHash => ({ failed: error instanceof Error ? error.message : 'SSP_PROCESS_BINDING_INVALID' }))
+      .then(result => { if (active) setHash({ source, party, ...result }); });
     return () => { active = false; };
   }, [enabled, party, processUuid, source]);
-  return hash && hash.source === source && hash.party === party ? hash.value : undefined;
+  return hash && hash.source === source && hash.party === party ? hash : {};
 }
 
 /** Legt eine Partei im SSP an; sie wird mit dem SSP gespeichert, bevor eine Entscheidung sie bindet. */
@@ -137,7 +143,10 @@ export function SspProcessApprovalDialog({ localId, mode, label, processUuid, so
     setDraft(current => ({ ...current, newParty: undefined, party: created ?? current.party }));
   };
   const computed = useBoundHash(source, processUuid, party, approve);
-  const bound = approve ? computed : affected?.hash;
+  const bound = approve ? computed.value : affected?.hash;
+  const hashFailed = approve && party !== '' ? computed.failed : undefined;
+  let boundLabel = 'nach Wahl der Partei';
+  if (party) boundLabel = bound === undefined && hashFailed === undefined ? 'wird berechnet …' : shortHash(bound);
   const confirm = async () => {
     setTried(true);
     if (!party || !remarks.trim()) return;
@@ -166,15 +175,20 @@ export function SspProcessApprovalDialog({ localId, mode, label, processUuid, so
     } finally {
       setBusy(false);
     }
-    if (result.uuid) closeCreation(result.uuid);
-    else setError(`${errorText(result.code ?? 'WORKSPACE_STORAGE_FAILED')} Die Partei steht im Arbeitsstand unter Metadaten.`);
+    if (!result.uuid) {
+      setError(`${errorText(result.code ?? 'WORKSPACE_STORAGE_FAILED')} Die Partei steht im Arbeitsstand unter Metadaten.`);
+      return;
+    }
+    closeCreation(result.uuid);
+    if (result.code) setError(PARTY_SAVED_AS_DRAFT);
   };
   return <ConfirmDialog open title={`${text.title} · ${label}`} confirmLabel={text.title} confirmVariant={text.variant}
-    busy={busy} wide confirmDisabled={creating || (approve && party !== '' && bound === undefined)} onCancel={discard} onConfirm={() => { void confirm(); }}>
+    busy={busy} wide confirmDisabled={creating || (approve && party !== '' && bound === undefined)} onCancel={discard} onDismiss={onClose} onConfirm={() => { void confirm(); }}>
     <fieldset disabled={busy} className="min-w-0 space-y-3 text-[var(--color-text-primary)]">
       {approve && <div className={BOX}>
         <p className="font-medium">Gebundener Stand</p>
-        <p>Die Freigabe gilt für den Prozess in diesem gespeicherten Stand: <span className="break-all font-mono text-xs">{party ? shortHash(bound) : 'nach Wahl der Partei'}</span>. Ändert sich der Prozess, wird sie „überholt“.</p>
+        <p>Die Freigabe gilt für den Prozess in diesem gespeicherten Stand: <span className="break-all font-mono text-xs">{boundLabel}</span>. Ändert sich der Prozess, wird sie „überholt“.</p>
+        {hashFailed && <p role="alert" className="mt-2 text-sm text-[var(--color-danger-text)]">{hashFailedText(hashFailed)}</p>}
       </div>}
       <DecisionFacts approve={approve} label={label} protection={protection} affected={affected} bound={bound} />
       <div className="grid gap-3 sm:grid-cols-2">

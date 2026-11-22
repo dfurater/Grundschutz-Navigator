@@ -55,7 +55,7 @@ export interface SspEditor {
   readonly exportPreserved: () => void;
   /** Hängt eine Prozessentscheidung an den gespeicherten Stand; liefert den Fehlercode oder `undefined`. */
   readonly decideProcess: (input: ProcessDecisionInput) => Promise<string | undefined>;
-  /** Legt eine Partei an oder aktualisiert sie nach einem Fehlversuch und speichert das SSP, damit eine Entscheidung sie binden kann. */
+  /** Legt eine Partei an oder aktualisiert sie nach einem Fehlversuch und speichert das SSP; `uuid` heißt gespeichert, `code` daneben meldet ein als Entwurf gespeichertes SSP. */
   readonly addDecisionParty: (party: DecisionParty) => Promise<{ readonly uuid?: string; readonly code?: string }>;
   /** Übernimmt einen neueren gespeicherten Stand nur ohne offene Eingaben. */
   readonly adopt: (document: WorkspaceEnvelope) => Promise<'adopted' | 'blocked' | 'failed'>;
@@ -73,6 +73,10 @@ function baselineHref(source: unknown): string | undefined {
 function effectiveChoice(choice: PendingImportTarget | undefined, href: string | undefined, envelope: WorkspaceEnvelope | undefined): PendingImportTarget | undefined {
   return choice?.href === href && choice?.basis === envelope?.savedAt ? choice : undefined;
 }
+
+// Laufende Prozessentscheidungen je Dokument: Eine während des Schreibens neu geöffnete Station übernimmt deren Ergebnis,
+// statt den vorher geladenen Stand weiter anzuzeigen oder zu exportieren.
+const decisionWrites = new Map<LocalId, Promise<WorkspaceEnvelope | undefined>>();
 
 /**
  * Arbeitsstand eines SSP: gezielte Patches, Autosave in den Entwurf und
@@ -212,11 +216,20 @@ export function useSspEditor(localId: LocalId): SspEditor {
     return targetDeletionUses(latest.current.working, path, localId, members, bindings.value);
   }, [documents, latest, localId]);
   const { adopt } = core;
+  const pendingDecision = useMemo(() => decisionWrites.get(localId), [localId]);
+  useEffect(() => {
+    if (core.status !== 'ready' || !pendingDecision) return;
+    void pendingDecision.then(document => { if (document) void adopt(document); });
+  }, [adopt, core.status, pendingDecision]);
   const decideProcess = useCallback(async (input: ProcessDecisionInput) => {
     const { envelope, draftSavedAt, working: current, unsaved } = latest.current;
     // Offene Eingaben gehören nicht zum gebundenen Stand; die Entscheidung schreibt dann nichts.
     if (!envelope || unsaved || hasPendingBindings(current, envelope) || !sameSspContent(envelope.source, current)) return 'SSP_PROCESS_DECISION_BLOCKED';
-    const result = await documents.saveProcessDecision(localId, envelope.savedAt, draftSavedAt, input, categories);
+    const write = documents.saveProcessDecision(localId, envelope.savedAt, draftSavedAt, input, categories);
+    const written = write.then(result => result.ok ? result.value : undefined, () => undefined);
+    decisionWrites.set(localId, written);
+    void written.then(() => { if (decisionWrites.get(localId) === written) decisionWrites.delete(localId); });
+    const result = await write;
     if (!result.ok) return result.diagnostic.code;
     // Die Entscheidung ist geschrieben; offene Eingaben verhindern nur die Anzeige des neuen Stands.
     const adopted = await adopt(result.value);
@@ -233,8 +246,8 @@ export function useSspEditor(localId: LocalId): SspEditor {
     if (!added) return { code: 'SSP_PARTY_NOT_ADDED' };
     const result = await commitSsp(false);
     if (!result.ok) return { code: result.code };
-    // Eine Entscheidung braucht einen technisch gültigen gespeicherten Stand.
-    return result.documentState === 'draft' ? { code: 'SSP_PROCESS_DECISION_BLOCKED' } : { uuid };
+    // Die Partei ist gespeichert; eine Entscheidung braucht zusätzlich einen technisch gültigen gespeicherten Stand.
+    return result.documentState === 'draft' ? { uuid, code: 'SSP_PARTY_SAVED_AS_DRAFT' } : { uuid };
   }, [apply, commitSsp, latest]);
   const targetFailure = core.envelope ? validateSspTargets(core.envelope.source, categories) : undefined;
   const exportPreserved = useCallback(() => {

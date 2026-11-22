@@ -19,15 +19,17 @@ export interface ConfirmDialogProps {
   readonly wide?: boolean;
   readonly onConfirm: () => void;
   readonly onCancel: () => void;
+  /** Schließen ohne Nutzerentscheidung, etwa durch das Suchkürzel; ohne Angabe wie Abbrechen. */
+  readonly onDismiss?: () => void;
 }
 
 /** Ausdrückliche Bestätigung mit Abbrechen als anfänglichem Fokus. */
-export function ConfirmDialog({ open, title, children, confirmLabel, confirmVariant = 'danger', confirmDisabled = false, busy = false, wide = false, onConfirm, onCancel }: ConfirmDialogProps) {
+export function ConfirmDialog({ open, title, children, confirmLabel, confirmVariant = 'danger', confirmDisabled = false, busy = false, wide = false, onConfirm, onCancel, onDismiss = onCancel }: ConfirmDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const titleId = useId();
   const descriptionId = useId();
   const cancel = () => { if (!busy) onCancel(); };
-  useModalDialog(dialogRef, open, cancel);
+  useModalDialog(dialogRef, open, () => { if (!busy) onDismiss(); });
   useScrollLock(open);
   useGlobalEventListener('document', 'keydown', (event) => {
     if (event.key === 'Escape') cancel();

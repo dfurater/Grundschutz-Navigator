@@ -77,8 +77,11 @@ export function useProcessApprovals(source: unknown, uuids: readonly string[]): 
   return result && result.source === source && result.key === key ? result.value : undefined;
 }
 
+function decisionRoles(source: unknown) {
+  return readArray(readSspValue(source, ['metadata', 'roles'])).filter(role => isJsonObject(role) && role.id === DECISION_ROLE);
+}
 function hasDecisionRole(source: unknown): boolean {
-  return readArray(readSspValue(source, ['metadata', 'roles'])).some(role => isJsonObject(role) && role.id === DECISION_ROLE && Boolean(readString(role.title)?.trim()));
+  return decisionRoles(source).some(role => isJsonObject(role) && Boolean(readString(role.title)?.trim()));
 }
 
 export interface DecisionGate {
@@ -92,12 +95,14 @@ export interface DecisionGate {
 export function decisionGate(editor: SspEditor, lock: string | undefined): DecisionGate {
   const saved = editor.envelope?.source;
   const role = hasDecisionRole(saved);
-  const reasons = role ? [] : [`Rolle ${DECISION_ROLE} unter Metadaten`];
+  const reasons = role ? [] : [`Rolle ${DECISION_ROLE} mit Titel unter Metadaten`];
   let blocked = lock;
   if (!blocked && editor.dirty) blocked = 'Ungespeicherte Änderungen: Der Freigabestand gilt für den gespeicherten Stand. Bitte zuerst speichern; Freigabe und Rücknahme sind bis dahin nicht verfügbar.';
+  if (!blocked && editor.saveState.kind !== 'stored' && editor.saveState.kind !== 'saved') blocked = 'Ein automatisch gesicherter Entwurf liegt vor. Bitte zuerst speichern; Freigabe und Rücknahme sind bis dahin nicht verfügbar.';
   if (!blocked && editor.envelope?.documentState === 'draft') blocked = 'Das SSP ist als Entwurf gespeichert. Freigabe und Rücknahme brauchen einen technisch gültigen gespeicherten Stand.';
   if (!blocked && editor.busy) blocked = 'Speichern läuft.';
-  const onAddRole = role || hasDecisionRole(editor.working) ? undefined
+  // Eine vorhandene Rolle ohne Titel wird unter Metadaten ergänzt; eine zweite Rolle derselben ID wäre ungültig.
+  const onAddRole = decisionRoles(saved).length > 0 || decisionRoles(editor.working).length > 0 ? undefined
     : () => { editor.apply(source => addSspItem(source, ['metadata', 'roles'], { id: DECISION_ROLE, title: 'Institutionsleitung' })); };
   return { reasons, blocked, onAddRole };
 }

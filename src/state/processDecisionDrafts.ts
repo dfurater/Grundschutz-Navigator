@@ -27,7 +27,7 @@ export function decisionDrafts(localId: LocalId): Map<string, DecisionDialogDraf
 
 /** Behält nur die Entwürfe der genannten Dokumente, etwa der von einem Gesamt-Restore zurückgebrachten. */
 export function retainDecisionDrafts(localIds: ReadonlySet<LocalId>): void {
-  for (const localId of [...drafts.keys()]) if (!localIds.has(localId)) drafts.delete(localId);
+  for (const localId of drafts.keys()) if (!localIds.has(localId)) drafts.delete(localId);
 }
 
 /** Ohne Angabe verwirft die Funktion alle Entwürfe des Tabs. */
