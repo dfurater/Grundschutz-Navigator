@@ -177,8 +177,12 @@ function ProcessRow({ editor, protection, allProtection, autoOpen, parties, appl
   };
   const decide = async (input: ProcessDecisionInput) => {
     const code = await editor.decideProcess(input);
-    if (code === 'SSP_PROCESS_DECISION_NOT_SHOWN') {
-      setNotice('Die Entscheidung ist gespeichert. Offene Eingaben verhindern die Anzeige des neuen Stands.');
+    const notices: Record<string, string> = {
+      SSP_PROCESS_DECISION_NOT_SHOWN: 'Die Entscheidung ist gespeichert. Offene Eingaben verhindern die Anzeige des neuen Stands.',
+      SSP_PROCESS_DECISION_NOT_ADOPTED: 'Die Entscheidung ist gespeichert. Der neue Stand wurde nicht geladen; bitte die Seite neu laden, bevor weitere Änderungen gespeichert werden.',
+    };
+    if (code && code in notices) {
+      setNotice(notices[code]);
       return undefined;
     }
     return code;
@@ -210,7 +214,7 @@ function ProcessRow({ editor, protection, allProtection, autoOpen, parties, appl
       {uuid && <ProcessApprovalBlock approval={approval} processReasons={errors} decisionReasons={decision.reasons} blocked={decision.blocked}
         risk={protection.riskConsideration === 'required'} notice={notice} onAddRole={decision.onAddRole}
         onApprove={() => { setNotice(undefined); setDeciding('approved'); }} onWithdraw={() => { setNotice(undefined); setDeciding('withdrawn'); }} />}
-      {uuid && deciding && <SspProcessApprovalDialog mode={deciding} label={label} processUuid={uuid} source={editor.envelope?.source}
+      {uuid && deciding && <SspProcessApprovalDialog draftKey={`${editor.localId}:${uuid}:${deciding}`} mode={deciding} label={label} processUuid={uuid} source={editor.envelope?.source}
         protection={protection} parties={decision.parties} affected={deciding === 'withdrawn' ? approval?.withdrawable : approval?.last}
         onDecide={decide} onAddParty={editor.addDecisionParty} onClose={() => setDeciding(undefined)} />}
       <output className="block space-y-2">

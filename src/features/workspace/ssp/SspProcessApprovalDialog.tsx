@@ -29,6 +29,14 @@ const FACTS = 'grid gap-x-4 gap-y-1 sm:grid-cols-[12rem_minmax(0,1fr)]';
 export type ProcessDecisionMode = keyof typeof TEXT;
 type PartyOption = { readonly value: string; readonly label: string };
 type NewParty = DecisionParty;
+interface DialogDraft {
+  readonly party: string;
+  readonly remarks: string;
+  /** Offene Eingabe einer neuen Partei; ihre UUID bleibt über Fehlversuche gleich. */
+  readonly newParty?: NewParty;
+}
+// Entwürfe leben im Arbeitsspeicher des Tabs und überstehen Routenwechsel; nur Abbrechen oder ein Schreiberfolg verwirft sie.
+const DRAFTS = new Map<string, DialogDraft>();
 
 function initialParty(parties: readonly PartyOption[], affected: ProcessDecisionView | undefined): string {
   const previous = parties.find(option => affected?.partyUuids.some(uuid => uuid.toLowerCase() === option.value.toLowerCase()));
@@ -51,24 +59,20 @@ function useBoundHash(source: unknown, processUuid: string, party: string, enabl
 }
 
 /** Legt eine Partei im SSP an; sie wird mit dem SSP gespeichert, bevor eine Entscheidung sie bindet. */
-function NewPartyFields({ onSave, onCancel }: Readonly<{ onSave: (party: NewParty) => void; onCancel: () => void }>) {
-  const [name, setName] = useState('');
-  const [type, setType] = useState<NewParty['type']>('organization');
+function NewPartyFields({ value, onChange, onSave, onCancel }: Readonly<{ value: NewParty; onChange: (party: NewParty) => void; onSave: () => void; onCancel: () => void }>) {
   const [tried, setTried] = useState(false);
-  // Die UUID bleibt über Fehlversuche gleich; ein erneutes Speichern legt keine zweite Partei an.
-  const [uuid] = useState(() => crypto.randomUUID());
   const box = useRef<HTMLDivElement>(null);
   // Der auslösende Knopf verschwindet; der Fokus geht in das erste Feld statt aus dem Dialog.
   useEffect(() => { box.current?.querySelector('input')?.focus(); }, []);
   return <div ref={box} className={`${BOX} space-y-3`}>
     <p className="text-sm font-medium">Partei im SSP anlegen</p>
     <div className="grid gap-3 sm:grid-cols-2">
-      <ProcessText label="Name der Partei" value={name} onChange={setName} error={tried && !name.trim() ? 'Name fehlt.' : undefined} />
-      <ProcessSelect label="Art" value={type} options={PARTY_TYPES} onChange={value => setType(value === 'person' ? 'person' : 'organization')} />
+      <ProcessText label="Name der Partei" value={value.name} onChange={name => onChange({ ...value, name })} error={tried && !value.name.trim() ? 'Name fehlt.' : undefined} />
+      <ProcessSelect label="Art" value={value.type} options={PARTY_TYPES} onChange={type => onChange({ ...value, type: type === 'person' ? 'person' : 'organization' })} />
     </div>
     <p className="text-sm">Die Partei wird mit dem SSP gespeichert und steht danach unter Metadaten.</p>
     <div className="flex flex-col gap-2 sm:flex-row">
-      <Button variant="secondary" className="min-h-touch desktop:min-h-0" onClick={() => { setTried(true); if (name.trim()) onSave({ uuid, type, name: name.trim() }); }}>Partei speichern</Button>
+      <Button variant="secondary" className="min-h-touch desktop:min-h-0" onClick={() => { setTried(true); if (value.name.trim()) onSave(); }}>Partei speichern</Button>
       <Button variant="ghost" className="min-h-touch desktop:min-h-0" onClick={onCancel}>Anlegen abbrechen</Button>
     </div>
   </div>;
@@ -92,7 +96,9 @@ function DecisionFacts({ approve, label, protection, affected, bound }: Readonly
 }
 
 /** Prüfblatt vor dem Schreiben: gebundener Stand, feste Rolle, Partei und Begründung. */
-export function SspProcessApprovalDialog({ mode, label, processUuid, source, protection, parties, affected, onDecide, onAddParty, onClose }: Readonly<{
+export function SspProcessApprovalDialog({ draftKey, mode, label, processUuid, source, protection, parties, affected, onDecide, onAddParty, onClose }: Readonly<{
+  /** Dokument, Prozess und Art der Entscheidung; trägt den Entwurf über Routenwechsel. */
+  draftKey: string;
   mode: ProcessDecisionMode;
   label: string;
   processUuid: string;
@@ -108,12 +114,16 @@ export function SspProcessApprovalDialog({ mode, label, processUuid, source, pro
 }>) {
   const approve = mode === 'approved';
   const text = TEXT[mode];
-  const [party, setParty] = useState(() => initialParty(parties, affected));
-  const [remarks, setRemarks] = useState('');
+  const [draft, setDraft] = useState<DialogDraft>(() => DRAFTS.get(draftKey) ?? { party: initialParty(parties, affected), remarks: '' });
+  useEffect(() => { DRAFTS.set(draftKey, draft); }, [draftKey, draft]);
+  const { party, remarks, newParty } = draft;
+  const setParty = (value: string) => setDraft(current => ({ ...current, party: value }));
+  const setRemarks = (value: string) => setDraft(current => ({ ...current, remarks: value }));
+  const creating = newParty !== undefined;
+  const discard = () => { DRAFTS.delete(draftKey); onClose(); };
   const [tried, setTried] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
-  const [creating, setCreating] = useState(false);
   const addButton = useRef<HTMLButtonElement>(null);
   const returnFocus = useRef(false);
   useEffect(() => {
@@ -121,7 +131,10 @@ export function SspProcessApprovalDialog({ mode, label, processUuid, source, pro
     returnFocus.current = false;
     addButton.current?.focus();
   }, [creating]);
-  const closeCreation = () => { returnFocus.current = true; setCreating(false); };
+  const closeCreation = (created?: string) => {
+    returnFocus.current = true;
+    setDraft(current => ({ ...current, newParty: undefined, party: created ?? current.party }));
+  };
   const computed = useBoundHash(source, processUuid, party, approve);
   const bound = approve ? computed : affected?.hash;
   const confirm = async () => {
@@ -132,20 +145,18 @@ export function SspProcessApprovalDialog({ mode, label, processUuid, source, pro
     const code = await onDecide({ processUuid, type: mode, uuid: crypto.randomUUID(), date: new Date().toISOString(), partyUuids: [party], remarks: remarks.trim() });
     setBusy(false);
     if (code) setError(errorText(code));
-    else onClose();
+    else discard();
   };
   const addParty = async (next: NewParty) => {
     setBusy(true);
     setError(undefined);
     const result = await onAddParty(next);
     setBusy(false);
-    if (result.uuid) {
-      setParty(result.uuid);
-      closeCreation();
-    } else setError(`${errorText(result.code ?? 'WORKSPACE_STORAGE_FAILED')} Die Partei steht im Arbeitsstand unter Metadaten.`);
+    if (result.uuid) closeCreation(result.uuid);
+    else setError(`${errorText(result.code ?? 'WORKSPACE_STORAGE_FAILED')} Die Partei steht im Arbeitsstand unter Metadaten.`);
   };
   return <ConfirmDialog open title={`${text.title} · ${label}`} confirmLabel={text.title} confirmVariant={text.variant}
-    busy={busy} wide confirmDisabled={creating || (approve && party !== '' && bound === undefined)} onCancel={onClose} onConfirm={() => { void confirm(); }}>
+    busy={busy} wide confirmDisabled={creating || (approve && party !== '' && bound === undefined)} onCancel={discard} onConfirm={() => { void confirm(); }}>
     <fieldset disabled={busy} className="min-w-0 space-y-3 text-[var(--color-text-primary)]">
       {approve && <div className={BOX}>
         <p className="font-medium">Gebundener Stand</p>
@@ -160,8 +171,10 @@ export function SspProcessApprovalDialog({ mode, label, processUuid, source, pro
         <ProcessSelect label="Partei" value={party} options={parties} onChange={setParty} emptyLabel="Partei wählen" error={tried && !party ? 'Partei wählen.' : undefined} />
       </div>
       {creating
-        ? <NewPartyFields onSave={next => { void addParty(next); }} onCancel={closeCreation} />
-        : <Button ref={addButton} variant="secondary" className="min-h-touch w-full sm:w-auto desktop:min-h-0" onClick={() => setCreating(true)}>+ Partei im SSP anlegen</Button>}
+        ? <NewPartyFields value={newParty} onChange={value => setDraft(current => ({ ...current, newParty: value }))}
+          onSave={() => { void addParty({ ...newParty, name: newParty.name.trim() }); }} onCancel={() => closeCreation()} />
+        : <Button ref={addButton} variant="secondary" className="min-h-touch w-full sm:w-auto desktop:min-h-0"
+          onClick={() => setDraft(current => ({ ...current, newParty: { uuid: crypto.randomUUID(), type: 'organization', name: '' } }))}>+ Partei im SSP anlegen</Button>}
       <ProcessText label={text.remarks} multiline value={remarks} onChange={setRemarks} error={tried && !remarks.trim() ? text.missing : undefined} />
       <p className={BOX}>Die Anwendung dokumentiert die erklärte Entscheidung der Institutionsleitung. Weder Identität noch Befugnis werden geprüft; es entsteht keine Signatur.</p>
       {error && <p role="alert" className="text-sm text-[var(--color-danger-text)]">{error}</p>}

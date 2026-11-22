@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { buildWorkspaceDocumentUrl } from '@/app/routes';
+import { buildStationUrl, buildWorkspaceDocumentUrl } from '@/app/routes';
 import type { JsonObject } from '@/domain/jsonGuards';
 import { readSspValue } from '@/domain/sspAuthoring';
 import { appendProcessDecision } from '@/domain/sspProcessApproval';
@@ -37,9 +37,9 @@ function fixture(change?: Change) {
 
 async function open(change?: Change, source: unknown = fixture(change)) {
   const document = await readStore(store => store.addDocument(seeded.verbundId, { source, context: { trustClass: 'class-2-local-user' }, rootType: 'system-security-plan', oscalVersion: '1.2.2' }));
-  renderWorkspaceArea(buildWorkspaceDocumentUrl(seeded.verbundId, document.localId), withLoadedCatalog(true));
+  const { router } = renderWorkspaceArea(buildWorkspaceDocumentUrl(seeded.verbundId, document.localId), withLoadedCatalog(true));
   const region = await within(main()).findByRole('region', { name: 'Leitungsfreigabe' }, WAIT);
-  return { localId: document.localId, region: within(region) };
+  return { localId: document.localId, region: within(region), router };
 }
 
 async function actions(localId: LocalId) {
@@ -139,6 +139,28 @@ describe('Leitungsfreigabe je Prozess', () => {
     expect(region.getByText('Zurückgenommen')).toBeInTheDocument();
     expect(region.queryByRole('button', { name: 'Freigabe zurücknehmen…' })).not.toBeInTheDocument();
     expect((await actions(localId)).at(-1)).toMatchObject({ type: 'withdrawn', props: expect.arrayContaining([expect.objectContaining({ name: 'process-cia-withdraws', value: 'aaaaaaaa-0000-4000-8000-000000000006' })]) });
+  });
+
+  it('bewahrt Dialogeingaben über einen Routenwechsel und verwirft sie nur ausdrücklich', async () => {
+    const { localId, region, router } = await open();
+    fireEvent.click(await region.findByRole('button', { name: 'Freigabe zurücknehmen…' }));
+    let dialog = within(await screen.findByRole('alertdialog'));
+    fireEvent.change(dialog.getByLabelText('Anlass der Rücknahme'), { target: { value: 'Noch nicht bestätigt' } });
+    fireEvent.click(dialog.getByRole('button', { name: '+ Partei im SSP anlegen' }));
+    fireEvent.change(dialog.getByLabelText('Name der Partei'), { target: { value: 'Entwurfspartei' } });
+    await router.navigate(buildStationUrl(seeded.verbundId, 'ssp'));
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument(), WAIT);
+    await router.navigate(buildWorkspaceDocumentUrl(seeded.verbundId, localId));
+    const back = within(await within(main()).findByRole('region', { name: 'Leitungsfreigabe' }, WAIT));
+    fireEvent.click(await back.findByRole('button', { name: 'Freigabe zurücknehmen…' }, WAIT));
+    dialog = within(await screen.findByRole('alertdialog'));
+    expect(dialog.getByLabelText('Anlass der Rücknahme')).toHaveValue('Noch nicht bestätigt');
+    expect(dialog.getByLabelText('Name der Partei')).toHaveValue('Entwurfspartei');
+    fireEvent.click(dialog.getAllByRole('button', { name: 'Abbrechen' }).at(-1)!);
+    fireEvent.click(back.getByRole('button', { name: 'Freigabe zurücknehmen…' }));
+    dialog = within(await screen.findByRole('alertdialog'));
+    expect(dialog.getByLabelText('Anlass der Rücknahme')).toHaveValue('');
+    expect(dialog.queryByLabelText('Name der Partei')).not.toBeInTheDocument();
   });
 
   it('zeigt eine ungültige importierte Kette mit Befund und lässt sie unverändert', async () => {

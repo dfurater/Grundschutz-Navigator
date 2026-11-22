@@ -26,6 +26,7 @@ export type SspEditorMessage = DocumentEditorCoreMessage | SspMessage;
 export interface DecisionParty { readonly uuid: string; readonly type: 'organization' | 'person'; readonly name: string }
 
 export interface SspEditor {
+  readonly localId: LocalId;
   readonly status: 'loading' | 'ready' | 'failed';
   readonly envelope?: WorkspaceEnvelope;
   readonly working: unknown;
@@ -217,7 +218,9 @@ export function useSspEditor(localId: LocalId): SspEditor {
     const result = await documents.saveProcessDecision(localId, envelope.savedAt, draftSavedAt, input, categories);
     if (!result.ok) return result.diagnostic.code;
     // Die Entscheidung ist geschrieben; offene Eingaben verhindern nur die Anzeige des neuen Stands.
-    return await adopt(result.value) === 'adopted' ? undefined : 'SSP_PROCESS_DECISION_NOT_SHOWN';
+    const adopted = await adopt(result.value);
+    if (adopted === 'adopted') return undefined;
+    return adopted === 'blocked' ? 'SSP_PROCESS_DECISION_NOT_SHOWN' : 'SSP_PROCESS_DECISION_NOT_ADOPTED';
   }, [adopt, categories, documents, hasPendingBindings, latest, localId]);
   const addDecisionParty = useCallback(async ({ uuid, type, name }: DecisionParty) => {
     const path = ['metadata', 'parties'];
@@ -238,7 +241,7 @@ export function useSspEditor(localId: LocalId): SspEditor {
   }, [latest]);
 
   return {
-    categories, targetFailure, checkTargetRemoval, exportPreserved, hasPendingTargetForms: hasPendingForms, setTargetFormPending,
+    localId, categories, targetFailure, checkTargetRemoval, exportPreserved, hasPendingTargetForms: hasPendingForms, setTargetFormPending,
     status: core.status, envelope: core.envelope, working, dirty, saveState: core.saveState, busy: core.busy, message: core.message,
     baseline, baselineBindable, apply, chooseBaseline, save, bindCatalogStand, exportDocument, remove, adopt, decideProcess, addDecisionParty,
   };
