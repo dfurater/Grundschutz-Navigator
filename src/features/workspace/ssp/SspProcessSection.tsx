@@ -178,9 +178,10 @@ function ProcessRow({ editor, protection, allProtection, autoOpen, parties, appl
   const decide = async (input: ProcessDecisionInput) => {
     const code = await editor.decideProcess(input);
     const notices: Record<string, string> = {
-      SSP_PROCESS_DECISION_NOT_SHOWN: 'Die Entscheidung ist gespeichert. Offene Eingaben verhindern die Anzeige des neuen Stands.',
       SSP_PROCESS_DECISION_NOT_ADOPTED: 'Die Entscheidung ist gespeichert. Der neue Stand wurde nicht geladen; bitte die Seite neu laden, bevor weitere Änderungen gespeichert werden.',
     };
+    // Eine gehaltene Entscheidung ist sichtbar; die Sperrmeldung des Blocks nennt den Grund.
+    if (code === 'SSP_PROCESS_DECISION_NOT_SHOWN') return undefined;
     if (code && code in notices) {
       setNotice(notices[code]);
       return undefined;
@@ -266,7 +267,8 @@ function ProcessRow({ editor, protection, allProtection, autoOpen, parties, appl
 
 export function SspProcessSection({ editor, protection, decisionLock }: Readonly<{ editor: SspEditor; protection: SspProcessProtection; decisionLock?: string }>) {
   const [added, setAdded] = useState<string>();
-  const saved = editor.envelope?.source;
+  // Eine gespeicherte, noch nicht übernommene Entscheidung bestimmt die Anzeige, damit kein veralteter Freigabestand erscheint.
+  const saved = editor.unadoptedDecision?.source ?? editor.envelope?.source;
   const approvals = useProcessApprovals(saved, protection.processes.flatMap(process => process.uuid ? [process.uuid] : []));
   const decisionParties = referenceOptions(readSspValue(saved, ['metadata', 'parties']), 'name',
     item => item.type === 'person' || item.type === 'organization');

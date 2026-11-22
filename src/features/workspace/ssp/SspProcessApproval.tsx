@@ -93,10 +93,11 @@ export interface DecisionGate {
 
 /** Was eine Entscheidung im gespeicherten Stand verhindert; gilt für alle Prozesse eines SSP. */
 export function decisionGate(editor: SspEditor, lock: string | undefined): DecisionGate {
-  const saved = editor.envelope?.source;
+  const saved = editor.unadoptedDecision?.source ?? editor.envelope?.source;
   const role = hasDecisionRole(saved);
   const reasons = role ? [] : [`Rolle ${DECISION_ROLE} mit Titel unter Metadaten`];
   let blocked = lock;
+  if (!blocked && editor.unadoptedDecision) blocked = 'Eine gespeicherte Entscheidung ist noch nicht in den Editor übernommen; angezeigt ist der gespeicherte Freigabestand. Offene Eingaben speichern oder verwerfen; bis dahin sind Freigabe, Rücknahme und Export gesperrt.';
   if (!blocked && editor.dirty) blocked = 'Ungespeicherte Änderungen: Der Freigabestand gilt für den gespeicherten Stand. Bitte zuerst speichern; Freigabe und Rücknahme sind bis dahin nicht verfügbar.';
   if (!blocked && editor.saveState.kind !== 'stored' && editor.saveState.kind !== 'saved') blocked = 'Ein automatisch gesicherter Entwurf liegt vor. Bitte zuerst speichern; Freigabe und Rücknahme sind bis dahin nicht verfügbar.';
   if (!blocked && editor.envelope?.documentState === 'draft') blocked = 'Das SSP ist als Entwurf gespeichert. Freigabe und Rücknahme brauchen einen technisch gültigen gespeicherten Stand.';

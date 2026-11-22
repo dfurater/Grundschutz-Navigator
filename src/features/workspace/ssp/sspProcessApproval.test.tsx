@@ -228,15 +228,20 @@ describe('Leitungsfreigabe je Prozess', () => {
   });
 
   it('sperrt Entscheidungen bei einem automatisch gesicherten Entwurf ohne inhaltliche Änderung', async () => {
-    const { region } = await open();
+    const { localId, region } = await open();
     expect(await region.findByRole('button', { name: 'Freigabe zurücknehmen…' })).toBeEnabled();
     const title = within(main()).getAllByRole('textbox', { name: /^Titel/ })[0] as HTMLInputElement;
     const original = title.value;
     fireEvent.change(title, { target: { value: `${original} geändert` } });
     // Zurückgesetzt ist der Inhalt gleich, der automatisch gesicherte Entwurf bleibt und sperrt weiter.
     fireEvent.change(title, { target: { value: original } });
+    await waitFor(async () => expect(await readStore(store => store.getDraft(localId))).toBeDefined(), WAIT);
     expect(await region.findByText(/automatisch gesicherter Entwurf liegt vor/, undefined, WAIT)).toBeInTheDocument();
     expect(region.getByRole('button', { name: 'Freigabe zurücknehmen…' })).toBeDisabled();
+    // Speichern entfernt den Entwurf und gibt die Aktionen wieder frei.
+    fireEvent.click(within(main()).getByRole('button', { name: 'Speichern' }));
+    await waitFor(() => expect(region.getByRole('button', { name: 'Freigabe zurücknehmen…' })).toBeEnabled(), WAIT);
+    expect(await readStore(store => store.getDraft(localId))).toBeUndefined();
   });
 
   it('zeigt nach einem Routenwechsel während des Schreibens die geschriebene Entscheidung', async () => {
@@ -257,6 +262,38 @@ describe('Leitungsfreigabe je Prozess', () => {
     workHold.until = Promise.resolve();
     expect(await back.findByText('Aktuell', undefined, WAIT)).toBeInTheDocument();
     expect(back.getByText('Während des Wechsels')).toBeInTheDocument();
+    expect(await actions(localId)).toHaveLength(2);
+  });
+
+  it('hält eine während offener Eingaben geschriebene Entscheidung fest und übernimmt sie nach dem Verwerfen', async () => {
+    // Freigabe statt Rücknahme: Nur die Freigabe läuft über den anhaltbaren Worker; die Übernahme ist für beide dieselbe.
+    const { localId, region, router } = await open(changeReason);
+    fireEvent.click(await region.findByRole('button', { name: 'Neu freigeben…' }));
+    const dialog = within(await screen.findByRole('alertdialog'));
+    await dialog.findByText(/^process-cia\/3:sha-256:/);
+    fireEvent.change(dialog.getByLabelText('Begründung'), { target: { value: 'Freigabe bei offener Eingabe' } });
+    let release = () => {};
+    workHold.until = new Promise(resolve => { release = resolve; });
+    fireEvent.click(dialog.getByRole('button', { name: 'Freigabe dokumentieren' }));
+    await router.navigate(buildStationUrl(seeded.verbundId, 'ssp'));
+    await waitFor(() => expect(within(main()).queryByRole('region', { name: 'Leitungsfreigabe' })).not.toBeInTheDocument(), WAIT);
+    await router.navigate(buildWorkspaceDocumentUrl(seeded.verbundId, localId));
+    const back = within(await within(main()).findByRole('region', { name: 'Leitungsfreigabe' }, WAIT));
+    expect(await back.findByText('Überholt', undefined, WAIT)).toBeInTheDocument();
+    const purpose = within(main()).getByLabelText('Zweck') as HTMLInputElement;
+    const original = purpose.value;
+    fireEvent.change(purpose, { target: { value: 'Offene Eingabe' } });
+    release();
+    workHold.until = Promise.resolve();
+    // Angezeigt wird der gespeicherte Stand; Entscheidungen und Export bleiben bis zur Übernahme gesperrt.
+    expect(await back.findByText('Aktuell', undefined, WAIT)).toBeInTheDocument();
+    expect(back.getByText(/noch nicht in den Editor übernommen/)).toBeInTheDocument();
+    expect(back.getByRole('button', { name: 'Freigabe zurücknehmen…' })).toBeDisabled();
+    expect(within(main()).getByRole('button', { name: 'Export' })).toBeDisabled();
+    fireEvent.change(purpose, { target: { value: original } });
+    await waitFor(() => expect(back.queryByText(/noch nicht in den Editor übernommen/)).not.toBeInTheDocument(), WAIT);
+    expect(back.getByText('Aktuell')).toBeInTheDocument();
+    expect(back.getByRole('button', { name: 'Freigabe zurücknehmen…' })).toBeEnabled();
     expect(await actions(localId)).toHaveLength(2);
   });
 });

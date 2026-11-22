@@ -57,6 +57,8 @@ export interface SspEditor {
   readonly decideProcess: (input: ProcessDecisionInput) => Promise<string | undefined>;
   /** Legt eine Partei an oder aktualisiert sie nach einem Fehlversuch und speichert das SSP; `uuid` heißt gespeichert, `code` daneben meldet ein als Entwurf gespeichertes SSP. */
   readonly addDecisionParty: (party: DecisionParty) => Promise<{ readonly uuid?: string; readonly code?: string }>;
+  /** Gespeicherte Prozessentscheidung, die offene Eingaben noch nicht in den Editor übernehmen lassen. */
+  readonly unadoptedDecision?: WorkspaceEnvelope;
   /** Übernimmt einen neueren gespeicherten Stand nur ohne offene Eingaben. */
   readonly adopt: (document: WorkspaceEnvelope) => Promise<'adopted' | 'blocked' | 'failed'>;
 }
@@ -201,7 +203,11 @@ export function useSspEditor(localId: LocalId): SspEditor {
     if (removed) { pendingForms.current.clear(); setHasPendingForms(false); }
     return removed;
   }, [removeDocument]);
-  const exportDocument = useCallback(async () => { if (!dirty) await exportWith(document => exportSspInWorker(document, categories), 'ssp.json'); }, [categories, dirty, exportWith]);
+  // Gespeicherte Prozessentscheidung, deren Übernahme offene Eingaben blockieren; bis zur Übernahme ist der Editorstand veraltet.
+  const [unadoptedDecision, setUnadoptedDecision] = useState<WorkspaceEnvelope>();
+  const exportDocument = useCallback(async () => {
+    if (!dirty && !unadoptedDecision) await exportWith(document => exportSspInWorker(document, categories), 'ssp.json');
+  }, [categories, dirty, exportWith, unadoptedDecision]);
 
   const checkTargetRemoval = useCallback(async (path: SspPath): Promise<readonly string[]> => {
     const bindings = await documents.listBindings();
@@ -216,11 +222,22 @@ export function useSspEditor(localId: LocalId): SspEditor {
     return targetDeletionUses(latest.current.working, path, localId, members, bindings.value);
   }, [documents, latest, localId]);
   const { adopt } = core;
+  const adoptDecision = useCallback(async (document: WorkspaceEnvelope) => {
+    const adopted = await adopt(document);
+    setUnadoptedDecision(adopted === 'adopted' ? undefined : document);
+    return adopted;
+  }, [adopt]);
   const pendingDecision = useMemo(() => decisionWrites.get(localId), [localId]);
   useEffect(() => {
     if (core.status !== 'ready' || !pendingDecision) return;
-    void pendingDecision.then(document => { if (document) void adopt(document); });
-  }, [adopt, core.status, pendingDecision]);
+    void pendingDecision.then(document => { if (document) void adoptDecision(document); });
+  }, [adoptDecision, core.status, pendingDecision]);
+  // Sind die offenen Eingaben gespeichert oder verworfen, übernimmt der Editor die gehaltene Entscheidung erneut.
+  const saveKind = core.saveState.kind;
+  useEffect(() => {
+    if (!unadoptedDecision || dirty || core.busy || saveKind === 'pending') return;
+    void adopt(unadoptedDecision).then(adopted => { if (adopted === 'adopted') setUnadoptedDecision(undefined); });
+  }, [adopt, core.busy, dirty, saveKind, unadoptedDecision]);
   const decideProcess = useCallback(async (input: ProcessDecisionInput) => {
     const { envelope, draftSavedAt, working: current, unsaved } = latest.current;
     // Offene Eingaben gehören nicht zum gebundenen Stand; die Entscheidung schreibt dann nichts.
@@ -231,11 +248,11 @@ export function useSspEditor(localId: LocalId): SspEditor {
     void written.then(() => { if (decisionWrites.get(localId) === written) decisionWrites.delete(localId); });
     const result = await write;
     if (!result.ok) return result.diagnostic.code;
-    // Die Entscheidung ist geschrieben; offene Eingaben verhindern nur die Anzeige des neuen Stands.
-    const adopted = await adopt(result.value);
+    // Die Entscheidung ist geschrieben; blockieren offene Eingaben die Übernahme, hält der Editor sie bis dahin fest.
+    const adopted = await adoptDecision(result.value);
     if (adopted === 'adopted') return undefined;
     return adopted === 'blocked' ? 'SSP_PROCESS_DECISION_NOT_SHOWN' : 'SSP_PROCESS_DECISION_NOT_ADOPTED';
-  }, [adopt, categories, documents, hasPendingBindings, latest, localId]);
+  }, [adoptDecision, categories, documents, hasPendingBindings, latest, localId]);
   const addDecisionParty = useCallback(async ({ uuid, type, name }: DecisionParty) => {
     const path = ['metadata', 'parties'];
     // Ein erneuter Versuch nach einem Fehler aktualisiert dieselbe Partei, statt sie zu verdoppeln.
@@ -257,6 +274,6 @@ export function useSspEditor(localId: LocalId): SspEditor {
   return {
     localId, categories, targetFailure, checkTargetRemoval, exportPreserved, hasPendingTargetForms: hasPendingForms, setTargetFormPending,
     status: core.status, envelope: core.envelope, working, dirty, saveState: core.saveState, busy: core.busy, message: core.message,
-    baseline, baselineBindable, apply, chooseBaseline, save, bindCatalogStand, exportDocument, remove, adopt, decideProcess, addDecisionParty,
+    baseline, baselineBindable, apply, chooseBaseline, save, bindCatalogStand, exportDocument, remove, adopt, decideProcess, addDecisionParty, unadoptedDecision,
   };
 }
