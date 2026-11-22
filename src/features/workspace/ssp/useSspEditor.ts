@@ -225,8 +225,12 @@ export function useSspEditor(localId: LocalId): SspEditor {
   // Ohne offene Eingaben übernimmt der Editor den Stand; mit ihnen führt er die Aktionskette in den Arbeitsstand zusammen.
   const adoptOrRebase = useCallback(async (document: WorkspaceEnvelope) => {
     const adopted = await adopt(document);
-    return adopted === 'blocked' ? adopt(document, mergeProcessDecision) : adopted;
-  }, [adopt]);
+    if (adopted !== 'blocked') return adopted;
+    // Eine offene Baseline-Wahl gilt nur gegen den geladenen Speicherstand; eine Zusammenführung würde sie still verwerfen.
+    const { working: current, envelope } = latest.current;
+    if (effectiveChoice(pending.get(SSP_IMPORT_PROFILE_POINTER), baselineHref(current), envelope)) return 'blocked';
+    return adopt(document, mergeProcessDecision);
+  }, [adopt, latest, pending]);
   const adoptDecision = useCallback(async (document: WorkspaceEnvelope) => {
     const adopted = await adoptOrRebase(document);
     setUnadoptedDecision(adopted === 'adopted' ? undefined : document);
