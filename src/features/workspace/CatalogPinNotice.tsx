@@ -27,7 +27,7 @@ const TEXT: Readonly<Record<Exclude<CatalogPinState, 'bound'>, { readonly title:
 /** Mindestens ein gebundener Katalog ist registriert, wird aber nicht ausgeliefert; ein Wechsel auf einen neueren Stand anderer Kataloge hebt die Sperre nicht auf. */
 const NOT_SHIPPED = {
   title: 'Gebundener Katalog nicht ausgeliefert',
-  text: 'Mindestens ein BSI-Katalog, an den dieses Dokument gebunden ist, wird derzeit nicht ausgeliefert. Das Dokument bleibt an seinen Stand gebunden: Lesen und Export bleiben möglich, Änderungen sind gesperrt.',
+  text: 'Mindestens ein BSI-Katalog, an den dieses Dokument gebunden ist, wird derzeit nicht ausgeliefert. Lesen und Export bleiben möglich, Änderungen sind gesperrt.',
 } as const;
 
 /** Sperre über ein lokal referenziertes Dokument; dessen eigene Seite nennt den Grund. */

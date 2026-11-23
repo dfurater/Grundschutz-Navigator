@@ -24,6 +24,7 @@ describe('CatalogPinNotice', () => {
     const alert = screen.getByRole('alert');
     expect(alert).toHaveTextContent('Gebundener Katalog nicht ausgeliefert');
     expect(alert).not.toHaveTextContent('neueren Stand');
+    expect(alert).not.toHaveTextContent('an seinen Stand gebunden');
     expect(alert).toHaveTextContent(WORKSPACE_DIAGNOSTIC_CODES.catalogPinNotDelivered);
   });
 
