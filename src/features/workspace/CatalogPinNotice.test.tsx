@@ -26,4 +26,14 @@ describe('CatalogPinNotice', () => {
     expect(alert).not.toHaveTextContent('neueren Stand');
     expect(alert).toHaveTextContent(WORKSPACE_DIAGNOSTIC_CODES.catalogPinNotDelivered);
   });
+
+  it('lässt eine fehlgeschlagene Hashprüfung nicht hinter einem nicht ausgelieferten Katalog verschwinden', () => {
+    const pin: CatalogPin = {
+      state: 'unverified', code: WORKSPACE_DIAGNOSTIC_CODES.catalogPinUnverified, offers: [], withheld: ['catalog-x'], pending: [], undelivered: true,
+    };
+    render(<CatalogPinNotice pin={pin} />);
+    const alert = screen.getByRole('alert');
+    expect(alert).toHaveTextContent('Katalogstand nicht verifiziert');
+    expect(alert).not.toHaveTextContent('nicht ausgeliefert');
+  });
 });

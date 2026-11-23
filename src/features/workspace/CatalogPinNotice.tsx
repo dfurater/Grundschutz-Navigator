@@ -40,7 +40,8 @@ const INHERITED = {
 export function CatalogPinNotice({ pin, busy = false, onBind }: Readonly<{ pin: CatalogPin | undefined; busy?: boolean; onBind?: () => void }>) {
   if (!pin || pin.state === 'bound') return null;
   let notice = TEXT[pin.state];
-  if (pin.undelivered) notice = NOT_SHIPPED;
+  // Ein schwererer Zustand (etwa eine fehlgeschlagene Hashprüfung) behält seinen eigenen Hinweis.
+  if (pin.state === 'not-delivered' && pin.undelivered) notice = NOT_SHIPPED;
   if (pin.inherited) notice = INHERITED;
   const { title, text } = notice;
   return (
