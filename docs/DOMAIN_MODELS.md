@@ -507,26 +507,33 @@ ohne `control-id` bleibt in `alters` stehen und fehlt nur in der Gruppierung.
 
 ### Mehrfache `alter`-Einträge auf derselben `control-id`
 
-Das WLAN-Profil trägt am Snapshot 290 `alters` über 58 eindeutige `control-id`,
-bis zu fünf Einträge je Control. `ProfileModify.alters` ist eine Liste in
-Quellreihenfolge, und `altersByControlId` bildet auf **Listen** ab; ein
-`Map.set()` je `control-id` verlöre dort den Großteil der Anweisungen.
+Ein Profil kann mehrere `alter`-Einträge mit derselben `control-id` tragen.
+`ProfileModify.alters` ist eine Liste in Quellreihenfolge, und
+`altersByControlId` bildet jede `control-id` auf eine **Liste** ab; ein
+`Map.set()` je `control-id` behielte nur den letzten Eintrag. Das Fixture
+`profile-wlan` in `PROFILE_ARTIFACT_SPECS` (`src/test/fixtures/profiles.ts`)
+trägt 290 `alters` über 58 `control-id`, fünf je Control, gemessen am Snapshot `80694713a7a430d12eb2099893de23ad8bb6f780`.
+`makeRichProfileSource()` im selben Modul führt mehrere `alters` auf derselben
+`control-id` durch den No-op-Round-trip.
 
 ### Testkorpus
 
-Die drei realen Profile liegen nicht im Repository: `npm run fetch-catalog`
-materialisiert ausschließlich `supported`-Artefakte, und alle drei sind
-`preview`. Verbindlich ist der eingefrorene Fixture-Korpus in
-`src/test/fixtures/profiles.ts` mit den am Snapshot
-`80694713a7a430d12eb2099893de23ad8bb6f780` gemessenen Strukturen. Die im
+Die realen BSI-Profile liegen nicht im Repository: `npm run fetch-catalog`
+materialisiert ausschließlich `supported`-Artefakte, und `upstream-manifest.json`
+führt jedes Profil mit `lifecycle: "preview"`. Verbindlich ist der eingefrorene
+Fixture-Korpus in `src/test/fixtures/profiles.ts` mit den am Snapshot
+`80694713a7a430d12eb2099893de23ad8bb6f780` gemessenen Strukturen der Profile
+`profile-gspp`, `profile-lieferkette` und `profile-wlan`. Die im
 BSI-Bestand nicht vorkommenden, normativ vorhandenen Fälle — `matching`,
 `merge: flat`, `combine`, `insert-controls.order`, die Positionen `before`,
 `after` und `ending`, `exclude-controls`, `import` ohne `href` — stehen als
 ergänzende synthetische Fixtures daneben.
 
-Der Realkorpus ist optional: `oscalProfileDocument.node.test.ts` läuft nur, wenn
-`GSPP_PROFILE_CORPUS_PATH` auf ein lokal geholtes Verzeichnis zeigt, und wird
-sonst übersprungen. Er prüft Erhaltung und die Byte-Identität gegen
+Der Realkorpus ist optional: `oscalProfileDocument.node.test.ts` wählt aus
+`upstream-manifest.json` jeden Eintrag mit `rootType: "profile"` und prüft davon
+die Dateien, die unter dem Verzeichnis aus `GSPP_PROFILE_CORPUS_PATH` am
+Manifestpfad liegen. Ohne die Variable oder ohne eine vorhandene Datei wird er
+übersprungen. Er prüft Erhaltung und die Byte-Identität gegen
 `contentSha256` aus `upstream-manifest.json`, nie feste Inhaltszahlen.
 
 ## Mapping Collections (Control Layer)

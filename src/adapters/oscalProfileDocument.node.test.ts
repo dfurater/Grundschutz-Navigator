@@ -1,10 +1,10 @@
 // @vitest-environment node
 // =============================================================================
-// Optionaler Realkorpus — die drei BSI-Profile (GSPP-240)
+// Optionaler Realkorpus — die BSI-Profile aus `upstream-manifest.json` (GSPP-240)
 //
 // Die Dateien liegen **nicht** im Repository: `npm run fetch-catalog`
-// materialisiert ausschließlich `supported`-Artefakte, und alle drei Profile
-// sind `preview` (`src/domain/sourceRegistry.mjs`). Wer sie prüfen will, holt
+// materialisiert ausschließlich `supported`-Artefakte, und das Manifest führt
+// jedes Profil als `preview`. Wer sie prüfen will, holt
 // sie lokal am Snapshot aus `upstream-manifest.json` und richtet
 // `GSPP_PROFILE_CORPUS_PATH` auf das Verzeichnis, das die
 // `control_layer/…`-Pfade enthält.
