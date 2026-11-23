@@ -353,9 +353,8 @@ laufenden Zähler als Tabelle aus.
 
 | Profil | Arbeitseinheiten | erzeugte Knoten | maximale Tiefe | dekodierte base64-Bytes |
 | --- | --- | --- | --- | --- |
-| `profile-gspp` | 207 595 | 76 842 | 19 | 0 |
-| `profile-lieferkette` | 31 092 | 8 884 | 17 | 0 |
-| `profile-wlan` | 33 842 | 6 812 | 13 | 0 |
+| `profile-gspp` | 207 887 | 76 949 | 19 | 0 |
+| `profile-lieferkette` | 37 679 | 11 807 | 17 | 0 |
 
 Das teuerste Profil liegt bei rund einem Achtzigstel der Arbeitsgrenze.
 
