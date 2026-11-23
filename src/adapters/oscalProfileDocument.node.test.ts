@@ -27,6 +27,7 @@ import { join } from 'node:path';
 import { parseProfileDocument } from './oscalProfileDocument';
 import type { ProfileDocument } from './oscalProfileDocument';
 import type { UpstreamManifest } from '@/domain/models';
+import { SUPPORTED_CATALOGS } from '@/domain/sourceRegistry';
 import {
   arrayOrderSignature,
   contentMultiset,
@@ -74,14 +75,13 @@ function loadCorpus(root: string): readonly CorpusEntry[] {
 }
 
 describe('Manifestvertrag der Profile', () => {
-  it('führt genau die Profile des gepinnten Manifests', () => {
-    expect(profileFiles.map((file) => file.artifactKey).sort()).toEqual([
-      'control-layer-diva-sources-profiles-diva-profile',
-      'control-layer-wlan-einzelplatz-und-gastnetze-sources-profiles-wlan-einzelplatz-und-gastnetze-profile',
-      'control-layer-wlan-enterprise-sources-profiles-wlan-enterprise-profile',
-      'profile-gspp',
-      'profile-lieferkette',
-    ]);
+  // Begleitprofile kommen mit jedem BSI-Snapshot hinzu; ein manifest-only Sync-PR
+  // darf daran nicht scheitern. Verbindlich sind die Profile ausgelieferter Kataloge.
+  it('führt das Profil jedes ausgelieferten Katalogs', () => {
+    const profilePaths = new Set(profileFiles.map((file) => file.path));
+    for (const entry of SUPPORTED_CATALOGS) {
+      expect(profilePaths, entry.artifactKey).toContain(entry.profileUpstreamPath);
+    }
   });
 });
 
