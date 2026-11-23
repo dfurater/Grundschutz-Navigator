@@ -11,8 +11,10 @@ import {
 } from './security-guards.mjs';
 import { ENTRY_CATALOG, SOURCE_REGISTRY, SUPPORTED_CATALOGS } from '../src/domain/sourceRegistry.mjs';
 
-/** Ein ausgelieferter Katalog mit BSI-Profil, aus dem realen Register statt fest benannt. */
-const PROFILED_SUPPORTED_CATALOG = SUPPORTED_CATALOGS.find((entry) => entry.profileUpstreamPath !== undefined)!;
+/** Ein ausgelieferter Zweitkatalog mit BSI-Profil; der Einstiegskatalog hat eigene Fälle. */
+const PROFILED_SUPPORTED_CATALOG = SUPPORTED_CATALOGS.find(
+  (entry) => entry.entryCatalog !== true && entry.profileUpstreamPath !== undefined,
+)!;
 
 /**
  * Verhaltensmatrix für die Upstream-Allowlist. Der Registry-Umbau (ADR-1)
