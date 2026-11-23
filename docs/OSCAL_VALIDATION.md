@@ -321,7 +321,9 @@ Subjektlänge nicht wirksam; den Abgleich begrenzt `WORK_UNIT_LIMIT`.
 Die Semantik: `*` trifft beliebig viele Zeichen einschließlich keiner, `?`
 genau eines, der Abgleich ist vollständig verankert. Der Zeichenvergleich
 behandelt jedes Zeichen gleich, auch einen Zeilenumbruch. Der Korpuslauf
-vergleicht alle drei aufgelösten Kataloge byte-nah gegen die BSI-Referenz und
+vergleicht jeden ausgelieferten Katalog mit BSI-Profil (`supported` mit
+`profileUpstreamPath`, `PROFILED_CATALOGS` in
+`scripts/profileResolutionCorpus.test.ts`) byte-nah gegen die BSI-Referenz und
 die vier SP-800-53-Baselines gegen die NIST-Referenz; beide Orakel sind grün.
 
 #### `WORK_UNIT_LIMIT`

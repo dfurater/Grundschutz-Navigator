@@ -67,12 +67,11 @@ describe('sourceRegistry', () => {
     expect(ENTRY_CATALOG.entryCatalog).toBe(true);
   });
 
-  it('ships the entry, Lieferkette, and WLAN catalogs', () => {
-    expect(SUPPORTED_CATALOG_KEYS).toEqual(['gspp', 'lieferkette', 'wlan']);
+  it('ships the entry and Lieferkette catalogs', () => {
+    expect(SUPPORTED_CATALOG_KEYS).toEqual(['gspp', 'lieferkette']);
     expect(SUPPORTED_CATALOGS.map((entry) => entry.artifactKey)).toEqual([
       'catalog-gspp',
       'catalog-lieferkette',
-      'catalog-wlan',
     ]);
   });
 
@@ -81,7 +80,6 @@ describe('sourceRegistry', () => {
     expect(supported.map((entry) => entry.artifactKey).sort()).toEqual([
       'catalog-gspp',
       'catalog-lieferkette',
-      'catalog-wlan',
       'namespaces-bsi',
     ]);
   });
@@ -211,7 +209,7 @@ describe('sourceRegistry', () => {
   it('exposes catalog entries by key', () => {
     expect(getCatalogByKey('gspp')?.artifactKey).toBe('catalog-gspp');
     expect(getCatalogByKey('lieferkette')?.lifecycle).toBe('supported');
-    expect(getCatalogByKey('wlan')?.lifecycle).toBe('supported');
+    expect(getCatalogByKey('wlan')?.lifecycle).toBe('draft');
     expect(getCatalogByKey('unbekannt')).toBeNull();
   });
 
@@ -395,8 +393,6 @@ describe('sourceRegistry', () => {
         'catalog-metadata.json',
         'catalog-lieferkette.json',
         'catalog-lieferkette-metadata.json',
-        'catalog-wlan.json',
-        'catalog-wlan-metadata.json',
       ]);
     });
 
