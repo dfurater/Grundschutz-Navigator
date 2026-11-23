@@ -14,7 +14,7 @@ Inoffizielles Community-Projekt, kein Angebot des BSI. Keine Rechtsberatung, kei
 
 ## Was kann die App?
 
-- Drei BSI-Kataloge durchblättern: den „Anwenderkatalog Grundschutz++“ sowie „Supply Chain Security“ und „Stand der Technik WLAN“, gegliedert nach Praktiken und Themen.
+- Zwei BSI-Kataloge durchblättern: den „Anwenderkatalog Grundschutz++“ und „Supply Chain Security“, gegliedert nach Praktiken und Themen.
 - Alle Kontrollen nach ID, Titel oder Stichwort durchsuchen.
 - Die Liste nach Sicherheitsniveau, Modalverb, Aufwandsstufe, Zielobjekt-Kategorie, Schutzziel, Dokumentationsvorgabe, Handlungswort, Tag und Link-Relation filtern.
 - Zu jeder Kontrolle den Anforderungstext und die Umsetzungshinweise lesen, dazu die betroffenen Schutzziele und Gefährdungen.

@@ -311,7 +311,9 @@ Subjektlänge nicht wirksam; den Abgleich begrenzt `WORK_UNIT_LIMIT`.
 Die Semantik: `*` trifft beliebig viele Zeichen einschließlich keiner, `?`
 genau eines, der Abgleich ist vollständig verankert. Der Zeichenvergleich
 behandelt jedes Zeichen gleich, auch einen Zeilenumbruch. Der Korpuslauf
-vergleicht alle drei aufgelösten Kataloge byte-nah gegen die BSI-Referenz und
+vergleicht jeden ausgelieferten Katalog mit BSI-Profil (`supported` mit
+`profileUpstreamPath`, `PROFILED_CATALOGS` in
+`scripts/profileResolutionCorpus.test.ts`) byte-nah gegen die BSI-Referenz und
 die vier SP-800-53-Baselines gegen die NIST-Referenz; beide Orakel sind grün.
 
 #### `WORK_UNIT_LIMIT`
@@ -351,9 +353,8 @@ laufenden Zähler als Tabelle aus.
 
 | Profil | Arbeitseinheiten | erzeugte Knoten | maximale Tiefe | dekodierte base64-Bytes |
 | --- | --- | --- | --- | --- |
-| `profile-gspp` | 207 595 | 76 842 | 19 | 0 |
-| `profile-lieferkette` | 31 092 | 8 884 | 17 | 0 |
-| `profile-wlan` | 33 842 | 6 812 | 13 | 0 |
+| `profile-gspp` | 207 887 | 76 949 | 19 | 0 |
+| `profile-lieferkette` | 37 679 | 11 807 | 17 | 0 |
 
 Das teuerste Profil liegt bei rund einem Achtzigstel der Arbeitsgrenze.
 

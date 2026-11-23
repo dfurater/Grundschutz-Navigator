@@ -98,9 +98,9 @@ export const SOURCE_REGISTRY = Object.freeze(
       oscalVersion: '1.1.3',
       expectedRootType: 'catalog',
       catalogKey: 'wlan',
-      upstreamPath: 'control_layer/WLAN/WLAN-resolved_catalog.json',
-      profileUpstreamPath: 'control_layer/WLAN/sources/profiles/WLAN-profile.json',
-      lifecycle: 'supported',
+      upstreamPath: 'control_layer/WLAN-Enterprise/WLAN-Enterprise-resolved_catalog.json',
+      profileUpstreamPath: 'control_layer/WLAN-Enterprise/sources/profiles/WLAN-Enterprise-profile.json',
+      lifecycle: 'draft',
       title: 'Anwenderkatalog WLAN',
     },
     {

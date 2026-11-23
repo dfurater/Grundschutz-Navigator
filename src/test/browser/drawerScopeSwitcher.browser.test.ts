@@ -18,7 +18,6 @@ import '@/index.css';
 const CATALOGS = [
   { key: 'gspp', title: 'Anwenderkatalog Grundschutz++' },
   { key: 'lieferkette', title: 'Supply Chain Security' },
-  { key: 'wlan', title: 'Stand der Technik WLAN' },
 ] as const;
 const PROFILES = [
   { width: 390, height: 844, touch: true },

@@ -39,7 +39,7 @@ Die Ausgabemenge wird aus dem Register abgeleitet (`listCatalogArtifactFileNames
 
 Der Einstiegskatalog trägt die Dateinamen ohne Katalogschlüssel, auf denen Deploy- und Cache-Vertrag aufsetzen. Genau ein `supported`-Katalog trägt `entryCatalog: true`; ein Register ohne ausgelieferten Katalog oder ohne genau einen Einstieg schlägt beim Import fail-closed fehl.
 
-Der aktuelle Registerstand liefert drei Kataloge: `catalog-gspp` als Einstieg sowie `catalog-lieferkette` und `catalog-wlan` als bedarfsgerecht geladene Sekundärkataloge. Dazu kommen die beiden generierten Sammelartefakte:
+Der aktuelle Registerstand liefert zwei Kataloge: `catalog-gspp` als Einstieg und `catalog-lieferkette` als bedarfsgerecht geladenen Sekundärkatalog. `catalog-wlan` ist als `draft` registriert und wird nicht ausgeliefert. Dazu kommen die beiden generierten Sammelartefakte:
 
 - `vocabularies.json` — offizielle BSI-Vokabulare (aus CSV konvertiert)
 - `upstream-sources-metadata.json` — Vokabular-Provenance + Upstream-Manifest + rein lesende Katalog-Lineage
@@ -268,8 +268,8 @@ Beispiel (Werte Platzhalter; gezeigt sind nur die Produkteinträge des Manifests
       {
         "artifactKey": "catalog-wlan",
         "rootType": "catalog",
-        "lifecycle": "supported",
-        "path": "control_layer/WLAN/WLAN-resolved_catalog.json",
+        "lifecycle": "draft",
+        "path": "control_layer/WLAN-Enterprise/WLAN-Enterprise-resolved_catalog.json",
         "gitBlobSha": "<git-blob-sha>",
         "contentSha256": "<sha256>"
       }
@@ -445,6 +445,8 @@ Ein Artefakt, das Stufe 3 nicht besteht, geht nicht in den Graphen ein; ein Arte
 **Manifestbindung.** `scripts/deployChecksums.mjs` schreibt `SHA256SUMS` als letzten Build-Schritt (`spaFallbackPlugin().closeBundle()` in `vite.config.ts`, nach Routen-Einstiegen, `404.html`, Sitemap, `robots.txt` und `.well-known/security.txt`). Es enthält je veröffentlichter Datei eine Zeile `<64 kleine Hexzeichen><zwei Leerzeichen><relativer Pfad>` mit LF, nach UTF-16-Codeunits sortiert, ohne Selbsteintrag. Die Dateimenge folgt der Packregel des gepinnten `actions/upload-pages-artifact` mit `include-hidden-files: true` aus `.github/workflows/deploy.yml`: Pfadkomponenten `.git` und `.github` fallen samt Unterbaum heraus, alle anderen Punkt-Namen wie `.well-known/` sind enthalten. Symlinks, andere nicht reguläre Dateitypen und Pfade außerhalb von `[A-Za-z0-9._/-]` oder mit leeren, `.`- oder `..`-Segmenten brechen den Build ab. Ein Test packt eine Fixture mit den tar-Optionen des gepinnten Uploaders und gleicht das Paket mit dem Manifest ab; ein zweiter prüft, dass `deploy.yml` den Uploader mit demselben SHA und `include-hidden-files: true` aufruft.
 
 Subject ist das Manifest statt aller Dateien, weil `actions/attest` die Dateien eines `subject-path` vor jeder Deduplizierung zählt und oberhalb von 1.024 abbricht; `dist/` enthält mit den statischen Routen-Einstiegen mehr Dateien. Die Subject-Zahl bleibt damit eins, unabhängig von der Zahl der Routen.
+
+**Katalogdateien der Auslieferung.** Vite kopiert `public/data` vollständig nach `dist/data`. Als ersten Schritt von `spaFallbackPlugin().closeBundle()` entfernt `pruneUndeliveredCatalogFiles()` (`vite.config.ts`) dort jede Datei nach dem Muster `catalog.json` oder `catalog-*.json`, die `listCatalogArtifactFileNames()` aus `src/domain/sourceRegistry.mjs` nicht nennt. `SHA256SUMS` bindet damit nur Katalogdateien von `supported`-Registereinträgen, auch wenn `public/data` noch Dateien eines Katalogs mit anderem Lifecycle enthält.
 
 **Titelvertrag.** `scripts/check-seo-titles.mjs` prüft jede gebaute HTML-Datei aus `dist/` auf genau einen `<title>`, ein `og:title`-, ein Meta-Description- und ein `og:image:alt`-Feld ohne Gedankenstrich (U+2014). Maßgeblich ist, was der Browser darstellt: Die Prüfung liest jede Datei mit dem HTML-Parser von jsdom (`DOMParser`) und denselben Selektoren wie der DOM-Regressionstest des Generators. Kommentierte Tags zählen deshalb nicht, ein Attributwert kann kein scheinbares `content` vortäuschen, und ein maskierter Selektorwert wie `name="descript&#105;on"` zählt als zweites Description-Feld. Als `<title>` zählt nur ein Element im HTML-Namespace, wie es auch `document.title` liest: Der Titel eines Inline-SVG ist ein Bildtitel und zählt nicht mit, ein HTML-`<title>` im Body dagegen schon. Jede maskierte Form, die der Parser zu U+2014 auflöst, zählt mit — `&mdash;`, numerisch `&#8212;`/`&#x2014;` sowie die Windows-1252-Abbildung `&#151;`/`&#x97;`, numerisch auch ohne Semikolon; doppelt maskierte Folgen wie `&amp;#8212;` bleiben wörtlich. Fehlendes Ausgabeverzeichnis, null HTML-Dateien, fehlende oder doppelte Felder und Meta-Felder ohne `content` brechen fail-closed ab; die Prüfung repariert nichts. Jedes der vier Felder wird unabhängig von den anderen bewertet: Ein Lauf meldet jeden Verstoß jeder Datei als `Pfad: Feld`, und ein Strukturfehler in einem Feld verdeckt keinen Gedankenstrich in einem anderen. Sie läuft im Build (`spaFallbackPlugin().closeBundle()` in `vite.config.ts`, vor dem Manifest als letztem Schreibschritt), sodass ein Verstoß den Build rot färbt — der Generator-Regressionstest allein sähe ihn nicht, weil er die Quellvorlage statt des gebauten HTML liest. Von Hand: `npm run check:seo-titles -- --dist dist`.
 

@@ -2,6 +2,7 @@
 
 import {
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
@@ -74,7 +75,7 @@ const MODULE_PRELOADS = new Map(
   Object.keys(LAZY_ROUTE_MODULES).map((route) => [route, `assets/${route.slice(1)}-TEST.js`]),
 );
 
-const SUPPORTED_CATALOG_KEYS = ['gspp', 'lieferkette', 'wlan'] as const;
+const SUPPORTED_CATALOG_KEYS = ['gspp', 'lieferkette'] as const;
 
 function createTempDistDir() {
   const dir = mkdtempSync(join(tmpdir(), 'gspp-static-routes-'));
@@ -474,6 +475,26 @@ describe('spaFallbackPlugin closeBundle', () => {
     } finally {
       delete process.env.BUILD_BASE;
     }
+  });
+
+  it('liefert nur die Katalogdateien der ausgelieferten Registereinträge aus', () => {
+    const distDir = createTempDistWithIndex();
+    const dataDir = join(distDir, 'data');
+    mkdirSync(dataDir);
+    const kept = [
+      'catalog-lieferkette-metadata.json', 'catalog-lieferkette.json', 'catalog-metadata.json',
+      'catalog.json', 'upstream-sources-metadata.json', 'vocabularies.json',
+    ];
+    for (const name of [...kept, 'catalog-wlan.json', 'catalog-wlan-metadata.json']) {
+      writeFileSync(join(dataDir, name), '{}');
+    }
+
+    spaFallbackPlugin({ outDir: distDir, catalogs: [], modulePreloads: MODULE_PRELOADS }).closeBundle();
+
+    expect(readdirSync(dataDir).sort()).toEqual(kept);
+    const hashed = [...parseChecksumsManifest(readFileSync(join(distDir, 'SHA256SUMS'), 'utf8')).keys()];
+    expect(hashed).toContain('data/catalog.json');
+    expect(hashed.filter((path) => path.startsWith('data/catalog-wlan'))).toEqual([]);
   });
 
   it('runs only in the build, not when a dev or Vitest server closes', () => {
