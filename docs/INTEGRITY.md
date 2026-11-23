@@ -39,7 +39,7 @@ Die Ausgabemenge wird aus dem Register abgeleitet (`listCatalogArtifactFileNames
 
 Der Einstiegskatalog trägt die Dateinamen ohne Katalogschlüssel, auf denen Deploy- und Cache-Vertrag aufsetzen. Genau ein `supported`-Katalog trägt `entryCatalog: true`; ein Register ohne ausgelieferten Katalog oder ohne genau einen Einstieg schlägt beim Import fail-closed fehl.
 
-Der aktuelle Registerstand liefert drei Kataloge: `catalog-gspp` als Einstieg sowie `catalog-lieferkette` und `catalog-wlan` als bedarfsgerecht geladene Sekundärkataloge. Dazu kommen die beiden generierten Sammelartefakte:
+Der aktuelle Registerstand liefert zwei Kataloge: `catalog-gspp` als Einstieg und `catalog-lieferkette` als bedarfsgerecht geladenen Sekundärkatalog. `catalog-wlan` ist als `draft` registriert und wird nicht ausgeliefert. Dazu kommen die beiden generierten Sammelartefakte:
 
 - `vocabularies.json` — offizielle BSI-Vokabulare (aus CSV konvertiert)
 - `upstream-sources-metadata.json` — Vokabular-Provenance + Upstream-Manifest + rein lesende Katalog-Lineage
@@ -268,8 +268,8 @@ Beispiel (Werte Platzhalter; gezeigt sind nur die Produkteinträge des Manifests
       {
         "artifactKey": "catalog-wlan",
         "rootType": "catalog",
-        "lifecycle": "supported",
-        "path": "control_layer/WLAN/WLAN-resolved_catalog.json",
+        "lifecycle": "draft",
+        "path": "control_layer/WLAN-Enterprise/WLAN-Enterprise-resolved_catalog.json",
         "gitBlobSha": "<git-blob-sha>",
         "contentSha256": "<sha256>"
       }
