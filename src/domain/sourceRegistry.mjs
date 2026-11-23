@@ -93,6 +93,17 @@ export const SOURCE_REGISTRY = Object.freeze(
       title: 'Anwenderkatalog Lieferkettensicherheit',
     },
     {
+      artifactKey: 'catalog-diva',
+      kind: 'oscal',
+      oscalVersion: '1.1.3',
+      expectedRootType: 'catalog',
+      catalogKey: 'diva',
+      upstreamPath: 'control_layer/DIVA/DIVA-resolved_catalog.json',
+      profileUpstreamPath: 'control_layer/DIVA/sources/profiles/DIVA-profile.json',
+      lifecycle: 'supported',
+      title: 'Anwenderkatalog DIVA',
+    },
+    {
       artifactKey: 'catalog-wlan',
       kind: 'oscal',
       oscalVersion: '1.1.3',
