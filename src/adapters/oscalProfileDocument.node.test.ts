@@ -74,11 +74,13 @@ function loadCorpus(root: string): readonly CorpusEntry[] {
 }
 
 describe('Manifestvertrag der Profile', () => {
-  it('führt genau die drei registrierten Profile', () => {
+  it('führt genau die Profile des gepinnten Manifests', () => {
     expect(profileFiles.map((file) => file.artifactKey).sort()).toEqual([
+      'control-layer-diva-sources-profiles-diva-profile',
+      'control-layer-wlan-einzelplatz-und-gastnetze-sources-profiles-wlan-einzelplatz-und-gastnetze-profile',
+      'control-layer-wlan-enterprise-sources-profiles-wlan-enterprise-profile',
       'profile-gspp',
       'profile-lieferkette',
-      'profile-wlan',
     ]);
   });
 });

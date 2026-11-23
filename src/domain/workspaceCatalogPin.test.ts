@@ -88,9 +88,9 @@ describe('withCatalogPins', () => {
   });
 
   it('trägt mehrere Quellkataloge in getrennten Gruppen', () => {
-    const delivery: CatalogDelivery = new Map([['catalog-gspp', { commit: NEW, verified: true }], ['catalog-wlan', { commit: OLD, verified: true }]]);
-    const result = withCatalogPins(profile(), 'profile', [catalogBinding(), { ...catalogBinding('catalog-wlan'), pointer: '/profile/imports/1/href' }], delivery);
-    expect(result.ok && readCatalogPins(result.source, 'profile')).toEqual(new Map([['gspp', NEW], ['wlan', OLD]]));
+    const delivery: CatalogDelivery = new Map([['catalog-gspp', { commit: NEW, verified: true }], ['catalog-lieferkette', { commit: OLD, verified: true }]]);
+    const result = withCatalogPins(profile(), 'profile', [catalogBinding(), { ...catalogBinding('catalog-lieferkette'), pointer: '/profile/imports/1/href' }], delivery);
+    expect(result.ok && readCatalogPins(result.source, 'profile')).toEqual(new Map([['gspp', NEW], ['lieferkette', OLD]]));
   });
 
   it('lässt ein passendes Paar und fremde Props unverändert', () => {
@@ -235,12 +235,12 @@ describe('applyCatalogPins', () => {
   });
 
   it('hält eine falsch gebundene Katalogbindung auch zurück, wenn ein anderer Katalog nicht verifiziert ist', () => {
-    const wlan: WorkspaceBinding = { ...catalogBinding('catalog-wlan'), pointer: '/profile/imports/1/href' };
-    const delivery: CatalogDelivery = new Map([['catalog-gspp', { commit: NEW, verified: true }], ['catalog-wlan', { commit: null, verified: false }]]);
-    const members = [{ localId: ID, rootType: 'profile' as const, source: profile([...pin('gspp', OLD), ...pin('wlan', NEW)]) }];
-    const result = applyCatalogPins(members, [catalogBinding(), wlan], delivery);
+    const lieferkette: WorkspaceBinding = { ...catalogBinding('catalog-lieferkette'), pointer: '/profile/imports/1/href' };
+    const delivery: CatalogDelivery = new Map([['catalog-gspp', { commit: NEW, verified: true }], ['catalog-lieferkette', { commit: null, verified: false }]]);
+    const members = [{ localId: ID, rootType: 'profile' as const, source: profile([...pin('gspp', OLD), ...pin('lieferkette', NEW)]) }];
+    const result = applyCatalogPins(members, [catalogBinding(), lieferkette], delivery);
     expect(result.pins.get(ID)?.state).toBe('unverified');
     expect(result.withheld).toEqual([catalogBinding()]);
-    expect(result.bindings).toEqual([wlan]);
+    expect(result.bindings).toEqual([lieferkette]);
   });
 });
