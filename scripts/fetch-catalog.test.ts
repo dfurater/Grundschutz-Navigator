@@ -21,6 +21,9 @@ import {
 import { sha256Hex } from './vocabulary-utils.mjs';
 import {
   SOURCE_REGISTRY,
+  SUPPORTED_CATALOGS,
+  catalogDataFileName,
+  catalogMetadataFileName,
   listCatalogArtifactFileNames,
 } from '../src/domain/sourceRegistry.mjs';
 
@@ -57,10 +60,11 @@ const MINIMAL_OUTPUT_ARTIFACT_FILE_NAMES = [
 /**
  * Der zweite Katalog des Fixtures nutzt einen real registrierten Upstream-Pfad:
  * `assertRegisteredUpstreamRepoPath` ist ein echter Guard und liest bewusst das
- * reale Quellregister, nicht die Fixture-Liste. Nur der Lifecycle wird im
- * Fixture auf `supported` gehoben — das Repository bleibt unverändert.
+ * reale Quellregister, nicht die Fixture-Liste. Schlüssel und Pfad stammen
+ * deshalb vom ersten ausgelieferten Katalog neben dem Einstiegskatalog.
  */
-const SECOND_CATALOG_PATH = 'control_layer/WLAN/WLAN-resolved_catalog.json';
+const SECOND_SUPPORTED_CATALOG = SUPPORTED_CATALOGS.find((entry) => entry.entryCatalog !== true)!;
+const SECOND_CATALOG_PATH = SECOND_SUPPORTED_CATALOG.upstreamPath;
 /** Bewusst eine andere gepinnte Version: die Lane darf keine gemeinsame annehmen. */
 const SECOND_CATALOG_OSCAL_VERSION = '1.1.2';
 const temporaryOutputDirectories = new Set<string>();
@@ -114,24 +118,26 @@ const MINIMAL_REGISTRY = [
 ] as const;
 
 /**
- * Fixture-Register mit zwei `supported`-Katalogen (GSPP-284). Die reale
- * Registry liefert genau einen aus, und dieses Issue ändert keinen Lifecycle —
- * ohne Fixture wäre die Ableitung der Ausgabemenge nicht beobachtbar.
+ * Fixture-Register mit genau zwei `supported`-Katalogen (GSPP-284). Es hält die
+ * Ableitung der Ausgabemenge unabhängig davon beobachtbar, wie viele Kataloge
+ * das reale Register gerade ausliefert.
  */
 const TWO_CATALOG_REGISTRY = [
   MINIMAL_REGISTRY[0],
   {
-    artifactKey: 'catalog-wlan',
+    artifactKey: SECOND_SUPPORTED_CATALOG.artifactKey,
     kind: 'oscal',
     oscalVersion: SECOND_CATALOG_OSCAL_VERSION,
     expectedRootType: 'catalog',
-    catalogKey: 'wlan',
+    catalogKey: SECOND_SUPPORTED_CATALOG.catalogKey,
     upstreamPath: SECOND_CATALOG_PATH,
     lifecycle: 'supported',
     title: 'Zweitkatalog',
   },
   MINIMAL_REGISTRY[1],
 ] as const;
+const SECOND_DATA_FILE = catalogDataFileName(TWO_CATALOG_REGISTRY[1]);
+const SECOND_METADATA_FILE = catalogMetadataFileName(TWO_CATALOG_REGISTRY[1]);
 
 const LINEAGE_PROFILE_PATH = 'control_layer/Grundschutz++/sources/profiles/Grundschutz++-profile.json';
 const LINEAGE_SOURCE_FIXTURES = [
@@ -1303,16 +1309,7 @@ describe('fetch-catalog', () => {
     );
     const requestedUrls = fetchMock.mock.calls.map(([input]) => inputUrl(input));
 
-    expect(payload.artifacts.map((artifact) => artifact.fileName)).toEqual([
-      'catalog.json',
-      'catalog-metadata.json',
-      'catalog-lieferkette.json',
-      'catalog-lieferkette-metadata.json',
-      'catalog-wlan.json',
-      'catalog-wlan-metadata.json',
-      'vocabularies.json',
-      'upstream-sources-metadata.json',
-    ]);
+    expect(payload.artifacts.map((artifact) => artifact.fileName)).toEqual([...OUTPUT_ARTIFACT_FILE_NAMES]);
     expect(requestedUrls).not.toContain(rawUrl(unclassifiedPath));
     const manifest = parseArtifactJson(payload, 'upstream-sources-metadata.json').manifest;
     const profileCount = SOURCE_REGISTRY.filter(
@@ -1419,8 +1416,8 @@ describe('upstream manifest v2', () => {
       expect(payload.artifacts.map((artifact) => artifact.fileName)).toEqual([
         'catalog.json',
         'catalog-metadata.json',
-        'catalog-wlan.json',
-        'catalog-wlan-metadata.json',
+        SECOND_DATA_FILE,
+        SECOND_METADATA_FILE,
         'vocabularies.json',
         'upstream-sources-metadata.json',
       ]);
@@ -1430,18 +1427,18 @@ describe('upstream manifest v2', () => {
       const { payload, secondCatalogText, catalogText } = await buildTwoCatalogArtifacts();
 
       const entryMetadata = parseArtifactJson(payload, 'catalog-metadata.json');
-      const secondMetadata = parseArtifactJson(payload, 'catalog-wlan-metadata.json');
+      const secondMetadata = parseArtifactJson(payload, SECOND_METADATA_FILE);
 
       expect(entryMetadata.artifactKey).toBe('catalog-gspp');
       expect(entryMetadata.catalogKey).toBe('gspp');
       expect(entryMetadata.oscalVersion).toBe(CATALOG_OSCAL_VERSION);
       expect(entryMetadata.source.file).toBe(OFFICIAL_CATALOG_PATH);
       expect(entryMetadata.title).toBe(parseArtifactJson(payload, 'catalog.json').catalog.metadata.title);
-      expect(secondMetadata.title).toBe(parseArtifactJson(payload, 'catalog-wlan.json').catalog.metadata.title);
+      expect(secondMetadata.title).toBe(parseArtifactJson(payload, SECOND_DATA_FILE).catalog.metadata.title);
       expect(entryMetadata.integrity.sha256).toBe(sha256Hex(Buffer.from(catalogText, 'utf8')));
 
-      expect(secondMetadata.artifactKey).toBe('catalog-wlan');
-      expect(secondMetadata.catalogKey).toBe('wlan');
+      expect(secondMetadata.artifactKey).toBe(SECOND_SUPPORTED_CATALOG.artifactKey);
+      expect(secondMetadata.catalogKey).toBe(SECOND_SUPPORTED_CATALOG.catalogKey);
       expect(secondMetadata.oscalVersion).toBe(SECOND_CATALOG_OSCAL_VERSION);
       expect(secondMetadata.source.file).toBe(SECOND_CATALOG_PATH);
       expect(secondMetadata.integrity.sha256).toBe(
@@ -1473,24 +1470,24 @@ describe('upstream manifest v2', () => {
       await expect(
         readdir(outputDirectory).then((fileNames) => fileNames.sort()),
       ).resolves.toEqual([
-        'catalog-metadata.json',
-        'catalog-wlan-metadata.json',
-        'catalog-wlan.json',
         'catalog.json',
+        'catalog-metadata.json',
+        SECOND_DATA_FILE,
+        SECOND_METADATA_FILE,
         'upstream-sources-metadata.json',
         'vocabularies.json',
-      ]);
+      ].sort());
     });
 
     it('lehnt eine nicht aus dem Register abgeleitete Ausgabedatei ab', async () => {
       const { payload } = await buildTwoCatalogArtifacts();
       const outputDirectory = await makeTemporaryOutputDirectoryPath();
 
-      // Dasselbe Payload gegen das Einzelkatalog-Register: `catalog-wlan.json`
-      // ist dort nicht abgeleitet und darf nicht geschrieben werden.
+      // Dasselbe Payload gegen das Einzelkatalog-Register: die Datendatei des
+      // Zweitkatalogs ist dort nicht abgeleitet und darf nicht geschrieben werden.
       await expect(
         writeArtifacts(payload, outputDirectory, { registryEntries: MINIMAL_REGISTRY }),
-      ).rejects.toThrow('fetch-catalog payload contains an unexpected file: catalog-wlan.json');
+      ).rejects.toThrow(`fetch-catalog payload contains an unexpected file: ${SECOND_DATA_FILE}`);
     });
 
     it('hält die Einzelkatalog-Ausgabemenge unverändert', async () => {

@@ -13,6 +13,10 @@ import type { CatalogKey } from '../src/domain/sourceRegistry';
 import { catalogDataFileName, catalogMetadataFileName, listSupportedCatalogs } from '../src/domain/sourceRegistry.mjs';
 import { STATIC_CONTENT_TITLES, listSeoRouteMetadata, loadPublicSeoCatalogs, writeSeoRouteEntries } from './seoRouteEntries';
 
+/** Ein ausgelieferter Katalog neben dem Einstiegskatalog, aus dem realen Register. */
+const SECOND_SUPPORTED_CATALOG = listSupportedCatalogs().find(entry => entry.entryCatalog !== true)!;
+const SECOND_CATALOG_KEY = SECOND_SUPPORTED_CATALOG.catalogKey as CatalogKey;
+
 const { JSDOM } = createRequire(import.meta.url)('jsdom') as {
   JSDOM: new (html: string) => { window: { document: Document; DOMParser: typeof DOMParser; close(): void } };
 };
@@ -76,9 +80,9 @@ describe('listSeoRouteMetadata', () => {
   });
 
   it('keeps identical control IDs and alternate identifiers scoped to each catalog', () => {
-    const entries = listSeoRouteMetadata([catalog('gspp', 'One'), catalog('wlan', 'Two')]);
+    const entries = listSeoRouteMetadata([catalog('gspp', 'One'), catalog(SECOND_CATALOG_KEY, 'Two')]);
     expect(entries).toContainEqual({ path: '/katalog/gspp/kontrolle/control-uuid', title: 'GC.1.1: ISMS | One' });
-    expect(entries).toContainEqual({ path: '/katalog/wlan/kontrolle/control-uuid', title: 'GC.1.1: ISMS | Two' });
+    expect(entries).toContainEqual({ path: `/katalog/${SECOND_CATALOG_KEY}/kontrolle/control-uuid`, title: 'GC.1.1: ISMS | Two' });
   });
 
   it('skips unaddressable groups while preserving their addressable topics and controls', () => {
@@ -117,7 +121,7 @@ describe('loadPublicSeoCatalogs', () => {
 
   it('fails on missing supported artifacts', () => {
     const directory = prepareData();
-    rmSync(join(directory, 'catalog-wlan.json'));
+    rmSync(join(directory, catalogDataFileName(SECOND_SUPPORTED_CATALOG)));
     expect(() => loadPublicSeoCatalogs(directory)).toThrow();
   });
 
@@ -158,7 +162,7 @@ describe('writeSeoRouteEntries', () => {
     const raw = rawCatalog();
     raw.controls[0].props[0].value = 'ctl 1';
     raw.groups[0].groups[0].controls[0].props[0].value = 'Kontrolle ü';
-    const entries = listSeoRouteMetadata([parseCatalog(raw, { catalogKey: 'gspp' }), catalog('wlan')]);
+    const entries = listSeoRouteMetadata([parseCatalog(raw, { catalogKey: 'gspp' }), catalog(SECOND_CATALOG_KEY)]);
     writeSeoRouteEntries(directory, entries, BASE_URL);
     for (const entry of entries) {
       const file = routeHtmlFile(entry.path);
