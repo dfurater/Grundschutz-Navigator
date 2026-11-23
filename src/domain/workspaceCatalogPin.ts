@@ -34,6 +34,8 @@ export interface CatalogPin {
   readonly pending: readonly string[];
   /** Der Zustand stammt aus einem lokal referenzierten Dokument; sperrt Prüfaktionen, nicht das Bearbeiten. */
   readonly inherited?: true;
+  /** Mindestens ein gebundener Katalog ist registriert, wird aber nicht ausgeliefert; auch ein neuerer Stand anderer Kataloge hebt die Sperre nicht auf. */
+  readonly undelivered?: true;
 }
 
 export const CATALOG_PIN_PATH = '/metadata/props';
@@ -140,6 +142,7 @@ export function catalogPinStatus(
   const offers: string[] = [];
   const withheld: string[] = [];
   const pending: string[] = [];
+  let undelivered = false;
   for (const artifactKey of scope.artifacts) {
     const catalogKey = catalogKeyByArtifact.get(artifactKey)!;
     const shipped = shippedArtifacts.has(artifactKey);
@@ -148,11 +151,13 @@ export function catalogPinStatus(
     if (found === 'unpinned' || found === 'not-delivered') {
       // Ein nicht ausgelieferter Katalog hat keinen Stand, an den ein Angebot binden könnte.
       if (shipped) offers.push(catalogKey);
+      else undelivered = true;
       withheld.push(artifactKey);
     }
     if (worse(found, state)) state = found;
   }
-  return { state, code: CODES[state], offers, withheld, pending };
+  const pin: CatalogPin = { state, code: CODES[state], offers, withheld, pending };
+  return undelivered ? { ...pin, undelivered: true } : pin;
 }
 
 /**

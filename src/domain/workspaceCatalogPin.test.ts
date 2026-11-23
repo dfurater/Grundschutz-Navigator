@@ -58,7 +58,17 @@ describe('catalogPinStatus', () => {
   ] as const)('sperrt ein Dokument eines nicht ausgelieferten Katalogs %s als not-delivered', (_label, props, bindings) => {
     const status = catalogPinStatus(profile(props ? [...props] : undefined), 'profile', [...bindings], delivered(NEW));
     expect(status).toEqual({
-      state: 'not-delivered', code: WORKSPACE_DIAGNOSTIC_CODES.catalogPinNotDelivered, offers: [], withheld: [undelivered.artifactKey], pending: [],
+      state: 'not-delivered', code: WORKSPACE_DIAGNOSTIC_CODES.catalogPinNotDelivered, offers: [], withheld: [undelivered.artifactKey], pending: [], undelivered: true,
+    });
+    expect(editLocked(status)).toBe(true);
+  });
+
+  it('meldet den nicht ausgelieferten Katalog auch neben einem ersetzten ausgelieferten Stand', () => {
+    const props = [...pin('gspp', OLD), ...pin(undelivered.catalogKey!, OLD)];
+    const status = catalogPinStatus(profile(props), 'profile', [catalogBinding(), catalogBinding(undelivered.artifactKey)], delivered(NEW));
+    expect(status).toEqual({
+      state: 'not-delivered', code: WORKSPACE_DIAGNOSTIC_CODES.catalogPinNotDelivered,
+      offers: ['gspp'], withheld: ['catalog-gspp', undelivered.artifactKey], pending: [], undelivered: true,
     });
     expect(editLocked(status)).toBe(true);
   });
