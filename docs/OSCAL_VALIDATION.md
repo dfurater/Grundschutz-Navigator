@@ -1150,7 +1150,7 @@ werden.
   bleiben), das BSI-Werkzeug entfernt sie (#SENS.8.6 u. a.). Kein
   Regelwerk erfüllt beide; der Resolver folgt NIST/ADR-2, die BSI-
   Differenzen stehen im Korpus-Harniss in einer festen, reviewbaren Registry:
-  21 konkrete Linkentfernungen und eine konkrete Positionsabweichung. Das
+  46 konkrete Linkentfernungen und eine konkrete Positionsabweichung. Das
   erwartete BSI-Dokument steuert diese Rekonziliation nicht.
 - NIST-Whitespace-Artefakte (XML-Rest) werden ausschließlich in `prose`,
   `params[].select.choice[]` und `citation.text` symmetrisch normalisiert.
@@ -1168,7 +1168,7 @@ werden.
 Der Wartungssync `scripts/sync-oscal-content-oracle.mjs` begrenzt jeden Download auf 10 MiB. Fehlende Manifeste erlauben den Erstlauf; ein vorhandenes `ORACLE_MANIFEST.json` verlangt `--force`. Vor dem ersten Download brechen ab: ein vorhandenes Manifest ohne `--force`, ungültiges JSON, ein ungültiger Commit-Pin sowie ungültige oder doppelte Dateipins. Bei unverändertem Commit-Pin muss der Dateisatz zusätzlich schon vor dem ersten Download genau die zwölf erwarteten Artefakte abdecken — Quellkatalog, vier Baseline-Profile und vier aufgelöste Kataloge aus SP 800-53 rev5 sowie die drei SSP-Beispiele aus `examples/ssp/json/`, die `src/adapters/oscalSspDocument.node.test.ts` als Positivorakel nutzt; fehlende oder zusätzliche Dateipins, auch formal gültige, brechen ab. Erst nach dem jeweiligen Download prüft der Sync, ob SHA-256 und Dateigröße mit dem Pin gleichen Dateinamens übereinstimmen. Alle zwölf Downloads werden vor dem ersten Schreiben geprüft; ein Download- oder Prüffehler lässt den vorhandenen Fixture-Satz einschließlich Manifest unverändert. Ein geänderter Commit-Pin ist ein bewusster Erstabgleich mit neu erzeugten Hashes; seine alten Dateipins durchlaufen nur die Strukturprüfung. Schreibfehler nach erfolgreicher Prüfung können einen teilweise geschriebenen Satz hinterlassen; der Wartungslauf bietet keine atomare Dateisystem-Transaktion.
 
 - **Realer Ausschnitt:** Vergleich gegen gepinnte, gehashte JSON-
-  Ergebnisse von BSI (3 resolved_catalogs) und NIST (4 Baselines
+  Ergebnisse von BSI (4 resolved_catalogs) und NIST (4 Baselines
   v1.5.0, Min-Variante, SHA-256-gepinnt unter
   `src/test/fixtures/oscal-content-v1.5.0/`). Volatile Felder
   (`metadata.last-modified`, Dokument-UUID am Körper,
