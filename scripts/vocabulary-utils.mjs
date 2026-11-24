@@ -90,11 +90,28 @@ function walkJson(value, visit) {
   Object.values(value).forEach((child) => walkJson(child, visit));
 }
 
+/**
+ * BSI-Namespaces, die Kataloge am gepinnten Snapshot referenzieren, deren CSV
+ * das BSI aber nicht veröffentlicht hat: `Taxonomy-L1` bis `-L4` in
+ * WLAN-Enterprise und WLAN-Einzelplatz-und-Gastnetze (gemeldet in
+ * BSI-Bund/Stand-der-Technik-Bibliothek#121). Sie bleiben reine
+ * Namensraum-Kennungen ohne Vokabular. Der Vergleich ist exakt; jede andere
+ * nicht auflösbare CSV-Angabe bricht weiter ab.
+ * shortcut: feste Liste statt Auflösung, entfällt mit GSPP-726, sobald das BSI die Dateien veröffentlicht.
+ */
+export const UNRESOLVED_BSI_NAMESPACE_URLS = Object.freeze([
+  'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/blob/main/documentation/namespaces/L1-NIST%20Funktionen.csv',
+  'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/blob/main/documentation/namespaces/L2-Technologiedom%C3%A4nen.csv',
+  'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/blob/main/documentation/namespaces/L3-Produktkategorien.csv',
+  'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/blob/main/documentation/namespaces/L4-Produkt-%20und%20Servicegruppen.csv',
+]);
+const UNRESOLVED_BSI_NAMESPACE_URL_SET = new Set(UNRESOLVED_BSI_NAMESPACE_URLS);
+
 export function extractReferencedNamespaceUrls(catalogDocument, repository) {
   const urls = new Set();
 
   walkJson(catalogDocument, (entry) => {
-    if (typeof entry.ns !== 'string') {
+    if (typeof entry.ns !== 'string' || UNRESOLVED_BSI_NAMESPACE_URL_SET.has(entry.ns)) {
       return;
     }
 
