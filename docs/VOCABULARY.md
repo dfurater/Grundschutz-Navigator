@@ -6,6 +6,8 @@ Offizielle BSI-Vokabular-Auflösung: Anzeige der BSI-Definitionen für Werte im 
 
 Die Anwendung liefert alle 13 CSV-Dateien aus `documentation/namespaces/` im gepinnten BSI-Snapshot aus. Welche Vokabulare einzelne OSCAL-Props auflösen, bestimmen die katalogseitigen `ns`-Referenzen (`resolveVocabularyProp` nutzt `prop.ns` + `prop.value`); die Auslieferungs-Membership leitet sich unabhängig davon aus dem registrierten Verzeichnis ab (`materializeVocabularyCollectionMembers` in `scripts/vocabulary-utils.mjs`).
 
+Die Props `Taxonomy-L1` bis `Taxonomy-L4` der WLAN-Kataloge verweisen auf vier CSV-Dateien, die im BSI-Tree fehlen. Diese vier `ns`-Werte stehen exakt in `UNRESOLVED_BSI_NAMESPACE_URLS` (`scripts/vocabulary-utils.mjs`); der Fetch übergeht sie, und Props mit diesen Namespaces bleiben ohne Vokabular-Definition. Jede andere HTTP(S)-`ns`-Angabe auf eine CSV-Datei bricht den Fetch ab, sofern sie nicht als `tree/main`-URL auf ein direktes, im gepinnten Tree vorhandenes `.csv`-Mitglied des registrierten Verzeichnisses zeigt.
+
 | Vokabular | Datei |
 |-----------|-------|
 | Handlungsworte | `action_words.csv` |
