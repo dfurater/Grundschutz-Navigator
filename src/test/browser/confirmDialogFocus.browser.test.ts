@@ -30,7 +30,8 @@ test('hält Shift+Tab vom Startfokus auf der Überschrift im Formulardialog', as
     confirmLabel: 'Freigabe zurücknehmen',
     onConfirm: () => {},
     onCancel: () => {},
-  }, createElement('label', null, 'Anlass', createElement('textarea')))));
+    children: createElement('label', null, 'Anlass', createElement('textarea')),
+  })));
 
   const heading = document.querySelector('h2')!;
   expect(document.activeElement).toBe(heading);
