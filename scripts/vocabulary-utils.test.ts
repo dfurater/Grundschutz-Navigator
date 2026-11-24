@@ -212,11 +212,14 @@ describe('Namespace-Extraktion und CSV-Aufbereitung', () => {
   });
 
   it('überspringt genau die vier nicht veröffentlichten Taxonomie-Namespaces', () => {
-    const unresolved = [...UNRESOLVED_BSI_NAMESPACE_URLS];
-    expect(unresolved).toHaveLength(4);
-    expect(unresolved).toContain(
-      `${OFFICIAL_BSI_REPOSITORY_URL}/blob/main/${upstreamDirectory}/L2-Technologiedom%C3%A4nen.csv`,
-    );
+    // Sollwerte unabhängig von der Produktionsliste: exakte BSI-Schreibweise am Snapshot dc44ea4.
+    const unresolved = [
+      'L1-NIST%20Funktionen.csv',
+      'L2-Technologiedom%C3%A4nen.csv',
+      'L3-Produktkategorien.csv',
+      'L4-Produkt-%20und%20Servicegruppen.csv',
+    ].map((fileName) => `${OFFICIAL_BSI_REPOSITORY_URL}/blob/main/${upstreamDirectory}/${fileName}`);
+    expect(UNRESOLVED_BSI_NAMESPACE_URLS).toEqual(unresolved);
     const catalog = {
       catalog: {
         groups: [{ controls: [{ props: [
