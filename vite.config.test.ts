@@ -75,7 +75,7 @@ const MODULE_PRELOADS = new Map(
   Object.keys(LAZY_ROUTE_MODULES).map((route) => [route, `assets/${route.slice(1)}-TEST.js`]),
 );
 
-const SUPPORTED_CATALOG_KEYS = ['gspp', 'lieferkette'] as const;
+const SUPPORTED_CATALOG_KEYS = ['gspp', 'lieferkette', 'diva'] as const;
 
 function createTempDistDir() {
   const dir = mkdtempSync(join(tmpdir(), 'gspp-static-routes-'));
