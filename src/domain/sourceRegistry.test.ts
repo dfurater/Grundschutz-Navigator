@@ -38,6 +38,7 @@ const EXPECTED_CATALOG_KEYS = [
   'lieferkette',
   'diva',
   'wlan',
+  'wlan-gastnetze',
   'mindeststandard-tls',
 ] as const satisfies readonly CatalogKey[];
 
@@ -68,12 +69,13 @@ describe('sourceRegistry', () => {
     expect(ENTRY_CATALOG.entryCatalog).toBe(true);
   });
 
-  it('ships the entry, Lieferkette and DIVA catalogs', () => {
-    expect(SUPPORTED_CATALOG_KEYS).toEqual(['gspp', 'lieferkette', 'diva']);
+  it('ships the entry, Lieferkette, DIVA and WLAN guest network catalogs', () => {
+    expect(SUPPORTED_CATALOG_KEYS).toEqual(['gspp', 'lieferkette', 'diva', 'wlan-gastnetze']);
     expect(SUPPORTED_CATALOGS.map((entry) => entry.artifactKey)).toEqual([
       'catalog-gspp',
       'catalog-lieferkette',
       'catalog-diva',
+      'catalog-wlan-gastnetze',
     ]);
   });
 
@@ -83,6 +85,7 @@ describe('sourceRegistry', () => {
       'catalog-diva',
       'catalog-gspp',
       'catalog-lieferkette',
+      'catalog-wlan-gastnetze',
       'namespaces-bsi',
     ]);
   });
@@ -93,6 +96,7 @@ describe('sourceRegistry', () => {
       'namespaces-bsi',
       'catalog-lieferkette',
       'catalog-diva',
+      'catalog-wlan-gastnetze',
       'catalog-wlan',
       'catalog-mindeststandard-tls',
     ]);
@@ -250,6 +254,7 @@ describe('sourceRegistry', () => {
       'catalog-gspp': '1.1.3',
       'catalog-lieferkette': '1.1.3',
       'catalog-mindeststandard-tls': '1.1.3',
+      'catalog-wlan-gastnetze': '1.1.3',
       'catalog-wlan': '1.1.3',
     };
 
@@ -400,6 +405,8 @@ describe('sourceRegistry', () => {
         'catalog-lieferkette-metadata.json',
         'catalog-diva.json',
         'catalog-diva-metadata.json',
+        'catalog-wlan-gastnetze.json',
+        'catalog-wlan-gastnetze-metadata.json',
       ]);
     });
 

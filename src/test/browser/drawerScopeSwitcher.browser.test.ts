@@ -19,6 +19,7 @@ const CATALOGS = [
   { key: 'gspp', title: 'Anwenderkatalog Grundschutz++' },
   { key: 'lieferkette', title: 'Supply Chain Security' },
   { key: 'diva', title: 'DIVA - Durchgängige Identitätsprüfung, Verifikation und Absicherung' },
+  { key: 'wlan-gastnetze', title: 'Stand der Technik WLAN-Personal- und Gastnetze mit gemeinsamem Kennwort' },
 ] as const;
 const PROFILES = [
   { width: 390, height: 844, touch: true },
