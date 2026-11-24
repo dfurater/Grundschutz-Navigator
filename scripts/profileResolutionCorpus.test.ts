@@ -9,7 +9,7 @@
 // den gepinnten Snapshot geprüft hat.
 //
 // Zweigeteilter Referenznachweis:
-// 1. BSI-Seite (dieser Harniss): Vergleich gegen die drei ausgelieferten
+// 1. BSI-Seite (dieser Harniss): Vergleich gegen die ausgelieferten
 //    resolved_catalogs nach Entfernung dokumentierter volatiler Felder.
 // 2. NIST-Seite + synthetische Fixtures: eigene Suite (hergeleitete
 //    Spezifikationstests, kein unabhängiges Orakel).
@@ -40,7 +40,7 @@ import {
 } from '@/domain/profileResolutionBudget';
 
 /**
- * Die Kennzahlen je Profil, gesammelt über die drei Tests. Der abschließende
+ * Die Kennzahlen je Profil, gesammelt über die Auflösungstests. Der abschließende
  * Test gibt sie als Tabelle aus: `docs/OSCAL_VALIDATION.md` führt dieselben
  * Zahlen, und ohne eine Stelle, die sie reproduzierbar erzeugt, wäre die
  * Dokumentation eine Behauptung ohne Quelle.
@@ -131,7 +131,7 @@ describe('Korpus-Cache', () => {
   });
 });
 
-describe('verpflichtende Auflösung aller drei BSI-Profile', () => {
+describe('verpflichtende Auflösung aller ausgelieferten BSI-Profile', () => {
   for (const entry of PROFILED_CATALOGS) {
     it(`löst das Profil von ${entry.artifactKey} deterministisch auf und vergleicht gegen den BSI-Katalog`, async () => {
       requireCorpus();
@@ -274,7 +274,7 @@ describe('verpflichtende Auflösung aller drei BSI-Profile', () => {
   }
 });
 
-describe('Kopfraum der drei BSI-Profile', () => {
+describe('Kopfraum der ausgelieferten BSI-Profile', () => {
   it('gibt die vier Budgetkennzahlen als Protokolltabelle aus', () => {
     requireCorpus();
     expect(corpusUsage.size).toBe(PROFILED_CATALOGS.length);
