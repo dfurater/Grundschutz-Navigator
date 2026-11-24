@@ -15,6 +15,7 @@ export type ManifestRootType = OscalRootType | 'vocabulary';
 export type CatalogKey =
   | 'gspp'
   | 'lieferkette'
+  | 'diva'
   | 'wlan'
   | 'mindeststandard-tls';
 

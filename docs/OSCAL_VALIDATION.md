@@ -365,6 +365,7 @@ laufenden Zähler als Tabelle aus.
 | --- | --- | --- | --- | --- |
 | `profile-gspp` | 207 887 | 76 949 | 19 | 0 |
 | `profile-lieferkette` | 37 679 | 11 807 | 17 | 0 |
+| `control-layer-diva-sources-profiles-diva-profile` | 47 259 | 13 911 | 15 | 0 |
 
 Das teuerste Profil liegt bei rund einem Achtzigstel der Arbeitsgrenze.
 
