@@ -214,6 +214,9 @@ describe('Namespace-Extraktion und CSV-Aufbereitung', () => {
   it('überspringt genau die vier nicht veröffentlichten Taxonomie-Namespaces', () => {
     const unresolved = [...UNRESOLVED_BSI_NAMESPACE_URLS];
     expect(unresolved).toHaveLength(4);
+    expect(unresolved).toContain(
+      `${OFFICIAL_BSI_REPOSITORY_URL}/blob/main/${upstreamDirectory}/L2-Technologiedom%C3%A4nen.csv`,
+    );
     const catalog = {
       catalog: {
         groups: [{ controls: [{ props: [
