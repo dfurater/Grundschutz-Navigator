@@ -1182,11 +1182,11 @@ verbindlicher Umsetzungsmaßstab, weil keine konkurrierende Norm existiert.
 Vollständige Konformität wird weder für hergeleitete Fixtures noch insgesamt
 behauptet.
 
-**Abdeckungsgrenzen:** Der BSI-Realkorpus (3 Profile am Snapshot 9008ca0)
-deckt `include-all`, `include-controls`, `as-is` und `set-parameters`
-ab. Nicht im Realkorpus und deshalb nur über synthetische Fixtures
-belegt: `exclude-controls`, `with-child-controls`, `matching`,
-`combine`, `flat`/`custom`, `alters`, Profilketten. Ein bestandener
+**Abdeckungsgrenzen:** Der BSI-Realkorpus (4 Profile am Snapshot dc44ea4)
+deckt `include-all`, `include-controls`, `as-is`, `custom`,
+`set-parameters` und `alters` ab. Nicht im Realkorpus und deshalb nur über
+synthetische Fixtures belegt: `exclude-controls`, `with-child-controls`,
+`matching`, `combine`, `flat`, Profilketten. Ein bestandener
 Realkorpuslauf darf nie als Nachweis vollständiger Semantik ausgegeben
 werden.
 
