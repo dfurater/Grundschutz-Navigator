@@ -1183,10 +1183,10 @@ Vollständige Konformität wird weder für hergeleitete Fixtures noch insgesamt
 behauptet.
 
 **Abdeckungsgrenzen:** Der BSI-Realkorpus (4 Profile am Snapshot dc44ea4)
-deckt `include-all`, `include-controls`, `as-is`, `custom`,
-`set-parameters` und `alters` ab. Nicht im Realkorpus und deshalb nur über
-synthetische Fixtures belegt: `exclude-controls`, `with-child-controls`,
-`matching`, `combine`, `flat`, Profilketten. Ein bestandener
+deckt `include-all`, `include-controls`, `with-child-controls: no`, `as-is`,
+`custom`, `set-parameters` und `alters` ab. Nicht im Realkorpus und deshalb
+nur über synthetische Fixtures belegt: `exclude-controls`,
+`with-child-controls: yes`, `matching`, `combine`, `flat`, Profilketten. Ein bestandener
 Realkorpuslauf darf nie als Nachweis vollständiger Semantik ausgegeben
 werden.
 
