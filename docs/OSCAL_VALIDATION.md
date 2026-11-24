@@ -356,6 +356,7 @@ laufenden Zähler als Tabelle aus.
 | `profile-gspp` | 207 887 | 76 949 | 19 | 0 |
 | `profile-lieferkette` | 37 679 | 11 807 | 17 | 0 |
 | `control-layer-diva-sources-profiles-diva-profile` | 47 259 | 13 911 | 15 | 0 |
+| `control-layer-wlan-einzelplatz-und-gastnetze-sources-profiles-wlan-einzelplatz-und-gastnetze-profile` | 27 265 | 5 357 | 13 | 0 |
 
 Das teuerste Profil liegt bei rund einem Achtzigstel der Arbeitsgrenze.
 
@@ -1135,11 +1136,11 @@ verbindlicher Umsetzungsmaßstab, weil keine konkurrierende Norm existiert.
 Vollständige Konformität wird weder für hergeleitete Fixtures noch insgesamt
 behauptet.
 
-**Abdeckungsgrenzen:** Der BSI-Realkorpus (3 Profile am Snapshot 9008ca0)
-deckt `include-all`, `include-controls`, `as-is` und `set-parameters`
-ab. Nicht im Realkorpus und deshalb nur über synthetische Fixtures
-belegt: `exclude-controls`, `with-child-controls`, `matching`,
-`combine`, `flat`/`custom`, `alters`, Profilketten. Ein bestandener
+**Abdeckungsgrenzen:** Der BSI-Realkorpus (4 Profile am Snapshot dc44ea4)
+deckt `include-all`, `include-controls`, `with-child-controls: no`, `as-is`,
+`custom`, `set-parameters` und `alters` ab. Nicht im Realkorpus und deshalb
+nur über synthetische Fixtures belegt: `exclude-controls`,
+`with-child-controls: yes`, `matching`, `combine`, `flat`, Profilketten. Ein bestandener
 Realkorpuslauf darf nie als Nachweis vollständiger Semantik ausgegeben
 werden.
 

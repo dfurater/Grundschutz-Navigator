@@ -17,6 +17,7 @@ export type CatalogKey =
   | 'lieferkette'
   | 'diva'
   | 'wlan'
+  | 'wlan-gastnetze'
   | 'mindeststandard-tls';
 
 export interface OscalArtifactEntry {
