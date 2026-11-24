@@ -769,7 +769,7 @@ describe('Fail-closed-Abweisungen', () => {
     try {
       parseComponentDefinitionDocument(makeComponentDefinitionWithoutComponents(), {
         ...context,
-        upstreamPath: 'control_layer/WLAN/WLAN-resolved_catalog.json',
+        upstreamPath: 'control_layer/Lieferkettensicherheit/Lieferkettensicherheit-resolved_catalog.json',
       });
     } catch (error) {
       thrown = error;
@@ -777,7 +777,7 @@ describe('Fail-closed-Abweisungen', () => {
 
     expect(thrown).toBeInstanceOf(OscalRootDispatchError);
     expect((thrown as OscalRootDispatchError).diagnostic.code).toBe('OSCAL_ROOT_TYPE_MISMATCH');
-    expect((thrown as OscalRootDispatchError).diagnostic.artifact.key).toBe('catalog-wlan');
+    expect((thrown as OscalRootDispatchError).diagnostic.artifact.key).toBe('catalog-lieferkette');
   });
 
   it('weist zwei Root-Keys ab', () => {

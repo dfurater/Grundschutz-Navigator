@@ -1,55 +1,71 @@
 {
   "schemaVersion": 2,
   "repository": "https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek",
-  "snapshotCommitSha": "c3f37859fdf302394de39e89252eb3e72a45953c",
+  "snapshotCommitSha": "dc44ea4fb5815ef84b941a8b5bcc4eaf363daf35",
   "files": [
+    {
+      "artifactKey": "catalog-diva",
+      "rootType": "catalog",
+      "lifecycle": "supported",
+      "path": "control_layer/DIVA/DIVA-resolved_catalog.json",
+      "gitBlobSha": "a44393d958fa6a7c9f9d661a0b29493e2ec6b4bd",
+      "contentSha256": "f7165880e0fbbd4e7cee2240df87b3b458cfba504f004fe762641aaa8a66af46"
+    },
+    {
+      "artifactKey": "control-layer-diva-sources-profiles-diva-profile",
+      "rootType": "profile",
+      "lifecycle": "preview",
+      "path": "control_layer/DIVA/sources/profiles/DIVA-profile.json",
+      "gitBlobSha": "20b6de0cff7bd68010b84a185b9fe7e8a17fa02e",
+      "contentSha256": "9039ff0302010734412af697a3d384e4592e23e59bcffba5e729093d531e6ce5"
+    },
     {
       "artifactKey": "catalog-gspp",
       "rootType": "catalog",
       "lifecycle": "supported",
       "path": "control_layer/Grundschutz++/Grundschutz++-resolved_catalog.json",
-      "gitBlobSha": "5556ec838d04ac702e98a1c5121671d582ae0349",
-      "contentSha256": "592410c513691c18631402db3982dda6a4530dd6f2960868a6999017d311fa28"
+      "gitBlobSha": "cbeb5d57d92a063122dc1b17ef4c1d7e2d109a72",
+      "contentSha256": "9497c7a94207a2a1f3a20e00bcf72b95c062a8052c4f04a33dd5aaf79ac90d7a"
     },
     {
       "artifactKey": "catalog-source-gspp-methodik",
       "rootType": "catalog",
       "lifecycle": "preview",
       "path": "control_layer/Grundschutz++/sources/catalogs/Methodik-Grundschutz++/BSI-Methodik-Grundschutz++-catalog.json",
-      "gitBlobSha": "2fb49df98c62c0b186ead33c6e21f068637b0767",
-      "contentSha256": "56da156c03a6a85cdd76a8c0f41c264c485d66629f519b532b7624846435b630"
+      "gitBlobSha": "f84845c5b8e79088b36d06df808efa697b5e0ea9",
+      "contentSha256": "371166361de7a169810730de07e3fdc76a9c9752838e684e204d5d274f7415ec"
     },
     {
       "artifactKey": "profile-gspp",
       "rootType": "profile",
       "lifecycle": "preview",
       "path": "control_layer/Grundschutz++/sources/profiles/Grundschutz++-profile.json",
-      "gitBlobSha": "2c248e6e10c7b404f98f1ad2de90fa24b8aaa69a",
-      "contentSha256": "c5b9a64a12f9c3c65897a6cf174b6c6b8db2da4d4efc1e4c6d07239a84e39ff9"
+      "gitBlobSha": "bba1a9e352fa4793f211317887bc9e5ba0f8024a",
+      "contentSha256": "6e085a1ad2dbf9652c4d7e47ba3965724cd2e6d5894d6a078274a129f5d6e424"
     },
     {
       "artifactKey": "control-layer-kernel-bsi-stand-der-technik-kernel-catalog",
       "rootType": "catalog",
       "lifecycle": "preview",
       "path": "control_layer/Kernel/BSI-Stand-der-Technik-Kernel-catalog.json",
-      "gitBlobSha": "b2c52d31e90c50c688802b935da4b916c9e3defb",
-      "contentSha256": "bdb3ba533146297f09f5059970d4c10c374fc8cc88ada18daf604444c1971489"
+      "gitBlobSha": "72733f61efb90b7f8e20cfdcf24d8b353138c796",
+      "contentSha256": "f8d2b6081fbf2bec93e965b812b8cfd331989cd5e8d9f30fd5bd4fba0594dafa"
     },
     {
       "artifactKey": "catalog-lieferkette",
       "rootType": "catalog",
       "lifecycle": "supported",
       "path": "control_layer/Lieferkettensicherheit/Lieferkettensicherheit-resolved_catalog.json",
-      "gitBlobSha": "3c4abfb452fde3051c3767137746d33455d45a81",
-      "contentSha256": "83309a2ec997849ed41fb5528e094d02dd0be022cdfb31d4188fb3db0404ba11"
+      "gitBlobSha": "f0899eb906c458e7edccc28fcecec516a2fc99ca",
+      "contentSha256": "f1556508fbef938fc374bc2e013d8b6d98f1042fcebf3ab683ccfee58d9462ce"
     },
     {
       "artifactKey": "profile-lieferkette",
       "rootType": "profile",
       "lifecycle": "preview",
       "path": "control_layer/Lieferkettensicherheit/sources/profiles/Lieferkettensicherheit-profile.json",
-      "gitBlobSha": "4e71fc642b3a4332545dbe8e68b7860c5139c03c",
-      "contentSha256": "d5072365bcfe86d3673a155329b92a6822c9e5dff8939b23af02d6d8af960f91"
+      "gitBlobSha": "76b3b6f70ef552966f1da6d71dc8e9203c9fd69f",
+      "contentSha256": "21e842ade15ca7dff94c5b50ae49788290849b143c607fb0317c633ef6f2b641"
     },
     {
       "artifactKey": "mapping-iso27001-annex-a-zu-gspp",
@@ -80,32 +96,48 @@
       "rootType": "catalog",
       "lifecycle": "preview",
       "path": "control_layer/Risikomanagement/BSI-Anforderungen-zum-Risikomanagement-catalog.json",
-      "gitBlobSha": "b8e4c4036da9443a1990ab4ec9f1a8f75bebf843",
-      "contentSha256": "92bdab1754ddbcd57dc0f1fd4cbe76f126d7f745afd81fb65c25f58c34c529b4"
+      "gitBlobSha": "82b1ad7ef469769e43509c6ba4a0238a1c075a81",
+      "contentSha256": "72a114cd8fbf88d44a250fa395e6d578710e66adb91b1a1ed48e8af4c1222107"
+    },
+    {
+      "artifactKey": "catalog-wlan-gastnetze",
+      "rootType": "catalog",
+      "lifecycle": "supported",
+      "path": "control_layer/WLAN-Einzelplatz-und-Gastnetze/WLAN-Einzelplatz-und-Gastnetze-resolved_catalog.json",
+      "gitBlobSha": "c0f50edcce26483b346c9a9c13d18f434458275b",
+      "contentSha256": "c927135fa6fae2e7665fd4f23fcecab21b85d63a71648addf7d6ca89d9daa358"
+    },
+    {
+      "artifactKey": "control-layer-wlan-einzelplatz-und-gastnetze-sources-profiles-wlan-einzelplatz-und-gastnetze-profile",
+      "rootType": "profile",
+      "lifecycle": "preview",
+      "path": "control_layer/WLAN-Einzelplatz-und-Gastnetze/sources/profiles/WLAN-Einzelplatz-und-Gastnetze-profile.json",
+      "gitBlobSha": "916c8f9e3219d417d92adb65a582412594f32dd3",
+      "contentSha256": "324bd03cc3552021f04d970c4f4fe3b16beb5d209ccae86e9491e55e9115672f"
     },
     {
       "artifactKey": "catalog-wlan",
       "rootType": "catalog",
-      "lifecycle": "supported",
-      "path": "control_layer/WLAN/WLAN-resolved_catalog.json",
-      "gitBlobSha": "9a152db14100ad7e0aa3168268ab5f840fb0cc22",
-      "contentSha256": "7fb81d4a48e490cd8d6dfc0c23dae5aacdb0f9be6cae496b9da756d2e61084bc"
+      "lifecycle": "draft",
+      "path": "control_layer/WLAN-Enterprise/WLAN-Enterprise-resolved_catalog.json",
+      "gitBlobSha": "cd989c6b7998eb61ccda8f1fb5034a6f24c4922c",
+      "contentSha256": "e10cbef12d617b01e114c7267f55e92c67e08b574a8900e262009b364c77ff1b"
     },
     {
-      "artifactKey": "profile-wlan",
+      "artifactKey": "control-layer-wlan-enterprise-sources-profiles-wlan-enterprise-profile",
       "rootType": "profile",
       "lifecycle": "preview",
-      "path": "control_layer/WLAN/sources/profiles/WLAN-profile.json",
-      "gitBlobSha": "f68a4c0ad46eb8fd3e6b15545d5b36f7badd5f97",
-      "contentSha256": "9d041ec24fb52e2c182afe32d67a1005b6f1d1b4daa1e5dbc350211d4852eb04"
+      "path": "control_layer/WLAN-Enterprise/sources/profiles/WLAN-Enterprise-profile.json",
+      "gitBlobSha": "57ff6296b72de7daf9d3a92ccf3549b0a5b4fa69",
+      "contentSha256": "7a68c4c4d1427c601bda31061f2382efe70355bbf02063ae009b8e3db65533c4"
     },
     {
       "artifactKey": "namespaces-bsi",
       "rootType": "vocabulary",
       "lifecycle": "supported",
       "path": "documentation/namespaces/action_words.csv",
-      "gitBlobSha": "ae09b80c1b161a94cd6289d58412bf5974c05787",
-      "contentSha256": "afcbc5da49cf2c4a913091f1b43454f243abec977252787db63eed940ba41df6"
+      "gitBlobSha": "d04f39c6973e5a33210239db304ff8856b94eeb7",
+      "contentSha256": "c48f9e8cbd7320a3b46a1159eb5137355253257d893ec849659bc425936c1c69"
     },
     {
       "artifactKey": "namespaces-bsi",
@@ -120,8 +152,8 @@
       "rootType": "vocabulary",
       "lifecycle": "supported",
       "path": "documentation/namespaces/documentation_guidelines.csv",
-      "gitBlobSha": "be57487167229942900e8e73420f847a80cf7def",
-      "contentSha256": "1f91d9d6a30d8326b7aa3d774c08b9d9d1633c5b8aa9eeb409d0f540f0c10529"
+      "gitBlobSha": "4504d600c5e947cb1bf71064441e5d57470e955a",
+      "contentSha256": "5f107f82f0e84b89eb51b8178ae3edb7db1f5fd197f23c220a3dd7a7e44d5436"
     },
     {
       "artifactKey": "namespaces-bsi",
@@ -252,5 +284,5 @@
       "contentSha256": "08c7ab6bb442a87eba4e407d272fecd179bc61c47c2419843d7f4cfcd4077235"
     }
   ],
-  "signatureSha256": "2395aed0aeafe1421396522c7e2a243f6f8d32da76f49ea8379b8e04c9658f9b"
+  "signatureSha256": "3e132ddeb157457bbe99731687983f3e7e3ce8c68166ad227a8d7614da7ae846"
 }

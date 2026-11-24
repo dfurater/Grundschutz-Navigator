@@ -24,6 +24,12 @@ const TEXT: Readonly<Record<Exclude<CatalogPinState, 'bound'>, { readonly title:
   },
 };
 
+/** Mindestens ein gebundener Katalog ist registriert, wird aber nicht ausgeliefert; ein Wechsel auf einen neueren Stand anderer Kataloge hebt die Sperre nicht auf. */
+const NOT_SHIPPED = {
+  title: 'Gebundener Katalog nicht ausgeliefert',
+  text: 'Mindestens ein BSI-Katalog, an den dieses Dokument gebunden ist, wird derzeit nicht ausgeliefert. Lesen und Export bleiben möglich, Änderungen sind gesperrt.',
+} as const;
+
 /** Sperre über ein lokal referenziertes Dokument; dessen eigene Seite nennt den Grund. */
 const INHERITED = {
   title: 'Bezugsstand eines referenzierten Dokuments gesperrt',
@@ -33,7 +39,11 @@ const INHERITED = {
 /** Schreibschutz eines an einen BSI-Katalogstand gebundenen Dokuments; ohne Wert, Schlüssel oder Commit im Text. */
 export function CatalogPinNotice({ pin, busy = false, onBind }: Readonly<{ pin: CatalogPin | undefined; busy?: boolean; onBind?: () => void }>) {
   if (!pin || pin.state === 'bound') return null;
-  const { title, text } = pin.inherited ? INHERITED : TEXT[pin.state];
+  let notice = TEXT[pin.state];
+  // Ein schwererer Zustand (etwa eine fehlgeschlagene Hashprüfung) behält seinen eigenen Hinweis.
+  if (pin.state === 'not-delivered' && pin.undelivered) notice = NOT_SHIPPED;
+  if (pin.inherited) notice = INHERITED;
+  const { title, text } = notice;
   return (
     <div
       role={pin.state === 'pending' ? 'status' : 'alert'}

@@ -4,6 +4,7 @@ import { PROJECT_PROPS_NAMESPACE } from '@/domain/projectProps';
 import {
   applyCatalogPins, catalogPinStatus, catalogPinsForSave, editLocked, readCatalogPins, reviewLocked, withCatalogPins, type CatalogDelivery,
 } from '@/domain/workspaceCatalogPin';
+import { listOscalArtifacts } from '@/domain/sourceRegistry';
 import { WORKSPACE_DIAGNOSTIC_CODES } from '@/domain/workspaceDiagnostics';
 import type { LocalId, WorkspaceBinding } from '@/domain/workspaceModel';
 import { makeSchemaValidOscalDocument } from '@/test/fixtures/oscalSchemaFixtures';
@@ -48,6 +49,30 @@ describe('catalogPinStatus', () => {
       .toEqual({ state, code, offers, withheld, pending });
   });
 
+  // Registriert, aber nicht ausgeliefert: Bindung und Paar bleiben erkennbar und sperren, ohne Bindungsangebot.
+  const undelivered = listOscalArtifacts().find((entry) => entry.catalogKey !== undefined && entry.lifecycle !== 'supported')!;
+  it.each([
+    ['mit Paar', pin(undelivered.catalogKey!, OLD), [catalogBinding(undelivered.artifactKey)]],
+    ['ohne Paar', undefined, [catalogBinding(undelivered.artifactKey)]],
+    ['nur mit Paar', pin(undelivered.catalogKey!, OLD), []],
+  ] as const)('sperrt ein Dokument eines nicht ausgelieferten Katalogs %s als not-delivered', (_label, props, bindings) => {
+    const status = catalogPinStatus(profile(props ? [...props] : undefined), 'profile', [...bindings], delivered(NEW));
+    expect(status).toEqual({
+      state: 'not-delivered', code: WORKSPACE_DIAGNOSTIC_CODES.catalogPinNotDelivered, offers: [], withheld: [undelivered.artifactKey], pending: [], undelivered: true,
+    });
+    expect(editLocked(status)).toBe(true);
+  });
+
+  it('meldet den nicht ausgelieferten Katalog auch neben einem ersetzten ausgelieferten Stand', () => {
+    const props = [...pin('gspp', OLD), ...pin(undelivered.catalogKey!, OLD)];
+    const status = catalogPinStatus(profile(props), 'profile', [catalogBinding(), catalogBinding(undelivered.artifactKey)], delivered(NEW));
+    expect(status).toEqual({
+      state: 'not-delivered', code: WORKSPACE_DIAGNOSTIC_CODES.catalogPinNotDelivered,
+      offers: ['gspp'], withheld: ['catalog-gspp', undelivered.artifactKey], pending: [], undelivered: true,
+    });
+    expect(editLocked(status)).toBe(true);
+  });
+
   // Ein importiertes Dokument hat noch keine Bindung; sein Paar ist trotzdem die Bewertungsgrundlage.
   it.each([
     ['bound', pin('gspp', NEW), delivered(NEW)],
@@ -88,9 +113,9 @@ describe('withCatalogPins', () => {
   });
 
   it('trägt mehrere Quellkataloge in getrennten Gruppen', () => {
-    const delivery: CatalogDelivery = new Map([['catalog-gspp', { commit: NEW, verified: true }], ['catalog-wlan', { commit: OLD, verified: true }]]);
-    const result = withCatalogPins(profile(), 'profile', [catalogBinding(), { ...catalogBinding('catalog-wlan'), pointer: '/profile/imports/1/href' }], delivery);
-    expect(result.ok && readCatalogPins(result.source, 'profile')).toEqual(new Map([['gspp', NEW], ['wlan', OLD]]));
+    const delivery: CatalogDelivery = new Map([['catalog-gspp', { commit: NEW, verified: true }], ['catalog-lieferkette', { commit: OLD, verified: true }]]);
+    const result = withCatalogPins(profile(), 'profile', [catalogBinding(), { ...catalogBinding('catalog-lieferkette'), pointer: '/profile/imports/1/href' }], delivery);
+    expect(result.ok && readCatalogPins(result.source, 'profile')).toEqual(new Map([['gspp', NEW], ['lieferkette', OLD]]));
   });
 
   it('lässt ein passendes Paar und fremde Props unverändert', () => {
@@ -235,12 +260,12 @@ describe('applyCatalogPins', () => {
   });
 
   it('hält eine falsch gebundene Katalogbindung auch zurück, wenn ein anderer Katalog nicht verifiziert ist', () => {
-    const wlan: WorkspaceBinding = { ...catalogBinding('catalog-wlan'), pointer: '/profile/imports/1/href' };
-    const delivery: CatalogDelivery = new Map([['catalog-gspp', { commit: NEW, verified: true }], ['catalog-wlan', { commit: null, verified: false }]]);
-    const members = [{ localId: ID, rootType: 'profile' as const, source: profile([...pin('gspp', OLD), ...pin('wlan', NEW)]) }];
-    const result = applyCatalogPins(members, [catalogBinding(), wlan], delivery);
+    const lieferkette: WorkspaceBinding = { ...catalogBinding('catalog-lieferkette'), pointer: '/profile/imports/1/href' };
+    const delivery: CatalogDelivery = new Map([['catalog-gspp', { commit: NEW, verified: true }], ['catalog-lieferkette', { commit: null, verified: false }]]);
+    const members = [{ localId: ID, rootType: 'profile' as const, source: profile([...pin('gspp', OLD), ...pin('lieferkette', NEW)]) }];
+    const result = applyCatalogPins(members, [catalogBinding(), lieferkette], delivery);
     expect(result.pins.get(ID)?.state).toBe('unverified');
     expect(result.withheld).toEqual([catalogBinding()]);
-    expect(result.bindings).toEqual([wlan]);
+    expect(result.bindings).toEqual([lieferkette]);
   });
 });
