@@ -94,6 +94,13 @@ export const SOURCE_REGISTRY = Object.freeze(
     },
     resolvedBsiCatalog('lieferkette', 'Lieferkettensicherheit', '1.1.3', 'supported', 'Anwenderkatalog Lieferkettensicherheit'),
     resolvedBsiCatalog('diva', 'DIVA', '1.1.3', 'supported', 'Anwenderkatalog DIVA'),
+    resolvedBsiCatalog(
+      'wlan-gastnetze',
+      'WLAN-Einzelplatz-und-Gastnetze',
+      '1.1.3',
+      'supported',
+      'Anwenderkatalog WLAN-Personal- und Gastnetze',
+    ),
     resolvedBsiCatalog('wlan', 'WLAN-Enterprise', '1.1.3', 'draft', 'Anwenderkatalog WLAN'),
     {
       artifactKey: 'catalog-mindeststandard-tls',

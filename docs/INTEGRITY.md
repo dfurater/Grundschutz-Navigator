@@ -39,7 +39,7 @@ Die Ausgabemenge wird aus dem Register abgeleitet (`listCatalogArtifactFileNames
 
 Der Einstiegskatalog trägt die Dateinamen ohne Katalogschlüssel, auf denen Deploy- und Cache-Vertrag aufsetzen. Genau ein `supported`-Katalog trägt `entryCatalog: true`; ein Register ohne ausgelieferten Katalog oder ohne genau einen Einstieg schlägt beim Import fail-closed fehl.
 
-Der aktuelle Registerstand liefert drei Kataloge: `catalog-gspp` als Einstieg sowie `catalog-lieferkette` und `catalog-diva` als bedarfsgerecht geladene Sekundärkataloge. `catalog-wlan` ist als `draft` registriert und wird nicht ausgeliefert. Dazu kommen die beiden generierten Sammelartefakte:
+Der aktuelle Registerstand liefert vier Kataloge: `catalog-gspp` als Einstieg sowie `catalog-lieferkette`, `catalog-diva` und `catalog-wlan-gastnetze` als bedarfsgerecht geladene Sekundärkataloge. `catalog-wlan` ist als `draft` registriert und wird nicht ausgeliefert. Dazu kommen die beiden generierten Sammelartefakte:
 
 - `vocabularies.json` — offizielle BSI-Vokabulare (aus CSV konvertiert)
 - `upstream-sources-metadata.json` — Vokabular-Provenance + Upstream-Manifest + rein lesende Katalog-Lineage
@@ -271,6 +271,14 @@ Beispiel (Werte Platzhalter; gezeigt sind nur die Produkteinträge des Manifests
         "rootType": "catalog",
         "lifecycle": "supported",
         "path": "control_layer/DIVA/DIVA-resolved_catalog.json",
+        "gitBlobSha": "<git-blob-sha>",
+        "contentSha256": "<sha256>"
+      },
+      {
+        "artifactKey": "catalog-wlan-gastnetze",
+        "rootType": "catalog",
+        "lifecycle": "supported",
+        "path": "control_layer/WLAN-Einzelplatz-und-Gastnetze/WLAN-Einzelplatz-und-Gastnetze-resolved_catalog.json",
         "gitBlobSha": "<git-blob-sha>",
         "contentSha256": "<sha256>"
       },
