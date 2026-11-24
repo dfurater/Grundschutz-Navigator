@@ -10,6 +10,7 @@ import {
   parseCsv,
   parseVocabularyCsv,
   sha256Hex,
+  UNRESOLVED_BSI_NAMESPACE_URLS,
 } from './vocabulary-utils.mjs';
 
 const repository = OFFICIAL_BSI_REPO;
@@ -208,6 +209,48 @@ describe('Namespace-Extraktion und CSV-Aufbereitung', () => {
     }, repository)).toThrow(
       'Externe oder nicht erlaubte Namespace-Quelle: https://evil.example/namespaces/result.csv',
     );
+  });
+
+  it('überspringt genau die vier nicht veröffentlichten Taxonomie-Namespaces', () => {
+    // Sollwerte unabhängig von der Produktionsliste: exakte BSI-Schreibweise am Snapshot dc44ea4.
+    const unresolved = [
+      'L1-NIST%20Funktionen.csv',
+      'L2-Technologiedom%C3%A4nen.csv',
+      'L3-Produktkategorien.csv',
+      'L4-Produkt-%20und%20Servicegruppen.csv',
+    ].map((fileName) => `${OFFICIAL_BSI_REPOSITORY_URL}/blob/main/${upstreamDirectory}/${fileName}`);
+    expect(UNRESOLVED_BSI_NAMESPACE_URLS).toEqual(unresolved);
+    const catalog = {
+      catalog: {
+        groups: [{ controls: [{ props: [
+          ...unresolved.map((ns, index) => ({ name: `Taxonomy-L${index + 1}`, value: 'Protect', ns })),
+          { name: 'result', value: 'Verfahren', ns: RESULT_NAMESPACE_URL },
+        ] }] }],
+      },
+    };
+
+    expect(extractReferencedNamespaceUrls(catalog, repository)).toEqual([RESULT_NAMESPACE_URL]);
+  });
+
+  it('lehnt eine andere blob/main-CSV-Angabe weiter ab', () => {
+    const ns = `${OFFICIAL_BSI_REPOSITORY_URL}/blob/main/${upstreamDirectory}/L5-Unbekannt.csv`;
+    expect(() => extractReferencedNamespaceUrls({
+      catalog: { groups: [{ controls: [{ props: [{ ns }] }] }] },
+    }, repository)).toThrow(`Externe oder nicht erlaubte Namespace-Quelle: ${ns}`);
+  });
+
+  it('lehnt eine tree/main-Angabe auf eine nicht im Tree vorhandene CSV weiter ab', () => {
+    const ns = namespaceUrlFor('L1-NIST%20Funktionen.csv');
+    const referencedNamespaceUrls = extractReferencedNamespaceUrls({
+      catalog: { groups: [{ controls: [{ props: [{ ns }] }] }] },
+    }, repository);
+
+    expect(() => materializeVocabularyCollectionMembers({
+      collection: { kind: vocabularyCollection.kind, upstreamDirectory, fileSuffix },
+      treeFiles: [treeFile('result.csv')],
+      referencedNamespaceUrls,
+      repository,
+    })).toThrow(`kein direktes Mitglied der registrierten Vokabularsammlung: ${ns}`);
   });
 
   it('maps GitHub namespace URLs back to repository-relative paths', () => {
