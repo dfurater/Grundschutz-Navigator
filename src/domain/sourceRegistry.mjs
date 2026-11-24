@@ -59,19 +59,30 @@ export const MONITORED_UPSTREAM_ROOTS = Object.freeze([
   'implementation_layer',
 ]);
 
+/**
+ * Ein vom BSI aufgelöster Katalog unter `control_layer/<directory>/` mit dem
+ * Profil, aus dem er aufgelöst ist (ADR-13). Pfade folgen der BSI-Ablage
+ * `<directory>-resolved_catalog.json` und `sources/profiles/<directory>-profile.json`.
+ */
+function resolvedBsiCatalog(catalogKey, directory, oscalVersion, lifecycle, title) {
+  return {
+    artifactKey: `catalog-${catalogKey}`,
+    kind: 'oscal',
+    oscalVersion,
+    expectedRootType: 'catalog',
+    catalogKey,
+    upstreamPath: `control_layer/${directory}/${directory}-resolved_catalog.json`,
+    profileUpstreamPath: `control_layer/${directory}/sources/profiles/${directory}-profile.json`,
+    lifecycle,
+    title,
+  };
+}
+
 export const SOURCE_REGISTRY = Object.freeze(
   [
     {
-      artifactKey: 'catalog-gspp',
-      kind: 'oscal',
-      oscalVersion: '1.1.3',
-      expectedRootType: 'catalog',
-      catalogKey: 'gspp',
-      upstreamPath: 'control_layer/Grundschutz++/Grundschutz++-resolved_catalog.json',
-      profileUpstreamPath: 'control_layer/Grundschutz++/sources/profiles/Grundschutz++-profile.json',
-      lifecycle: 'supported',
+      ...resolvedBsiCatalog('gspp', 'Grundschutz++', '1.1.3', 'supported', 'Grundschutz++ Anwenderkatalog'),
       entryCatalog: true,
-      title: 'Grundschutz++ Anwenderkatalog',
     },
     {
       artifactKey: 'namespaces-bsi',
@@ -81,28 +92,16 @@ export const SOURCE_REGISTRY = Object.freeze(
       lifecycle: 'supported',
       title: 'Offizielle BSI-Namespace-Vokabulare',
     },
-    {
-      artifactKey: 'catalog-lieferkette',
-      kind: 'oscal',
-      oscalVersion: '1.1.3',
-      expectedRootType: 'catalog',
-      catalogKey: 'lieferkette',
-      upstreamPath: 'control_layer/Lieferkettensicherheit/Lieferkettensicherheit-resolved_catalog.json',
-      profileUpstreamPath: 'control_layer/Lieferkettensicherheit/sources/profiles/Lieferkettensicherheit-profile.json',
-      lifecycle: 'supported',
-      title: 'Anwenderkatalog Lieferkettensicherheit',
-    },
-    {
-      artifactKey: 'catalog-wlan',
-      kind: 'oscal',
-      oscalVersion: '1.1.3',
-      expectedRootType: 'catalog',
-      catalogKey: 'wlan',
-      upstreamPath: 'control_layer/WLAN-Enterprise/WLAN-Enterprise-resolved_catalog.json',
-      profileUpstreamPath: 'control_layer/WLAN-Enterprise/sources/profiles/WLAN-Enterprise-profile.json',
-      lifecycle: 'draft',
-      title: 'Anwenderkatalog WLAN',
-    },
+    resolvedBsiCatalog('lieferkette', 'Lieferkettensicherheit', '1.1.3', 'supported', 'Anwenderkatalog Lieferkettensicherheit'),
+    resolvedBsiCatalog('diva', 'DIVA', '1.1.3', 'supported', 'Anwenderkatalog DIVA'),
+    resolvedBsiCatalog(
+      'wlan-gastnetze',
+      'WLAN-Einzelplatz-und-Gastnetze',
+      '1.1.3',
+      'supported',
+      'Anwenderkatalog WLAN-Personal- und Gastnetze',
+    ),
+    resolvedBsiCatalog('wlan', 'WLAN-Enterprise', '1.1.3', 'draft', 'Anwenderkatalog WLAN'),
     {
       artifactKey: 'catalog-mindeststandard-tls',
       kind: 'oscal',

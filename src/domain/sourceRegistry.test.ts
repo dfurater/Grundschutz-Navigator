@@ -36,7 +36,9 @@ const OFFICIAL_CATALOG_PATH = ENTRY_CATALOG.upstreamPath;
 const EXPECTED_CATALOG_KEYS = [
   'gspp',
   'lieferkette',
+  'diva',
   'wlan',
+  'wlan-gastnetze',
   'mindeststandard-tls',
 ] as const satisfies readonly CatalogKey[];
 
@@ -67,19 +69,23 @@ describe('sourceRegistry', () => {
     expect(ENTRY_CATALOG.entryCatalog).toBe(true);
   });
 
-  it('ships the entry and Lieferkette catalogs', () => {
-    expect(SUPPORTED_CATALOG_KEYS).toEqual(['gspp', 'lieferkette']);
+  it('ships the entry, Lieferkette, DIVA and WLAN guest network catalogs', () => {
+    expect(SUPPORTED_CATALOG_KEYS).toEqual(['gspp', 'lieferkette', 'diva', 'wlan-gastnetze']);
     expect(SUPPORTED_CATALOGS.map((entry) => entry.artifactKey)).toEqual([
       'catalog-gspp',
       'catalog-lieferkette',
+      'catalog-diva',
+      'catalog-wlan-gastnetze',
     ]);
   });
 
   it('limits the supported lifecycle exactly to all shipped catalogs and the namespace collection', () => {
     const supported = listArtifacts({ lifecycle: 'supported' });
     expect(supported.map((entry) => entry.artifactKey).sort()).toEqual([
+      'catalog-diva',
       'catalog-gspp',
       'catalog-lieferkette',
+      'catalog-wlan-gastnetze',
       'namespaces-bsi',
     ]);
   });
@@ -89,6 +95,8 @@ describe('sourceRegistry', () => {
       'catalog-gspp',
       'namespaces-bsi',
       'catalog-lieferkette',
+      'catalog-diva',
+      'catalog-wlan-gastnetze',
       'catalog-wlan',
       'catalog-mindeststandard-tls',
     ]);
@@ -242,9 +250,11 @@ describe('sourceRegistry', () => {
      * der Registry auffällig macht.
      */
     const DECLARED_UPSTREAM_VERSIONS: Record<string, string> = {
+      'catalog-diva': '1.1.3',
       'catalog-gspp': '1.1.3',
       'catalog-lieferkette': '1.1.3',
       'catalog-mindeststandard-tls': '1.1.3',
+      'catalog-wlan-gastnetze': '1.1.3',
       'catalog-wlan': '1.1.3',
     };
 
@@ -393,6 +403,10 @@ describe('sourceRegistry', () => {
         'catalog-metadata.json',
         'catalog-lieferkette.json',
         'catalog-lieferkette-metadata.json',
+        'catalog-diva.json',
+        'catalog-diva-metadata.json',
+        'catalog-wlan-gastnetze.json',
+        'catalog-wlan-gastnetze-metadata.json',
       ]);
     });
 

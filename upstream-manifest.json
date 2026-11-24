@@ -4,9 +4,9 @@
   "snapshotCommitSha": "dc44ea4fb5815ef84b941a8b5bcc4eaf363daf35",
   "files": [
     {
-      "artifactKey": "control-layer-diva-diva-resolved-catalog",
+      "artifactKey": "catalog-diva",
       "rootType": "catalog",
-      "lifecycle": "preview",
+      "lifecycle": "supported",
       "path": "control_layer/DIVA/DIVA-resolved_catalog.json",
       "gitBlobSha": "a44393d958fa6a7c9f9d661a0b29493e2ec6b4bd",
       "contentSha256": "f7165880e0fbbd4e7cee2240df87b3b458cfba504f004fe762641aaa8a66af46"
@@ -100,9 +100,9 @@
       "contentSha256": "72a114cd8fbf88d44a250fa395e6d578710e66adb91b1a1ed48e8af4c1222107"
     },
     {
-      "artifactKey": "control-layer-wlan-einzelplatz-und-gastnetze-wlan-einzelplatz-und-gastnetze-resolved-catalog",
+      "artifactKey": "catalog-wlan-gastnetze",
       "rootType": "catalog",
-      "lifecycle": "preview",
+      "lifecycle": "supported",
       "path": "control_layer/WLAN-Einzelplatz-und-Gastnetze/WLAN-Einzelplatz-und-Gastnetze-resolved_catalog.json",
       "gitBlobSha": "c0f50edcce26483b346c9a9c13d18f434458275b",
       "contentSha256": "c927135fa6fae2e7665fd4f23fcecab21b85d63a71648addf7d6ca89d9daa358"
@@ -284,5 +284,5 @@
       "contentSha256": "08c7ab6bb442a87eba4e407d272fecd179bc61c47c2419843d7f4cfcd4077235"
     }
   ],
-  "signatureSha256": "2e4c3d5e03bc285cfaece9adef4721e7b09a832002bf432c4527a1a3bb17a265"
+  "signatureSha256": "3e132ddeb157457bbe99731687983f3e7e3ce8c68166ad227a8d7614da7ae846"
 }
