@@ -18,7 +18,11 @@ function getFocusable(el: HTMLElement): HTMLElement[] {
   return Array.from(el.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTORS)).filter(isOperable);
 }
 
-/** Hält Tab und Shift+Tab im Dialog, auch über beide Enden hinweg. */
+/**
+ * Hält Tab und Shift+Tab im Dialog, auch über beide Enden hinweg. Der Fokus
+ * kann vor dem ersten Ziel liegen, etwa auf einer programmatisch fokussierten
+ * Überschrift mit `tabIndex=-1`; Shift+Tab führt von dort zum letzten Ziel.
+ */
 function wrapTabKey(el: HTMLElement) {
   return (e: KeyboardEvent) => {
     if (e.key !== 'Tab') return;
@@ -26,9 +30,13 @@ function wrapTabKey(el: HTMLElement) {
     if (focusable.length === 0) return;
     const first = focusable[0];
     const last = focusable.at(-1)!;
+    const active = document.activeElement;
+    if (!active) return;
+    const before = (target: Node) => (target.compareDocumentPosition(active) & Node.DOCUMENT_POSITION_PRECEDING) !== 0;
+    const after = (target: Node) => (target.compareDocumentPosition(active) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
     if (e.shiftKey) {
-      if (document.activeElement === first) { e.preventDefault(); last.focus(); }
-    } else if (document.activeElement === last) {
+      if (active === first || before(first)) { e.preventDefault(); last.focus(); }
+    } else if (active === last || after(last)) {
       e.preventDefault();
       first.focus();
     }

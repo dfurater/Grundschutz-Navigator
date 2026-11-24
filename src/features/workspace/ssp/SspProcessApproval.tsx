@@ -91,6 +91,13 @@ export interface DecisionGate {
   readonly onAddRole?: () => void;
 }
 
+// Der Sperrgrund nennt den tatsächlichen Sicherungszustand; `stored` und `saved` sperren nicht.
+const AUTOSAVE_BLOCKS: Partial<Record<SspEditor['saveState']['kind'], string>> = {
+  autosaved: 'Ein automatisch gesicherter Entwurf liegt vor. Bitte zuerst speichern; Freigabe und Rücknahme sind bis dahin nicht verfügbar.',
+  pending: 'Offene Eingaben werden automatisch gesichert. Bitte zuerst speichern; Freigabe und Rücknahme sind bis dahin nicht verfügbar.',
+  failed: 'Die automatische Sicherung ist fehlgeschlagen. Bitte speichern; Freigabe und Rücknahme sind bis dahin nicht verfügbar.',
+};
+
 /** Was eine Entscheidung im gespeicherten Stand verhindert; gilt für alle Prozesse eines SSP. */
 export function decisionGate(editor: SspEditor, lock: string | undefined): DecisionGate {
   const saved = editor.unadoptedDecision?.source ?? editor.envelope?.source;
@@ -99,7 +106,7 @@ export function decisionGate(editor: SspEditor, lock: string | undefined): Decis
   let blocked = lock;
   if (!blocked && editor.unadoptedDecision) blocked = 'Eine gespeicherte Entscheidung ist noch nicht in den Editor übernommen; angezeigt ist der gespeicherte Freigabestand. Offene Eingaben verwerfen; danach übernimmt der Editor den gespeicherten Stand. Bis dahin sind Freigabe, Rücknahme und Export gesperrt.';
   if (!blocked && editor.dirty) blocked = 'Ungespeicherte Änderungen: Der Freigabestand gilt für den gespeicherten Stand. Bitte zuerst speichern; Freigabe und Rücknahme sind bis dahin nicht verfügbar.';
-  if (!blocked && editor.saveState.kind !== 'stored' && editor.saveState.kind !== 'saved') blocked = 'Ein automatisch gesicherter Entwurf liegt vor. Bitte zuerst speichern; Freigabe und Rücknahme sind bis dahin nicht verfügbar.';
+  if (!blocked) blocked = AUTOSAVE_BLOCKS[editor.saveState.kind];
   if (!blocked && editor.envelope?.documentState === 'draft') blocked = 'Das SSP ist als Entwurf gespeichert. Freigabe und Rücknahme brauchen einen technisch gültigen gespeicherten Stand.';
   if (!blocked && editor.busy) blocked = 'Speichern läuft.';
   // Eine vorhandene Rolle ohne Titel wird unter Metadaten ergänzt; eine zweite Rolle derselben ID wäre ungültig.
