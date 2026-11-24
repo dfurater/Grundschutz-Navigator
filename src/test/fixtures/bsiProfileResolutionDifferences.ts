@@ -14,14 +14,14 @@
 
 export type BsiCorpusDifference =
   | {
-    readonly corpusKey: 'lieferkette' | 'wlan' | 'diva';
+    readonly corpusKey: 'lieferkette' | 'wlan' | 'diva' | 'wlan-gastnetze';
     readonly controlId: string;
     readonly member: 'links';
     readonly href: string;
     readonly reason: string;
   }
   | {
-    readonly corpusKey: 'lieferkette' | 'wlan' | 'diva';
+    readonly corpusKey: 'lieferkette' | 'wlan' | 'diva' | 'wlan-gastnetze';
     readonly controlId: string;
     readonly member: 'controls';
     readonly position: 'end';
@@ -76,4 +76,8 @@ export const BSI_PROFILE_RESOLUTION_DIFFERENCES: readonly BsiCorpusDifference[] 
   { corpusKey: 'diva', controlId: 'DET.5.7', member: 'links', href: '#DET.5.6', reason: LINK_REASON },
   { corpusKey: 'diva', controlId: 'DET.5.10.1', member: 'links', href: '#DEV.4.2', reason: LINK_REASON },
   { corpusKey: 'diva', controlId: 'KONF.2.5', member: 'links', href: '#KONF.2.1', reason: LINK_REASON },
+  { corpusKey: 'wlan-gastnetze', controlId: 'ARCH.2.4', member: 'links', href: '#ASST.2.1', reason: LINK_REASON },
+  { corpusKey: 'wlan-gastnetze', controlId: 'ARCH.4.1', member: 'links', href: '#DET.4.4', reason: LINK_REASON },
+  { corpusKey: 'wlan-gastnetze', controlId: 'ARCH.4.1', member: 'links', href: '#DET.3.1.2', reason: LINK_REASON },
+  { corpusKey: 'wlan-gastnetze', controlId: 'SENS.7.14', member: 'links', href: '#ASST.4.1', reason: LINK_REASON },
 ]);
