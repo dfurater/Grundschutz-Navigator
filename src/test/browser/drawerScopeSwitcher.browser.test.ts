@@ -16,12 +16,13 @@ import '@/index.css';
 // Echter Provider mit den ausgelieferten Katalogen: aktive Schlüssel und Titel
 // werden wie in der App geladen, nicht mit einem leeren Testverzeichnis ersetzt.
 const CATALOGS = [
-  { key: 'gspp', title: 'Anwenderkatalog Grundschutz++' },
-  { key: 'lieferkette', title: 'Supply Chain Security' },
-  { key: 'diva', title: 'DIVA - Durchgängige Identitätsprüfung, Verifikation und Absicherung' },
-  { key: 'wlan-gastnetze', title: 'Stand der Technik WLAN-Personal- und Gastnetze mit gemeinsamem Kennwort' },
+  { key: 'gspp', title: 'Anwenderkatalog Grundschutz++', shortTitle: 'Grundschutz++' },
+  { key: 'lieferkette', title: 'Supply Chain Security', shortTitle: 'Supply Chain Security' },
+  { key: 'diva', title: 'DIVA - Durchgängige Identitätsprüfung, Verifikation und Absicherung', shortTitle: 'DIVA · Identitäten und Zugriffe' },
+  { key: 'wlan-gastnetze', title: 'Stand der Technik WLAN-Personal- und Gastnetze mit gemeinsamem Kennwort', shortTitle: 'WLAN-Personal- und Gastnetze' },
 ] as const;
 const PROFILES = [
+  { width: 320, height: 568, touch: true },
   { width: 390, height: 844, touch: true },
   { width: 744, height: 1133, touch: true },
   { width: 1032, height: 1376, touch: true },
@@ -71,7 +72,7 @@ afterEach(async () => {
 });
 
 function triggerIn(aside: HTMLElement) {
-  return aside.querySelector<HTMLButtonElement>('button[aria-haspopup="menu"]');
+  return aside.querySelector<HTMLButtonElement>('[data-catalog-switcher] button[aria-expanded]');
 }
 
 function expectReachable(element: HTMLElement, width: number, height: number) {
@@ -112,7 +113,7 @@ test.each(PROFILES)('hält die Kontextwahl bei $width px (Touch: $touch) sichtba
   });
   await expectLoadedCatalog('gspp');
   const aside = host.querySelector('aside')!;
-  await expect.poll(() => triggerIn(aside)?.textContent).toContain(CATALOGS[0].title);
+  await expect.poll(() => triggerIn(aside)?.textContent).toContain(CATALOGS[0].shortTitle);
   await expect.poll(() => aside.querySelector('[role="tree"]')).not.toBeNull();
   await document.fonts.ready;
   if (touch) {
@@ -120,43 +121,93 @@ test.each(PROFILES)('hält die Kontextwahl bei $width px (Touch: $touch) sichtba
     await settlePush(host);
   }
   const trigger = triggerIn(aside)!;
-  const close = aside.querySelector<HTMLButtonElement>(touch
+  const close = () => aside.querySelector<HTMLButtonElement>(touch
     ? 'button[aria-label="Menü schließen"]'
     : 'button[aria-label="Katalog-Explorer ausblenden"]')!;
   expectReachable(trigger, width, height);
-  expectReachable(close, width, height);
+  expectReachable(close(), width, height);
 
-  // Jeder gelieferte Katalog muss auswählbar sein und nach dem Laden denselben
-  // Titel im Kopf tragen. Eine Auswahl schließt die kompakte Schublade.
+  const closedWidth = aside.getBoundingClientRect().width;
+  const list = () => aside.querySelector<HTMLElement>('nav[aria-label="Verfügbare Kataloge"]:not([hidden])');
+
+  trigger.focus();
+  await userEvent.keyboard('{Enter}');
+  expect(trigger).toHaveAttribute('aria-expanded', 'true');
+  expect(trigger).toHaveAccessibleDescription(CATALOGS[0].title);
+  expect(document.activeElement).toBe(trigger);
+  await userEvent.tab();
+  expect(document.activeElement).toBe(list()?.querySelector('[aria-current="true"]'));
+  await userEvent.keyboard('{Escape}');
+  expect(list()).toBeNull();
+  expect(document.activeElement).toBe(trigger);
+  if (touch) expect(aside).not.toHaveAttribute('inert');
+
   for (const catalog of CATALOGS) {
-    if (touch) await tap(triggerIn(aside)!);
-    else await userEvent.click(triggerIn(aside)!);
-    await expect.poll(() => aside.querySelector('[role="menu"]')).not.toBeNull();
-    const items = [...aside.querySelectorAll<HTMLAnchorElement>('[role="menuitemradio"]')];
+    if (touch) await tap(trigger);
+    else await userEvent.click(trigger);
+    const listElement = list()!;
+    expect(listElement).toBeVisible();
+    if (!touch) {
+      await expect.poll(() => aside.getBoundingClientRect().width).toBe(400);
+      expect(aside.getBoundingClientRect().width).toBeGreaterThan(closedWidth);
+      expect(host.querySelector('main')!.getBoundingClientRect().width).toBeGreaterThan(width / 2);
+    }
+
+    const items = [...listElement.querySelectorAll<HTMLElement>('li > :is(a, button)')];
     expect(items).toHaveLength(CATALOGS.length);
-    expect(items.filter((item) => item.getAttribute('aria-checked') === 'true')).toHaveLength(1);
+    const current = listElement.querySelector<HTMLElement>('[aria-current="true"]')!;
+    expect(current.textContent).toContain('Geöffnet');
+    const currentStatusId = current.getAttribute('aria-describedby')?.split(' ')[0];
+    expect(document.getElementById(currentStatusId ?? '')?.textContent).toBe('Geöffnet');
+    const currentCount = catalogState!.catalog!.totalControls.toLocaleString('de-DE');
+    expect(current.textContent).toContain(currentCount);
     const item = items.find((entry) => entry.textContent?.includes(catalog.title))!;
-    expect(item.getAttribute('href')).toBe(`/katalog/${catalog.key}`);
+    const title = document.getElementById(item.getAttribute('aria-labelledby')!)!;
+    expect(title).toHaveTextContent(catalog.title);
+    expect(title.scrollWidth).toBe(title.clientWidth);
+    if (catalog.title.length > 55) {
+      expect(title.getBoundingClientRect().height).toBeGreaterThan(Number.parseFloat(getComputedStyle(title).lineHeight));
+    }
+    if (touch) expect(item.getBoundingClientRect().height).toBeGreaterThanOrEqual(44);
+    item.scrollIntoView({ block: 'nearest' });
     expectReachable(item, width, height);
+
     const previousLocationKey = router.state.location.key;
+    if (item !== current) expect(item.getAttribute('href')).toBe(`/katalog/${catalog.key}`);
     if (touch) await tap(item);
     else await userEvent.click(item);
-    await expect.poll(() => router!.state.location.key).not.toBe(previousLocationKey);
-    await expect.poll(() => router!.state.navigation.state).toBe('idle');
-    await expect.poll(() => committedLocationKey).toBe(router.state.location.key);
-    await expectLoadedCatalog(catalog.key);
-    await expect.poll(() => triggerIn(aside)?.textContent).toContain(catalog.title);
-    if (touch) {
-      await expect.poll(() => host!.querySelector('[data-mobile-nav]')?.getAttribute('data-mobile-nav')).toBe('closed');
-      await expect.poll(() => aside.getBoundingClientRect().right).toBeLessThanOrEqual(0);
-      await openDrawer(host!);
-      await settlePush(host!);
+    if (item === current) {
+      expect(router.state.location.key).toBe(previousLocationKey);
+      expect(document.activeElement).toBe(trigger);
+      if (touch) expect(aside).not.toHaveAttribute('inert');
+    } else {
+      await expect.poll(() => router!.state.location.key).not.toBe(previousLocationKey);
+      await expect.poll(() => committedLocationKey).toBe(router.state.location.key);
+      await expectLoadedCatalog(catalog.key);
+      await expect.poll(() => document.activeElement?.matches('[data-catalog-scope-heading]')).toBe(true);
+      if (touch) {
+        await expect.poll(() => aside.getBoundingClientRect().right).toBeLessThanOrEqual(0);
+        await openDrawer(host!);
+        await settlePush(host!);
+      }
     }
-    expectReachable(triggerIn(aside)!, width, height);
-    expectReachable(close, width, height);
+    expect(list()).toBeNull();
+    await expect.poll(() => aside.getBoundingClientRect().width).toBe(closedWidth);
+    expect(trigger.textContent).toContain(catalog.shortTitle);
+    expectReachable(trigger, width, height);
+    expectReachable(close(), width, height);
+  }
+
+  await router.navigate(-1);
+  await expectLoadedCatalog('diva');
+  expect(trigger.textContent).toContain('DIVA · Identitäten und Zugriffe');
+  expect(list()).toBeNull();
+  if (touch) {
+    await openDrawer(host);
+    await settlePush(host);
   }
   if (touch) {
-    await tap(close);
+    await tap(close());
     await expect.poll(() => host!.querySelector('[data-mobile-nav]')?.getAttribute('data-mobile-nav')).toBe('closed');
   }
 });

@@ -659,6 +659,8 @@ export interface VocabularyProvenance {
 export interface CatalogProvenance {
   /** Unveränderter Upstream-Titel; optional für ältere Metadatenartefakte. */
   title?: string;
+  /** Anzahl der Kontrollen im ausgelieferten Katalog. */
+  controlCount?: number;
   /** Source-registry artifact key; written by the multi-artifact fetch (GSPP-249) */
   artifactKey?: string;
   source: {
@@ -721,6 +723,7 @@ export interface LoadedCatalogState {
 export interface CatalogDirectoryEntry {
   readonly catalogKey: CatalogKey;
   readonly title: string;
+  readonly controlCount?: number;
 }
 
 export interface CatalogState {

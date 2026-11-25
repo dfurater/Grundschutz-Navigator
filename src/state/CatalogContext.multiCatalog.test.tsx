@@ -199,6 +199,18 @@ describe('CatalogProvider — mehrere Kataloge', () => {
     expect(result.current.catalogs.has('wlan')).toBe(false);
   });
 
+  it.each([0, 42, -1, 1.5, '42', null])('übernimmt nur eine gültige optionale Kontrollzahl: %j', async (controlCount) => {
+    const fetchSpy = mockArtifacts({
+      [SECOND_METADATA_URL]: { title: 'Stand der Technik WLAN', controlCount },
+    });
+    const { result } = renderProvider();
+    const directoryEntry = () => result.current.catalogDirectory.find(({ catalogKey }) => catalogKey === 'wlan');
+
+    await waitFor(() => expect(directoryEntry()?.title).toBe('Stand der Technik WLAN'));
+    expect(directoryEntry()?.controlCount).toBe(controlCount === 0 || controlCount === 42 ? controlCount : undefined);
+    expect(fetchSpy.mock.calls.some(([url]) => String(url) === SECOND_DATA_URL)).toBe(false);
+  });
+
   it('veröffentlicht verfügbare Titel trotz einer hängenden anderen Metadaten-Anfrage', async () => {
     let resolvePending: (response: Response) => void = () => {};
     const pending = new Promise<Response>((resolve) => { resolvePending = resolve; });
@@ -248,19 +260,19 @@ describe('CatalogProvider — mehrere Kataloge', () => {
     expect(result.current.catalogDirectory[1].title).toBe('Neuer Titel');
   });
 
-  it('nutzt für den aktiven geladenen Katalog dessen Dokumenttitel', async () => {
+  it('nutzt den Titel und die Kontrollzahl des geladenen Katalogs', async () => {
     mockArtifacts({
       [ENTRY_DATA_URL]: entryCatalogJson,
       [ENTRY_METADATA_URL]: { ...await provenanceFor(entryCatalogJson), title: 'Anderer Metadaten-Titel' },
-      [SECOND_METADATA_URL]: { title: 'WLAN aus Metadaten' },
+      [SECOND_METADATA_URL]: { title: 'WLAN aus Metadaten', controlCount: 500 },
       [SECOND_DATA_URL]: secondCatalogJson,
     });
     const { result } = renderProvider();
     await waitForEntryCatalog(result);
     await waitFor(() => {
       expect(result.current.catalogDirectory).toEqual([
-        { catalogKey: 'gspp', title: 'Einstiegskatalog' },
-        { catalogKey: 'wlan', title: 'WLAN aus Metadaten' },
+        { catalogKey: 'gspp', title: 'Einstiegskatalog', controlCount: result.current.catalog?.totalControls },
+        { catalogKey: 'wlan', title: 'WLAN aus Metadaten', controlCount: 500 },
       ]);
     });
     act(() => result.current.selectCatalog('wlan'));
@@ -268,6 +280,7 @@ describe('CatalogProvider — mehrere Kataloge', () => {
       expect(result.current.catalogDirectory.find((entry) => entry.catalogKey === 'wlan')?.title).toBe('Zweitkatalog');
     });
     expect(result.current.catalogDocument?.view.metadata.title).toBe('Zweitkatalog');
+    expect(result.current.catalogDirectory[1].controlCount).toBe(result.current.catalog?.totalControls);
   });
 
   it('lädt initial nur den Einstiegskatalog', async () => {

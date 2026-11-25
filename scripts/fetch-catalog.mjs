@@ -942,6 +942,7 @@ async function buildFetchArtifacts(logger = console, {
       artifactKey: record.entry.artifactKey,
       catalogKey: record.entry.catalogKey,
       title: record.title,
+      controlCount: record.quality.controlCount,
       oscalVersion: record.entry.oscalVersion,
       source: {
         repository: OFFICIAL_BSI_REPOSITORY_URL,

@@ -369,11 +369,15 @@ export function CatalogProvider({
       ...projected,
       requestCatalog: loadCatalog,
       retryCatalog,
-      catalogDirectory: entries.map((entry) => (
-        entry.catalogKey === state.activeCatalogKey && projected.catalogDocument
-          ? { ...entry, title: projected.catalogDocument.view.metadata.title }
-          : entry
-      )),
+      catalogDirectory: entries.map((entry) => {
+        const loaded = state.catalogs.get(entry.catalogKey)?.catalog;
+        if (!loaded) return entry;
+        return {
+          ...entry,
+          title: entry.catalogKey === state.activeCatalogKey ? loaded.metadata.title : entry.title,
+          controlCount: loaded.totalControls,
+        };
+      }),
     };
   }, [state, selectCatalog, loadCatalog, retryCatalog, descriptors, directory]);
 

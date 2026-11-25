@@ -1,14 +1,14 @@
-import { useMemo, useState, useEffect, useId, useRef } from 'react';
+import { useMemo, useState, useEffect, useId, useLayoutEffect, useRef } from 'react';
 import {
   Outlet,
   matchPath,
   useNavigate,
   useLocation,
+  useNavigationType,
 } from 'react-router';
 import { AreaSwitch } from '@/components/AreaSwitch';
 import { HeaderBar } from '@/components/HeaderBar';
 import { Footer } from '@/components/Footer';
-import type { ScopeSwitcherItem } from '@/components/ScopeSwitcher';
 import {
   IconChevronLeft,
   IconChevronRight,
@@ -17,6 +17,7 @@ import type { TreeItem } from '@/components/TreeNav';
 import { useCatalog } from '@/hooks/useCatalog';
 import { useCloseDrawerOnNavigation } from '@/hooks/useCloseDrawerOnNavigation';
 import { useDragToResize } from '@/hooks/useDragToResize';
+import { SCOPE_HEADING_SELECTOR } from '@/hooks/useDocumentDetailPage';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useGlobalEventListener } from '@/hooks/useGlobalEventListener';
 import { useMobileDrawerPlacement } from '@/hooks/useMobileDrawerPlacement';
@@ -26,7 +27,6 @@ import { useInputModality } from '@/hooks/useInputModality';
 import { DESKTOP_QUERY, OWN_SCROLL_AREA_QUERY, REDUCED_MOTION_QUERY } from '@/hooks/breakpointQueries';
 import { useOverlayScrollbars } from '@/hooks/useOverlayScrollbars';
 import { isCatalogKey } from '@/domain/sourceRegistry';
-import type { CatalogKey } from '@/domain/sourceRegistry';
 import {
   CATALOG_ROUTE_PATTERN,
   CONTROL_ROUTE_PATTERN,
@@ -36,6 +36,7 @@ import {
   resolveControlRoute,
 } from '@/app/routes';
 import { ShellSidebar } from '@/app/ShellSidebar';
+import { isCatalogSwitchNavigation } from '@/app/CatalogSwitcher';
 import { VerbundPath } from '@/app/VerbundPath';
 import { StationStrip } from '@/features/workspace/StationStrip';
 import { useShellArea } from '@/app/useShellArea';
@@ -74,6 +75,20 @@ function buildTreeItems(
 const SIDEBAR_DEFAULT_WIDTH = 256;
 const SIDEBAR_MIN_WIDTH = 160;
 const SIDEBAR_MAX_WIDTH = 480;
+const CATALOG_SWITCHER_MIN_WIDTH = 400;
+
+function useCatalogSwitcherLayout(locationKey: string, sidebarWidth: number) {
+  const [openedAt, setOpenedAt] = useState<string | null>(null);
+  const open = openedAt === locationKey;
+  if (openedAt !== null && !open) setOpenedAt(null);
+
+  return {
+    open,
+    width: open ? Math.max(sidebarWidth, CATALOG_SWITCHER_MIN_WIDTH) : sidebarWidth,
+    close: () => setOpenedAt(null),
+    toggle: () => setOpenedAt(open ? null : locationKey),
+  };
+}
 
 /** Der Wartezustand der Navigation umfasst die Shell und die Dialoge ihrer Seiten. */
 export function AppShell() {
@@ -110,6 +125,8 @@ function AppShellLayout() {
   });
   const navigate = useNavigate();
   const location = useLocation();
+  const navigationType = useNavigationType();
+  const switcher = useCatalogSwitcherLayout(location.key, sidebarWidth);
   useRoutePrefetch();
   useInputModality();
   const prefersReducedMotion = useMediaQuery(REDUCED_MOTION_QUERY);
@@ -125,17 +142,21 @@ function AppShellLayout() {
 
   const shellRef = useRef<HTMLDivElement>(null);
   const drawerRef = useRef<HTMLElement>(null);
+  const mainRef = useRef<HTMLElement>(null);
+  const focusLocationKey = useRef<string | null>(null);
   const backdropRef = useRef<HTMLDivElement>(null);
   const mobileNavOpen = sideNavOpen && !isPersistentNav;
 
   const openSideNav = () => {
     // Safari gibt Klicks keinen Button-Fokus; main wird beim Öffnen inert.
     if (!isPersistentNav) menuButtonRef.current?.focus({ preventScroll: true });
+    switcher.close();
     setSideNavOpen(true);
     setSidebarCollapsed(false);
   };
 
   const closeSideNav = () => {
+    switcher.close();
     setSideNavOpen(false);
     if (!isPersistentNav) menuButtonRef.current?.focus({ preventScroll: true });
   };
@@ -151,6 +172,7 @@ function AppShellLayout() {
     backdropRef,
     onPreview: () => {
       drawerPlacement.captureOffset();
+      switcher.close();
       setSidebarCollapsed(false);
     },
     onOpen: openSideNav,
@@ -170,7 +192,7 @@ function AppShellLayout() {
   // Bezugsrahmen, und die Elemente sprängen erst nach der Bewegung an den
   // Bildschirmrand (GSPP-494). `data-mobile-nav` folgt dagegen dem Zielzustand.
   const mobileNavBlocksFixed = mobileNavShown || drawerPlacement.sliding;
-  const expandedNavWidth = sidebarCollapsed ? 44 : sidebarWidth;
+  const expandedNavWidth = sidebarCollapsed ? 44 : switcher.width;
   // Mobil bestimmt `--mobile-nav-width` die Breite (src/index.css).
   const persistentNavWidth = isPersistentNav ? expandedNavWidth : undefined;
   // Mobil ändert sich die Breite nur mit dem Viewport, etwa beim Drehen. Sie
@@ -200,12 +222,14 @@ function AppShellLayout() {
 
   // Capture garantiert den Vorrang vor dem Escape-Handler der Detailseite
   // auch dann, wenn deren Bubble-Listener bereits vor dem Öffnen registriert war.
-  // Ein offenes Menü im Drawer-Kopf schließt Escape selbst; erst das nächste
-  // Escape gehört wieder dem Drawer.
+  // Der Schnellwechsel verarbeitet Escape innerhalb seines Bereichs selbst.
   useGlobalEventListener(
     'document', 'keydown', (event) => {
       if (event.key !== 'Escape' || event.defaultPrevented) return;
-      if (event.target instanceof Element && event.target.closest('[role="menu"]')) return;
+      if (event.target instanceof Element && (
+        event.target.closest('[role="menu"]') ||
+        (switcher.open && event.target.closest('[data-catalog-switcher]'))
+      )) return;
       event.preventDefault();
       event.stopPropagation();
       dismissMobileNav();
@@ -231,14 +255,25 @@ function AppShellLayout() {
   // Während ein nachgeladener Katalog noch unterwegs ist, trägt der ausgewählte
   // Schlüssel die Navigation weiter — kein Sprung zurück auf den Einstieg.
   const activeCatalogKey = catalog?.catalogKey ?? selectedCatalogKey;
-  const catalogItems = useMemo<readonly ScopeSwitcherItem<CatalogKey>[]>(
-    () => catalogDirectory.map(({ catalogKey, title }) => ({
-      key: catalogKey,
-      title,
-      href: buildCatalogUrl(catalogKey),
-    })),
+  const catalogItems = useMemo(
+    () => catalogDirectory.map((entry) => ({ ...entry, href: buildCatalogUrl(entry.catalogKey) })),
     [catalogDirectory],
   );
+
+  useLayoutEffect(() => {
+    const main = mainRef.current;
+    if (!main || navigationType !== 'PUSH' || !isCatalogSwitchNavigation(location.state)) return;
+
+    const heading = catalog?.catalogKey === routeCatalogKey
+      ? main.querySelector<HTMLElement>(SCOPE_HEADING_SELECTOR)
+      : null;
+    if (focusLocationKey.current !== location.key) {
+      focusLocationKey.current = location.key;
+      (heading ?? main).focus({ preventScroll: true });
+    } else if (document.activeElement === main) {
+      heading?.focus({ preventScroll: true });
+    }
+  }, [catalog?.catalogKey, location.key, location.state, navigationType, routeCatalogKey]);
 
   // Derive selectedId from URL so tree highlights work for all navigation sources
   const selectedId = useMemo(() => {
@@ -316,6 +351,7 @@ function AppShellLayout() {
           // Safari gibt Klicks keinen Button-Fokus; main wird beim Öffnen inert.
           if (!isPersistentNav) menuButtonRef.current?.focus({ preventScroll: true });
           drawerPlacement.captureOffset();
+          switcher.close();
           setSideNavOpen((prev) => !prev);
           setSidebarCollapsed(false);
         }}
@@ -376,10 +412,7 @@ function AppShellLayout() {
             </div>
           ) : (
             /* Expanded: Kontextwahl + Baum */
-            <div
-              className="h-full min-w-0 flex flex-1 flex-col desktop:flex-none"
-              style={isPersistentNav ? { width: sidebarWidth } : undefined}
-            >
+            <div className="flex h-full w-full min-w-0 flex-col">
               <ShellSidebar
                 area={area}
                 persistent={isPersistentNav}
@@ -401,6 +434,9 @@ function AppShellLayout() {
                 catalog={{
                   items: catalogItems,
                   activeKey: activeCatalogKey,
+                  switcherActiveKey: routeCatalogKey ?? activeCatalogKey,
+                  switcherOpen: switcher.open,
+                  onToggleSwitcher: switcher.toggle,
                   treeItems,
                   selectedId,
                   loading,
@@ -413,7 +449,7 @@ function AppShellLayout() {
           )}
 
           {/* Resize handle — only on desktop, only when expanded */}
-          {!sidebarCollapsed && (
+          {!sidebarCollapsed && !switcher.open && (
             <button
               type="button"
               className="resize-handle resize-handle--right absolute right-0 top-0 bottom-0 z-20 hidden w-1.5 cursor-col-resize focus-visible:bg-[var(--color-surface-subtle)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] desktop:block"
@@ -436,6 +472,8 @@ function AppShellLayout() {
           )}
           <main
             id="main-content"
+            ref={mainRef}
+            tabIndex={-1}
             inert={mobileNavOpen}
             className="mobile-nav-push flex-1 min-h-0 min-w-0 flex flex-col md:overflow-hidden"
           >

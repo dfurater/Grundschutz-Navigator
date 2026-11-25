@@ -106,16 +106,25 @@ async function loadCatalogDirectoryEntry(
   { catalogKey, metadataUrl }: SupportedCatalogDescriptor,
   requestProvenance: ProvenanceRequest,
 ): Promise<CatalogDirectoryEntry> {
+  let provenance: CatalogProvenance | undefined;
   try {
-    const provenance = await requestProvenance(metadataUrl);
-    if (typeof provenance?.title === 'string' && provenance.title.length > 0) {
-      return { catalogKey, title: provenance.title };
-    }
+    provenance = await requestProvenance(metadataUrl);
   } catch {
     // Ein fehlender oder nicht lesbarer Sidecar betrifft nur diesen Eintrag.
   }
-  console.warn(`Catalog title metadata not available for "${catalogKey}". Using catalog key.`);
-  return { catalogKey, title: catalogKey };
+
+  const title = provenance?.title;
+  const controlCount = provenance?.controlCount;
+  const entry = {
+    catalogKey,
+    title: typeof title === 'string' && title.length > 0 ? title : catalogKey,
+  };
+  if (typeof title !== 'string' || title.length === 0) {
+    console.warn(`Catalog title metadata not available for "${catalogKey}". Using catalog key.`);
+  }
+  return typeof controlCount === 'number' && Number.isSafeInteger(controlCount) && controlCount >= 0
+    ? { ...entry, controlCount }
+    : entry;
 }
 
 export interface LoadedCatalogArtifacts {

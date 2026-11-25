@@ -119,13 +119,13 @@ const mockedUseCatalog = vi.mocked(useCatalog);
 const mockedUseMediaQuery = vi.mocked(useMediaQuery);
 
 const CATALOG_DIRECTORY = [
-  { catalogKey: 'gspp', title: 'Anwenderkatalog Grundschutz++' },
+  { catalogKey: 'gspp', title: 'Anwenderkatalog Grundschutz++', controlCount: 1001 },
   { catalogKey: 'lieferkette', title: 'Supply Chain Security' },
   { catalogKey: 'wlan', title: 'Stand der Technik WLAN' },
 ] as const;
 
-const scopeTrigger = (title = 'Anwenderkatalog Grundschutz++') =>
-  screen.getByRole('button', { name: `Katalog: ${title}` });
+const scopeTrigger = () => screen.getByRole('button', { name: /Katalog wechseln/ });
+const catalogList = () => within(screen.getByRole('navigation', { name: 'Verfügbare Kataloge' }));
 
 describe('AppShell', () => {
   beforeEach(() => {
@@ -243,16 +243,13 @@ describe('AppShell', () => {
     expect(magnifier).not.toHaveAttribute('inert');
   });
 
-  it.each(['close', 'selection', 'backdrop'] as const)('returns focus when mobile navigation is dismissed through %s', (method) => {
+  it.each(['close', 'backdrop'] as const)('returns focus when mobile navigation is dismissed through %s', (method) => {
     const { container } = renderAppShell();
     const menuButton = screen.getByRole('button', { name: 'Menu' });
     fireEvent.click(menuButton);
-    if (method === 'selection') fireEvent.click(scopeTrigger());
     const target = method === 'close'
       ? screen.getByRole('button', { name: 'Menü schließen' })
-      : method === 'selection'
-        ? screen.getByRole('menuitemradio', { name: 'Stand der Technik WLAN' })
-        : screen.getByTestId('mobile-nav-backdrop');
+      : screen.getByTestId('mobile-nav-backdrop');
     if (method === 'backdrop') screen.getByRole('button', { name: 'Menü schließen' }).focus();
     else target.focus();
     const focus = vi.spyOn(menuButton, 'focus');
@@ -614,16 +611,13 @@ describe('AppShell', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
     fireEvent.click(scopeTrigger());
 
-    const items = screen.getAllByRole('menuitemradio');
-    expect(items.map((item) => item.textContent)).toEqual(CATALOG_DIRECTORY.map(({ title }) => title));
-    expect(items.map((item) => item.getAttribute('href'))).toEqual([
-      '/katalog/gspp',
-      '/katalog/lieferkette',
-      '/katalog/wlan',
-    ]);
-    fireEvent.click(screen.getByRole('menuitemradio', { name: 'Supply Chain Security' }));
+    expect(catalogList().getAllByRole('listitem')).toHaveLength(CATALOG_DIRECTORY.length);
+    expect(catalogList().getByRole('link', { name: 'Supply Chain Security' })).toHaveAttribute('href', '/katalog/lieferkette');
+    expect(catalogList().getByRole('link', { name: 'Stand der Technik WLAN' })).toHaveAttribute('href', '/katalog/wlan');
+    fireEvent.click(catalogList().getByRole('link', { name: 'Supply Chain Security' }));
 
     expect(screen.getByTestId('catalog-browser')).toBeInTheDocument();
+    expect(screen.getByRole('main')).toHaveFocus();
     expect(container.querySelector('aside')).toHaveAttribute('inert');
     expect(screen.getByTestId('mobile-nav-backdrop')).toHaveAttribute('data-state', 'closed');
   });
@@ -635,11 +629,11 @@ describe('AppShell', () => {
     const menuButton = screen.getByRole('button', { name: 'Menu' });
     fireEvent.click(menuButton);
     fireEvent.click(scopeTrigger());
-    const item = screen.getAllByRole('menuitemradio')[0];
-    expect(item).toHaveFocus();
+    const item = catalogList().getByRole('button', { name: 'Anwenderkatalog Grundschutz++' });
+    item.focus();
 
     expect(fireEvent.keyDown(item, { key: 'Escape' })).toBe(false);
-    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+    expect(screen.queryByRole('navigation', { name: 'Verfügbare Kataloge' })).not.toBeInTheDocument();
     expect(scopeTrigger()).toHaveFocus();
     expect(container.querySelector('aside')).not.toHaveAttribute('inert');
 
@@ -656,8 +650,33 @@ describe('AppShell', () => {
     expect(screen.queryByRole('button', { name: 'Menü schließen' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Katalog-Explorer ausblenden' }));
 
-    expect(screen.queryByRole('button', { name: /^Katalog:/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Katalog wechseln/ })).not.toBeInTheDocument();
     expect(container.querySelector('aside')?.querySelectorAll('svg')).toHaveLength(1);
+  });
+
+  it('zeigt die vollständige Beschreibung und schließt beim aktiven Katalog ohne Navigation', () => {
+    mockedUseMediaQuery.mockImplementation((query) => query === DESKTOP_QUERY);
+    const initialPath = '/katalog/gspp/kontrolle/stable-alt-id';
+    const { container, router } = renderAppShell([initialPath]);
+    const sidebar = container.querySelector('aside')!;
+    const resize = screen.getByRole('button', { name: 'Sidebar-Breite anpassen' });
+    fireEvent.keyDown(resize, { key: 'ArrowRight' });
+    const storedWidth = sidebar.style.width;
+    const trigger = scopeTrigger();
+    expect(trigger).toHaveAccessibleName('Grundschutz++ Katalog wechseln');
+    expect(trigger).toHaveAccessibleDescription('Anwenderkatalog Grundschutz++');
+
+    fireEvent.click(trigger);
+    const active = catalogList().getByRole('button', { name: 'Anwenderkatalog Grundschutz++' });
+    expect(active).toHaveAttribute('aria-current', 'true');
+    expect(active).toHaveTextContent('Geöffnet');
+    expect(active).toHaveAccessibleDescription(/1.001 Kontrollen/);
+    expect(Number.parseFloat(sidebar.style.width)).toBeGreaterThan(Number.parseFloat(storedWidth));
+
+    fireEvent.click(active);
+    expect(router.state.location.pathname).toBe(initialPath);
+    expect(sidebar.style.width).toBe(storedWidth);
+    expect(trigger).toHaveFocus();
   });
 
   it('registers the canonical catalog-scoped control route', () => {
@@ -692,11 +711,8 @@ describe('AppShell', () => {
 
     renderAppShell(['/katalog/wlan']);
 
-    fireEvent.click(scopeTrigger('Stand der Technik WLAN'));
-    expect(screen.getByRole('menuitemradio', { name: 'Stand der Technik WLAN' })).toHaveAttribute(
-      'aria-checked',
-      'true',
-    );
+    fireEvent.click(scopeTrigger());
+    expect(catalogList().getByRole('button', { name: 'Stand der Technik WLAN' })).toHaveAttribute('aria-current', 'true');
   });
 
   it('hält die Navigation beim ausgewählten Katalog, solange er noch lädt', () => {
@@ -710,11 +726,8 @@ describe('AppShell', () => {
 
     renderAppShell(['/katalog/wlan']);
 
-    fireEvent.click(scopeTrigger('Stand der Technik WLAN'));
-    expect(screen.getByRole('menuitemradio', { name: 'Stand der Technik WLAN' })).toHaveAttribute(
-      'aria-checked',
-      'true',
-    );
+    fireEvent.click(scopeTrigger());
+    expect(catalogList().getByRole('button', { name: 'Stand der Technik WLAN' })).toHaveAttribute('aria-current', 'true');
   });
 
   it('does not register or redirect the unscoped catalog route', () => {
