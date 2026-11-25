@@ -18,8 +18,8 @@ import '@/index.css';
 
 /**
  * Fokus im Freigabedialog der SSP-Station (GSPP-684) in Chromium: Nach einer geschriebenen Rücknahme steht er auf der
- * Prozesszeile, beim Speichern einer Partei auf der Dialogüberschrift und nach einem Speicherfehler wieder auf der
- * Speicheraktion.
+ * Prozesszeile, beim Speichern einer Partei auf der Dialogüberschrift, Tab und Shift+Tab bleiben währenddessen im Dialog,
+ * und nach einem Speicherfehler steht er wieder auf der Speicheraktion.
  */
 
 let root: Root | undefined;
@@ -70,8 +70,8 @@ test.each([1440, 390])('setzt den Fokus nach einer mit Enter bestätigten Rückn
   expect(document.activeElement?.tagName).toBe('SUMMARY');
 });
 
-test('hält den Fokus beim Speichern einer Partei im Dialog und gibt ihn nach einem Speicherkonflikt zurück', async () => {
-  const stored = await open(1440);
+test.each([1440, 390])('hält den Fokus beim Speichern einer Partei bei %i px im Dialog und gibt ihn nach einem Speicherkonflikt zurück', async (width) => {
+  const stored = await open(width);
   button('+ Partei im SSP anlegen')!.click();
   await expect.poll(() => document.activeElement?.tagName).toBe('INPUT');
   await userEvent.keyboard('Behördenleitung');
@@ -88,6 +88,18 @@ test('hält den Fokus beim Speichern einer Partei im Dialog und gibt ihn nach ei
 
   await expect.poll(() => document.querySelector('dialog')?.getAttribute('aria-busy')).toBe('true');
   expect(document.activeElement).toBe(document.querySelector('dialog h2'));
+  // Tab-Umlauf in beide Richtungen, während das Fieldset deaktiviert ist.
+  const dialog = document.querySelector('dialog')!;
+  button('Abbrechen')!.focus();
+  await userEvent.keyboard('{Shift>}{Tab}{/Shift}');
+  expect(dialog.contains(document.activeElement)).toBe(true);
+  const confirm = [...dialog.querySelectorAll<HTMLButtonElement>('button')].find(item => item.textContent === 'Freigabe zurücknehmen')!;
+  confirm.focus();
+  await userEvent.keyboard('{Tab}');
+  expect(dialog.contains(document.activeElement)).toBe(true);
+  expect(document.activeElement).not.toBe(confirm);
+  // Steht der Fokus auf einer anderen Dialogaktion, bleibt er dort; die Rückgabe greift nur von der Überschrift aus.
+  dialog.querySelector('h2')!.focus();
   release();
   await expect.poll(() => document.querySelector('dialog [role="alert"]')?.textContent, { timeout: 8000 }).toContain('in einem anderen Tab geändert');
   expect(document.activeElement).toBe(saveParty);

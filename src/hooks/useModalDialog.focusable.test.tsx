@@ -5,7 +5,7 @@ import { ModalPortal } from '@/components/ModalPortal';
 import { useModalDialog } from './useModalDialog';
 
 describe('useModalDialog: Ziele des Tab-Umlaufs', () => {
-  it('wraps tab navigation around hidden and inert targets at both ends', () => {
+  it('wraps tab navigation around hidden, inert and fieldset-disabled targets at both ends', () => {
     function HiddenEndsDialog() {
       const ref = useRef<HTMLDialogElement>(null);
       useModalDialog(ref, true, () => {});
@@ -17,6 +17,9 @@ describe('useModalDialog: Ziele des Tab-Umlaufs', () => {
             </div>
             <button type="button">Erste sichtbare Aktion</button>
             <button type="button">Letzte sichtbare Aktion</button>
+            <fieldset disabled>
+              <input aria-label="Deaktiviertes Feld" />
+            </fieldset>
             <dl hidden>
               <dt><a href="#legende">Versteckter Legendenlink</a></dt>
             </dl>

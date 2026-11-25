@@ -1,16 +1,16 @@
 import { useLayoutEffect, useRef } from 'react';
 
-const FOCUSABLE_SELECTORS =
-  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+const FOCUSABLE_SELECTORS = 'a[href], button, input, select, textarea, [tabindex]:not([tabindex="-1"])';
 
 /**
  * Nur bedienbare Ziele: Ein Element in `[hidden]` oder `[inert]` nimmt keinen
- * Fokus an, etwa die Links einer geschlossenen Legende. Wäre es das erste oder
+ * Fokus an, etwa die Links einer geschlossenen Legende, ebenso ein nativ
+ * deaktiviertes, auch über ein deaktiviertes `fieldset` (`:disabled`). Wäre es das erste oder
  * letzte Ziel, bräche der Tab-Umlauf an diesem Ende. `checkVisibility` erfasst
  * zusätzlich per CSS verborgene Elemente; jsdom kennt die Methode nicht.
  */
 function isOperable(el: HTMLElement): boolean {
-  if (el.closest('[hidden],[inert]')) return false;
+  if (el.matches(':disabled') || el.closest('[hidden],[inert]')) return false;
   return typeof el.checkVisibility !== 'function' || el.checkVisibility({ visibilityProperty: true });
 }
 
