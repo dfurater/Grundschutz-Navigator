@@ -730,6 +730,18 @@ describe('AppShell', () => {
     expect(catalogList().getByRole('button', { name: 'Stand der Technik WLAN' })).toHaveAttribute('aria-current', 'true');
   });
 
+  it('behält den aktiven Katalog im Schnellwechsel bei einer nicht ausgelieferten Route', () => {
+    mockedUseCatalog.mockReturnValue({
+      ...mockedUseCatalog(),
+      catalogDirectory: CATALOG_DIRECTORY.filter(({ catalogKey }) => catalogKey !== 'wlan'),
+    });
+
+    renderAppShell(['/katalog/wlan']);
+
+    fireEvent.click(scopeTrigger());
+    expect(catalogList().getByRole('button', { name: 'Anwenderkatalog Grundschutz++' })).toHaveAttribute('aria-current', 'true');
+  });
+
   it('does not register or redirect the unscoped catalog route', () => {
     renderAppShell(['/katalog']);
 

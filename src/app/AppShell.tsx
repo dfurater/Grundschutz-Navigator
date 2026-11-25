@@ -259,6 +259,7 @@ function AppShellLayout() {
     () => catalogDirectory.map((entry) => ({ ...entry, href: buildCatalogUrl(entry.catalogKey) })),
     [catalogDirectory],
   );
+  const switcherActiveKey = catalogItems.find(({ catalogKey }) => catalogKey === routeCatalogKey)?.catalogKey ?? activeCatalogKey;
 
   useLayoutEffect(() => {
     const main = mainRef.current;
@@ -434,7 +435,7 @@ function AppShellLayout() {
                 catalog={{
                   items: catalogItems,
                   activeKey: activeCatalogKey,
-                  switcherActiveKey: routeCatalogKey ?? activeCatalogKey,
+                  switcherActiveKey,
                   switcherOpen: switcher.open,
                   onToggleSwitcher: switcher.toggle,
                   treeItems,
