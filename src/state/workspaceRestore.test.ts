@@ -1,6 +1,7 @@
 import { expect, it, vi } from 'vitest';
 import type { LocalId, ScopeId, VerbundId, WorkspaceScope, WorkspaceVerbund } from '@/domain/workspaceModel';
-import { NEW_SCOPE_DRAFT, collectRestoreInputs, saveNamedInput, scopeDraftKey, scopedVerbundDraftKey } from '@/state/workspaceRestore';
+import { NEW_SCOPE_DRAFT, collectRestoreInputs, discardReplacedInputs, saveNamedInput, scopeDraftKey, scopedVerbundDraftKey, type RestorePreview } from '@/state/workspaceRestore';
+import { decisionDrafts, discardDecisionDrafts } from '@/state/processDecisionDrafts';
 
 const target = { verbundId: '11111111-1111-4111-8111-111111111111' as VerbundId, name: 'Ziel', createdAt: '', savedAt: '' } as WorkspaceVerbund;
 const other = { ...target, verbundId: '22222222-2222-4222-8222-222222222222' as VerbundId, name: 'Anderer' };
@@ -91,4 +92,17 @@ it('speichert einen Abgrenzungsentwurf aus der Klärung mit dessen Vergleichssta
   const unused = vi.fn();
   expect(await saveNamedInput(entry, { renameVerbund: unused, renameScope: unused, createScope: unused, createVerbund: unused, saveScopeBoundary })).toBe(true);
   expect(saveScopeBoundary).toHaveBeenCalledExactlyOnceWith(entry.scope.scopeId, 's2', input);
+});
+
+it('behält Freigabedialog-Entwürfe zurückgebrachter Dokumente und verwirft die entfernter', () => {
+  const kept = '55555555-5555-4555-8555-555555555555' as LocalId;
+  const draft = { party: '', remarks: 'Offen' };
+  for (const localId of [kept, removed, foreign]) decisionDrafts(localId).set('p:approved', draft);
+  const preview = { kind: 'verbund', verbundId: target.verbundId, target: { documents: [{ localId: kept }, { localId: removed }] }, backup: { documents: [{ localId: kept }] } } as unknown as RestorePreview;
+  discardReplacedInputs(preview, new Map(), new Map());
+  // Der fremde Verbund bleibt unberührt; nur das vom Restore entfernte Dokument verliert seinen Entwurf.
+  expect([kept, removed, foreign].map(localId => decisionDrafts(localId).size)).toEqual([1, 0, 1]);
+  discardReplacedInputs({ kind: 'workspace', backup: { documents: [{ localId: kept }] } } as unknown as RestorePreview, new Map(), new Map());
+  expect([kept, removed, foreign].map(localId => decisionDrafts(localId).size)).toEqual([1, 0, 0]);
+  discardDecisionDrafts();
 });
