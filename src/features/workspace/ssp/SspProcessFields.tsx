@@ -38,7 +38,7 @@ type TextFieldProps = {
   readonly error?: string;
 };
 
-function ProcessText({ label, value, onChange, error, multiline, mono }: TextFieldProps & { readonly multiline?: boolean; readonly mono?: boolean }) {
+export function ProcessText({ label, value, onChange, error, multiline, mono }: TextFieldProps & { readonly multiline?: boolean; readonly mono?: boolean }) {
   const id = useId();
   const accessibility = { 'aria-invalid': Boolean(error), 'aria-describedby': error ? `${id}-error` : undefined };
   return <div className="min-w-0 space-y-1">
@@ -50,7 +50,7 @@ function ProcessText({ label, value, onChange, error, multiline, mono }: TextFie
   </div>;
 }
 
-function ProcessSelect({ label, value, onChange, error, options, emptyLabel = 'Bitte wählen' }: TextFieldProps & { readonly options: readonly Option[]; readonly emptyLabel?: string }) {
+export function ProcessSelect({ label, value, onChange, error, options, emptyLabel = 'Bitte wählen' }: TextFieldProps & { readonly options: readonly Option[]; readonly emptyLabel?: string }) {
   const id = useId();
   return <div className="min-w-0 space-y-1">
     <label htmlFor={id} className={FIELD_LABEL}>{label}</label>

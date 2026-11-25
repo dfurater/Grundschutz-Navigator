@@ -6,6 +6,7 @@ import type { WorkspaceClass1Artifact } from '@/domain/workspaceGraphModel';
 import type { BindingTarget, LocalId, VerbundId, WorkspaceResult } from '@/domain/workspaceModel';
 import type { ProfileAnalysis, ProfileAnalysisBasis, ProfileAnalysisInput, ProfileSchemaCheck } from '@/state/workspaceProfileAnalysis';
 import type { WorkspacePort } from '@/state/workspaceVerbundView';
+import { discardDecisionDrafts } from '@/state/processDecisionDrafts';
 
 /*
  * Dokumentoperationen des Bereichs Informationsverbünde (GSPP-292). Jede
@@ -136,7 +137,10 @@ export function createWorkspaceDocuments({ port, write, quiet, class1, delivery,
     setBinding: (...args) => write((store) => store.setBinding(...args)),
     deleteDocument: async (localId) => {
       const result = await write((store) => store.deleteDocument(localId));
-      if (result.ok) targets.delete(localId);
+      if (result.ok) {
+        targets.delete(localId);
+        discardDecisionDrafts([localId]);
+      }
       return result;
     },
     listReviewTrail: (localId) => read((store) => store.listReviewTrail(localId)),

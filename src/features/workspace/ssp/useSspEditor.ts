@@ -1,16 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { exportSspInWorker } from '@/adapters/sspWorkbench';
-import { readString } from '@/domain/jsonGuards';
+import { isJsonObject, readArray, readString } from '@/domain/jsonGuards';
 import { SSP_ADAPTER_DIAGNOSTIC_CODES } from '@/adapters/oscalSspReaders';
-import { readSspValue, setBaselineTitle, sspBaselineBindable, SspPatchError, SSP_IMPORT_PROFILE_POINTER } from '@/domain/sspAuthoring';
+import { addSspItem, readSspValue, setBaselineTitle, setSspValue, sspBaselineBindable, SspPatchError, SSP_IMPORT_PROFILE_POINTER } from '@/domain/sspAuthoring';
 import { catalogPinsForSave } from '@/domain/workspaceCatalogPin';
-import { commitSspSave, sameSspContent, sspReadinessBlocker, sspSaveBlocker } from '@/domain/sspSave';
+import { commitSspSave, mergeProcessDecision, sameSspContent, sspReadinessBlocker, sspSaveBlocker } from '@/domain/sspSave';
 import type { BindingTarget, LocalId, WorkspaceBinding, WorkspaceEnvelope } from '@/domain/workspaceModel';
 import { downloadBlob } from '@/adapters/browserDownload';
 import { serializeWorkspaceJson } from '@/domain/workspaceJson';
 import { sspCategoryContext } from '@/domain/sspCategoryContext';
 import { prepareSspTargets, validateSspTargets, type TargetCategoryContext, type TargetFailure } from '@/domain/sspTargetObjects';
 import { deriveSspProcessProtection, processProtectionFailure } from '@/domain/sspProcessProtection';
+import type { ProcessDecisionInput } from '@/domain/sspProcessApproval';
 import { targetDeletionUses } from '@/domain/sspTargetDeletion';
 import type { SspPath } from '@/domain/sspAuthoring';
 import { useCatalog } from '@/hooks/useCatalog';
@@ -18,12 +19,15 @@ import { StorageFailure, UNSAVED_INPUT_CODE, failure } from '@/adapters/workspac
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { useDocumentEditor, type DocumentEditorCoreMessage, type DocumentSaveState } from '@/features/workspace/useDocumentEditor';
 import type { PendingImportTarget } from '@/state/workspaceDocuments';
+import type { DecisionParty } from '@/state/processDecisionDrafts';
 
 type SspMessage = 'saved-as-draft' | 'component-unresolved' | 'component-referenced' | 'patch-failed' | 'catalog-locked' | 'target-invalid' | 'target-delete-blocked' | 'target-form-pending';
 
 export type SspEditorMessage = DocumentEditorCoreMessage | SspMessage;
+export type { DecisionParty } from '@/state/processDecisionDrafts';
 
 export interface SspEditor {
+  readonly localId: LocalId;
   readonly status: 'loading' | 'ready' | 'failed';
   readonly envelope?: WorkspaceEnvelope;
   readonly working: unknown;
@@ -49,6 +53,12 @@ export interface SspEditor {
   readonly setTargetFormPending: (id: string, pending: boolean) => void;
   readonly checkTargetRemoval: (path: SspPath) => Promise<readonly string[]>;
   readonly exportPreserved: () => void;
+  /** Hängt eine Prozessentscheidung an den gespeicherten Stand; liefert den Fehlercode oder `undefined`. */
+  readonly decideProcess: (input: ProcessDecisionInput) => Promise<string | undefined>;
+  /** Legt eine Partei an oder aktualisiert sie nach einem Fehlversuch und speichert das SSP; `uuid` heißt gespeichert, `code` daneben meldet ein als Entwurf gespeichertes SSP. */
+  readonly addDecisionParty: (party: DecisionParty) => Promise<{ readonly uuid?: string; readonly code?: string }>;
+  /** Gespeicherte Prozessentscheidung, die offene Eingaben noch nicht in den Editor übernehmen lassen. */
+  readonly unadoptedDecision?: WorkspaceEnvelope;
   /** Übernimmt einen neueren gespeicherten Stand nur ohne offene Eingaben. */
   readonly adopt: (document: WorkspaceEnvelope) => Promise<'adopted' | 'blocked' | 'failed'>;
 }
@@ -65,6 +75,10 @@ function baselineHref(source: unknown): string | undefined {
 function effectiveChoice(choice: PendingImportTarget | undefined, href: string | undefined, envelope: WorkspaceEnvelope | undefined): PendingImportTarget | undefined {
   return choice?.href === href && choice?.basis === envelope?.savedAt ? choice : undefined;
 }
+
+// Laufende Prozessentscheidungen je Dokument: Eine während des Schreibens neu geöffnete Station übernimmt deren Ergebnis,
+// statt den vorher geladenen Stand weiter anzuzeigen oder zu exportieren.
+const decisionWrites = new Map<LocalId, Promise<WorkspaceEnvelope | undefined>>();
 
 /**
  * Arbeitsstand eines SSP: gezielte Patches, Autosave in den Entwurf und
@@ -135,7 +149,7 @@ export function useSspEditor(localId: LocalId): SspEditor {
   }, [change, latest, pending]);
 
   const commitSsp = useCallback(async (rebind: boolean) => {
-    if (pendingForms.current.size) { setMessage('target-form-pending'); return; }
+    if (pendingForms.current.size) { setMessage('target-form-pending'); return { ok: false as const, code: UNSAVED_INPUT_CODE }; }
     const result = await commit(latest.current.working, async (storedSource, snapshot) => {
       const importedFailure = validateSspTargets(storedSource, categories);
       if (importedFailure) { setMessage('target-invalid'); return { ok: false, code: importedFailure.code }; }
@@ -173,11 +187,12 @@ export function useSspEditor(localId: LocalId): SspEditor {
     if (!result.ok && result.code === 'SSP_TARGET_DELETE_BLOCKED') setMessage('target-delete-blocked');
     else if (!result.ok && result.code === SSP_ADAPTER_DIAGNOSTIC_CODES.COMPONENT_REFERENCE_UNRESOLVED) setMessage('component-unresolved');
     else if (result.ok && result.documentState === 'draft') setMessage('saved-as-draft');
+    return result;
   }, [bindings, categories, catalogDelivery, commit, documents, latest, pending, setMessage, stored]);
 
-  const save = useCallback(() => commitSsp(false), [commitSsp]);
+  const save = useCallback(async () => { await commitSsp(false); }, [commitSsp]);
   // Ein offener Entwurf wird dabei mitgespeichert: Er ist sonst unter der Sperre nicht mehr zu sichern.
-  const bindCatalogStand = useCallback(() => commitSsp(true), [commitSsp]);
+  const bindCatalogStand = useCallback(async () => { await commitSsp(true); }, [commitSsp]);
 
   // Eine ungespeicherte Baseline-Wahl ist eine offene Änderung, auch wenn die Quelle gleich bleibt.
   const dirty = core.dirty || choice !== undefined || hasPendingForms;
@@ -188,7 +203,11 @@ export function useSspEditor(localId: LocalId): SspEditor {
     if (removed) { pendingForms.current.clear(); setHasPendingForms(false); }
     return removed;
   }, [removeDocument]);
-  const exportDocument = useCallback(async () => { if (!dirty) await exportWith(document => exportSspInWorker(document, categories), 'ssp.json'); }, [categories, dirty, exportWith]);
+  // Gespeicherte Prozessentscheidung, deren Übernahme offene Eingaben blockieren; bis zur Übernahme ist der Editorstand veraltet.
+  const [unadoptedDecision, setUnadoptedDecision] = useState<WorkspaceEnvelope>();
+  const exportDocument = useCallback(async () => {
+    if (!dirty && !unadoptedDecision) await exportWith(document => exportSspInWorker(document, categories), 'ssp.json');
+  }, [categories, dirty, exportWith, unadoptedDecision]);
 
   const checkTargetRemoval = useCallback(async (path: SspPath): Promise<readonly string[]> => {
     const bindings = await documents.listBindings();
@@ -202,14 +221,79 @@ export function useSspEditor(localId: LocalId): SspEditor {
     }
     return targetDeletionUses(latest.current.working, path, localId, members, bindings.value);
   }, [documents, latest, localId]);
+  const { adopt } = core;
+  // Ohne offene Eingaben übernimmt der Editor den Stand; mit ihnen führt er die Aktionskette in den Arbeitsstand zusammen.
+  // Eine ausgehängte Station übernimmt nichts (`adopt` meldet `blocked`); die geöffnete übernimmt den Stand über `decisionWrites`.
+  const adoptOrRebase = useCallback(async (document: WorkspaceEnvelope) => {
+    const adopted = await adopt(document);
+    if (adopted !== 'blocked') return adopted;
+    const { working: current, envelope } = latest.current;
+    const choice = effectiveChoice(pending.get(SSP_IMPORT_PROFILE_POINTER), baselineHref(current), envelope);
+    const merged = await adopt(document, mergeProcessDecision);
+    // Eine offene Baseline-Wahl gilt gegen den Speicherstand; sie folgt dem zusammengeführten Stand, statt still zu verfallen.
+    // Verglichen wird die Wahl selbst: Eine andere Instanz desselben Dokuments kann sie im Tab-Speicher schon nachgeführt haben.
+    const open = pending.get(SSP_IMPORT_PROFILE_POINTER);
+    if (merged === 'adopted' && choice && open?.href === choice.href && open.target === choice.target) {
+      const moved = { ...choice, basis: document.savedAt };
+      pending.set(SSP_IMPORT_PROFILE_POINTER, moved);
+      setPendingBaseline(moved);
+    }
+    return merged;
+  }, [adopt, latest, pending]);
+  const adoptDecision = useCallback(async (document: WorkspaceEnvelope) => {
+    const adopted = await adoptOrRebase(document);
+    setUnadoptedDecision(adopted === 'adopted' ? undefined : document);
+    return adopted;
+  }, [adoptOrRebase]);
+  const pendingDecision = useMemo(() => decisionWrites.get(localId), [localId]);
+  useEffect(() => {
+    if (core.status !== 'ready' || !pendingDecision) return;
+    void pendingDecision.then(document => { if (document) void adoptDecision(document); });
+  }, [adoptDecision, core.status, pendingDecision]);
+  // Ändern sich die offenen Eingaben, versucht der Editor die gehaltene Entscheidung erneut zu übernehmen.
+  const saveKind = core.saveState.kind;
+  useEffect(() => {
+    if (!unadoptedDecision || core.busy || saveKind === 'pending') return;
+    void Promise.resolve(unadoptedDecision).then(adoptOrRebase).then(adopted => { if (adopted === 'adopted') setUnadoptedDecision(undefined); });
+  }, [adoptOrRebase, core.busy, dirty, saveKind, unadoptedDecision, working]);
+  const decideProcess = useCallback(async (input: ProcessDecisionInput) => {
+    const { envelope, draftSavedAt, working: current, unsaved } = latest.current;
+    // Offene Eingaben gehören nicht zum gebundenen Stand; die Entscheidung schreibt dann nichts.
+    if (!envelope || unsaved || hasPendingBindings(current, envelope) || !sameSspContent(envelope.source, current)) return 'SSP_PROCESS_DECISION_BLOCKED';
+    const write = documents.saveProcessDecision(localId, envelope.savedAt, draftSavedAt, input, categories);
+    const written = write.then(result => result.ok ? result.value : undefined, () => undefined);
+    decisionWrites.set(localId, written);
+    void written.then(() => { if (decisionWrites.get(localId) === written) decisionWrites.delete(localId); });
+    const result = await write;
+    if (!result.ok) return result.diagnostic.code;
+    // Die Entscheidung ist geschrieben; blockieren offene Eingaben die Übernahme, hält der Editor sie bis dahin fest.
+    const adopted = await adoptDecision(result.value);
+    if (adopted === 'adopted') return undefined;
+    return adopted === 'blocked' ? 'SSP_PROCESS_DECISION_NOT_SHOWN' : 'SSP_PROCESS_DECISION_NOT_ADOPTED';
+  }, [adoptDecision, categories, documents, hasPendingBindings, latest, localId]);
+  const addDecisionParty = useCallback(async ({ uuid, type, name }: DecisionParty) => {
+    const path = ['metadata', 'parties'];
+    // Ein erneuter Versuch nach einem Fehler aktualisiert dieselbe Partei, statt sie zu verdoppeln.
+    const index = readArray(readSspValue(latest.current.working, path)).findIndex(item => isJsonObject(item) && item.uuid === uuid);
+    const added = apply(source => index < 0
+      ? addSspItem(source, path, { uuid, type, name })
+      : setSspValue(setSspValue(source, [...path, index, 'type'], type), [...path, index, 'name'], name));
+    if (!added) return { code: 'SSP_PARTY_NOT_ADDED' };
+    const result = await commitSsp(false);
+    if (!result.ok) return { code: result.code };
+    // Die Partei ist gespeichert; eine Entscheidung braucht zusätzlich einen technisch gültigen gespeicherten Stand.
+    return result.documentState === 'draft' ? { uuid, code: 'SSP_PARTY_SAVED_AS_DRAFT' } : { uuid };
+  }, [apply, commitSsp, latest]);
   const targetFailure = core.envelope ? validateSspTargets(core.envelope.source, categories) : undefined;
+  // Eine gehaltene Entscheidung ist der gespeicherte Stand; der Erhaltungs-Export enthält sie.
   const exportPreserved = useCallback(() => {
-    if (latest.current.envelope) downloadBlob(new Blob([serializeWorkspaceJson(latest.current.envelope.source)], { type: 'application/json' }), 'ssp-ungeprueft.json');
-  }, [latest]);
+    const document = unadoptedDecision ?? latest.current.envelope;
+    if (document) downloadBlob(new Blob([serializeWorkspaceJson(document.source)], { type: 'application/json' }), 'ssp-ungeprueft.json');
+  }, [latest, unadoptedDecision]);
 
   return {
-    categories, targetFailure, checkTargetRemoval, exportPreserved, hasPendingTargetForms: hasPendingForms, setTargetFormPending,
+    localId, categories, targetFailure, checkTargetRemoval, exportPreserved, hasPendingTargetForms: hasPendingForms, setTargetFormPending,
     status: core.status, envelope: core.envelope, working, dirty, saveState: core.saveState, busy: core.busy, message: core.message,
-    baseline, baselineBindable, apply, chooseBaseline, save, bindCatalogStand, exportDocument, remove, adopt: core.adopt,
+    baseline, baselineBindable, apply, chooseBaseline, save, bindCatalogStand, exportDocument, remove, adopt, decideProcess, addDecisionParty, unadoptedDecision,
   };
 }

@@ -64,8 +64,8 @@ export interface DocumentEditorCore<M extends string> {
     prepare: (storedSource: unknown, snapshot: unknown) => Promise<PreparedSave>,
     onSaved?: (bindings: readonly WorkspaceBinding[], savedAt: string) => void,
   ) => Promise<CommitResult>;
-  /** Übernimmt einen neueren gespeicherten Stand nur ohne offene Eingaben; sonst bleibt der Konflikt erhalten. */
-  readonly adopt: (document: WorkspaceEnvelope) => Promise<'adopted' | 'blocked' | 'failed'>;
+  /** Übernimmt einen neueren gespeicherten Stand nur ohne offene Eingaben; `merge` führt offene Eingaben ohne Entwurf ein (`undefined`: nicht sicher). */
+  readonly adopt: (document: WorkspaceEnvelope, merge?: (previous: unknown, next: unknown, working: unknown) => unknown) => Promise<'adopted' | 'blocked' | 'failed'>;
   /** Exportiert den gespeicherten Stand; offene Eingaben verhindern den Export. */
   readonly exportWith: (run: (document: WorkspaceEnvelope) => Promise<ExportResult>, filename: string) => Promise<void>;
   /** Löscht das Dokument samt Entwurf und Bindungen; ein offener Autosave entfällt. */
@@ -117,6 +117,15 @@ export function useDocumentEditor<M extends string>({ localId, rootType, sameCon
     const align = options.current.alignBindings;
     return draftSource !== undefined && align ? align(own, document.source, draftSource) : own;
   }, [localId]);
+  /** Zeigt einen gespeicherten Stand mit Arbeitsstand, Bindungen und Speicherzustand an. */
+  const show = useCallback((next: Latest & { readonly envelope: WorkspaceEnvelope }, bindings: readonly WorkspaceBinding[], alignTo: unknown, state: DocumentSaveState) => {
+    latest.current = next;
+    setEnvelope(next.envelope);
+    setWorking(next.working);
+    setStored(ownBindings(bindings, next.envelope, alignTo));
+    setSaveState(state);
+  }, [ownBindings]);
+  const draftState = (draft: { readonly savedAt: string } | undefined): DocumentSaveState => draft ? { kind: 'autosaved', at: draft.savedAt } : { kind: 'stored' };
 
   useEffect(() => {
     let current = true;
@@ -127,16 +136,12 @@ export function useDocumentEditor<M extends string>({ localId, rootType, sameCon
         setStatus('failed');
         return;
       }
-      const source = draft.value?.source ?? document.value.source;
-      latest.current = { working: source, envelope: document.value, draftSavedAt: draft.value?.savedAt ?? null, unsaved: false };
-      setEnvelope(document.value);
-      setWorking(source);
-      setStored(ownBindings(bindings.value, document.value, draft.value?.source));
-      setSaveState(draft.value ? { kind: 'autosaved', at: draft.value.savedAt } : { kind: 'stored' });
+      const working = draft.value?.source ?? document.value.source;
+      show({ working, envelope: document.value, draftSavedAt: draft.value?.savedAt ?? null, unsaved: false }, bindings.value, draft.value?.source, draftState(draft.value));
       setStatus('ready');
     });
     return () => { current = false; };
-  }, [localId, ownBindings]);
+  }, [localId, show]);
 
   /** Sichert den Arbeitsstand als Entwurf; Aufrufe laufen nacheinander. */
   const flush = useCallback(async () => {
@@ -173,9 +178,12 @@ export function useDocumentEditor<M extends string>({ localId, rootType, sameCon
   useEffect(() => registerAutosave(flush), [registerAutosave, flush]);  // Wer den Editor innerhalb des Bereichs verlässt, sichert offene Eingaben sofort statt nach der Wartezeit.
   const flushRef = useRef(flush);
   useEffect(() => { flushRef.current = flush; }, [flush]);
+  // Ein ausgehängter Editor übernimmt keinen Stand mehr und plant keinen Autosave: Die geöffnete Ansicht trägt den Arbeitsstand.
+  const mounted = useRef(true);
   useEffect(() => {
     const pendingFlush = flushRef;
-    return () => { void pendingFlush.current(); };
+    mounted.current = true;
+    return () => { mounted.current = false; void pendingFlush.current(); };
   }, []);
 
   const schedule = useCallback(() => {
@@ -183,27 +191,31 @@ export function useDocumentEditor<M extends string>({ localId, rootType, sameCon
     timer.current = setTimeout(() => { void flush(); }, DOCUMENT_AUTOSAVE_DELAY_MS);
   }, [flush]);
 
-  const adopt = useCallback(async (document: WorkspaceEnvelope): Promise<'adopted' | 'blocked' | 'failed'> => {
-    if (saving.current || options.current.hasPendingBindings?.(latest.current.working, latest.current.envelope)) return 'blocked';
+  const adopt = useCallback<DocumentEditorCore<M>['adopt']>(async (document, merge) => {
     const before = latest.current;
+    if (!mounted.current || saving.current || (!merge && options.current.hasPendingBindings?.(before.working, before.envelope))) return 'blocked';
     if (!before.envelope) return 'failed';
     if (document.savedAt <= before.envelope.savedAt) return 'adopted';
+    const merged = merge?.(before.envelope.source, document.source, before.working);
+    if (merge && merged === undefined) return 'blocked';
     const store = documentsRef.current;
     const [draft, bindings] = await Promise.all([store.getDraft(localId), store.listBindings()]);
     if (!draft.ok || !bindings.ok) return 'failed';
+    if (!mounted.current) return 'blocked';
     const current = latest.current;
-    // Eingaben oder ein anderer Übernahmeversuch während des Lesens: nicht still überschreiben.
+    // Eingaben, ein Entwurf oder ein anderer Übernahmeversuch während des Lesens: nicht still überschreiben.
+    if (merge && (draft.value || saving.current || current !== before)) return 'blocked';
+    if (merge) {
+      show({ working: merged, envelope: document, draftSavedAt: null, unsaved: true }, bindings.value, merged, { kind: 'pending' });
+      schedule();
+      return 'adopted';
+    }
     if (current.envelope !== before.envelope || current.working !== before.working || current.unsaved || options.current.hasPendingBindings?.(current.working, current.envelope)) return 'blocked';
     if (!current.envelope || !options.current.sameContent(current.envelope.source, current.working)) return 'blocked';
-    const source = draft.value?.source ?? document.source;
-    latest.current = { working: source, envelope: document, draftSavedAt: draft.value?.savedAt ?? null, unsaved: false };
-    setEnvelope(document);
-    setWorking(source);
-    setStored(ownBindings(bindings.value, document, draft.value?.source));
+    show({ working: draft.value?.source ?? document.source, envelope: document, draftSavedAt: draft.value?.savedAt ?? null, unsaved: false }, bindings.value, draft.value?.source, draftState(draft.value));
     setMessage(undefined);
-    setSaveState(draft.value ? { kind: 'autosaved', at: draft.value.savedAt } : { kind: 'stored' });
     return 'adopted';
-  }, [localId, ownBindings]);
+  }, [localId, schedule, show]);
 
   const change = useCallback((patch: (source: unknown) => unknown) => {
     const next = patch(latest.current.working);
