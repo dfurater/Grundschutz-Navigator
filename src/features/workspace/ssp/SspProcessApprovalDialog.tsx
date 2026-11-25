@@ -150,6 +150,24 @@ export function SspProcessApprovalDialog({ localId, mode, label, processUuid, so
     returnFocus.current = true;
     setDraft(current => ({ ...current, newParty: undefined, party: created ?? current.party }));
   };
+  // Das deaktivierte fieldset nimmt dem fokussierten Element die Bedienbarkeit. Während des Schreibens wartet der Fokus
+  // auf der Dialogüberschrift und kehrt danach an sein Element zurück, sofern es noch steht.
+  const held = useRef<HTMLElement | null>(null);
+  const hold = () => {
+    const active = document.activeElement;
+    if (!(active instanceof HTMLElement) || !fields.current?.contains(active)) return;
+    held.current = active;
+    fields.current.closest('dialog')?.querySelector<HTMLElement>('h2')?.focus();
+  };
+  useEffect(() => {
+    const target = held.current;
+    if (busy || !target) return;
+    held.current = null;
+    const dialog = target.closest('dialog');
+    const active = document.activeElement;
+    // Liegt der Fokus inzwischen auf einer anderen Dialogaktion, bleibt er dort.
+    if (target.isConnected && (!active || active.tagName === 'H2' || !dialog?.contains(active))) target.focus();
+  }, [busy]);
   const computed = useBoundHash(source, processUuid, party, approve);
   const bound = approve ? computed.value : affected?.hash;
   const hashFailed = approve && party !== '' ? computed.failed : undefined;
@@ -159,6 +177,7 @@ export function SspProcessApprovalDialog({ localId, mode, label, processUuid, so
     setTried(true);
     if (!party || !remarks.trim()) { rejected(); return; }
     const submitted = draft;
+    hold();
     setBusy(true);
     setError(undefined);
     let code: string | undefined;
@@ -173,6 +192,7 @@ export function SspProcessApprovalDialog({ localId, mode, label, processUuid, so
     else finish(submitted);
   };
   const addParty = async (next: NewParty) => {
+    hold();
     setBusy(true);
     setError(undefined);
     let result: { readonly uuid?: string; readonly code?: string };

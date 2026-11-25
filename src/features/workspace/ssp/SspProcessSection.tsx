@@ -142,6 +142,14 @@ function ProcessRow({ editor, protection, allProtection, autoOpen, parties, appl
   const id = useId();
   const uuid = protection.uuid;
   useEffect(() => () => setTargetFormPending(id, false), [id, setTargetFormPending]);
+  // Nach einer geschriebenen Entscheidung wird der Freigabestand neu gelesen und der auslösende Knopf entfällt;
+  // der Fokus geht an die Prozesszeile statt auf `body`.
+  const decided = useRef(false);
+  useEffect(() => {
+    if (deciding || !decided.current) return;
+    decided.current = false;
+    summary.current?.focus();
+  }, [deciding]);
   useEffect(() => {
     if (!autoOpen || !details.current) return;
     details.current.open = true;
@@ -175,8 +183,7 @@ function ProcessRow({ editor, protection, allProtection, autoOpen, parties, appl
       setTargetFormPending(id, true);
     }
   };
-  const decide = async (input: ProcessDecisionInput) => {
-    const code = await editor.decideProcess(input);
+  const outcome = (code: string | undefined) => {
     const notices: Record<string, string> = {
       SSP_PROCESS_DECISION_NOT_ADOPTED: 'Die Entscheidung ist gespeichert. Der neue Stand wurde nicht geladen; bitte die Seite neu laden, bevor weitere Änderungen gespeichert werden.',
     };
@@ -186,6 +193,12 @@ function ProcessRow({ editor, protection, allProtection, autoOpen, parties, appl
       setNotice(notices[code]);
       return undefined;
     }
+    return code;
+  };
+  const decide = async (input: ProcessDecisionInput) => {
+    const code = outcome(await editor.decideProcess(input));
+    // Ohne Befund schließt der Dialog nach dem Schreiben.
+    decided.current = code === undefined;
     return code;
   };
   const label = [base.id.trim(), base.title.trim()].filter(Boolean).join(' ') || 'Geschäftsprozess ohne Namen';
