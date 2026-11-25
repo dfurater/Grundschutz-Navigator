@@ -11,6 +11,11 @@ import {
 } from './security-guards.mjs';
 import { ENTRY_CATALOG, SOURCE_REGISTRY, SUPPORTED_CATALOGS } from '../src/domain/sourceRegistry.mjs';
 
+/** Ein ausgelieferter Zweitkatalog mit BSI-Profil; der Einstiegskatalog hat eigene Fälle. */
+const PROFILED_SUPPORTED_CATALOG = SUPPORTED_CATALOGS.find(
+  (entry) => entry.entryCatalog !== true && entry.profileUpstreamPath !== undefined,
+)!;
+
 /**
  * Verhaltensmatrix für die Upstream-Allowlist. Der Registry-Umbau (ADR-1)
  * darf die erlaubte Menge nicht verändern: genau der Grundschutz++-Katalog
@@ -79,10 +84,9 @@ describe('security-guards', () => {
     );
   });
 
-  it('allows the supported WLAN catalog but rejects its preview profile for fetching', () => {
-    const wlan = SUPPORTED_CATALOGS.find((entry) => entry.catalogKey === 'wlan')!;
-    expect(assertAllowedUpstreamRepoPath(wlan.upstreamPath)).toBe(wlan.upstreamPath);
-    const profilePath = wlan.profileUpstreamPath!;
+  it('allows a supported catalog but rejects its profile for fetching', () => {
+    const { upstreamPath, profileUpstreamPath: profilePath } = PROFILED_SUPPORTED_CATALOG;
+    expect(assertAllowedUpstreamRepoPath(upstreamPath)).toBe(upstreamPath);
     expect(() =>
       assertAllowedUpstreamRepoPath(profilePath),
     ).toThrow('outside the allowed BSI contract');
@@ -99,8 +103,7 @@ describe('security-guards', () => {
   });
 
   it('allows a companion path only from the pinned tree and under a monitored root', () => {
-    const companion = SUPPORTED_CATALOGS.find((entry) => entry.catalogKey === 'wlan')!
-      .profileUpstreamPath!;
+    const companion = PROFILED_SUPPORTED_CATALOG.profileUpstreamPath!;
 
     expect(assertRegisteredUpstreamRepoPath(companion, { companionPaths: [companion] })).toBe(companion);
     expect(() => assertRegisteredUpstreamRepoPath(companion)).toThrow(

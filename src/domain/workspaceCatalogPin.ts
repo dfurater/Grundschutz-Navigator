@@ -1,7 +1,7 @@
 import { isJsonObject, pointerString } from '@/domain/jsonGuards';
 import type { RawOscalProp } from '@/domain/models';
 import { createCatalogReferenceProjectProps, readProjectProps } from '@/domain/projectProps';
-import { SUPPORTED_CATALOGS } from '@/domain/sourceRegistry';
+import { SUPPORTED_CATALOGS, listOscalArtifacts } from '@/domain/sourceRegistry';
 import { WORKSPACE_DIAGNOSTIC_CODES } from '@/domain/workspaceDiagnostics';
 import type { WorkspaceBinding, WorkspaceEnvelope } from '@/domain/workspaceModel';
 
@@ -34,6 +34,8 @@ export interface CatalogPin {
   readonly pending: readonly string[];
   /** Der Zustand stammt aus einem lokal referenzierten Dokument; sperrt Prüfaktionen, nicht das Bearbeiten. */
   readonly inherited?: true;
+  /** Mindestens ein gebundener Katalog ist registriert, wird aber nicht ausgeliefert; auch ein neuerer Stand anderer Kataloge hebt die Sperre nicht auf. */
+  readonly undelivered?: true;
 }
 
 export const CATALOG_PIN_PATH = '/metadata/props';
@@ -46,8 +48,12 @@ const CODES: Readonly<Partial<Record<CatalogPinState, string>>> = {
   invalid: WORKSPACE_DIAGNOSTIC_CODES.catalogPinInvalid,
 };
 
-const catalogKeyByArtifact = new Map<string, string>(SUPPORTED_CATALOGS.map((entry) => [entry.artifactKey, entry.catalogKey]));
-const artifactByCatalogKey = new Map<string, string>(SUPPORTED_CATALOGS.map((entry) => [entry.catalogKey, entry.artifactKey]));
+// Alle registrierten BSI-Kataloge, auch nicht ausgelieferte: Paar und Bindung bleiben erkennbar und gesperrt.
+const registeredCatalogs = listOscalArtifacts().flatMap((entry) =>
+  entry.catalogKey === undefined ? [] : [{ artifactKey: entry.artifactKey, catalogKey: entry.catalogKey }]);
+const catalogKeyByArtifact = new Map<string, string>(registeredCatalogs.map((entry) => [entry.artifactKey, entry.catalogKey]));
+const artifactByCatalogKey = new Map<string, string>(registeredCatalogs.map((entry) => [entry.catalogKey, entry.artifactKey]));
+const shippedArtifacts = new Set<string>(SUPPORTED_CATALOGS.map((entry) => entry.artifactKey));
 const SEVERITY: readonly CatalogPinState[] = ['bound', 'pending', 'unpinned', 'not-delivered', 'unverified', 'invalid'];
 const worse = (a: CatalogPinState, b: CatalogPinState) => SEVERITY.indexOf(a) > SEVERITY.indexOf(b);
 
@@ -81,7 +87,7 @@ function carriesCatalogPair(source: unknown, rootType: string): boolean {
 /**
  * Zu prüfende BSI-Kataloge: gebundene und solche, für die das Dokument bereits ein Paar trägt.
  * Ein Paar gilt unabhängig von gespeicherten Bindungen, denn es ist die Bewertungsgrundlage
- * aus der Quelle. `null`, wenn ein Paar einen nicht unterstützten Katalog nennt.
+ * aus der Quelle. `null`, wenn ein Paar einen nicht registrierten Katalog nennt.
  */
 function pinnedCatalogArtifacts(bindings: readonly WorkspaceBinding[], pins: ReadonlyMap<string, string>): string[] | null {
   const artifacts = new Set(boundCatalogArtifacts(bindings));
@@ -109,8 +115,9 @@ function pinScope(source: unknown, rootType: string, bindings: readonly Workspac
   return artifacts.length === 0 ? { kind: 'none' } : { kind: 'pinned', pins, artifacts };
 }
 
-/** Zustand eines einzelnen Katalogs aus ausgeliefertem Stand und Paar. */
-function catalogState(delivered: DeliveredCatalog | undefined, pin: string | undefined): CatalogPinState {
+/** Zustand eines einzelnen Katalogs aus Auslieferung, ausgeliefertem Stand und Paar. */
+function catalogState(shipped: boolean, delivered: DeliveredCatalog | undefined, pin: string | undefined): CatalogPinState {
+  if (!shipped) return 'not-delivered';
   if (delivered === undefined) return 'pending';
   if (!delivered.verified || delivered.commit === null) return 'unverified';
   if (pin === undefined) return 'unpinned';
@@ -135,17 +142,22 @@ export function catalogPinStatus(
   const offers: string[] = [];
   const withheld: string[] = [];
   const pending: string[] = [];
+  let undelivered = false;
   for (const artifactKey of scope.artifacts) {
     const catalogKey = catalogKeyByArtifact.get(artifactKey)!;
-    const found = catalogState(delivery.get(artifactKey), scope.pins.get(catalogKey));
+    const shipped = shippedArtifacts.has(artifactKey);
+    const found = catalogState(shipped, delivery.get(artifactKey), scope.pins.get(catalogKey));
     if (found === 'pending') pending.push(catalogKey);
     if (found === 'unpinned' || found === 'not-delivered') {
-      offers.push(catalogKey);
+      // Ein nicht ausgelieferter Katalog hat keinen Stand, an den ein Angebot binden könnte.
+      if (shipped) offers.push(catalogKey);
+      else undelivered = true;
       withheld.push(artifactKey);
     }
     if (worse(found, state)) state = found;
   }
-  return { state, code: CODES[state], offers, withheld, pending };
+  const pin: CatalogPin = { state, code: CODES[state], offers, withheld, pending };
+  return undelivered ? { ...pin, undelivered: true } : pin;
 }
 
 /**

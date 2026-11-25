@@ -720,7 +720,7 @@ describe('Fail-closed vor der Ableitung', () => {
       parseMappingDocument(makeMinimalMappingSource(), {
         ...context,
         // Der Pfad gehört einem Produktkatalog; der Registry-Abgleich muss greifen.
-        upstreamPath: 'control_layer/WLAN/WLAN-resolved_catalog.json',
+        upstreamPath: 'control_layer/Lieferkettensicherheit/Lieferkettensicherheit-resolved_catalog.json',
       });
     } catch (error) {
       thrown = error;

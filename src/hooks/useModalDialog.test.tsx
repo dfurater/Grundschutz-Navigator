@@ -100,6 +100,18 @@ describe('useModalDialog', () => {
     expect(last).toHaveFocus();
   });
 
+  it('wraps Shift+Tab to the last action when focus sits on a programmatically focused heading before it', () => {
+    render(<DialogHarness active />);
+    const dialog = screen.getByRole('dialog', { name: 'Dialog' });
+    const heading = document.createElement('h2');
+    heading.tabIndex = -1;
+    dialog.prepend(heading);
+    heading.focus();
+
+    fireEvent.keyDown(dialog, { key: 'Tab', shiftKey: true });
+    expect(screen.getByRole('button', { name: 'Dialog: letzte Aktion' })).toHaveFocus();
+  });
+
   it('keeps the current focus when the dialog has no focusable element', () => {
     const { rerender } = render(
       <DialogHarness active={false} includeFocusable={false} />,

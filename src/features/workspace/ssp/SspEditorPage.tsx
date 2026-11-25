@@ -92,7 +92,7 @@ export function SspEditorPage({ view, document }: Readonly<{ view: VerbundView; 
   const processFailure = processProtectionFailure(protection);
   const completeProcesses = protection.processes.filter(process => process.context === 'context-complete' && process.cia === 'complete').length;
   const riskTriggers = protection.processes.filter(process => process.riskConsideration === 'required').length;
-  const canExport = !processFailure && !editor.targetFailure && editor.envelope.documentState === 'export-ready' && !editor.dirty && !editor.busy;
+  const canExport = !processFailure && !editor.targetFailure && editor.envelope.documentState === 'export-ready' && !editor.dirty && !editor.busy && !editor.unadoptedDecision;
   // Schreibschutz durch den Katalogstand: Lesen, Export und Löschen bleiben, Bearbeiten und Prüfen nicht.
   const locked = editLocked(document.catalogPin) || editor.targetFailure !== undefined;
   const save = () => { void editor.save(); };
@@ -123,7 +123,8 @@ export function SspEditorPage({ view, document }: Readonly<{ view: VerbundView; 
             <MetadataSection editor={editor} />
             <BaselineSection editor={editor} options={options} />
             <CharacteristicsSection editor={editor} />
-            <SspProcessSection editor={editor} protection={protection} />
+            <SspProcessSection editor={editor} protection={protection}
+              decisionLock={reviewLocked(document.catalogPin) ? 'Schreibsperre: Der Katalogstand gibt Freigaben und Rücknahmen nicht frei.' : undefined} />
             <ImplementationSection editor={editor} />
             {/* Ein Baseline-Wechsel setzt die offene Anforderungswahl zurück. */}
             <ControlImplementationSection key={editor.baseline ? targetKey(editor.baseline) : 'ohne-baseline'} editor={editor} controls={controls} />

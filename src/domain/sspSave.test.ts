@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { commitSspSave, sameSspContent, sspReadinessBlocker, sspSaveBlocker } from '@/domain/sspSave';
-import { setSspValue } from '@/domain/sspAuthoring';
+import { commitSspSave, mergeProcessDecision, sameSspContent, sspReadinessBlocker, sspSaveBlocker } from '@/domain/sspSave';
+import { readSspValue, setSspValue } from '@/domain/sspAuthoring';
 import { makeFullSsp, SSP_FIXTURE_IDS, withSspBody } from '@/test/fixtures/systemSecurityPlans';
 
 const STAMP = '2026-10-22T12:00:00.000Z';
@@ -25,6 +25,28 @@ describe('Explizites Speichern', () => {
     expect(changed).toBe(false);
     expect(source).toEqual(stored);
     expect(sameSspContent(stored, reordered)).toBe(true);
+  });
+});
+
+describe('Zusammenführung einer geschriebenen Prozessentscheidung', () => {
+  const action = { uuid: 'aaaaaaaa-0000-4000-8000-0000000000aa', type: 'approved', system: 'https://example.org/process-cia' };
+  const previous = makeFullSsp();
+  const withMetadata = (source: unknown, patch: Record<string, unknown>) => {
+    const copy = structuredClone(source);
+    Object.assign(body(copy).metadata, patch);
+    return copy;
+  };
+  const next = withMetadata(previous, { 'last-modified': STAMP, actions: [action] });
+
+  it('übernimmt die neue Aktionskette in offene Eingaben', () => {
+    const merged = mergeProcessDecision(previous, next, setSspValue(previous, ['metadata', 'title'], 'Offen'));
+    expect(readSspValue(merged, ['metadata', 'title'])).toBe('Offen');
+    expect(readSspValue(merged, ['metadata', 'actions'])).toEqual([action]);
+  });
+
+  it('führt nicht zusammen, wenn die Eingaben die Aktionskette oder der neue Stand mehr als sie ändern', () => {
+    expect(mergeProcessDecision(previous, next, withMetadata(previous, { actions: [] }))).toBeUndefined();
+    expect(mergeProcessDecision(previous, withMetadata(next, { title: 'Fremd' }), previous)).toBeUndefined();
   });
 });
 

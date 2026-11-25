@@ -18,8 +18,8 @@ const artifact = (document: WorkspaceGraphEdge['from']['document']) => ({ docume
 const resolution = (localId: string, source: unknown): WorkspaceProfileResolution => ({
   document: local(localId), status: 'resolved', derived: true, transient: true, specificationStatus: 'work-in-progress', source,
 });
-const bsi = { artifactKey: 'catalog-wlan', lifecycle: 'supported', trustClass: 'class-1-verified-public', rootType: 'catalog', oscalVersion: '1.1.3', source: controls('a', 'b', 'c', 'd') } as WorkspaceClass1Artifact;
-const BSI_KEY = { kind: 'class-1', artifactKey: 'catalog-wlan', lifecycle: 'supported' } as const;
+const bsi = { artifactKey: 'catalog-lieferkette', lifecycle: 'supported', trustClass: 'class-1-verified-public', rootType: 'catalog', oscalVersion: '1.1.3', source: controls('a', 'b', 'c', 'd') } as WorkspaceClass1Artifact;
+const BSI_KEY = { kind: 'class-1', artifactKey: 'catalog-lieferkette', lifecycle: 'supported' } as const;
 const requirement = (index: number) => `/system-security-plan/control-implementation/implemented-requirements/${index}/control-id`;
 
 describe('deriveStationMetrics', () => {
@@ -44,7 +44,7 @@ describe('deriveStationMetrics', () => {
     ];
     const metrics = deriveStationMetrics(members, { edges, resolutions: [resolution('profile', controls('a', 'b'))] }, [bsi], NOW);
     expect(metrics.catalogControls).toBe(4);
-    expect(metrics.catalogKey).toBe('wlan');
+    expect(metrics.catalogKey).toBe('lieferkette');
     expect(metrics.computedAt).toBe(NOW.toISOString());
     expect(metrics.documents.get('profile' as LocalId)).toEqual({ kind: 'profile', included: 2, available: 4 });
     expect(metrics.documents.get('ssp' as LocalId)).toEqual({ kind: 'ssp', documented: 1, baseline: 2 });

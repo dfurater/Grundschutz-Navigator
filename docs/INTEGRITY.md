@@ -39,7 +39,7 @@ Die Ausgabemenge wird aus dem Register abgeleitet (`listCatalogArtifactFileNames
 
 Der Einstiegskatalog trägt die Dateinamen ohne Katalogschlüssel, auf denen Deploy- und Cache-Vertrag aufsetzen. Genau ein `supported`-Katalog trägt `entryCatalog: true`; ein Register ohne ausgelieferten Katalog oder ohne genau einen Einstieg schlägt beim Import fail-closed fehl.
 
-Der aktuelle Registerstand liefert drei Kataloge: `catalog-gspp` als Einstieg sowie `catalog-lieferkette` und `catalog-wlan` als bedarfsgerecht geladene Sekundärkataloge. Dazu kommen die beiden generierten Sammelartefakte:
+Der aktuelle Registerstand liefert vier Kataloge: `catalog-gspp` als Einstieg sowie `catalog-lieferkette`, `catalog-diva` und `catalog-wlan-gastnetze` als bedarfsgerecht geladene Sekundärkataloge. `catalog-wlan` ist als `draft` registriert und wird nicht ausgeliefert. Dazu kommen die beiden generierten Sammelartefakte:
 
 - `vocabularies.json` — offizielle BSI-Vokabulare (aus CSV konvertiert)
 - `upstream-sources-metadata.json` — Vokabular-Provenance + Upstream-Manifest + rein lesende Katalog-Lineage
@@ -267,10 +267,26 @@ Beispiel (Werte Platzhalter; gezeigt sind nur die Produkteinträge des Manifests
         "contentSha256": "<sha256>"
       },
       {
-        "artifactKey": "catalog-wlan",
+        "artifactKey": "catalog-diva",
         "rootType": "catalog",
         "lifecycle": "supported",
-        "path": "control_layer/WLAN/WLAN-resolved_catalog.json",
+        "path": "control_layer/DIVA/DIVA-resolved_catalog.json",
+        "gitBlobSha": "<git-blob-sha>",
+        "contentSha256": "<sha256>"
+      },
+      {
+        "artifactKey": "catalog-wlan-gastnetze",
+        "rootType": "catalog",
+        "lifecycle": "supported",
+        "path": "control_layer/WLAN-Einzelplatz-und-Gastnetze/WLAN-Einzelplatz-und-Gastnetze-resolved_catalog.json",
+        "gitBlobSha": "<git-blob-sha>",
+        "contentSha256": "<sha256>"
+      },
+      {
+        "artifactKey": "catalog-wlan",
+        "rootType": "catalog",
+        "lifecycle": "draft",
+        "path": "control_layer/WLAN-Enterprise/WLAN-Enterprise-resolved_catalog.json",
         "gitBlobSha": "<git-blob-sha>",
         "contentSha256": "<sha256>"
       }
@@ -447,6 +463,8 @@ Ein Artefakt, das Stufe 3 nicht besteht, geht nicht in den Graphen ein; ein Arte
 
 Subject ist das Manifest statt aller Dateien, weil `actions/attest` die Dateien eines `subject-path` vor jeder Deduplizierung zählt und oberhalb von 1.024 abbricht; `dist/` enthält mit den statischen Routen-Einstiegen mehr Dateien. Die Subject-Zahl bleibt damit eins, unabhängig von der Zahl der Routen.
 
+**Katalogdateien der Auslieferung.** Vite kopiert `public/data` vollständig nach `dist/data`. Als ersten Schritt von `spaFallbackPlugin().closeBundle()` entfernt `pruneUndeliveredCatalogFiles()` (`vite.config.ts`) dort jede Datei nach dem Muster `catalog.json` oder `catalog-*.json`, die `listCatalogArtifactFileNames()` aus `src/domain/sourceRegistry.mjs` nicht nennt. `SHA256SUMS` bindet damit nur Katalogdateien von `supported`-Registereinträgen, auch wenn `public/data` noch Dateien eines Katalogs mit anderem Lifecycle enthält.
+
 **Titelvertrag.** `scripts/check-seo-titles.mjs` prüft jede gebaute HTML-Datei aus `dist/` auf genau einen `<title>`, ein `og:title`-, ein Meta-Description- und ein `og:image:alt`-Feld ohne Gedankenstrich (U+2014). Maßgeblich ist, was der Browser darstellt: Die Prüfung liest jede Datei mit dem HTML-Parser von jsdom (`DOMParser`) und denselben Selektoren wie der DOM-Regressionstest des Generators. Kommentierte Tags zählen deshalb nicht, ein Attributwert kann kein scheinbares `content` vortäuschen, und ein maskierter Selektorwert wie `name="descript&#105;on"` zählt als zweites Description-Feld. Als `<title>` zählt nur ein Element im HTML-Namespace, wie es auch `document.title` liest: Der Titel eines Inline-SVG ist ein Bildtitel und zählt nicht mit, ein HTML-`<title>` im Body dagegen schon. Jede maskierte Form, die der Parser zu U+2014 auflöst, zählt mit — `&mdash;`, numerisch `&#8212;`/`&#x2014;` sowie die Windows-1252-Abbildung `&#151;`/`&#x97;`, numerisch auch ohne Semikolon; doppelt maskierte Folgen wie `&amp;#8212;` bleiben wörtlich. Fehlendes Ausgabeverzeichnis, null HTML-Dateien, fehlende oder doppelte Felder und Meta-Felder ohne `content` brechen fail-closed ab; die Prüfung repariert nichts. Jedes der vier Felder wird unabhängig von den anderen bewertet: Ein Lauf meldet jeden Verstoß jeder Datei als `Pfad: Feld`, und ein Strukturfehler in einem Feld verdeckt keinen Gedankenstrich in einem anderen. Sie läuft im Build (`spaFallbackPlugin().closeBundle()` in `vite.config.ts`, vor dem Manifest als letztem Schreibschritt), sodass ein Verstoß den Build rot färbt — der Generator-Regressionstest allein sähe ihn nicht, weil er die Quellvorlage statt des gebauten HTML liest. Von Hand: `npm run check:seo-titles -- --dist dist`.
 
 **Pflichtprüfung.** `npm run check:deployment-manifest -- --dist dist` berechnet das Manifest aus dem fertigen Bestand neu und vergleicht es bytegenau mit `dist/SHA256SUMS`. Fehlendes Manifest, geänderte, zusätzliche oder entfernte Dateien und unzulässige Dateitypen führen zu Exit 1; die Prüfung repariert nichts. Sie läuft im Deploy direkt nach dem Build und vor beiden Attestierungen sowie im Pflichtcheck `validate` direkt nach dem Build unter derselben Bedingung (`scope != 'docs_only'`).
@@ -465,7 +483,7 @@ Alle Actions in `.github/workflows/` sind auf 40-stellige Commit-SHAs statt auf 
 
 - **Quellregister und Upstream-Grenzen** (`src/domain/sourceRegistry.mjs`, `scripts/security-guards.mjs`) verhindern, dass der Fetch auf fremde Repositories, externe Hosts, nicht registrierte Pfade oder unzulässige Refs umgelenkt wird. Pfad-Traversal, Symlinks bzw. andere nicht reguläre Tree-Einträge und ein OSCAL-Root-Type-Mismatch eines Produktartefakts führen geschlossen zum Abbruch. Begleitpfade sind nur `.json`-Dateien unter `MONITORED_UPSTREAM_ROOTS`, die im gepinnten Tree stehen.
 - **Vollständiger Read-only-Tree-Diff** (`scripts/upstream-artifacts.mjs`) klassifiziert Änderungen unter allen überwachten Wurzeln als `added`, `modified` oder `removed`. Pfade, die weder Produkt-, Vokabular- noch Begleitdatei sind, werden als `unclassified` gemeldet, ohne ihren Blob zu laden oder sie auszuliefern. Unvollständige Trees sowie doppelte oder unsichere Pfade werden abgelehnt.
-- **Catalog-Sync-Guard** (`scripts/catalog-sync-guard.mjs`) wendet auf jede PR, deren Diff gegen die Merge-Basis `upstream-manifest.json` enthält, eine Regel an: kein Diff-Pfad unter `scripts/` oder `.github/`, strikt gültiges Manifest-v2-Schema mit offiziellem Repository für altes und neues Manifest, Register-Abgleich der Produkteinträge, vorhandenes Profil je ausgeliefertem Katalog, eindeutige grammatikkonforme Begleitschlüssel, kanonische Dateireihenfolge und Signatur. Der neue Snapshot muss per GitHub Compare API `ahead` sein; nur eine PR, die nicht der Lane-PR ist, darf denselben Snapshot behalten. `verifySnapshotFiles` prüft jede Datei gegen Tree, Blob und Inhalt, verlangt, dass die Begleitmenge des Manifests genau der im Tree entdeckten Menge entspricht, und leitet Root-Typ und Lifecycle jedes Begleitartefakts erneut aus seinen Bytes ab. Auto-Merge erhält nur der Lane-PR mit Branch `chore/catalog-sync-<sha12>`, exaktem Titel und einem Diff, der ausschließlich `upstream-manifest.json` ändert. `scripts/sync-upstream-manifest.mjs` blockiert eine Signaturänderung bei unverändertem Snapshot vor jedem Schreibzugriff. Die Namespace-Inventur muss exakt allen direkten `.csv`-Mitgliedern des registrierten Verzeichnisses entsprechen; externe oder anderweitig unzulässige `ns`-Referenzen blockieren.
+- **Catalog-Sync-Guard** (`scripts/catalog-sync-guard.mjs`) wendet auf jede PR, deren Diff gegen die Merge-Basis `upstream-manifest.json` enthält, eine Regel an: kein Diff-Pfad unter `scripts/` oder `.github/`, strikt gültiges Manifest-v2-Schema mit offiziellem Repository für altes und neues Manifest, Register-Abgleich der Produkteinträge, vorhandenes Profil je ausgeliefertem Katalog, eindeutige grammatikkonforme Begleitschlüssel, kanonische Dateireihenfolge und Signatur. Der neue Snapshot muss per GitHub Compare API `ahead` sein; nur eine PR, die nicht der Lane-PR ist, darf denselben Snapshot behalten. `verifySnapshotFiles` prüft jede Datei gegen Tree, Blob und Inhalt, verlangt, dass die Begleitmenge des Manifests genau der im Tree entdeckten Menge entspricht, und leitet Root-Typ und Lifecycle jedes Begleitartefakts erneut aus seinen Bytes ab. Auto-Merge erhält nur der Lane-PR mit Branch `chore/catalog-sync-<sha12>`, exaktem Titel und einem Diff, der ausschließlich `upstream-manifest.json` ändert. `scripts/sync-upstream-manifest.mjs` blockiert eine Signaturänderung bei unverändertem Snapshot vor jedem Schreibzugriff. Die Namespace-Inventur muss exakt allen direkten `.csv`-Mitgliedern des registrierten Verzeichnisses entsprechen; externe oder anderweitig unzulässige `ns`-Referenzen blockieren. Ausgenommen sind die vier `Taxonomy-L1`- bis `Taxonomy-L4`-Namespaces in `UNRESOLVED_BSI_NAMESPACE_URLS` (`scripts/vocabulary-utils.mjs`): `extractReferencedNamespaceUrls` überspringt genau diese URLs, weil ihre CSV-Dateien im BSI-Tree fehlen, und nimmt sie nicht in die Namespace-Inventur auf.
 - **Ruleset-Preflight** (`scripts/catalog-sync-policy.mjs`) prüft vor schreibenden Sync-Aktionen Auto-Merge, Branch-Löschung, erwartete Required Checks, CodeQL und den Audit-Pin der Ruleset-Version. Der Ref-Scope muss `main` unabhängig vom Repository-Default-Branch über `~ALL` oder `refs/heads/main` abdecken; `exclude` muss leer sein. `~DEFAULT_BRANCH` und fnmatch-Globs gelten nicht als Nachweis. Jeder GitHub-Request des Preflights bricht nach `DEFAULT_REQUEST_TIMEOUT_MS` (30 s, `scripts/githubApiFetch.mjs`) ab und lässt den Preflight fehlschlagen.
 - **Keine Integritätskette für Klasse 2**: Lokale Nutzerdokumente durchlaufen den Manifest-/Hash-Mechanismus nie und erben keine Provenienzindikatoren: `hash` existiert im OSCAL-Modell ausschließlich unter `back-matter/resource/rlinks/hashes` und beschreibt dort eine *referenzierte* Ressource — einen Dokument-Selbsthash gibt es nicht. Ein Verifikationsindikator im Sinne von Klasse 1 ist für ein lokales Dokument deshalb prinzipiell unmöglich. Für die Übernahme eines ausgelieferten Artefakts als Ausgangspunkt sieht der [Persistenzvertrag](./PERSISTENCE.md) eine Herkunftsangabe `derivedFrom` mit `contentSha256` im Envelope vor (Vorgabe ohne Umsetzung); sie hebt die Vertrauensklasse nicht an. Referenzier- und übernehmbar sind ausschließlich Artefakte mit `lifecycle: 'supported'`, weil nur sie materialisiert werden und die Laufzeitprüfung durchlaufen.
 - **CodeQL-Abgrenzung**: CodeQL schützt Anwendungscode und Workflows, bewertet aber nicht die fachliche Richtigkeit des BSI-Kataloginhalts. Der BSI-Upstream wird als Datenquelle akzeptiert.

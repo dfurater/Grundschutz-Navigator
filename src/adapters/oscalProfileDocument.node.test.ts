@@ -1,9 +1,9 @@
 // =============================================================================
-// Optionaler Realkorpus — die drei BSI-Profile (GSPP-240)
+// Optionaler Realkorpus — die BSI-Profile aus `upstream-manifest.json` (GSPP-240)
 //
 // Die Dateien liegen **nicht** im Repository: `npm run fetch-catalog`
-// materialisiert ausschließlich `supported`-Artefakte, und alle drei Profile
-// sind `preview` (`src/domain/sourceRegistry.mjs`). Wer sie prüfen will, holt
+// materialisiert ausschließlich `supported`-Artefakte, und das Manifest führt
+// jedes Profil als `preview`. Wer sie prüfen will, holt
 // sie lokal am Snapshot aus `upstream-manifest.json` und richtet
 // `GSPP_PROFILE_CORPUS_PATH` auf das Verzeichnis, das die
 // `control_layer/…`-Pfade enthält.
@@ -27,6 +27,7 @@ import { join } from 'node:path';
 import { parseProfileDocument } from './oscalProfileDocument';
 import type { ProfileDocument } from './oscalProfileDocument';
 import type { UpstreamManifest } from '@/domain/models';
+import { SUPPORTED_CATALOGS } from '@/domain/sourceRegistry';
 import {
   arrayOrderSignature,
   contentMultiset,
@@ -74,12 +75,13 @@ function loadCorpus(root: string): readonly CorpusEntry[] {
 }
 
 describe('Manifestvertrag der Profile', () => {
-  it('führt genau die drei registrierten Profile', () => {
-    expect(profileFiles.map((file) => file.artifactKey).sort()).toEqual([
-      'profile-gspp',
-      'profile-lieferkette',
-      'profile-wlan',
-    ]);
+  // Begleitprofile kommen mit jedem BSI-Snapshot hinzu; ein manifest-only Sync-PR
+  // darf daran nicht scheitern. Verbindlich sind die Profile ausgelieferter Kataloge.
+  it('führt das Profil jedes ausgelieferten Katalogs', () => {
+    const profilePaths = new Set(profileFiles.map((file) => file.path));
+    for (const entry of SUPPORTED_CATALOGS) {
+      expect(profilePaths, entry.artifactKey).toContain(entry.profileUpstreamPath);
+    }
   });
 });
 
