@@ -3,12 +3,12 @@ import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve, sep } from 'node:path';
-import { copyFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import type { Catalog } from './src/domain/models.ts';
 import {
   STATIC_CONTENT_TITLES, listSeoRouteMetadata, loadPublicSeoCatalogs, writeSeoRouteEntries,
 } from './scripts/seoRouteEntries.ts';
-import { listSupportedCatalogs } from './src/domain/sourceRegistry.mjs';
+import { listCatalogArtifactFileNames, listSupportedCatalogs } from './src/domain/sourceRegistry.mjs';
 import { LAZY_ROUTE_MODULES } from './src/app/lazyRouteModules.mjs';
 import { catalogFreshnessPlugin } from './scripts/check-catalog-freshness.mjs';
 import { checkBuiltSeoTitles } from './scripts/check-seo-titles.mjs';
@@ -82,8 +82,32 @@ export function writeStaticRouteEntries(
   );
 }
 
+const CATALOG_ARTIFACT_FILE_PATTERN = /^catalog(?:-.+)?\.json$/;
+
 /**
- * Nachgelagerte Build-Ausgaben für GitHub Pages. `SHA256SUMS` entsteht als
+ * Entfernt aus `<outDir>/data` jede Katalogdatei, die keinem `supported`-Eintrag
+ * des Quellregisters gehört. Vite kopiert `public/data` vollständig; ein
+ * wiederverwendeter Checkout trägt dort noch die Dateien eines Katalogs, der
+ * nicht mehr ausgeliefert wird.
+ */
+export function pruneUndeliveredCatalogFiles(
+  outDir: string,
+  deliveredFileNames: readonly string[] = listCatalogArtifactFileNames(),
+): string[] {
+  const dataDir = resolve(outDir, 'data');
+  if (!existsSync(dataDir)) return [];
+  const delivered = new Set(deliveredFileNames);
+  const removed = readdirSync(dataDir)
+    .filter((name) => CATALOG_ARTIFACT_FILE_PATTERN.test(name) && !delivered.has(name))
+    .sort();
+  for (const name of removed) rmSync(resolve(dataDir, name));
+  return removed;
+}
+
+/**
+ * Nachgelagerte Build-Ausgaben für GitHub Pages. Zuerst entfernt
+ * `pruneUndeliveredCatalogFiles` nicht ausgelieferte Katalogdateien aus
+ * `dist/data`. `SHA256SUMS` entsteht als
  * letzter Schritt, damit es Routen-Einstiege, `404.html` und Sitemap bereits
  * bindet (GSPP-465); der Deploy attestiert ausschließlich dieses Manifest.
  * Davor prüft der Titelvertrag jede gebaute HTML-Datei gegen U+2014 in
@@ -142,6 +166,7 @@ export function spaFallbackPlugin(
       if (missing.length > 0) {
         throw new Error(`Kein Seitenchunk im Bundle für die Lazy-Routen: ${missing.join(', ')}`);
       }
+      pruneUndeliveredCatalogFiles(outDir);
       writeStaticRouteEntries(outDir, options.catalogs, modulePreloads);
       writeSpaFallbackFile(outDir);
       writeSitemapFile(outDir);
