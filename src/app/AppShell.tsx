@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, useId, useLayoutEffect, useRef } from 'react';
+import { useMemo, useState, useId, useLayoutEffect, useRef } from 'react';
 import {
   Outlet,
   matchPath,
@@ -248,7 +248,9 @@ function AppShellLayout() {
     return candidate !== undefined && isCatalogKey(candidate) ? candidate : null;
   }, [location.pathname]);
 
-  useEffect(() => {
+  // Vor dem Zeichnen: Eine Navigation außerhalb eines Klicks zeigte sonst einen
+  // Frame lang die Route des neuen Katalogs mit dem alten Katalog (404).
+  useLayoutEffect(() => {
     if (routeCatalogKey) selectCatalog(routeCatalogKey);
   }, [routeCatalogKey, selectCatalog]);
 
