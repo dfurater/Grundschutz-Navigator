@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
-import type { KeyboardEvent, MouseEvent, ReactNode, RefCallback } from 'react';
+import type { MouseEvent, ReactNode, RefCallback } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { IconChevronDown } from '@/components/icons';
 import type { CatalogDirectoryEntry, LoadedCatalogState } from '@/domain/models';
@@ -74,7 +74,7 @@ function CatalogChoice({ item, id, current, pending, disabled, onSelect }: Reado
       {pending ? (
         <span className="col-span-2 flex items-center gap-1.5 text-xs text-[var(--color-text-secondary)]">
           <span aria-hidden="true" className="size-2.5 shrink-0 animate-spin rounded-full border-2 border-[var(--color-border-strong)] border-t-[var(--color-primary-main)] motion-reduce:animate-none" />
-          Katalog wird geladen… · Esc bricht ab
+          <span>Katalog wird geladen… · Esc bricht ab</span>
         </span>
       ) : (current || facts) && (
         <span className="col-span-2 truncate text-xs text-[var(--color-text-secondary)]">
@@ -183,21 +183,12 @@ export function CatalogSwitcher({
 
   const retry = (item: CatalogSwitcherItem) => {
     // Der Knopf verschwindet mit der Meldung; der Fokus bleibt an der Katalogzeile.
-    rootRef.current?.querySelector<HTMLElement>(`[aria-labelledby="${CSS.escape(`${panelId}-${item.catalogKey}-title`)}"]`)?.focus();
+    const titleId = CSS.escape(`${panelId}-${item.catalogKey}-title`);
+    rootRef.current?.querySelector<HTMLElement>(`[aria-labelledby="${titleId}"]`)?.focus();
     startLoad(item);
   };
 
-  useGlobalEventListener('document', 'keydown', (event) => {
-    if (event.key !== 'Escape' || event.defaultPrevented) return;
-    if (!(event.target instanceof Node) || !rootRef.current?.contains(event.target)) return;
-    event.preventDefault();
-    event.stopPropagation();
-    if (pendingKey === null) return toggle();
-    setPendingKey(null);
-    setAnnouncement(`Wechsel abgebrochen. ${activeShortTitle} bleibt geöffnet.`);
-  }, open, undefined, true);
-
-  const moveFocus = (event: KeyboardEvent<HTMLElement>) => {
+  const moveFocus = (event: globalThis.KeyboardEvent) => {
     const rows = [...(rootRef.current?.querySelectorAll<HTMLElement>(`#${CSS.escape(panelId)} li > :is(a, button)`) ?? [])];
     const index = rows.indexOf(document.activeElement as HTMLElement);
     const target = { ArrowDown: index + 1, ArrowUp: index - 1, Home: 0, End: rows.length - 1 }[event.key];
@@ -205,6 +196,16 @@ export function CatalogSwitcher({
     event.preventDefault();
     rows[Math.max(0, Math.min(rows.length - 1, target))]?.focus();
   };
+
+  useGlobalEventListener('document', 'keydown', (event) => {
+    if (event.defaultPrevented || !(event.target instanceof Node) || !rootRef.current?.contains(event.target)) return;
+    if (event.key !== 'Escape') return moveFocus(event);
+    event.preventDefault();
+    event.stopPropagation();
+    if (pendingKey === null) return toggle();
+    setPendingKey(null);
+    setAnnouncement(`Wechsel abgebrochen. ${activeShortTitle} bleibt geöffnet.`);
+  }, open, undefined, true);
 
   const failed = failedKey ? loadStates?.get(failedKey) : undefined;
 
@@ -241,13 +242,12 @@ export function CatalogSwitcher({
       </div>
       {active && <span id={`${panelId}-active-title`} hidden>{active.title}</span>}
       {/* Nur bei offener Liste: Sie existiert vor jeder Ansage und verdoppelt sonst keine Statusregion der Shell. */}
-      {open && <span role="status" className="sr-only">{announcement}</span>}
+      {open && <output className="sr-only">{announcement}</output>}
       <div ref={setScrollElement} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
         <nav
           id={panelId}
           aria-label="Verfügbare Kataloge"
           hidden={!open}
-          onKeyDown={moveFocus}
           className="border-b border-[var(--color-border-default)] px-1.5 pb-1.5"
         >
           {open && (

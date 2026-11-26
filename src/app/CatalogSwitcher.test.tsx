@@ -79,6 +79,19 @@ describe('CatalogSwitcher', () => {
     expect(router.state.location.pathname).toBe('/katalog/gspp');
   });
 
+  it('bewegt den Fokus mit Pfeiltasten, Pos1 und Ende zwischen den Einträgen', () => {
+    const { list } = setup([]);
+    const active = list().getByRole('button', { name: 'Anwenderkatalog Grundschutz++' });
+    active.focus();
+
+    fireEvent.keyDown(active, { key: 'ArrowDown' });
+    expect(list().getByRole('link', { name: /^DIVA/ })).toHaveFocus();
+    fireEvent.keyDown(document.activeElement!, { key: 'End' });
+    expect(list().getByRole('link', { name: 'Supply Chain Security' })).toHaveFocus();
+    fireEvent.keyDown(document.activeElement!, { key: 'Home' });
+    expect(active).toHaveFocus();
+  });
+
   it('lässt einen Klick mit Modifikator den Link normal öffnen', () => {
     const { requestCatalog, list } = setup([]);
     const diva = list().getByRole('link', { name: /^DIVA/ });
