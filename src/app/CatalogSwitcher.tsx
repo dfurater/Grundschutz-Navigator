@@ -1,9 +1,10 @@
-import { useId, useRef } from 'react';
-import type { ReactNode } from 'react';
-import { Link } from 'react-router';
-import { IconChevronDown, IconChevronRight } from '@/components/icons';
-import type { CatalogDirectoryEntry } from '@/domain/models';
+import { useEffect, useId, useRef, useState } from 'react';
+import type { KeyboardEvent, MouseEvent, ReactNode, Ref } from 'react';
+import { Link, useNavigate } from 'react-router';
+import { IconChevronDown } from '@/components/icons';
+import type { CatalogDirectoryEntry, LoadedCatalogState } from '@/domain/models';
 import type { CatalogKey } from '@/domain/sourceRegistry';
+import { catalogShortTitle } from '@/features/catalog/catalogShortTitle';
 import { useGlobalEventListener } from '@/hooks/useGlobalEventListener';
 
 export interface CatalogSwitcherItem extends CatalogDirectoryEntry {
@@ -16,17 +17,16 @@ interface CatalogSwitcherProps {
   readonly open: boolean;
   readonly onToggle: () => void;
   readonly trailing?: ReactNode;
+  /** Ladezustand je Katalog. Fehlt er, öffnet eine Auswahl den Katalog sofort. */
+  readonly loadStates?: ReadonlyMap<CatalogKey, LoadedCatalogState>;
+  readonly requestCatalog?: (catalogKey: CatalogKey) => void;
+  readonly retryCatalog?: (catalogKey: CatalogKey) => void;
+  /** Scrollbereich unter dem Kopf: Liste (geöffnet) und darunter `children`. */
+  readonly scrollRef?: Ref<HTMLDivElement>;
+  readonly children?: ReactNode;
 }
 
-const CATALOG_COPY: Partial<Record<CatalogKey, { shortTitle?: string; scope: string }>> = {
-  gspp: { shortTitle: 'Grundschutz++', scope: 'Grundschutz-Methodik und Anforderungen zur Absicherung.' },
-  lieferkette: { scope: 'Beschaffung und Steuerung von Dienstleistern.' },
-  diva: { shortTitle: 'DIVA · Identitäten und Zugriffe', scope: 'Identitäten, Berechtigungen und Zugriffe nach Zero Trust.' },
-  'wlan-gastnetze': { shortTitle: 'WLAN-Personal- und Gastnetze', scope: 'Für Gäste, kleine Büros und vernetzte Geräte.' },
-};
-
 const numberFormat = new Intl.NumberFormat('de-DE');
-const numberOfControls = (count: number) => `${numberFormat.format(count)} ${count === 1 ? 'Kontrolle' : 'Kontrollen'}`;
 
 const SWITCH_NAVIGATION = { fromCatalogSwitcher: true } as const;
 
@@ -38,72 +38,138 @@ export function isCatalogSwitchNavigation(state: unknown): boolean {
 
 const focusRing = 'kbd-focus:outline-none kbd-focus:ring-2 kbd-focus:ring-inset kbd-focus:ring-[var(--color-focus-ring)]';
 
-function CatalogChoice({ item, current, onClose, id }: Readonly<{
-  item: CatalogSwitcherItem;
-  current: boolean;
-  onClose: () => void;
-  id: string;
-}>) {
-  const scope = CATALOG_COPY[item.catalogKey]?.scope;
-  const count = item.controlCount === undefined ? undefined : numberOfControls(item.controlCount);
-  const rowClass = `grid w-full min-h-11 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1 rounded px-2.5 py-2 text-left ${focusRing}`;
-  const label = (
-    <span className="col-span-2 min-w-0 wrap-anywhere">
-      <span id={`${id}-title`} className="block text-sm font-semibold leading-snug text-[var(--color-text-primary)]">
+const shortTitleOf = (item: CatalogSwitcherItem | undefined, fallback: CatalogKey) =>
+  catalogShortTitle(item?.catalogKey ?? fallback, item?.title ?? fallback);
+
+interface ChoiceProps {
+  readonly item: CatalogSwitcherItem;
+  readonly id: string;
+  readonly current: boolean;
+  readonly pending: boolean;
+  readonly disabled: boolean;
+  readonly onSelect: (event: MouseEvent, item: CatalogSwitcherItem) => void;
+}
+
+function CatalogChoice({ item, id, current, pending, disabled, onSelect }: Readonly<ChoiceProps>) {
+  const facts = [
+    item.implementsNorm && `Norm: ${item.implementsNorm}`,
+    item.targetAudience && `Zielgruppe: ${item.targetAudience}`,
+  ].filter(Boolean).join(' · ');
+  const hasCount = item.controlCount !== undefined;
+  const description = [current && `${id}-current`, facts && `${id}-facts`, hasCount && `${id}-count`]
+    .filter(Boolean).join(' ');
+  const rowClass = `grid w-full min-h-11 grid-cols-[minmax(0,1fr)_auto] gap-x-2.5 gap-y-0.5 rounded-md px-2.5 py-2 text-left wrap-anywhere ${focusRing}`;
+  const content = (
+    <>
+      <span id={`${id}-title`} className="line-clamp-2 text-sm font-semibold leading-snug text-[var(--color-text-primary)]">
         {item.title}
       </span>
-      {scope && <span id={`${id}-scope`} className="mt-0.5 block text-xs leading-snug text-[var(--color-text-secondary)]">{scope}</span>}
-    </span>
-  );
-  const countLabel = count && (
-    <span id={`${id}-count`} className="col-start-1 text-xs tabular-nums text-[var(--color-text-secondary)]">{count}</span>
-  );
-  const description = [current && `${id}-current`, scope && `${id}-scope`, count && `${id}-count`]
-    .filter(Boolean).join(' ');
-  const accessibleName = { 'aria-labelledby': `${id}-title`, 'aria-describedby': description || undefined };
-
-  return (
-    <li className="border-b border-[var(--color-border-default)] last:border-b-0">
-      {current ? (
-        <button
-          type="button"
-          aria-current="true"
-          {...accessibleName}
-          className={`${rowClass} bg-primary-light`}
-          onClick={onClose}
-        >
-          {label}
-          {countLabel}
-          <span id={`${id}-current`} className="col-start-2 row-start-2 text-xs font-semibold text-primary-main">Geöffnet</span>
-        </button>
-      ) : (
-        <Link
-          to={item.href}
-          state={SWITCH_NAVIGATION}
-          {...accessibleName}
-          className={`${rowClass} hover:bg-white`}
-        >
-          {label}
-          {countLabel}
-          <IconChevronRight className="col-start-2 row-start-2 size-4 justify-self-end text-primary-main" />
-        </Link>
+      <span className="text-right text-sm font-medium leading-snug tabular-nums text-[var(--color-text-primary)]">
+        {hasCount && (
+          <span id={`${id}-count`}>
+            {numberFormat.format(item.controlCount!)}{' '}
+            <span className="sr-only">{item.controlCount === 1 ? 'Kontrolle' : 'Kontrollen'}</span>
+          </span>
+        )}
+      </span>
+      {pending ? (
+        <span className="col-span-2 flex items-center gap-1.5 text-xs text-[var(--color-text-secondary)]">
+          <span aria-hidden="true" className="size-2.5 shrink-0 animate-spin rounded-full border-2 border-[var(--color-border-strong)] border-t-[var(--color-primary-main)] motion-reduce:animate-none" />
+          Katalog wird geladen… · Esc bricht ab
+        </span>
+      ) : (current || facts) && (
+        <span className="col-span-2 truncate text-xs text-[var(--color-text-secondary)]">
+          {current && <span id={`${id}-current`} className="font-semibold text-primary-main">Geöffnet</span>}
+          {current && facts && ' · '}
+          {facts && <span id={`${id}-facts`}>{facts}</span>}
+        </span>
       )}
-    </li>
+    </>
+  );
+  const accessible = { 'aria-labelledby': `${id}-title`, 'aria-describedby': description || undefined };
+
+  return current ? (
+    <button
+      type="button"
+      aria-current="true"
+      {...accessible}
+      className={`${rowClass} bg-primary-light`}
+      onClick={(event) => onSelect(event, item)}
+    >
+      {content}
+    </button>
+  ) : (
+    <Link
+      to={item.href}
+      state={SWITCH_NAVIGATION}
+      {...accessible}
+      aria-busy={pending || undefined}
+      aria-disabled={disabled || undefined}
+      className={`${rowClass} ${disabled ? 'cursor-not-allowed opacity-50' : 'hover:bg-[var(--color-surface-subtle)]'}`}
+      onClick={(event) => onSelect(event, item)}
+    >
+      {content}
+    </Link>
   );
 }
 
-export function CatalogSwitcher({ items, activeKey, open, onToggle, trailing }: CatalogSwitcherProps) {
+export function CatalogSwitcher({
+  items, activeKey, open, onToggle, trailing, loadStates, requestCatalog, retryCatalog, scrollRef, children,
+}: CatalogSwitcherProps) {
   const panelId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const navigate = useNavigate();
+  const [pendingKey, setPendingKey] = useState<CatalogKey | null>(null);
+  const [failedKey, setFailedKey] = useState<CatalogKey | null>(null);
+  const [announcement, setAnnouncement] = useState('');
   const active = items.find(({ catalogKey }) => catalogKey === activeKey);
-  const fullTitle = active?.title;
-  const shortTitle = CATALOG_COPY[activeKey]?.shortTitle ?? fullTitle;
-  const describeFullTitle = fullTitle && (open || shortTitle !== fullTitle);
+  const activeShortTitle = shortTitleOf(active, activeKey);
+  const itemOf = (catalogKey: CatalogKey) => items.find((item) => item.catalogKey === catalogKey);
+  const pendingState = pendingKey ? loadStates?.get(pendingKey) : undefined;
+
+  // Eine geschlossene Liste hält keinen Wechsel und keine Fehlermeldung offen.
+  if (!open && (pendingKey !== null || failedKey !== null || announcement !== '')) {
+    setPendingKey(null);
+    setFailedKey(null);
+    setAnnouncement('');
+  }
+  // Fail-closed: Scheitert das Laden, bleibt der bisherige Katalog geöffnet.
+  if (pendingKey !== null && pendingState?.error) {
+    setPendingKey(null);
+    setFailedKey(pendingKey);
+    setAnnouncement(`${shortTitleOf(itemOf(pendingKey), pendingKey)} konnte nicht geladen werden. ${activeShortTitle} bleibt geöffnet.`);
+  }
+
+  const pendingHref = pendingKey !== null && pendingState?.catalog ? itemOf(pendingKey)?.href : undefined;
+  useEffect(() => {
+    if (pendingHref) void navigate(pendingHref, { state: SWITCH_NAVIGATION });
+  }, [navigate, pendingHref]);
 
   const toggle = () => {
     onToggle();
     triggerRef.current?.focus({ preventScroll: true });
+  };
+
+  const select = (event: MouseEvent, item: CatalogSwitcherItem) => {
+    const { catalogKey } = item;
+    if (catalogKey === activeKey) {
+      toggle();
+      return;
+    }
+    if (pendingKey !== null) {
+      event.preventDefault();
+      return;
+    }
+    const state = loadStates?.get(catalogKey);
+    // Ohne Ladeschnittstelle oder bei geladenem Katalog navigiert der Link direkt.
+    if (!loadStates || !requestCatalog || state?.catalog) return;
+    event.preventDefault();
+    setFailedKey(null);
+    setPendingKey(catalogKey);
+    setAnnouncement(`${shortTitleOf(item, catalogKey)} wird geladen. Escape bricht ab.`);
+    if (state?.error) retryCatalog?.(catalogKey);
+    else requestCatalog(catalogKey);
   };
 
   useGlobalEventListener('document', 'keydown', (event) => {
@@ -111,54 +177,105 @@ export function CatalogSwitcher({ items, activeKey, open, onToggle, trailing }: 
     if (!(event.target instanceof Node) || !rootRef.current?.contains(event.target)) return;
     event.preventDefault();
     event.stopPropagation();
-    toggle();
+    if (pendingKey === null) {
+      toggle();
+      return;
+    }
+    setPendingKey(null);
+    setAnnouncement(`Wechsel abgebrochen. ${activeShortTitle} bleibt geöffnet.`);
   }, open, undefined, true);
 
+  const moveFocus = (event: KeyboardEvent<HTMLElement>) => {
+    const rows = [...(rootRef.current?.querySelectorAll<HTMLElement>(`#${CSS.escape(panelId)} li > :is(a, button)`) ?? [])];
+    const index = rows.indexOf(document.activeElement as HTMLElement);
+    const target = { ArrowDown: index + 1, ArrowUp: index - 1, Home: 0, End: rows.length - 1 }[event.key];
+    if (index < 0 || target === undefined) return;
+    event.preventDefault();
+    rows[Math.max(0, Math.min(rows.length - 1, target))]?.focus();
+  };
+
+  const failed = failedKey ? loadStates?.get(failedKey) : undefined;
+
   return (
-    <div
-      ref={rootRef}
-      data-catalog-switcher=""
-      className={open
-        ? 'flex min-h-0 flex-1 flex-col bg-[var(--color-surface-subtle)] px-2 pt-2'
-        : 'shrink-0 border-b border-[var(--color-border-default)] p-2'}
-    >
-      <div className="flex shrink-0 items-center gap-1">
+    <div ref={rootRef} data-catalog-switcher="" className="flex min-h-0 flex-1 flex-col">
+      <div className="flex h-panel-head shrink-0 items-center gap-0.5 border-b border-[var(--color-border-default)] pl-1.5 pr-1">
         {active && (
           <button
             ref={triggerRef}
             type="button"
             aria-expanded={open}
             aria-controls={panelId}
-            aria-labelledby={open ? `${panelId}-action` : `${panelId}-short-title ${panelId}-action`}
-            aria-describedby={describeFullTitle ? `${panelId}-active-title` : undefined}
+            aria-describedby={`${panelId}-active-title`}
             onClick={toggle}
-            className={`flex min-h-11 min-w-0 flex-1 items-center justify-between gap-2 rounded border px-2.5 py-2 text-left hover:bg-primary-light ${focusRing} ${open ? 'border-transparent' : 'border-[var(--color-border-default)]'}`}
+            onKeyDown={(event) => {
+              if (event.key !== 'ArrowDown') return;
+              event.preventDefault();
+              if (!open) onToggle();
+              requestAnimationFrame(() => rootRef.current?.querySelector<HTMLElement>(`#${CSS.escape(panelId)} [aria-current="true"]`)?.focus());
+            }}
+            className={`flex h-11 min-w-0 flex-1 items-center justify-between gap-2 rounded-md px-2 text-left transition-colors hover:bg-[var(--color-surface-subtle)] aria-expanded:bg-[var(--color-surface-subtle)] motion-reduce:transition-none ${focusRing}`}
           >
-            <span className="min-w-0 wrap-anywhere">
-              {!open && <span id={`${panelId}-short-title`} className="block text-sm font-bold leading-snug text-[var(--color-text-primary)]">{shortTitle}</span>}
-              <span id={`${panelId}-action`} className={open ? 'block text-sm font-semibold text-primary-main' : 'mt-0.5 block text-xs font-semibold text-primary-main'}>Katalog wechseln</span>
+            <span className="min-w-0">
+              <span className="block text-xs text-[var(--color-text-secondary)]">Katalog</span>{' '}
+              <span className="block truncate text-sm font-semibold leading-snug text-[var(--color-text-primary)]">
+                {activeShortTitle}{' '}
+                <span className="sr-only">wechseln</span>
+              </span>
             </span>
-            <IconChevronDown className={`size-4 shrink-0 text-primary-main ${open ? 'rotate-180' : ''}`} />
+            <IconChevronDown className={`size-4 shrink-0 text-[var(--color-text-secondary)] transition-transform motion-reduce:transition-none ${open ? 'rotate-180' : ''}`} />
           </button>
         )}
         {!open && trailing}
       </div>
-      {describeFullTitle && <span id={`${panelId}-active-title`} hidden>{fullTitle}</span>}
-      <nav id={panelId} aria-label="Verfügbare Kataloge" hidden={!open} className="min-h-0 overflow-y-auto overscroll-contain py-1">
-        {open && (
-          <ul className="border-y border-[var(--color-border-default)]">
-            {items.map((item) => (
-              <CatalogChoice
-                key={item.catalogKey}
-                id={`${panelId}-${item.catalogKey}`}
-                item={item}
-                current={item.catalogKey === activeKey}
-                onClose={toggle}
-              />
-            ))}
-          </ul>
-        )}
-      </nav>
+      {active && <span id={`${panelId}-active-title`} hidden>{active.title}</span>}
+      {/* Nur bei offener Liste: Sie existiert vor jeder Ansage und verdoppelt sonst keine Statusregion der Shell. */}
+      {open && <span role="status" className="sr-only">{announcement}</span>}
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        <nav
+          id={panelId}
+          aria-label="Verfügbare Kataloge"
+          hidden={!open}
+          onKeyDown={moveFocus}
+          className="border-b border-[var(--color-border-default)] px-1.5 pb-1.5"
+        >
+          {open && (
+            <>
+              <div aria-hidden="true" className="flex justify-between gap-2 px-2.5 pb-1.5 pt-2 text-xs font-semibold text-[var(--color-text-secondary)]">
+                <span className="tabular-nums">{items.length} {items.length === 1 ? 'Katalog' : 'Kataloge'}</span>
+                <span>Kontrollen</span>
+              </div>
+              <ul className="space-y-0.5">
+                {items.map((item) => (
+                  <li key={item.catalogKey}>
+                    <CatalogChoice
+                      item={item}
+                      id={`${panelId}-${item.catalogKey}`}
+                      current={item.catalogKey === activeKey}
+                      pending={item.catalogKey === pendingKey}
+                      disabled={pendingKey !== null && item.catalogKey !== pendingKey}
+                      onSelect={select}
+                    />
+                    {item.catalogKey === failedKey && (
+                      <div className="mt-1 mb-1.5 rounded-md border border-[var(--color-danger-border)] bg-[var(--color-danger-surface)] px-2.5 py-2 text-xs text-[var(--color-danger-text)]">
+                        <p>{shortTitleOf(item, item.catalogKey)} konnte nicht geladen werden{failed?.error ? `: ${failed.error}` : '.'}</p>
+                        <p className="mt-0.5">{activeShortTitle} bleibt geöffnet.</p>
+                        <button
+                          type="button"
+                          onClick={(event) => select(event, item)}
+                          className={`mt-2 min-h-8 rounded-md border border-[var(--color-border-strong)] bg-[var(--color-surface-base)] px-2.5 text-xs font-medium text-[var(--color-text-secondary)] shadow-sm hover:bg-[var(--color-surface-subtle)] hover:text-[var(--color-text-primary)] ${focusRing}`}
+                        >
+                          Erneut versuchen
+                        </button>
+                      </div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </nav>
+        {children}
+      </div>
     </div>
   );
 }

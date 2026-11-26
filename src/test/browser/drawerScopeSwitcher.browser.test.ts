@@ -18,7 +18,7 @@ import '@/index.css';
 const CATALOGS = [
   { key: 'gspp', title: 'Anwenderkatalog Grundschutz++', shortTitle: 'Grundschutz++' },
   { key: 'lieferkette', title: 'Supply Chain Security', shortTitle: 'Supply Chain Security' },
-  { key: 'diva', title: 'DIVA - Durchgängige Identitätsprüfung, Verifikation und Absicherung', shortTitle: 'DIVA · Identitäten und Zugriffe' },
+  { key: 'diva', title: 'DIVA - Durchgängige Identitätsprüfung, Verifikation und Absicherung', shortTitle: 'DIVA' },
   { key: 'wlan-gastnetze', title: 'Stand der Technik WLAN-Personal- und Gastnetze mit gemeinsamem Kennwort', shortTitle: 'WLAN-Personal- und Gastnetze' },
 ] as const;
 const PROFILES = [
@@ -147,11 +147,8 @@ test.each(PROFILES)('hält die Kontextwahl bei $width px (Touch: $touch) sichtba
     else await userEvent.click(trigger);
     const listElement = list()!;
     expect(listElement).toBeVisible();
-    if (!touch) {
-      await expect.poll(() => aside.getBoundingClientRect().width).toBe(400);
-      expect(aside.getBoundingClientRect().width).toBeGreaterThan(closedWidth);
-      expect(host.querySelector('main')!.getBoundingClientRect().width).toBeGreaterThan(width / 2);
-    }
+    // Die Liste steht in der Seitenleiste und ändert deren Breite nicht.
+    expect(aside.getBoundingClientRect().width).toBe(closedWidth);
 
     const items = [...listElement.querySelectorAll<HTMLElement>('li > :is(a, button)')];
     expect(items).toHaveLength(CATALOGS.length);
@@ -165,7 +162,7 @@ test.each(PROFILES)('hält die Kontextwahl bei $width px (Touch: $touch) sichtba
     const title = document.getElementById(item.getAttribute('aria-labelledby')!)!;
     expect(title).toHaveTextContent(catalog.title);
     expect(title.scrollWidth).toBe(title.clientWidth);
-    if (catalog.title.length > 55) {
+    if (catalog.title.length > 30) {
       expect(title.getBoundingClientRect().height).toBeGreaterThan(Number.parseFloat(getComputedStyle(title).lineHeight));
     }
     if (touch) expect(item.getBoundingClientRect().height).toBeGreaterThanOrEqual(44);
@@ -200,7 +197,7 @@ test.each(PROFILES)('hält die Kontextwahl bei $width px (Touch: $touch) sichtba
 
   await router.navigate(-1);
   await expectLoadedCatalog('diva');
-  expect(trigger.textContent).toContain('DIVA · Identitäten und Zugriffe');
+  expect(trigger.textContent).toContain('DIVA');
   expect(list()).toBeNull();
   if (touch) {
     await openDrawer(host);

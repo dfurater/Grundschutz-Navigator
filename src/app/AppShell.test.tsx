@@ -124,7 +124,8 @@ const CATALOG_DIRECTORY = [
   { catalogKey: 'wlan', title: 'Stand der Technik WLAN' },
 ] as const;
 
-const scopeTrigger = () => screen.getByRole('button', { name: /Katalog wechseln/ });
+const SCOPE_TRIGGER_NAME = /^Katalog .+ wechseln$/;
+const scopeTrigger = () => screen.getByRole('button', { name: SCOPE_TRIGGER_NAME });
 const catalogList = () => within(screen.getByRole('navigation', { name: 'Verfügbare Kataloge' }));
 
 describe('AppShell', () => {
@@ -650,11 +651,11 @@ describe('AppShell', () => {
     expect(screen.queryByRole('button', { name: 'Menü schließen' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Katalog-Explorer ausblenden' }));
 
-    expect(screen.queryByRole('button', { name: /Katalog wechseln/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: SCOPE_TRIGGER_NAME })).not.toBeInTheDocument();
     expect(container.querySelector('aside')?.querySelectorAll('svg')).toHaveLength(1);
   });
 
-  it('zeigt die vollständige Beschreibung und schließt beim aktiven Katalog ohne Navigation', () => {
+  it('zeigt die vollständige Beschreibung, behält die Seitenleistenbreite und schließt beim aktiven Katalog ohne Navigation', () => {
     mockedUseMediaQuery.mockImplementation((query) => query === DESKTOP_QUERY);
     const initialPath = '/katalog/gspp/kontrolle/stable-alt-id';
     const { container, router } = renderAppShell([initialPath]);
@@ -663,7 +664,7 @@ describe('AppShell', () => {
     fireEvent.keyDown(resize, { key: 'ArrowRight' });
     const storedWidth = sidebar.style.width;
     const trigger = scopeTrigger();
-    expect(trigger).toHaveAccessibleName('Grundschutz++ Katalog wechseln');
+    expect(trigger).toHaveAccessibleName('Katalog Grundschutz++ wechseln');
     expect(trigger).toHaveAccessibleDescription('Anwenderkatalog Grundschutz++');
 
     fireEvent.click(trigger);
@@ -671,7 +672,7 @@ describe('AppShell', () => {
     expect(active).toHaveAttribute('aria-current', 'true');
     expect(active).toHaveTextContent('Geöffnet');
     expect(active).toHaveAccessibleDescription(/1.001 Kontrollen/);
-    expect(Number.parseFloat(sidebar.style.width)).toBeGreaterThan(Number.parseFloat(storedWidth));
+    expect(sidebar.style.width).toBe(storedWidth);
 
     fireEvent.click(active);
     expect(router.state.location.pathname).toBe(initialPath);

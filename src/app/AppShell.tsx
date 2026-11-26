@@ -75,16 +75,13 @@ function buildTreeItems(
 const SIDEBAR_DEFAULT_WIDTH = 256;
 const SIDEBAR_MIN_WIDTH = 160;
 const SIDEBAR_MAX_WIDTH = 480;
-const CATALOG_SWITCHER_MIN_WIDTH = 400;
-
-function useCatalogSwitcherLayout(locationKey: string, sidebarWidth: number) {
+function useCatalogSwitcherState(locationKey: string) {
   const [openedAt, setOpenedAt] = useState<string | null>(null);
   const open = openedAt === locationKey;
   if (openedAt !== null && !open) setOpenedAt(null);
 
   return {
     open,
-    width: open ? Math.max(sidebarWidth, CATALOG_SWITCHER_MIN_WIDTH) : sidebarWidth,
     close: () => setOpenedAt(null),
     toggle: () => setOpenedAt(open ? null : locationKey),
   };
@@ -126,7 +123,7 @@ function AppShellLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const navigationType = useNavigationType();
-  const switcher = useCatalogSwitcherLayout(location.key, sidebarWidth);
+  const switcher = useCatalogSwitcherState(location.key);
   useRoutePrefetch();
   useInputModality();
   const prefersReducedMotion = useMediaQuery(REDUCED_MOTION_QUERY);
@@ -138,6 +135,9 @@ function AppShellLayout() {
     selectCatalog,
     loading,
     error,
+    catalogs,
+    requestCatalog,
+    retryCatalog,
   } = useCatalog();
 
   const shellRef = useRef<HTMLDivElement>(null);
@@ -192,7 +192,7 @@ function AppShellLayout() {
   // Bezugsrahmen, und die Elemente sprängen erst nach der Bewegung an den
   // Bildschirmrand (GSPP-494). `data-mobile-nav` folgt dagegen dem Zielzustand.
   const mobileNavBlocksFixed = mobileNavShown || drawerPlacement.sliding;
-  const expandedNavWidth = sidebarCollapsed ? 44 : switcher.width;
+  const expandedNavWidth = sidebarCollapsed ? 44 : sidebarWidth;
   // Mobil bestimmt `--mobile-nav-width` die Breite (src/index.css).
   const persistentNavWidth = isPersistentNav ? expandedNavWidth : undefined;
   // Mobil ändert sich die Breite nur mit dem Viewport, etwa beim Drehen. Sie
@@ -438,6 +438,9 @@ function AppShellLayout() {
                   switcherActiveKey,
                   switcherOpen: switcher.open,
                   onToggleSwitcher: switcher.toggle,
+                  loadStates: catalogs,
+                  requestCatalog,
+                  retryCatalog,
                   treeItems,
                   selectedId,
                   loading,
@@ -450,7 +453,7 @@ function AppShellLayout() {
           )}
 
           {/* Resize handle — only on desktop, only when expanded */}
-          {!sidebarCollapsed && !switcher.open && (
+          {!sidebarCollapsed && (
             <button
               type="button"
               className="resize-handle resize-handle--right absolute right-0 top-0 bottom-0 z-20 hidden w-1.5 cursor-col-resize focus-visible:bg-[var(--color-surface-subtle)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] desktop:block"

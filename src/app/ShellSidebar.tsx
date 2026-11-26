@@ -5,6 +5,7 @@ import type { CatalogSwitcherItem } from '@/app/CatalogSwitcher';
 import { TreeNav } from '@/components/TreeNav';
 import type { TreeItem } from '@/components/TreeNav';
 import { IconX } from '@/components/icons';
+import type { LoadedCatalogState } from '@/domain/models';
 import type { CatalogKey } from '@/domain/sourceRegistry';
 import type { ProductArea } from '@/app/routes';
 
@@ -23,6 +24,9 @@ export interface ShellSidebarProps {
     readonly switcherActiveKey: CatalogKey;
     readonly switcherOpen: boolean;
     readonly onToggleSwitcher: () => void;
+    readonly loadStates?: ReadonlyMap<CatalogKey, LoadedCatalogState>;
+    readonly requestCatalog?: (catalogKey: CatalogKey) => void;
+    readonly retryCatalog?: (catalogKey: CatalogKey) => void;
     readonly treeItems: TreeItem[];
     readonly selectedId?: string;
     readonly loading: boolean;
@@ -72,29 +76,34 @@ export function ShellSidebar({
             open={catalog.switcherOpen}
             onToggle={catalog.onToggleSwitcher}
             trailing={trailing}
-          />
-          <div ref={treeScrollRef} hidden={catalog.switcherOpen} className="flex-1 overflow-y-auto py-2">
-            {catalog.loading && (
-              <div className="px-4 py-8 text-center">
-                <div className="inline-block w-5 h-5 border-2 border-slate-300 border-t-primary-main rounded-full animate-spin" />
-                <p className="text-xs text-slate-500 mt-2">Katalog wird geladen…</p>
-              </div>
-            )}
-            {catalog.error && (
-              <div className="px-4 py-4 text-center">
-                <p className="text-xs text-red-600 font-medium">Fehler</p>
-                <p className="text-xs text-[var(--color-danger-text)] mt-1">{catalog.error}</p>
-              </div>
-            )}
-            {!catalog.loading && !catalog.error && catalog.treeItems.length > 0 && (
-              <TreeNav
-                catalogKey={catalog.activeKey}
-                items={catalog.treeItems}
-                onSelect={catalog.onTreeSelect}
-                selectedId={catalog.selectedId}
-              />
-            )}
-          </div>
+            loadStates={catalog.loadStates}
+            requestCatalog={catalog.requestCatalog}
+            retryCatalog={catalog.retryCatalog}
+            scrollRef={treeScrollRef}
+          >
+            <div className="py-2">
+              {catalog.loading && (
+                <div className="px-4 py-8 text-center">
+                  <div className="inline-block w-5 h-5 border-2 border-slate-300 border-t-primary-main rounded-full animate-spin" />
+                  <p className="text-xs text-slate-500 mt-2">Katalog wird geladen…</p>
+                </div>
+              )}
+              {catalog.error && (
+                <div className="px-4 py-4 text-center">
+                  <p className="text-xs text-red-600 font-medium">Fehler</p>
+                  <p className="text-xs text-[var(--color-danger-text)] mt-1">{catalog.error}</p>
+                </div>
+              )}
+              {!catalog.loading && !catalog.error && catalog.treeItems.length > 0 && (
+                <TreeNav
+                  catalogKey={catalog.activeKey}
+                  items={catalog.treeItems}
+                  onSelect={catalog.onTreeSelect}
+                  selectedId={catalog.selectedId}
+                />
+              )}
+            </div>
+          </CatalogSwitcher>
         </>
       )}
 

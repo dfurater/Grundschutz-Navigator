@@ -450,6 +450,13 @@ function requireCatalogTitle(catalogDocument, artifactKey) {
   return title;
 }
 
+/** Wert einer Metadaten-Eigenschaft des Katalogs; nur ein nicht-leerer String zählt. */
+function catalogMetadataProp(catalogDocument, name) {
+  const props = catalogDocument.catalog.metadata?.props;
+  const value = Array.isArray(props) ? props.find((prop) => prop?.name === name)?.value : undefined;
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
 function collectRawControls(container, controls = []) {
   for (const control of container?.controls ?? []) {
     controls.push(control);
@@ -681,6 +688,8 @@ async function buildFetchArtifacts(logger = console, {
 
     catalogRecords.push({
       title,
+      targetAudience: catalogMetadataProp(artifact.json, 'scope_target_audience'),
+      implementsNorm: catalogMetadataProp(artifact.json, 'scope_implements_norm'),
       entry,
       treeFile,
       raw,
@@ -943,6 +952,8 @@ async function buildFetchArtifacts(logger = console, {
       catalogKey: record.entry.catalogKey,
       title: record.title,
       controlCount: record.quality.controlCount,
+      targetAudience: record.targetAudience,
+      implementsNorm: record.implementsNorm,
       oscalVersion: record.entry.oscalVersion,
       source: {
         repository: OFFICIAL_BSI_REPOSITORY_URL,

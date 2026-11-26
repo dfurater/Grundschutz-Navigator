@@ -102,6 +102,11 @@ export async function loadCatalogDirectory(
   }));
 }
 
+/** Ein Sidecar-Text zählt nur als nicht-leerer String. */
+function optionalText<K extends 'targetAudience' | 'implementsNorm'>(key: K, value: unknown): Partial<Record<K, string>> {
+  return typeof value === 'string' && value.length > 0 ? { [key]: value } as Record<K, string> : {};
+}
+
 async function loadCatalogDirectoryEntry(
   { catalogKey, metadataUrl }: SupportedCatalogDescriptor,
   requestProvenance: ProvenanceRequest,
@@ -115,9 +120,11 @@ async function loadCatalogDirectoryEntry(
 
   const title = provenance?.title;
   const controlCount = provenance?.controlCount;
-  const entry = {
+  const entry: CatalogDirectoryEntry = {
     catalogKey,
     title: typeof title === 'string' && title.length > 0 ? title : catalogKey,
+    ...optionalText('targetAudience', provenance?.targetAudience),
+    ...optionalText('implementsNorm', provenance?.implementsNorm),
   };
   if (typeof title !== 'string' || title.length === 0) {
     console.warn(`Catalog title metadata not available for "${catalogKey}". Using catalog key.`);

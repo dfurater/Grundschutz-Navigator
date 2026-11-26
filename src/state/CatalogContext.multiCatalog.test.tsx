@@ -211,6 +211,18 @@ describe('CatalogProvider — mehrere Kataloge', () => {
     expect(fetchSpy.mock.calls.some(([url]) => String(url) === SECOND_DATA_URL)).toBe(false);
   });
 
+  it('übernimmt Zielgruppe und Norm nur als nicht-leere Strings', async () => {
+    mockArtifacts({
+      [SECOND_METADATA_URL]: { title: 'Stand der Technik WLAN', targetAudience: 'Bundesbehörden', implementsNorm: '' },
+    });
+    const { result } = renderProvider();
+    const directoryEntry = () => result.current.catalogDirectory.find(({ catalogKey }) => catalogKey === 'wlan');
+
+    await waitFor(() => expect(directoryEntry()?.title).toBe('Stand der Technik WLAN'));
+    expect(directoryEntry()?.targetAudience).toBe('Bundesbehörden');
+    expect(directoryEntry()).not.toHaveProperty('implementsNorm');
+  });
+
   it('veröffentlicht verfügbare Titel trotz einer hängenden anderen Metadaten-Anfrage', async () => {
     let resolvePending: (response: Response) => void = () => {};
     const pending = new Promise<Response>((resolve) => { resolvePending = resolve; });
