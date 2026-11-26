@@ -1,5 +1,5 @@
-import { useEffect, useId, useRef, useState } from 'react';
-import type { KeyboardEvent, MouseEvent, ReactNode, Ref } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import type { KeyboardEvent, MouseEvent, ReactNode, RefCallback } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { IconChevronDown } from '@/components/icons';
 import type { CatalogDirectoryEntry, LoadedCatalogState } from '@/domain/models';
@@ -22,12 +22,11 @@ interface CatalogSwitcherProps {
   readonly requestCatalog?: (catalogKey: CatalogKey) => void;
   readonly retryCatalog?: (catalogKey: CatalogKey) => void;
   /** Scrollbereich unter dem Kopf: Liste (geöffnet) und darunter `children`. */
-  readonly scrollRef?: Ref<HTMLDivElement>;
+  readonly scrollRef?: RefCallback<HTMLDivElement>;
   readonly children?: ReactNode;
 }
 
 const numberFormat = new Intl.NumberFormat('de-DE');
-
 const SWITCH_NAVIGATION = { fromCatalogSwitcher: true } as const;
 
 export function isCatalogSwitchNavigation(state: unknown): boolean {
@@ -146,30 +145,46 @@ export function CatalogSwitcher({
     if (pendingHref) void navigate(pendingHref, { state: SWITCH_NAVIGATION });
   }, [navigate, pendingHref]);
 
+  // Geöffnet beginnt der gemeinsame Scrollbereich oben, damit die Liste über dem Baum sichtbar ist.
+  const scrollElement = useRef<HTMLDivElement | null>(null);
+  const setScrollElement = useCallback((element: HTMLDivElement | null) => {
+    scrollElement.current = element;
+    return scrollRef?.(element);
+  }, [scrollRef]);
+  useEffect(() => {
+    if (open && scrollElement.current) scrollElement.current.scrollTop = 0;
+  }, [open]);
+
   const toggle = () => {
     onToggle();
     triggerRef.current?.focus({ preventScroll: true });
   };
 
-  const select = (event: MouseEvent, item: CatalogSwitcherItem) => {
+  const startLoad = (item: CatalogSwitcherItem) => {
     const { catalogKey } = item;
-    if (catalogKey === activeKey) {
-      toggle();
-      return;
-    }
-    if (pendingKey !== null) {
-      event.preventDefault();
-      return;
-    }
-    const state = loadStates?.get(catalogKey);
-    // Ohne Ladeschnittstelle oder bei geladenem Katalog navigiert der Link direkt.
-    if (!loadStates || !requestCatalog || state?.catalog) return;
-    event.preventDefault();
     setFailedKey(null);
     setPendingKey(catalogKey);
     setAnnouncement(`${shortTitleOf(item, catalogKey)} wird geladen. Escape bricht ab.`);
-    if (state?.error) retryCatalog?.(catalogKey);
-    else requestCatalog(catalogKey);
+    if (loadStates?.get(catalogKey)?.error) retryCatalog?.(catalogKey);
+    else requestCatalog?.(catalogKey);
+  };
+
+  const select = (event: MouseEvent, item: CatalogSwitcherItem) => {
+    const { catalogKey } = item;
+    if (catalogKey === activeKey) return toggle();
+    if (pendingKey !== null) return event.preventDefault();
+    // Ein Klick mit Modifikator öffnet den Link wie gewohnt, etwa in einem neuen Tab.
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    // Ohne Ladeschnittstelle oder bei geladenem Katalog navigiert der Link direkt.
+    if (!loadStates || !requestCatalog || loadStates.get(catalogKey)?.catalog) return;
+    event.preventDefault();
+    startLoad(item);
+  };
+
+  const retry = (item: CatalogSwitcherItem) => {
+    // Der Knopf verschwindet mit der Meldung; der Fokus bleibt an der Katalogzeile.
+    rootRef.current?.querySelector<HTMLElement>(`[aria-labelledby="${CSS.escape(`${panelId}-${item.catalogKey}-title`)}"]`)?.focus();
+    startLoad(item);
   };
 
   useGlobalEventListener('document', 'keydown', (event) => {
@@ -177,10 +192,7 @@ export function CatalogSwitcher({
     if (!(event.target instanceof Node) || !rootRef.current?.contains(event.target)) return;
     event.preventDefault();
     event.stopPropagation();
-    if (pendingKey === null) {
-      toggle();
-      return;
-    }
+    if (pendingKey === null) return toggle();
     setPendingKey(null);
     setAnnouncement(`Wechsel abgebrochen. ${activeShortTitle} bleibt geöffnet.`);
   }, open, undefined, true);
@@ -230,7 +242,7 @@ export function CatalogSwitcher({
       {active && <span id={`${panelId}-active-title`} hidden>{active.title}</span>}
       {/* Nur bei offener Liste: Sie existiert vor jeder Ansage und verdoppelt sonst keine Statusregion der Shell. */}
       {open && <span role="status" className="sr-only">{announcement}</span>}
-      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+      <div ref={setScrollElement} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
         <nav
           id={panelId}
           aria-label="Verfügbare Kataloge"
@@ -261,7 +273,7 @@ export function CatalogSwitcher({
                         <p className="mt-0.5">{activeShortTitle} bleibt geöffnet.</p>
                         <button
                           type="button"
-                          onClick={(event) => select(event, item)}
+                          onClick={() => retry(item)}
                           className={`mt-2 min-h-8 rounded-md border border-[var(--color-border-strong)] bg-[var(--color-surface-base)] px-2.5 text-xs font-medium text-[var(--color-text-secondary)] shadow-sm hover:bg-[var(--color-surface-subtle)] hover:text-[var(--color-text-primary)] ${focusRing}`}
                         >
                           Erneut versuchen

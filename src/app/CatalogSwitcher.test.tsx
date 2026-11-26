@@ -79,6 +79,17 @@ describe('CatalogSwitcher', () => {
     expect(router.state.location.pathname).toBe('/katalog/gspp');
   });
 
+  it('lässt einen Klick mit Modifikator den Link normal öffnen', () => {
+    const { requestCatalog, list } = setup([]);
+    const diva = list().getByRole('link', { name: /^DIVA/ });
+
+    for (const modifier of [{ ctrlKey: true }, { metaKey: true }, { shiftKey: true }]) {
+      expect(fireEvent.click(diva, modifier)).toBe(true);
+    }
+    expect(requestCatalog).not.toHaveBeenCalled();
+    expect(diva).not.toHaveAttribute('aria-busy');
+  });
+
   it('wechselt erst nach dem Laden und bleibt bei einem Fehler beim geöffneten Katalog', async () => {
     const { retryCatalog, router, update, list } = setup([]);
 
@@ -90,6 +101,7 @@ describe('CatalogSwitcher', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Erneut versuchen' }));
     expect(retryCatalog).toHaveBeenCalledWith('diva');
+    expect(list().getByRole('link', { name: /^DIVA/ })).toHaveFocus();
     expect(screen.queryByText('Grundschutz++ bleibt geöffnet.')).not.toBeInTheDocument();
     update([['diva', state('diva', { catalog: {} as Catalog })]]);
     await waitFor(() => expect(router.state.location.pathname).toBe('/katalog/diva'));
