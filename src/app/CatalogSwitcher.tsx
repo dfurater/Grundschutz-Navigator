@@ -172,9 +172,9 @@ export function CatalogSwitcher({
   const select = (event: MouseEvent, item: CatalogSwitcherItem) => {
     const { catalogKey } = item;
     if (catalogKey === activeKey) return toggle();
-    if (pendingKey !== null) return event.preventDefault();
-    // Ein Klick mit Modifikator öffnet den Link wie gewohnt, etwa in einem neuen Tab.
+    // Ein Klick mit Modifikator öffnet den Link wie gewohnt, etwa in einem neuen Tab, auch während eines Wechsels.
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    if (pendingKey !== null) return event.preventDefault();
     // Ohne Ladeschnittstelle oder bei geladenem Katalog navigiert der Link direkt.
     if (!loadStates || !requestCatalog || loadStates.get(catalogKey)?.catalog) return;
     event.preventDefault();

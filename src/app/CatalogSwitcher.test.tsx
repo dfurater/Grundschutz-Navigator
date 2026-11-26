@@ -96,11 +96,14 @@ describe('CatalogSwitcher', () => {
     const { requestCatalog, list } = setup([]);
     const diva = list().getByRole('link', { name: /^DIVA/ });
 
-    for (const modifier of [{ ctrlKey: true }, { metaKey: true }, { shiftKey: true }]) {
-      expect(fireEvent.click(diva, modifier)).toBe(true);
-    }
+    const modifiers = [{ ctrlKey: true }, { metaKey: true }, { shiftKey: true }, { altKey: true }, { button: 1 }];
+    for (const modifier of modifiers) expect(fireEvent.click(diva, modifier)).toBe(true);
     expect(requestCatalog).not.toHaveBeenCalled();
     expect(diva).not.toHaveAttribute('aria-busy');
+
+    // Auch während ein anderer Katalog lädt, bleibt die native Linkaktion erhalten.
+    fireEvent.click(list().getByRole('link', { name: 'Supply Chain Security' }));
+    for (const modifier of modifiers) expect(fireEvent.click(diva, modifier)).toBe(true);
   });
 
   it('wechselt erst nach dem Laden und bleibt bei einem Fehler beim geöffneten Katalog', async () => {
@@ -116,6 +119,14 @@ describe('CatalogSwitcher', () => {
     expect(retryCatalog).toHaveBeenCalledWith('diva');
     expect(list().getByRole('link', { name: /^DIVA/ })).toHaveFocus();
     expect(screen.queryByText('Grundschutz++ bleibt geöffnet.')).not.toBeInTheDocument();
+
+    // Escape nach der Wiederholung bricht ab; ein danach geladener Katalog wechselt nicht.
+    fireEvent.keyDown(list().getByRole('link', { name: /^DIVA/ }), { key: 'Escape' });
+    update([['diva', state('diva', { catalog: {} as Catalog })]]);
+    await act(async () => {});
+    expect(router.state.location.pathname).toBe('/katalog/gspp');
+
+    fireEvent.click(list().getByRole('link', { name: /^DIVA/ }));
     update([['diva', state('diva', { catalog: {} as Catalog })]]);
     await waitFor(() => expect(router.state.location.pathname).toBe('/katalog/diva'));
     expect(router.state.location.state).toEqual({ fromCatalogSwitcher: true });
