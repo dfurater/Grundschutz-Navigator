@@ -301,6 +301,40 @@ test('überlässt bei 1366 px das erste Escape einem offenen Tooltip und bricht 
   }
 });
 
+test('bietet nach einem Ladefehler eine erreichbare mobile Wiederholung mit 44 px Höhe', async () => {
+  await commands.setBrowserCoarsePointer(true);
+  const realFetch = globalThis.fetch;
+  let requests = 0;
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    if (!String(input).includes('catalog-diva.json')) return realFetch(input, init);
+    requests += 1;
+    return requests === 1 ? new Response(null, { status: 503 }) : realFetch(input, init);
+  });
+  try {
+    const aside = await renderCatalogShell(390, 844);
+    await openDrawer(host!);
+    await settlePush(host!);
+    await userEvent.click(triggerIn(aside)!);
+    const list = aside.querySelector<HTMLElement>('nav[aria-label="Verfügbare Kataloge"]')!;
+    await userEvent.click(list.querySelector<HTMLElement>('a[href="/katalog/diva"]')!);
+
+    const retry = () => [...list.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'Erneut versuchen');
+    await expect.poll(retry, { timeout: 5000 }).toBeDefined();
+    expect(router!.state.location.pathname).toBe('/katalog/gspp');
+    const retryButton = retry()!;
+    retryButton.scrollIntoView({ block: 'nearest' });
+    expectReachable(retryButton, 390, 844);
+    expect(retryButton.getBoundingClientRect().height).toBeGreaterThanOrEqual(44);
+
+    await userEvent.click(retryButton);
+    await expectLoadedCatalog('diva');
+    expect(router!.state.location.pathname).toBe('/katalog/diva');
+    expect(requests).toBe(2);
+  } finally {
+    vi.restoreAllMocks();
+  }
+});
+
 test('bricht den Kurztitel der Werkzeugleiste bei 200 % Schrift im mobilen Direktlink um', async () => {
   await commands.setBrowserFontSize(32);
   await page.viewport(320, 568);

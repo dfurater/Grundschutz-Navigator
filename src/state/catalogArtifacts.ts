@@ -107,6 +107,16 @@ function optionalText<K extends 'targetAudience' | 'implementsNorm'>(key: K, val
   return typeof value === 'string' && value.length > 0 ? { [key]: value } as Record<K, string> : {};
 }
 
+/** Validiert die optionalen Anzeigefelder eines Katalog-Sidecars. */
+export function optionalCatalogFacts(
+  provenance: CatalogProvenance | null | undefined,
+): Pick<CatalogDirectoryEntry, 'targetAudience' | 'implementsNorm'> {
+  return {
+    ...optionalText('targetAudience', provenance?.targetAudience),
+    ...optionalText('implementsNorm', provenance?.implementsNorm),
+  };
+}
+
 async function loadCatalogDirectoryEntry(
   { catalogKey, metadataUrl }: SupportedCatalogDescriptor,
   requestProvenance: ProvenanceRequest,
@@ -123,8 +133,7 @@ async function loadCatalogDirectoryEntry(
   const entry: CatalogDirectoryEntry = {
     catalogKey,
     title: typeof title === 'string' && title.length > 0 ? title : catalogKey,
-    ...optionalText('targetAudience', provenance?.targetAudience),
-    ...optionalText('implementsNorm', provenance?.implementsNorm),
+    ...optionalCatalogFacts(provenance),
   };
   if (typeof title !== 'string' || title.length === 0) {
     console.warn(`Catalog title metadata not available for "${catalogKey}". Using catalog key.`);

@@ -272,6 +272,84 @@ describe('CatalogProvider — mehrere Kataloge', () => {
     expect(result.current.catalogDirectory[1].title).toBe('Neuer Titel');
   });
 
+  it.each(['Route', 'Vorabruf'] as const)('ersetzt eine laufende Katalogquelle bei %s', async (source) => {
+    const replacementUrl = '/new-wlan.json';
+    const replacement = {
+      ...secondCatalogJson,
+      catalog: { ...secondCatalogJson.catalog, uuid: 'replacement-catalog' },
+    };
+    let resolveOld: (response: Response) => void = () => {};
+    const oldResponse = new Promise<Response>((resolve) => { resolveOld = resolve; });
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      if (url === ENTRY_DATA_URL) return jsonResponse(entryCatalogJson);
+      if (url === SECOND_DATA_URL) return oldResponse;
+      if (url === replacementUrl) return jsonResponse(replacement);
+      return new Response(null, { status: 404 });
+    });
+    let currentDescriptors = descriptors;
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <CatalogProvider supportedCatalogs={currentDescriptors}>{children}</CatalogProvider>
+    );
+    const { result, rerender } = renderHook(() => useCatalog(), { wrapper });
+    await waitForEntryCatalog(result);
+
+    try {
+      act(() => {
+        if (source === 'Route') result.current.selectCatalog('wlan');
+        else result.current.requestCatalog?.('wlan');
+      });
+      await waitFor(() => expect(fetchSpy.mock.calls.some(([url]) => url === SECOND_DATA_URL)).toBe(true));
+      currentDescriptors = descriptors.map((entry) => entry.isEntryCatalog
+        ? entry : { ...entry, dataUrl: replacementUrl });
+      rerender();
+
+      const loadedWlan = () => result.current.catalogs.get('wlan')?.catalog;
+      await waitFor(() => {
+        expect(fetchSpy.mock.calls.some(([url]) => url === replacementUrl)).toBe(true);
+        expect(loadedWlan()?.uuid).toBe('replacement-catalog');
+      });
+      await act(async () => { resolveOld(jsonResponse(secondCatalogJson)); });
+      expect(loadedWlan()?.uuid).toBe('replacement-catalog');
+      expect(result.current.activeCatalogKey).toBe(source === 'Route' ? 'wlan' : 'gspp');
+    } finally {
+      await act(async () => { resolveOld(new Response(null, { status: 404 })); });
+    }
+  });
+
+  it('ergänzt Norm und Zielgruppe aus erneut geladenen Metadaten', async () => {
+    const provenance = {
+      ...await provenanceFor(secondCatalogJson),
+      title: 'WLAN aus Metadaten',
+      targetAudience: 'Bundesbehörden',
+      implementsNorm: '§ 44 Abs. 1 BSIG',
+    };
+    let metadataRequests = 0;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      if (url === ENTRY_DATA_URL) return jsonResponse(entryCatalogJson);
+      if (url === SECOND_DATA_URL) return jsonResponse(secondCatalogJson);
+      if (url === SECOND_METADATA_URL) {
+        metadataRequests += 1;
+        if (metadataRequests > 1) return jsonResponse(provenance);
+      }
+      return new Response(null, { status: 404 });
+    });
+    const { result } = renderProvider();
+    await waitForEntryCatalog(result);
+    const wlan = () => result.current.catalogDirectory.find(({ catalogKey }) => catalogKey === 'wlan');
+    expect(wlan()).toEqual({ catalogKey: 'wlan', title: 'wlan' });
+
+    act(() => { result.current.selectCatalog('wlan'); });
+
+    await waitFor(() => expect(result.current.catalog?.catalogKey).toBe('wlan'));
+    expect(wlan()).toMatchObject({
+      targetAudience: 'Bundesbehörden',
+      implementsNorm: '§ 44 Abs. 1 BSIG',
+    });
+    expect(metadataRequests).toBe(2);
+  });
+
   it('nutzt den Titel und die Kontrollzahl des geladenen Katalogs', async () => {
     mockArtifacts({
       [ENTRY_DATA_URL]: entryCatalogJson,
