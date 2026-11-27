@@ -102,20 +102,45 @@ export async function loadCatalogDirectory(
   }));
 }
 
+/** Ein Sidecar-Text zählt nur als nicht-leerer String. */
+function optionalText<K extends 'targetAudience' | 'implementsNorm'>(key: K, value: unknown): Partial<Record<K, string>> {
+  return typeof value === 'string' && value.length > 0 ? { [key]: value } as Record<K, string> : {};
+}
+
+/** Validiert die optionalen Anzeigefelder eines Katalog-Sidecars. */
+export function optionalCatalogFacts(
+  provenance: CatalogProvenance | null | undefined,
+): Pick<CatalogDirectoryEntry, 'targetAudience' | 'implementsNorm'> {
+  return {
+    ...optionalText('targetAudience', provenance?.targetAudience),
+    ...optionalText('implementsNorm', provenance?.implementsNorm),
+  };
+}
+
 async function loadCatalogDirectoryEntry(
   { catalogKey, metadataUrl }: SupportedCatalogDescriptor,
   requestProvenance: ProvenanceRequest,
 ): Promise<CatalogDirectoryEntry> {
+  let provenance: CatalogProvenance | undefined;
   try {
-    const provenance = await requestProvenance(metadataUrl);
-    if (typeof provenance?.title === 'string' && provenance.title.length > 0) {
-      return { catalogKey, title: provenance.title };
-    }
+    provenance = await requestProvenance(metadataUrl);
   } catch {
     // Ein fehlender oder nicht lesbarer Sidecar betrifft nur diesen Eintrag.
   }
-  console.warn(`Catalog title metadata not available for "${catalogKey}". Using catalog key.`);
-  return { catalogKey, title: catalogKey };
+
+  const title = provenance?.title;
+  const controlCount = provenance?.controlCount;
+  const entry: CatalogDirectoryEntry = {
+    catalogKey,
+    title: typeof title === 'string' && title.length > 0 ? title : catalogKey,
+    ...optionalCatalogFacts(provenance),
+  };
+  if (typeof title !== 'string' || title.length === 0) {
+    console.warn(`Catalog title metadata not available for "${catalogKey}". Using catalog key.`);
+  }
+  return typeof controlCount === 'number' && Number.isSafeInteger(controlCount) && controlCount >= 0
+    ? { ...entry, controlCount }
+    : entry;
 }
 
 export interface LoadedCatalogArtifacts {

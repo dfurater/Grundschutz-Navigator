@@ -1,4 +1,4 @@
-import { act, fireEvent, screen } from '@testing-library/react';
+import { act, fireEvent, screen, within } from '@testing-library/react';
 import { useContext } from 'react';
 import type { RefObject } from 'react';
 import { Link, useNavigate } from 'react-router';
@@ -124,8 +124,9 @@ const CATALOG_DIRECTORY = [
   { catalogKey: 'wlan', title: 'Stand der Technik WLAN' },
 ] as const;
 
-const scopeTrigger = (title = 'Anwenderkatalog Grundschutz++') =>
-  screen.getByRole('button', { name: `Katalog: ${title}` });
+const scopeTriggerName = /^Katalog .+ wechseln$/;
+const scopeTrigger = () => screen.getByRole('button', { name: scopeTriggerName });
+const catalogList = () => within(screen.getByRole('navigation', { name: 'Verfügbare Kataloge' }));
 
 describe('AppShell', () => {
   beforeEach(() => {
@@ -186,6 +187,26 @@ describe('AppShell', () => {
     expect(menuButton).toHaveAttribute('aria-expanded', 'false');
   });
 
+  it.each(['Desktop', 'Mobil'] as const)('öffnet den Katalog-Schnellwechsel auf %s', (device) => {
+    mockedUseMediaQuery.mockImplementation((query) => query === DESKTOP_QUERY && device === 'Desktop');
+    renderAppShell();
+    if (device === 'Mobil') fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
+
+    const trigger = scopeTrigger();
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(trigger);
+
+    const available = screen.getByRole('navigation', { name: 'Verfügbare Kataloge' });
+    expect(available).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Stand der Technik WLAN' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Arbeitsbereich' })).not.toBeInTheDocument();
+    if (device === 'Mobil') expect(screen.getByRole('button', { name: 'Menü schließen' })).toBeInTheDocument();
+
+    fireEvent.keyDown(trigger, { key: 'Escape' });
+    expect(trigger).toHaveFocus();
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+  });
+
   it('moves focus from main to the menu before a click makes main inert', () => {
     renderAppShell();
     const main = screen.getByRole('main');
@@ -243,16 +264,13 @@ describe('AppShell', () => {
     expect(magnifier).not.toHaveAttribute('inert');
   });
 
-  it.each(['close', 'selection', 'backdrop'] as const)('returns focus when mobile navigation is dismissed through %s', (method) => {
+  it.each(['close', 'backdrop'] as const)('returns focus when mobile navigation is dismissed through %s', (method) => {
     const { container } = renderAppShell();
     const menuButton = screen.getByRole('button', { name: 'Menu' });
     fireEvent.click(menuButton);
-    if (method === 'selection') fireEvent.click(scopeTrigger());
     const target = method === 'close'
       ? screen.getByRole('button', { name: 'Menü schließen' })
-      : method === 'selection'
-        ? screen.getByRole('menuitemradio', { name: 'Stand der Technik WLAN' })
-        : screen.getByTestId('mobile-nav-backdrop');
+      : screen.getByTestId('mobile-nav-backdrop');
     if (method === 'backdrop') screen.getByRole('button', { name: 'Menü schließen' }).focus();
     else target.focus();
     const focus = vi.spyOn(menuButton, 'focus');
@@ -469,8 +487,10 @@ describe('AppShell', () => {
     expectSingleDocumentTitle(`${PAGE_TITLES.vocabularies} | ${PRODUCT_TITLE}`);
   });
 
-  it('titles the /mehr redirect with its destination', () => {
+  it('titles the /mehr redirect with its destination', async () => {
     renderAppShell(['/mehr']);
+
+    expect(await screen.findByText('About')).toBeInTheDocument();
 
     expectSingleDocumentTitle(`${PAGE_TITLES.about} | ${PRODUCT_TITLE}`);
   });
@@ -483,6 +503,8 @@ describe('AppShell', () => {
 
   it('uses a specific title for the general catch-all route', () => {
     renderAppShell(['/missing']);
+
+    expect(screen.getByRole('heading', { name: '404 — Seite nicht gefunden' })).toBeInTheDocument();
 
     expectSingleDocumentTitle(`${PAGE_TITLES.notFound} | ${PRODUCT_TITLE}`);
   });
@@ -614,32 +636,27 @@ describe('AppShell', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
     fireEvent.click(scopeTrigger());
 
-    const items = screen.getAllByRole('menuitemradio');
-    expect(items.map((item) => item.textContent)).toEqual(CATALOG_DIRECTORY.map(({ title }) => title));
-    expect(items.map((item) => item.getAttribute('href'))).toEqual([
-      '/katalog/gspp',
-      '/katalog/lieferkette',
-      '/katalog/wlan',
-    ]);
-    fireEvent.click(screen.getByRole('menuitemradio', { name: 'Supply Chain Security' }));
+    expect(catalogList().getAllByRole('listitem')).toHaveLength(CATALOG_DIRECTORY.length);
+    expect(catalogList().getByRole('link', { name: 'Supply Chain Security' })).toHaveAttribute('href', '/katalog/lieferkette');
+    expect(catalogList().getByRole('link', { name: 'Stand der Technik WLAN' })).toHaveAttribute('href', '/katalog/wlan');
+    fireEvent.click(catalogList().getByRole('link', { name: 'Supply Chain Security' }));
 
     expect(screen.getByTestId('catalog-browser')).toBeInTheDocument();
     expect(container.querySelector('aside')).toHaveAttribute('inert');
     expect(screen.getByTestId('mobile-nav-backdrop')).toHaveAttribute('data-state', 'closed');
   });
 
-  // Der Drawer besitzt Escape in der Capture-Phase; ein offenes Menü in seinem
-  // Kopf muss trotzdem zuerst schließen (GSPP-476).
-  it('schließt mit Escape zuerst das Menü im Drawer-Kopf und erst danach den Drawer', () => {
+  // Escape gehört zuerst der offenen Katalogliste.
+  it('schließt mit Escape zuerst die Katalogliste und erst danach den Drawer', () => {
     const { container } = renderAppShell(['/']);
     const menuButton = screen.getByRole('button', { name: 'Menu' });
     fireEvent.click(menuButton);
     fireEvent.click(scopeTrigger());
-    const item = screen.getAllByRole('menuitemradio')[0];
-    expect(item).toHaveFocus();
+    const item = catalogList().getByRole('button', { name: 'Anwenderkatalog Grundschutz++' });
+    item.focus();
 
     expect(fireEvent.keyDown(item, { key: 'Escape' })).toBe(false);
-    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+    expect(screen.queryByRole('navigation', { name: 'Verfügbare Kataloge' })).not.toBeInTheDocument();
     expect(scopeTrigger()).toHaveFocus();
     expect(container.querySelector('aside')).not.toHaveAttribute('inert');
 
@@ -656,7 +673,7 @@ describe('AppShell', () => {
     expect(screen.queryByRole('button', { name: 'Menü schließen' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Katalog-Explorer ausblenden' }));
 
-    expect(screen.queryByRole('button', { name: /^Katalog:/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: scopeTriggerName })).not.toBeInTheDocument();
     expect(container.querySelector('aside')?.querySelectorAll('svg')).toHaveLength(1);
   });
 
@@ -692,9 +709,9 @@ describe('AppShell', () => {
 
     renderAppShell(['/katalog/wlan']);
 
-    fireEvent.click(scopeTrigger('Stand der Technik WLAN'));
-    expect(screen.getByRole('menuitemradio', { name: 'Stand der Technik WLAN' })).toHaveAttribute(
-      'aria-checked',
+    fireEvent.click(scopeTrigger());
+    expect(catalogList().getByRole('button', { name: 'Stand der Technik WLAN' })).toHaveAttribute(
+      'aria-current',
       'true',
     );
   });
@@ -710,12 +727,20 @@ describe('AppShell', () => {
 
     renderAppShell(['/katalog/wlan']);
 
-    fireEvent.click(scopeTrigger('Stand der Technik WLAN'));
-    expect(screen.getByRole('menuitemradio', { name: 'Stand der Technik WLAN' })).toHaveAttribute(
-      'aria-checked',
+    fireEvent.click(scopeTrigger());
+    expect(catalogList().getByRole('button', { name: 'Stand der Technik WLAN' })).toHaveAttribute(
+      'aria-current',
       'true',
     );
   });
+
+  it.each(['/arbeitsbereich', '/informationsverbuende', '/informationsverbuende/verbund/station/ssp'])(
+    'liefert für den Arbeitsbereich-Direktlink %s die 404-Seite',
+    (path) => {
+      renderAppShell([path]);
+      expect(screen.getByRole('heading', { name: '404 — Seite nicht gefunden' })).toBeInTheDocument();
+    },
+  );
 
   it('does not register or redirect the unscoped catalog route', () => {
     renderAppShell(['/katalog']);
