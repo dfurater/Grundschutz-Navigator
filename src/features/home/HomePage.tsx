@@ -60,39 +60,44 @@ export function HomePage() {
             Werkzeug zum Durchsuchen, Filtern und Exportieren des offiziellen
             Grundschutz++-Anwenderkatalogs des BSI. Kein Angebot des BSI.
           </p>
-          {catalogStats && (
-            <p className="type-meta mt-3 text-[var(--color-text-secondary)] tabular-nums">
-              {catalogStats.practices} Praktiken &middot;{' '}
-              {catalogStats.topics} Themen &middot; {catalogStats.controls}{' '}
-              Kontrollen
+          {(catalogStats || loading) && (
+            <p
+              aria-hidden={!catalogStats}
+              className="type-meta mt-3 text-[var(--color-text-secondary)] tabular-nums"
+            >
+              {catalogStats ? (
+                <>
+                  {catalogStats.practices} Praktiken &middot;{' '}
+                  {catalogStats.topics} Themen &middot; {catalogStats.controls}{' '}
+                  Kontrollen
+                </>
+              ) : '\u00a0'}
             </p>
           )}
         </div>
       </header>
 
-      {catalog && (
-        <section
-          aria-labelledby="grundschutz-summary-heading"
-          className="border-t border-[var(--color-border-subtle)] pt-6"
+      <section
+        aria-labelledby="grundschutz-summary-heading"
+        className="border-t border-[var(--color-border-subtle)] pt-6"
+      >
+        <h2
+          id="grundschutz-summary-heading"
+          className="type-meta text-[var(--color-text-secondary)]"
         >
-          <h2
-            id="grundschutz-summary-heading"
-            className="type-meta text-[var(--color-text-secondary)]"
-          >
-            Was ist Grundschutz++?
-          </h2>
-          <p className="catalog-prose-text mt-3 text-sm leading-relaxed text-[var(--color-text-primary)]">
-            Grundschutz++ ist ein fortentwickelter Anwenderkatalog des BSI im
-            Kontext des IT-Grundschutzes. Er liegt maschinenlesbar im
-            OSCAL-Format vor und verbindet methodische mit konkreten
-            technisch-organisatorischen Anforderungen. Mehr dazu unter{' '}
-            <Link to="/about" className="catalog-prose-link">
-              Über das Projekt
-            </Link>
-            .
-          </p>
-        </section>
-      )}
+          Was ist Grundschutz++?
+        </h2>
+        <p className="catalog-prose-text mt-3 text-sm leading-relaxed text-[var(--color-text-primary)]">
+          Grundschutz++ ist ein fortentwickelter Anwenderkatalog des BSI im
+          Kontext des IT-Grundschutzes. Er liegt maschinenlesbar im
+          OSCAL-Format vor und verbindet methodische mit konkreten
+          technisch-organisatorischen Anforderungen. Mehr dazu unter{' '}
+          <Link to="/about" className="catalog-prose-link">
+            Über das Projekt
+          </Link>
+          .
+        </p>
+      </section>
 
       {/* Practice register */}
       {loading && (
