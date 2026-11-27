@@ -168,7 +168,7 @@ export function CatalogSwitcher({
 
   const startLoad = (item: CatalogSwitcherItem) => {
     const { catalogKey } = item;
-    // Die Zeile hält den Fokus, damit Escape den Wechsel abbricht: WebKit fokussiert Links beim Klick nicht,
+    // Die gewählte Zeile erhält den Fokus: WebKit fokussiert Links beim Klick nicht,
     // und der Knopf „Erneut versuchen“ verschwindet mit der Meldung.
     const titleId = CSS.escape(`${panelId}-${catalogKey}-title`);
     rootRef.current?.querySelector<HTMLElement>(`[aria-labelledby="${titleId}"]`)?.focus();
@@ -206,15 +206,24 @@ export function CatalogSwitcher({
     if (event.key !== 'Escape') return moveFocus(event);
     event.preventDefault();
     event.stopPropagation();
-    if (pendingKey === null) return toggle();
+    toggle();
+  }, open, undefined, true);
+
+  // Während eines Wechsels bricht Escape ihn unabhängig vom Fokus ab, auch nach einem Klick in Baum oder Hauptbereich.
+  // Der Capture am Fenster läuft vor den Escape-Handlern von Schublade und Detailansicht am Dokument;
+  // ein offener modaler Dialog oder ein Menü behält Escape.
+  useGlobalEventListener('window', 'keydown', (event) => {
+    if (event.key !== 'Escape' || event.defaultPrevented || document.querySelector('[aria-modal="true"]')) return;
+    if (event.target instanceof Element && event.target.closest('[role="menu"]')) return;
+    event.preventDefault();
+    event.stopPropagation();
     setPendingKey(null);
     setAnnouncement(`Wechsel abgebrochen. ${activeShortTitle} bleibt geöffnet.`);
-  }, open, undefined, true);
+  }, pendingKey !== null, undefined, true);
 
   const failed = failedKey ? loadStates?.get(failedKey) : undefined;
   // Während eines Wechsels behält die ladende Zeile den Fokus: WebKit fokussiert beim Zeigerklick weder Links
-  // noch Schaltflächen und schöbe ihn sonst von Zeilen, Listenkopf oder Rändern auf `body`, wo Escape den
-  // Schnellwechsel verfehlt.
+  // noch Schaltflächen und schöbe ihn sonst von Zeilen, Listenkopf oder Rändern auf `body`.
   useGlobalEventListener('document', 'mousedown', (event) => {
     if (!(event.target instanceof Node)) return;
     if (headRef.current?.contains(event.target) || listRef.current?.contains(event.target)) event.preventDefault();

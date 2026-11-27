@@ -1,7 +1,7 @@
 import { createElement, Fragment, useLayoutEffect } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { flushSync } from 'react-dom';
-import { afterEach, expect, test } from 'vitest';
+import { afterEach, expect, test, vi } from 'vitest';
 import { commands, page, userEvent } from 'vitest/browser';
 import { createMemoryRouter, useLocation } from 'react-router';
 import { RouterProvider } from 'react-router/dom';
@@ -101,8 +101,7 @@ async function tap(element: HTMLElement) {
   await commands.dispatchBrowserTouch('end');
 }
 
-test.each(PROFILES)('hält die Kontextwahl bei $width px (Touch: $touch) sichtbar und bedienbar', async ({ width, height, touch }) => {
-  await commands.setBrowserCoarsePointer(touch);
+async function renderCatalogShell(width: number, height: number) {
   await page.viewport(width, height);
   host = document.createElement('div');
   document.body.append(host);
@@ -113,13 +112,18 @@ test.each(PROFILES)('hält die Kontextwahl bei $width px (Touch: $touch) sichtba
       createElement(CatalogProbe), createElement(RouterProvider, { router: router! })));
   });
   await expectLoadedCatalog('gspp');
-  const aside = host.querySelector('aside')!;
+  return host.querySelector('aside')!;
+}
+
+test.each(PROFILES)('hält die Kontextwahl bei $width px (Touch: $touch) sichtbar und bedienbar', async ({ width, height, touch }) => {
+  await commands.setBrowserCoarsePointer(touch);
+  const aside = await renderCatalogShell(width, height);
   await expect.poll(() => triggerIn(aside)?.textContent).toContain(CATALOGS[0].shortTitle);
   await expect.poll(() => aside.querySelector('[role="tree"]')).not.toBeNull();
   await document.fonts.ready;
   if (touch) {
-    await openDrawer(host);
-    await settlePush(host);
+    await openDrawer(host!);
+    await settlePush(host!);
   }
   const trigger = triggerIn(aside)!;
   const close = () => aside.querySelector<HTMLButtonElement>(touch
@@ -170,17 +174,17 @@ test.each(PROFILES)('hält die Kontextwahl bei $width px (Touch: $touch) sichtba
     item.scrollIntoView({ block: 'nearest' });
     expectReachable(item, width, height);
 
-    const previousLocationKey = router.state.location.key;
+    const previousLocationKey = router!.state.location.key;
     if (item !== current) expect(item.getAttribute('href')).toBe(`/katalog/${catalog.key}`);
     if (touch) await tap(item);
     else await userEvent.click(item);
     if (item === current) {
-      expect(router.state.location.key).toBe(previousLocationKey);
+      expect(router!.state.location.key).toBe(previousLocationKey);
       expect(document.activeElement).toBe(trigger);
       if (touch) expect(aside).not.toHaveAttribute('inert');
     } else {
       await expect.poll(() => router!.state.location.key).not.toBe(previousLocationKey);
-      await expect.poll(() => committedLocationKey).toBe(router.state.location.key);
+      await expect.poll(() => committedLocationKey).toBe(router!.state.location.key);
       await expectLoadedCatalog(catalog.key);
       await expect.poll(() => document.activeElement?.matches('[data-catalog-scope-heading]')).toBe(true);
       if (touch) {
@@ -196,17 +200,59 @@ test.each(PROFILES)('hält die Kontextwahl bei $width px (Touch: $touch) sichtba
     expectReachable(close(), width, height);
   }
 
-  await router.navigate(-1);
+  await router!.navigate(-1);
   await expectLoadedCatalog('diva');
   expect(trigger.textContent).toContain('DIVA');
   expect(list()).toBeNull();
   if (touch) {
-    await openDrawer(host);
-    await settlePush(host);
+    await openDrawer(host!);
+    await settlePush(host!);
   }
   if (touch) {
     await tap(close());
     await expect.poll(() => host!.querySelector('[data-mobile-nav]')?.getAttribute('data-mobile-nav')).toBe('closed');
+  }
+});
+
+// Mausklicks auch in der Schublade: Chromium lenkt einen Tipp auf die freie Fläche zum nächsten Baumknoten um.
+test.each([
+  { width: 390, height: 844, drawer: true },
+  { width: 1366, height: 768, drawer: false },
+])('bricht einen Wechsel bei $width px mit Escape ab, nachdem ein Klick den Fokus aus der Liste nimmt', async ({ width, height, drawer }) => {
+  let release = () => {};
+  const held = new Promise<void>((resolve) => { release = resolve; });
+  const realFetch = globalThis.fetch;
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    if (String(input).includes('catalog-diva.json')) await held;
+    return realFetch(input, init);
+  });
+  try {
+    const aside = await renderCatalogShell(width, height);
+    await expect.poll(() => aside.querySelector('[role="tree"]')).not.toBeNull();
+    if (drawer) {
+      await openDrawer(host!);
+      await settlePush(host!);
+    }
+    await userEvent.click(triggerIn(aside)!);
+    const list = aside.querySelector<HTMLElement>('nav[aria-label="Verfügbare Kataloge"]:not([hidden])')!;
+    const diva = list.querySelector<HTMLElement>('a[href="/katalog/diva"]')!;
+    await userEvent.click(diva);
+    await expect.poll(() => diva.getAttribute('aria-busy')).toBe('true');
+
+    // Die freie Fläche unter der Liste gehört zum Katalogbaum und ist nicht fokussierbar.
+    await userEvent.click(list.nextElementSibling as HTMLElement, { position: { x: 12, y: 3 } });
+    expect(document.activeElement).toBe(document.body);
+    await userEvent.keyboard('{Escape}');
+    expect(diva).not.toHaveAttribute('aria-busy');
+
+    release();
+    await expect.poll(() => catalogState?.catalogs.get('diva')?.catalog ?? null, { timeout: 5000 }).not.toBeNull();
+    expect(router!.state.location.pathname).toBe('/katalog/gspp');
+    expect(list).toBeVisible();
+    expect(host!.querySelector('[data-mobile-nav]')?.getAttribute('data-mobile-nav')).toBe(drawer ? 'open' : 'closed');
+  } finally {
+    release();
+    vi.restoreAllMocks();
   }
 });
 

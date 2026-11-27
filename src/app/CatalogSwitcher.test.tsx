@@ -107,6 +107,32 @@ describe('CatalogSwitcher', () => {
     expect(router.state.location.pathname).toBe('/katalog/gspp');
   });
 
+  it('bricht einen Wechsel mit Escape auch bei Fokus außerhalb ab, lässt Escape aber offenen Dialogen und Menüs', () => {
+    const { router, update, list } = setup([]);
+    const diva = list().getByRole('link', { name: /^DIVA/ });
+    fireEvent.click(diva);
+
+    const body = document.querySelector('body')!;
+    const menu = body.appendChild(document.createElement('div'));
+    menu.setAttribute('role', 'menu');
+    expect(fireEvent.keyDown(menu, { key: 'Escape' })).toBe(true);
+    menu.setAttribute('aria-modal', 'true');
+    menu.removeAttribute('role');
+    expect(fireEvent.keyDown(body, { key: 'Escape' })).toBe(true);
+    expect(diva).toHaveAttribute('aria-busy', 'true');
+    menu.remove();
+
+    // Wie nach einem Klick auf eine freie Fläche im Baum oder im Hauptbereich liegt der Fokus auf `body`.
+    diva.blur();
+    expect(fireEvent.keyDown(body, { key: 'Escape' })).toBe(false);
+    expect(diva).not.toHaveAttribute('aria-busy');
+    expect(screen.getByRole('status')).toHaveTextContent('Wechsel abgebrochen. Grundschutz++ bleibt geöffnet.');
+    // Ohne laufenden Wechsel gehört Escape außerhalb des Schnellwechsels wieder den übrigen Handlern.
+    expect(fireEvent.keyDown(body, { key: 'Escape' })).toBe(true);
+    update([['diva', state('diva', { catalog: {} as Catalog })]]);
+    expect(router.state.location.pathname).toBe('/katalog/gspp');
+  });
+
   it('bewegt den Fokus mit Pfeiltasten, Pos1 und Ende zwischen den Einträgen', () => {
     const { list } = setup([]);
     const active = list().getByRole('button', { name: 'Anwenderkatalog Grundschutz++' });

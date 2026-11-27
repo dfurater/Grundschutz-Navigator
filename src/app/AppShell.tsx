@@ -222,7 +222,7 @@ function AppShellLayout() {
 
   // Capture garantiert den Vorrang vor dem Escape-Handler der Detailseite
   // auch dann, wenn deren Bubble-Listener bereits vor dem Öffnen registriert war.
-  // Der Schnellwechsel verarbeitet Escape innerhalb seines Bereichs selbst.
+  // Der Schnellwechsel verarbeitet Escape in seinem Bereich und, solange er lädt, vorab am Fenster.
   useGlobalEventListener(
     'document', 'keydown', (event) => {
       if (event.key !== 'Escape' || event.defaultPrevented) return;
