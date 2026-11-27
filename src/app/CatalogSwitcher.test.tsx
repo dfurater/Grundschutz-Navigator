@@ -140,6 +140,26 @@ describe('CatalogSwitcher', () => {
     expect(router.state.location.pathname).toBe('/katalog/gspp');
   });
 
+  it('überlässt das erste Escape in der Liste einem offenen Tooltip, mit und ohne laufenden Wechsel', () => {
+    const { onToggle, list } = setup([]);
+    const diva = list().getByRole('link', { name: /^DIVA/ });
+    const tooltip = document.querySelector('body')!.appendChild(document.createElement('span'));
+    tooltip.setAttribute('role', 'tooltip');
+
+    expect(fireEvent.keyDown(diva, { key: 'Escape' })).toBe(true);
+    fireEvent.click(diva);
+    expect(fireEvent.keyDown(diva, { key: 'Escape' })).toBe(true);
+    expect(diva).toHaveAttribute('aria-busy', 'true');
+    expect(onToggle).not.toHaveBeenCalled();
+
+    // Wie nach dem ersten Escape steht der Tooltip versteckt im DOM; das nächste Escape bricht den Wechsel ab.
+    tooltip.hidden = true;
+    expect(fireEvent.keyDown(diva, { key: 'Escape' })).toBe(false);
+    expect(diva).not.toHaveAttribute('aria-busy');
+    expect(onToggle).not.toHaveBeenCalled();
+    tooltip.remove();
+  });
+
   it('bewegt den Fokus mit Pfeiltasten, Pos1 und Ende zwischen den Einträgen', () => {
     const { list } = setup([]);
     const active = list().getByRole('button', { name: 'Anwenderkatalog Grundschutz++' });

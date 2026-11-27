@@ -35,6 +35,9 @@ export function isCatalogSwitchNavigation(state: unknown): boolean {
     && (state as { fromCatalogSwitcher?: unknown }).fromCatalogSwitcher === true;
 }
 
+// Ein offener Tooltip schließt beim ersten Escape allein; sein `stopPropagation()` hält andere Listener am `document` nicht auf.
+const OPEN_TOOLTIP = '[role="tooltip"]:not([hidden])';
+
 const focusRing = 'kbd-focus:outline-none kbd-focus:ring-2 kbd-focus:ring-inset kbd-focus:ring-[var(--color-focus-ring)]';
 
 const shortTitleOf = (item: CatalogSwitcherItem | undefined, fallback: CatalogKey) =>
@@ -204,6 +207,7 @@ export function CatalogSwitcher({
   useGlobalEventListener('document', 'keydown', (event) => {
     if (event.defaultPrevented || !(event.target instanceof Node) || !rootRef.current?.contains(event.target)) return;
     if (event.key !== 'Escape') return moveFocus(event);
+    if (document.querySelector(OPEN_TOOLTIP)) return;
     event.preventDefault();
     event.stopPropagation();
     toggle();
@@ -213,7 +217,7 @@ export function CatalogSwitcher({
   // Der Capture am Fenster läuft vor den Escape-Handlern von Schublade und Detailansicht am Dokument;
   // ein offener modaler Dialog, ein Menü oder ein offener Tooltip behält Escape.
   useGlobalEventListener('window', 'keydown', (event) => {
-    if (event.key !== 'Escape' || event.defaultPrevented || document.querySelector('[aria-modal="true"], [role="tooltip"]:not([hidden])')) return;
+    if (event.key !== 'Escape' || event.defaultPrevented || document.querySelector(`[aria-modal="true"], ${OPEN_TOOLTIP}`)) return;
     if (event.target instanceof Element && event.target.closest('[role="menu"]')) return;
     event.preventDefault();
     event.stopPropagation();

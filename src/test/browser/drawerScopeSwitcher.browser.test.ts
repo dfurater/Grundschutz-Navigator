@@ -101,12 +101,12 @@ async function tap(element: HTMLElement) {
   await commands.dispatchBrowserTouch('end');
 }
 
-async function renderCatalogShell(width: number, height: number) {
+async function renderCatalogShell(width: number, height: number, path = '/katalog/gspp') {
   await page.viewport(width, height);
   host = document.createElement('div');
   document.body.append(host);
   root = createRoot(host);
-  router = createMemoryRouter(createAppRoutes(createElement(Fragment, null, createElement(AppShell), createElement(LocationProbe))), { initialEntries: ['/katalog/gspp'] });
+  router = createMemoryRouter(createAppRoutes(createElement(Fragment, null, createElement(AppShell), createElement(LocationProbe))), { initialEntries: [path] });
   flushSync(() => {
     root?.render(createElement(CatalogProvider, null,
       createElement(CatalogProbe), createElement(RouterProvider, { router: router! })));
@@ -250,6 +250,51 @@ test.each([
     expect(router!.state.location.pathname).toBe('/katalog/gspp');
     expect(list).toBeVisible();
     expect(host!.querySelector('[data-mobile-nav]')?.getAttribute('data-mobile-nav')).toBe(drawer ? 'open' : 'closed');
+  } finally {
+    release();
+    vi.restoreAllMocks();
+  }
+});
+
+test('überlässt bei 1366 px das erste Escape einem offenen Tooltip und bricht erst mit dem zweiten den Wechsel ab', async () => {
+  // ARCH.1.1 im Anwenderkatalog: Der Satzteil „Verfahren und Regelungen …“ trägt den Tooltip „Ergebnis“.
+  const controlPath = '/katalog/gspp/kontrolle/67c185f2-ebfd-49cc-a910-9a6dd0901578';
+  let release = () => {};
+  const held = new Promise<void>((resolve) => { release = resolve; });
+  const realFetch = globalThis.fetch;
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    if (String(input).includes('catalog-diva.json')) await held;
+    return realFetch(input, init);
+  });
+  try {
+    const aside = await renderCatalogShell(1366, 768, controlPath);
+    const resultClause = () => [...host!.querySelectorAll<HTMLElement>('[aria-describedby^="satzteil-"]')]
+      .find((clause) => document.getElementById(clause.getAttribute('aria-describedby')!)?.textContent === 'Ergebnis');
+    await expect.poll(resultClause, { timeout: 5000 }).toBeDefined();
+    await userEvent.click(triggerIn(aside)!);
+    const list = aside.querySelector<HTMLElement>('nav[aria-label="Verfügbare Kataloge"]:not([hidden])')!;
+    const diva = list.querySelector<HTMLElement>('a[href="/katalog/diva"]')!;
+    await userEvent.click(diva);
+    await expect.poll(() => diva.getAttribute('aria-busy')).toBe('true');
+    expect(document.activeElement).toBe(diva);
+
+    const clause = resultClause()!;
+    const tooltip = document.getElementById(clause.getAttribute('aria-describedby')!)!;
+    await userEvent.hover(clause);
+    await expect.poll(() => tooltip.hidden).toBe(false);
+
+    await userEvent.keyboard('{Escape}');
+    await expect.poll(() => tooltip.hidden).toBe(true);
+    expect(diva).toHaveAttribute('aria-busy', 'true');
+    expect(document.activeElement).toBe(diva);
+    expect(list).toBeVisible();
+
+    await userEvent.keyboard('{Escape}');
+    expect(diva).not.toHaveAttribute('aria-busy');
+    release();
+    await expect.poll(() => catalogState?.catalogs.get('diva')?.catalog ?? null, { timeout: 5000 }).not.toBeNull();
+    expect(router!.state.location.pathname).toBe(controlPath);
+    expect(list).toBeVisible();
   } finally {
     release();
     vi.restoreAllMocks();
