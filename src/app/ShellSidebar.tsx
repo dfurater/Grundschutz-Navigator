@@ -1,10 +1,11 @@
 import type { ReactNode, RefCallback } from 'react';
 import { AreaSwitch } from '@/components/AreaSwitch';
-import { ScopeSwitcher } from '@/components/ScopeSwitcher';
-import type { ScopeSwitcherItem } from '@/components/ScopeSwitcher';
+import { CatalogSwitcher } from '@/app/CatalogSwitcher';
+import type { CatalogSwitcherItem } from '@/app/CatalogSwitcher';
 import { TreeNav } from '@/components/TreeNav';
 import type { TreeItem } from '@/components/TreeNav';
 import { IconX } from '@/components/icons';
+import type { LoadedCatalogState } from '@/domain/models';
 import type { CatalogKey } from '@/domain/sourceRegistry';
 import type { ProductArea } from '@/app/routes';
 
@@ -18,8 +19,14 @@ export interface ShellSidebarProps {
   /** Einklappen auf dem Desktop. */
   readonly collapseButton: ReactNode;
   readonly catalog: {
-    readonly items: readonly ScopeSwitcherItem<CatalogKey>[];
+    readonly items: readonly CatalogSwitcherItem[];
     readonly activeKey: CatalogKey;
+    readonly switcherActiveKey: CatalogKey;
+    readonly switcherOpen: boolean;
+    readonly onToggleSwitcher: () => void;
+    readonly loadStates?: ReadonlyMap<CatalogKey, LoadedCatalogState>;
+    readonly requestCatalog?: (catalogKey: CatalogKey) => void;
+    readonly retryCatalog?: (catalogKey: CatalogKey) => void;
     readonly treeItems: TreeItem[];
     readonly selectedId?: string;
     readonly loading: boolean;
@@ -62,16 +69,18 @@ export function ShellSidebar({
       )}
 
       {area === 'katalog' && (
-        <>
-          {/* Kontextwahl als Kopf; auf dem Desktop mit Einklappen */}
-          <ScopeSwitcher
-            label="Katalog"
-            items={catalog.items}
-            activeKey={catalog.activeKey}
-            onItemActivate={onClose}
-            trailing={trailing}
-          />
-          <div ref={treeScrollRef} className="flex-1 overflow-y-auto py-2">
+        <CatalogSwitcher
+          items={catalog.items}
+          activeKey={catalog.switcherActiveKey}
+          open={catalog.switcherOpen}
+          onToggle={catalog.onToggleSwitcher}
+          trailing={trailing}
+          loadStates={catalog.loadStates}
+          requestCatalog={catalog.requestCatalog}
+          retryCatalog={catalog.retryCatalog}
+          scrollRef={treeScrollRef}
+        >
+          <div className="py-2">
             {catalog.loading && (
               <div className="px-4 py-8 text-center">
                 <div className="inline-block w-5 h-5 border-2 border-slate-300 border-t-primary-main rounded-full animate-spin" />
@@ -93,7 +102,7 @@ export function ShellSidebar({
               />
             )}
           </div>
-        </>
+        </CatalogSwitcher>
       )}
 
     </>

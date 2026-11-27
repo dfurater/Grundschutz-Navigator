@@ -1052,6 +1052,46 @@ describe('fetch-catalog', () => {
     )).rejects.toThrow(/catalog-gspp.*title/);
   });
 
+  it('counts root, grouped and nested controls in the catalog metadata', async () => {
+    const input = makeMinimalFetchInput();
+    const document = JSON.parse(input.catalogText);
+    const control = (id: string, value: string) => ({ id, props: [{ name: 'alt-identifier', value }] });
+    document.catalog.controls = [control('ROOT', 'root')];
+    document.catalog.groups[0].groups[0].controls = [{
+      ...control('GC.1.1', 'parent'),
+      controls: [control('GC.1.1.1', 'nested')],
+    }];
+    input.rawByPath.set(OFFICIAL_CATALOG_PATH, JSON.stringify(document));
+    installSnapshotFetch({ rawByPath: input.rawByPath });
+
+    const payload = await buildFetchArtifacts(
+      { log: () => {}, warn: () => {} },
+      { registryEntries: MINIMAL_REGISTRY, treeResponse: makeTreeResponse(input.rawByPath) },
+    );
+
+    expect(parseArtifactJson(payload, 'catalog-metadata.json').controlCount).toBe(3);
+  });
+
+  it('übernimmt Zielgruppe und Norm aus den Katalog-Metadaten nur als nicht-leere Strings', async () => {
+    const input = makeMinimalFetchInput();
+    const document = JSON.parse(input.catalogText);
+    document.catalog.metadata.props = [
+      { name: 'scope_target_audience', value: 'Bundesbehörden' },
+      { name: 'scope_implements_norm', value: '' },
+    ];
+    input.rawByPath.set(OFFICIAL_CATALOG_PATH, JSON.stringify(document));
+    installSnapshotFetch({ rawByPath: input.rawByPath });
+
+    const payload = await buildFetchArtifacts(
+      { log: () => {}, warn: () => {} },
+      { registryEntries: MINIMAL_REGISTRY, treeResponse: makeTreeResponse(input.rawByPath) },
+    );
+
+    const metadata = parseArtifactJson(payload, 'catalog-metadata.json');
+    expect(metadata.targetAudience).toBe('Bundesbehörden');
+    expect(metadata).not.toHaveProperty('implementsNorm');
+  });
+
   it('emits catalog.json with exact upstream bytes and local build metadata', async () => {
     vi.stubEnv('GITHUB_RUN_ID', undefined);
     vi.stubEnv('GITHUB_REPOSITORY', undefined);

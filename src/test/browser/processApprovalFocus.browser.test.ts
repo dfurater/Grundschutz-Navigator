@@ -102,6 +102,7 @@ test.each([1440, 390])('hält den Fokus beim Speichern einer Partei bei %i px im
   dialog.querySelector('h2')!.focus();
   release();
   await expect.poll(() => document.querySelector('dialog [role="alert"]')?.textContent, { timeout: 8000 }).toContain('in einem anderen Tab geändert');
-  expect(document.activeElement).toBe(saveParty);
+  // Die Rückgabe läuft im Effekt nach dem Commit, der die Meldung zeigt; die Abfrage wartet darauf.
+  await expect.poll(() => document.activeElement).toBe(saveParty);
   expect(saveParty.disabled).toBe(false);
 });

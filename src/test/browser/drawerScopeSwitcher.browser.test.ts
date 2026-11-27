@@ -1,7 +1,7 @@
 import { createElement, Fragment, useLayoutEffect } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { flushSync } from 'react-dom';
-import { afterEach, expect, test } from 'vitest';
+import { afterEach, expect, test, vi } from 'vitest';
 import { commands, page, userEvent } from 'vitest/browser';
 import { createMemoryRouter, useLocation } from 'react-router';
 import { RouterProvider } from 'react-router/dom';
@@ -16,12 +16,13 @@ import '@/index.css';
 // Echter Provider mit den ausgelieferten Katalogen: aktive Schlüssel und Titel
 // werden wie in der App geladen, nicht mit einem leeren Testverzeichnis ersetzt.
 const CATALOGS = [
-  { key: 'gspp', title: 'Anwenderkatalog Grundschutz++' },
-  { key: 'lieferkette', title: 'Supply Chain Security' },
-  { key: 'diva', title: 'DIVA - Durchgängige Identitätsprüfung, Verifikation und Absicherung' },
-  { key: 'wlan-gastnetze', title: 'Stand der Technik WLAN-Personal- und Gastnetze mit gemeinsamem Kennwort' },
+  { key: 'gspp', title: 'Anwenderkatalog Grundschutz++', shortTitle: 'Grundschutz++' },
+  { key: 'lieferkette', title: 'Supply Chain Security', shortTitle: 'Supply Chain Security' },
+  { key: 'diva', title: 'DIVA - Durchgängige Identitätsprüfung, Verifikation und Absicherung', shortTitle: 'DIVA' },
+  { key: 'wlan-gastnetze', title: 'Stand der Technik WLAN-Personal- und Gastnetze mit gemeinsamem Kennwort', shortTitle: 'WLAN-Personal- und Gastnetze' },
 ] as const;
 const PROFILES = [
+  { width: 320, height: 568, touch: true },
   { width: 390, height: 844, touch: true },
   { width: 744, height: 1133, touch: true },
   { width: 1032, height: 1376, touch: true },
@@ -68,10 +69,11 @@ afterEach(async () => {
   catalogState = undefined;
   committedLocationKey = undefined;
   await commands.setBrowserCoarsePointer(false);
+  await commands.setBrowserFontSize();
 });
 
 function triggerIn(aside: HTMLElement) {
-  return aside.querySelector<HTMLButtonElement>('button[aria-haspopup="menu"]');
+  return aside.querySelector<HTMLButtonElement>('[data-catalog-switcher] button[aria-expanded]');
 }
 
 function expectReachable(element: HTMLElement, width: number, height: number) {
@@ -99,64 +101,226 @@ async function tap(element: HTMLElement) {
   await commands.dispatchBrowserTouch('end');
 }
 
-test.each(PROFILES)('hält die Kontextwahl bei $width px (Touch: $touch) sichtbar und bedienbar', async ({ width, height, touch }) => {
-  await commands.setBrowserCoarsePointer(touch);
+async function renderCatalogShell(width: number, height: number, path = '/katalog/gspp') {
   await page.viewport(width, height);
   host = document.createElement('div');
   document.body.append(host);
   root = createRoot(host);
-  router = createMemoryRouter(createAppRoutes(createElement(Fragment, null, createElement(AppShell), createElement(LocationProbe))), { initialEntries: ['/katalog/gspp'] });
+  router = createMemoryRouter(createAppRoutes(createElement(Fragment, null, createElement(AppShell), createElement(LocationProbe))), { initialEntries: [path] });
   flushSync(() => {
     root?.render(createElement(CatalogProvider, null,
       createElement(CatalogProbe), createElement(RouterProvider, { router: router! })));
   });
   await expectLoadedCatalog('gspp');
-  const aside = host.querySelector('aside')!;
-  await expect.poll(() => triggerIn(aside)?.textContent).toContain(CATALOGS[0].title);
+  return host.querySelector('aside')!;
+}
+
+test.each(PROFILES)('hält die Kontextwahl bei $width px (Touch: $touch) sichtbar und bedienbar', async ({ width, height, touch }) => {
+  await commands.setBrowserCoarsePointer(touch);
+  const aside = await renderCatalogShell(width, height);
+  await expect.poll(() => triggerIn(aside)?.textContent).toContain(CATALOGS[0].shortTitle);
   await expect.poll(() => aside.querySelector('[role="tree"]')).not.toBeNull();
   await document.fonts.ready;
   if (touch) {
-    await openDrawer(host);
-    await settlePush(host);
+    await openDrawer(host!);
+    await settlePush(host!);
   }
   const trigger = triggerIn(aside)!;
-  const close = aside.querySelector<HTMLButtonElement>(touch
+  const close = () => aside.querySelector<HTMLButtonElement>(touch
     ? 'button[aria-label="Menü schließen"]'
     : 'button[aria-label="Katalog-Explorer ausblenden"]')!;
   expectReachable(trigger, width, height);
-  expectReachable(close, width, height);
+  expectReachable(close(), width, height);
 
-  // Jeder gelieferte Katalog muss auswählbar sein und nach dem Laden denselben
-  // Titel im Kopf tragen. Eine Auswahl schließt die kompakte Schublade.
+  const closedWidth = aside.getBoundingClientRect().width;
+  const list = () => aside.querySelector<HTMLElement>('nav[aria-label="Verfügbare Kataloge"]:not([hidden])');
+
+  trigger.focus();
+  await userEvent.keyboard('{Enter}');
+  expect(trigger).toHaveAttribute('aria-expanded', 'true');
+  expect(trigger).toHaveAccessibleDescription(CATALOGS[0].title);
+  expect(document.activeElement).toBe(trigger);
+  await userEvent.tab();
+  expect(document.activeElement).toBe(list()?.querySelector('[aria-current="true"]'));
+  await userEvent.keyboard('{Escape}');
+  expect(list()).toBeNull();
+  expect(document.activeElement).toBe(trigger);
+  if (touch) expect(aside).not.toHaveAttribute('inert');
+
   for (const catalog of CATALOGS) {
-    if (touch) await tap(triggerIn(aside)!);
-    else await userEvent.click(triggerIn(aside)!);
-    await expect.poll(() => aside.querySelector('[role="menu"]')).not.toBeNull();
-    const items = [...aside.querySelectorAll<HTMLAnchorElement>('[role="menuitemradio"]')];
+    if (touch) await tap(trigger);
+    else await userEvent.click(trigger);
+    const listElement = list()!;
+    expect(listElement).toBeVisible();
+    // Die Liste steht in der Seitenleiste und ändert deren Breite nicht.
+    expect(aside.getBoundingClientRect().width).toBe(closedWidth);
+
+    const items = [...listElement.querySelectorAll<HTMLElement>('li > :is(a, button)')];
     expect(items).toHaveLength(CATALOGS.length);
-    expect(items.filter((item) => item.getAttribute('aria-checked') === 'true')).toHaveLength(1);
+    const current = listElement.querySelector<HTMLElement>('[aria-current="true"]')!;
+    expect(current.textContent).toContain('Geöffnet');
+    const currentStatusId = current.getAttribute('aria-describedby')?.split(' ')[0];
+    expect(document.getElementById(currentStatusId ?? '')?.textContent).toBe('Geöffnet');
+    const currentCount = catalogState!.catalog!.totalControls.toLocaleString('de-DE');
+    expect(current.textContent).toContain(currentCount);
     const item = items.find((entry) => entry.textContent?.includes(catalog.title))!;
-    expect(item.getAttribute('href')).toBe(`/katalog/${catalog.key}`);
+    const title = document.getElementById(item.getAttribute('aria-labelledby')!)!;
+    expect(title).toHaveTextContent(catalog.title);
+    expect(title.scrollWidth).toBe(title.clientWidth);
+    if (catalog.title.length > 30) {
+      expect(title.getBoundingClientRect().height).toBeGreaterThan(Number.parseFloat(getComputedStyle(title).lineHeight));
+    }
+    if (touch) expect(item.getBoundingClientRect().height).toBeGreaterThanOrEqual(44);
+    item.scrollIntoView({ block: 'nearest' });
     expectReachable(item, width, height);
-    const previousLocationKey = router.state.location.key;
+
+    const previousLocationKey = router!.state.location.key;
+    if (item !== current) expect(item.getAttribute('href')).toBe(`/katalog/${catalog.key}`);
     if (touch) await tap(item);
     else await userEvent.click(item);
-    await expect.poll(() => router!.state.location.key).not.toBe(previousLocationKey);
-    await expect.poll(() => router!.state.navigation.state).toBe('idle');
-    await expect.poll(() => committedLocationKey).toBe(router.state.location.key);
-    await expectLoadedCatalog(catalog.key);
-    await expect.poll(() => triggerIn(aside)?.textContent).toContain(catalog.title);
-    if (touch) {
-      await expect.poll(() => host!.querySelector('[data-mobile-nav]')?.getAttribute('data-mobile-nav')).toBe('closed');
-      await expect.poll(() => aside.getBoundingClientRect().right).toBeLessThanOrEqual(0);
+    if (item === current) {
+      expect(router!.state.location.key).toBe(previousLocationKey);
+      expect(document.activeElement).toBe(trigger);
+      if (touch) expect(aside).not.toHaveAttribute('inert');
+    } else {
+      await expect.poll(() => router!.state.location.key).not.toBe(previousLocationKey);
+      await expect.poll(() => committedLocationKey).toBe(router!.state.location.key);
+      await expectLoadedCatalog(catalog.key);
+      await expect.poll(() => document.activeElement?.matches('[data-catalog-scope-heading]')).toBe(true);
+      if (touch) {
+        await expect.poll(() => aside.getBoundingClientRect().right).toBeLessThanOrEqual(0);
+        await openDrawer(host!);
+        await settlePush(host!);
+      }
+    }
+    expect(list()).toBeNull();
+    await expect.poll(() => aside.getBoundingClientRect().width).toBe(closedWidth);
+    expect(trigger.textContent).toContain(catalog.shortTitle);
+    expectReachable(trigger, width, height);
+    expectReachable(close(), width, height);
+  }
+
+  await router!.navigate(-1);
+  await expectLoadedCatalog('diva');
+  expect(trigger.textContent).toContain('DIVA');
+  expect(list()).toBeNull();
+  if (touch) {
+    await openDrawer(host!);
+    await settlePush(host!);
+  }
+  if (touch) {
+    await tap(close());
+    await expect.poll(() => host!.querySelector('[data-mobile-nav]')?.getAttribute('data-mobile-nav')).toBe('closed');
+  }
+});
+
+// Mausklicks auch in der Schublade: Chromium lenkt einen Tipp auf die freie Fläche zum nächsten Baumknoten um.
+test.each([
+  { width: 390, height: 844, drawer: true },
+  { width: 1366, height: 768, drawer: false },
+])('bricht einen Wechsel bei $width px mit Escape ab, nachdem ein Klick den Fokus aus der Liste nimmt', async ({ width, height, drawer }) => {
+  let release = () => {};
+  const held = new Promise<void>((resolve) => { release = resolve; });
+  const realFetch = globalThis.fetch;
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    if (String(input).includes('catalog-diva.json')) await held;
+    return realFetch(input, init);
+  });
+  try {
+    const aside = await renderCatalogShell(width, height);
+    await expect.poll(() => aside.querySelector('[role="tree"]')).not.toBeNull();
+    if (drawer) {
       await openDrawer(host!);
       await settlePush(host!);
     }
-    expectReachable(triggerIn(aside)!, width, height);
-    expectReachable(close, width, height);
+    await userEvent.click(triggerIn(aside)!);
+    const list = aside.querySelector<HTMLElement>('nav[aria-label="Verfügbare Kataloge"]:not([hidden])')!;
+    const diva = list.querySelector<HTMLElement>('a[href="/katalog/diva"]')!;
+    await userEvent.click(diva);
+    await expect.poll(() => diva.getAttribute('aria-busy')).toBe('true');
+
+    // Die freie Fläche unter der Liste gehört zum Katalogbaum und ist nicht fokussierbar.
+    await userEvent.click(list.nextElementSibling as HTMLElement, { position: { x: 12, y: 3 } });
+    expect(document.activeElement).toBe(document.body);
+    await userEvent.keyboard('{Escape}');
+    expect(diva).not.toHaveAttribute('aria-busy');
+
+    release();
+    await expect.poll(() => catalogState?.catalogs.get('diva')?.catalog ?? null, { timeout: 5000 }).not.toBeNull();
+    expect(router!.state.location.pathname).toBe('/katalog/gspp');
+    expect(list).toBeVisible();
+    expect(host!.querySelector('[data-mobile-nav]')?.getAttribute('data-mobile-nav')).toBe(drawer ? 'open' : 'closed');
+  } finally {
+    release();
+    vi.restoreAllMocks();
   }
-  if (touch) {
-    await tap(close);
-    await expect.poll(() => host!.querySelector('[data-mobile-nav]')?.getAttribute('data-mobile-nav')).toBe('closed');
+});
+
+test('überlässt bei 1366 px das erste Escape einem offenen Tooltip und bricht erst mit dem zweiten den Wechsel ab', async () => {
+  // ARCH.1.1 im Anwenderkatalog: Der Satzteil „Verfahren und Regelungen …“ trägt den Tooltip „Ergebnis“.
+  const controlPath = '/katalog/gspp/kontrolle/67c185f2-ebfd-49cc-a910-9a6dd0901578';
+  let release = () => {};
+  const held = new Promise<void>((resolve) => { release = resolve; });
+  const realFetch = globalThis.fetch;
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    if (String(input).includes('catalog-diva.json')) await held;
+    return realFetch(input, init);
+  });
+  try {
+    const aside = await renderCatalogShell(1366, 768, controlPath);
+    const resultClause = () => [...host!.querySelectorAll<HTMLElement>('[aria-describedby^="satzteil-"]')]
+      .find((clause) => document.getElementById(clause.getAttribute('aria-describedby')!)?.textContent === 'Ergebnis');
+    await expect.poll(resultClause, { timeout: 5000 }).toBeDefined();
+    await userEvent.click(triggerIn(aside)!);
+    const list = aside.querySelector<HTMLElement>('nav[aria-label="Verfügbare Kataloge"]:not([hidden])')!;
+    const diva = list.querySelector<HTMLElement>('a[href="/katalog/diva"]')!;
+    await userEvent.click(diva);
+    await expect.poll(() => diva.getAttribute('aria-busy')).toBe('true');
+    expect(document.activeElement).toBe(diva);
+
+    const clause = resultClause()!;
+    const tooltip = document.getElementById(clause.getAttribute('aria-describedby')!)!;
+    await userEvent.hover(clause);
+    await expect.poll(() => tooltip.hidden).toBe(false);
+
+    await userEvent.keyboard('{Escape}');
+    await expect.poll(() => tooltip.hidden).toBe(true);
+    expect(diva).toHaveAttribute('aria-busy', 'true');
+    expect(document.activeElement).toBe(diva);
+    expect(list).toBeVisible();
+
+    await userEvent.keyboard('{Escape}');
+    expect(diva).not.toHaveAttribute('aria-busy');
+    release();
+    await expect.poll(() => catalogState?.catalogs.get('diva')?.catalog ?? null, { timeout: 5000 }).not.toBeNull();
+    expect(router!.state.location.pathname).toBe(controlPath);
+    expect(list).toBeVisible();
+  } finally {
+    release();
+    vi.restoreAllMocks();
   }
+});
+
+test('bricht den Kurztitel der Werkzeugleiste bei 200 % Schrift im mobilen Direktlink um', async () => {
+  await commands.setBrowserFontSize(32);
+  await page.viewport(320, 568);
+  host = document.createElement('div');
+  document.body.append(host);
+  root = createRoot(host);
+  router = createMemoryRouter(createAppRoutes(createElement(AppShell)), { initialEntries: ['/katalog/wlan-gastnetze'] });
+  flushSync(() => {
+    root?.render(createElement(CatalogProvider, null,
+      createElement(CatalogProbe), createElement(RouterProvider, { router: router! })));
+  });
+  await expectLoadedCatalog('wlan-gastnetze');
+  await expect.poll(() => host!.querySelector('[data-catalog-scope-heading]')).not.toBeNull();
+  const heading = host.querySelector<HTMLElement>('[data-catalog-scope-heading]')!;
+  await document.fonts.ready;
+  const label = document.getElementById(heading.getAttribute('aria-describedby')!)!;
+  expect(label.textContent).toContain(CATALOGS[3].shortTitle);
+  const box = label.getBoundingClientRect();
+  expect(box.left).toBeGreaterThanOrEqual(0);
+  expect(box.right).toBeLessThanOrEqual(320);
+  expect(label.scrollWidth).toBeLessThanOrEqual(label.clientWidth);
+  expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(320);
 });
