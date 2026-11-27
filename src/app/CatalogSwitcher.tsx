@@ -211,9 +211,9 @@ export function CatalogSwitcher({
 
   // Während eines Wechsels bricht Escape ihn unabhängig vom Fokus ab, auch nach einem Klick in Baum oder Hauptbereich.
   // Der Capture am Fenster läuft vor den Escape-Handlern von Schublade und Detailansicht am Dokument;
-  // ein offener modaler Dialog oder ein Menü behält Escape.
+  // ein offener modaler Dialog, ein Menü oder ein offener Tooltip behält Escape.
   useGlobalEventListener('window', 'keydown', (event) => {
-    if (event.key !== 'Escape' || event.defaultPrevented || document.querySelector('[aria-modal="true"]')) return;
+    if (event.key !== 'Escape' || event.defaultPrevented || document.querySelector('[aria-modal="true"], [role="tooltip"]:not([hidden])')) return;
     if (event.target instanceof Element && event.target.closest('[role="menu"]')) return;
     event.preventDefault();
     event.stopPropagation();

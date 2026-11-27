@@ -107,7 +107,7 @@ describe('CatalogSwitcher', () => {
     expect(router.state.location.pathname).toBe('/katalog/gspp');
   });
 
-  it('bricht einen Wechsel mit Escape auch bei Fokus außerhalb ab, lässt Escape aber offenen Dialogen und Menüs', () => {
+  it('bricht einen Wechsel mit Escape auch bei Fokus außerhalb ab, lässt Escape aber offenen Dialogen, Menüs und Tooltips', () => {
     const { router, update, list } = setup([]);
     const diva = list().getByRole('link', { name: /^DIVA/ });
     fireEvent.click(diva);
@@ -121,12 +121,19 @@ describe('CatalogSwitcher', () => {
     expect(fireEvent.keyDown(body, { key: 'Escape' })).toBe(true);
     expect(diva).toHaveAttribute('aria-busy', 'true');
     menu.remove();
+    const tooltip = body.appendChild(document.createElement('span'));
+    tooltip.setAttribute('role', 'tooltip');
+    expect(fireEvent.keyDown(body, { key: 'Escape' })).toBe(true);
+    expect(diva).toHaveAttribute('aria-busy', 'true');
+    // Ein geschlossener Tooltip steht versteckt im DOM und hält Escape nicht.
+    tooltip.hidden = true;
 
     // Wie nach einem Klick auf eine freie Fläche im Baum oder im Hauptbereich liegt der Fokus auf `body`.
     diva.blur();
     expect(fireEvent.keyDown(body, { key: 'Escape' })).toBe(false);
     expect(diva).not.toHaveAttribute('aria-busy');
     expect(screen.getByRole('status')).toHaveTextContent('Wechsel abgebrochen. Grundschutz++ bleibt geöffnet.');
+    tooltip.remove();
     // Ohne laufenden Wechsel gehört Escape außerhalb des Schnellwechsels wieder den übrigen Handlern.
     expect(fireEvent.keyDown(body, { key: 'Escape' })).toBe(true);
     update([['diva', state('diva', { catalog: {} as Catalog })]]);
