@@ -85,7 +85,13 @@ function CatalogChoice({ item, id, current, pending, disabled, onSelect }: Reado
       )}
     </>
   );
-  const accessible = { 'aria-labelledby': `${id}-title`, 'aria-describedby': description || undefined };
+  const accessible = {
+    'aria-labelledby': `${id}-title`,
+    'aria-describedby': description || undefined,
+    // Während eines Wechsels behält die ladende Zeile den Fokus: WebKit fokussiert weder Links noch
+    // Schaltflächen beim Zeigerklick und schöbe ihn sonst auf `body`, wo Escape den Schnellwechsel verfehlt.
+    onMouseDown: (event: MouseEvent) => { if (pending || disabled) event.preventDefault(); },
+  };
 
   return current ? (
     <button

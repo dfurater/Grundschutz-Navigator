@@ -85,10 +85,15 @@ describe('CatalogSwitcher', () => {
     const diva = list().getByRole('link', { name: /^DIVA/ });
     const active = list().getByRole('button', { name: 'Anwenderkatalog Grundschutz++' });
 
+    expect(fireEvent.mouseDown(diva)).toBe(true);
     // fireEvent.click fokussiert nicht, wie WebKit bei einem Zeigerklick auf einen Link.
     fireEvent.click(diva);
     expect(diva).toHaveFocus();
     expect(active).toHaveAttribute('aria-disabled', 'true');
+    // Weitere Zeigerklicks auf Zeilen verschieben den Fokus nicht: mousedown verhindert den Fokuswechsel.
+    for (const row of [active, diva, list().getByRole('link', { name: 'Supply Chain Security' })]) {
+      expect(fireEvent.mouseDown(row)).toBe(false);
+    }
     fireEvent.click(active);
     expect(onToggle).not.toHaveBeenCalled();
     expect(diva).toHaveAttribute('aria-busy', 'true');
