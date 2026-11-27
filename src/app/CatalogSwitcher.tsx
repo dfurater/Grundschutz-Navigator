@@ -88,9 +88,6 @@ function CatalogChoice({ item, id, current, pending, disabled, onSelect }: Reado
   const accessible = {
     'aria-labelledby': `${id}-title`,
     'aria-describedby': description || undefined,
-    // Während eines Wechsels behält die ladende Zeile den Fokus: WebKit fokussiert weder Links noch
-    // Schaltflächen beim Zeigerklick und schöbe ihn sonst auf `body`, wo Escape den Schnellwechsel verfehlt.
-    onMouseDown: (event: MouseEvent) => { if (pending || disabled) event.preventDefault(); },
   };
 
   return current ? (
@@ -213,10 +210,14 @@ export function CatalogSwitcher({
   }, open, undefined, true);
 
   const failed = failedKey ? loadStates?.get(failedKey) : undefined;
+  // Während eines Wechsels behält die ladende Zeile den Fokus: WebKit fokussiert beim Zeigerklick weder Links
+  // noch Schaltflächen und schöbe ihn sonst von Zeilen, Listenkopf oder Rändern auf `body`, wo Escape den
+  // Schnellwechsel verfehlt.
+  const holdFocus = pendingKey === null ? undefined : (event: MouseEvent) => event.preventDefault();
 
   return (
     <div ref={rootRef} data-catalog-switcher="" className="flex min-h-0 flex-1 flex-col">
-      <div className="flex h-panel-head shrink-0 items-center gap-0.5 border-b border-[var(--color-border-default)] pl-1.5 pr-1">
+      <div onMouseDown={holdFocus} className="flex h-panel-head shrink-0 items-center gap-0.5 border-b border-[var(--color-border-default)] pl-1.5 pr-1">
         {active && (
           <button
             ref={triggerRef}
@@ -253,6 +254,7 @@ export function CatalogSwitcher({
           id={panelId}
           aria-label="Verfügbare Kataloge"
           hidden={!open}
+          onMouseDown={holdFocus}
           className="border-b border-[var(--color-border-default)] px-1.5 pb-1.5"
         >
           {open && (

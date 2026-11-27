@@ -90,9 +90,11 @@ describe('CatalogSwitcher', () => {
     fireEvent.click(diva);
     expect(diva).toHaveFocus();
     expect(active).toHaveAttribute('aria-disabled', 'true');
-    // Weitere Zeigerklicks auf Zeilen verschieben den Fokus nicht: mousedown verhindert den Fokuswechsel.
-    for (const row of [active, diva, list().getByRole('link', { name: 'Supply Chain Security' })]) {
-      expect(fireEvent.mouseDown(row)).toBe(false);
+    // Weitere Zeigerklicks auf Zeilen, Listenkopf, Listenrand und Kopfzeile verschieben den Fokus nicht.
+    const nav = screen.getByRole('navigation', { name: 'Verfügbare Kataloge' });
+    const head = document.querySelector('[data-catalog-switcher] > div')!;
+    for (const target of [active, diva, list().getByRole('link', { name: 'Supply Chain Security' }), screen.getByText('3 Kataloge'), nav, head]) {
+      expect(fireEvent.mouseDown(target)).toBe(false);
     }
     fireEvent.click(active);
     expect(onToggle).not.toHaveBeenCalled();
