@@ -19,6 +19,7 @@ const state = (catalogKey: CatalogKey, patch: Partial<LoadedCatalogState>): Load
 
 function setup(initialStates: [CatalogKey, LoadedCatalogState][]) {
   const requestCatalog = vi.fn();
+  const onToggle = vi.fn();
   let setLoadStates: (next: Map<CatalogKey, LoadedCatalogState>) => void = () => {};
   // Wie im Provider setzt die Wiederholung den Fehler synchron auf „lädt“ zurück.
   const retryCatalog = vi.fn((catalogKey: CatalogKey) => setLoadStates(new Map([[catalogKey, state(catalogKey, { loading: true })]])));
@@ -30,7 +31,7 @@ function setup(initialStates: [CatalogKey, LoadedCatalogState][]) {
         items={ITEMS}
         activeKey="gspp"
         open
-        onToggle={() => {}}
+        onToggle={onToggle}
         loadStates={loadStates}
         requestCatalog={requestCatalog}
         retryCatalog={retryCatalog}
@@ -41,7 +42,7 @@ function setup(initialStates: [CatalogKey, LoadedCatalogState][]) {
   render(<RouterProvider router={router} />);
   const update = (next: [CatalogKey, LoadedCatalogState][]) => act(() => setLoadStates(new Map(next)));
   const list = () => within(screen.getByRole('navigation', { name: 'Verfügbare Kataloge' }));
-  return { requestCatalog, retryCatalog, router, update, list };
+  return { requestCatalog, retryCatalog, onToggle, router, update, list };
 }
 
 describe('CatalogSwitcher', () => {
@@ -75,6 +76,26 @@ describe('CatalogSwitcher', () => {
     expect(diva).not.toHaveAttribute('aria-busy');
     expect(screen.getByRole('status')).toHaveTextContent('Wechsel abgebrochen. Grundschutz++ bleibt geöffnet.');
 
+    update([['diva', state('diva', { catalog: {} as Catalog })]]);
+    expect(router.state.location.pathname).toBe('/katalog/gspp');
+  });
+
+  it('fokussiert die gewählte Zeile, damit Escape auch ohne Fokus durch den Klick abbricht', () => {
+    const { onToggle, router, update, list } = setup([]);
+    const diva = list().getByRole('link', { name: /^DIVA/ });
+    const active = list().getByRole('button', { name: 'Anwenderkatalog Grundschutz++' });
+
+    // fireEvent.click fokussiert nicht, wie WebKit bei einem Zeigerklick auf einen Link.
+    fireEvent.click(diva);
+    expect(diva).toHaveFocus();
+    expect(active).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.click(active);
+    expect(onToggle).not.toHaveBeenCalled();
+    expect(diva).toHaveAttribute('aria-busy', 'true');
+
+    fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+    expect(diva).not.toHaveAttribute('aria-busy');
+    expect(active).not.toHaveAttribute('aria-disabled');
     update([['diva', state('diva', { catalog: {} as Catalog })]]);
     expect(router.state.location.pathname).toBe('/katalog/gspp');
   });

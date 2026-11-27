@@ -68,7 +68,7 @@ export function CatalogToolbar({
           {/* Rückkehrziel nach dem Schließen der mobilen Detailseite (`useDocumentDetailPage`). */}
           {/* Der Katalog beschreibt die Überschrift; nach einem Katalogwechsel liegt der Fokus dort (GSPP-728). */}
           {catalogLabel && (
-            <span id={catalogLabelId} className="whitespace-nowrap text-base font-medium text-[var(--color-text-secondary)]">
+            <span id={catalogLabelId} className="max-w-full sm:whitespace-nowrap text-base font-medium text-[var(--color-text-secondary)]">
               {catalogLabel}
               <span aria-hidden="true" className="font-normal text-[var(--color-text-muted)]"> /</span>
             </span>

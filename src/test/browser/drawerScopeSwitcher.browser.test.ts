@@ -69,6 +69,7 @@ afterEach(async () => {
   catalogState = undefined;
   committedLocationKey = undefined;
   await commands.setBrowserCoarsePointer(false);
+  await commands.setBrowserFontSize();
 });
 
 function triggerIn(aside: HTMLElement) {
@@ -207,4 +208,28 @@ test.each(PROFILES)('hält die Kontextwahl bei $width px (Touch: $touch) sichtba
     await tap(close());
     await expect.poll(() => host!.querySelector('[data-mobile-nav]')?.getAttribute('data-mobile-nav')).toBe('closed');
   }
+});
+
+test('bricht den Kurztitel der Werkzeugleiste bei 200 % Schrift im mobilen Direktlink um', async () => {
+  await commands.setBrowserFontSize(32);
+  await page.viewport(320, 568);
+  host = document.createElement('div');
+  document.body.append(host);
+  root = createRoot(host);
+  router = createMemoryRouter(createAppRoutes(createElement(AppShell)), { initialEntries: ['/katalog/wlan-gastnetze'] });
+  flushSync(() => {
+    root?.render(createElement(CatalogProvider, null,
+      createElement(CatalogProbe), createElement(RouterProvider, { router: router! })));
+  });
+  await expectLoadedCatalog('wlan-gastnetze');
+  await expect.poll(() => host!.querySelector('[data-catalog-scope-heading]')).not.toBeNull();
+  const heading = host.querySelector<HTMLElement>('[data-catalog-scope-heading]')!;
+  await document.fonts.ready;
+  const label = document.getElementById(heading.getAttribute('aria-describedby')!)!;
+  expect(label.textContent).toContain(CATALOGS[3].shortTitle);
+  const box = label.getBoundingClientRect();
+  expect(box.left).toBeGreaterThanOrEqual(0);
+  expect(box.right).toBeLessThanOrEqual(320);
+  expect(label.scrollWidth).toBeLessThanOrEqual(label.clientWidth);
+  expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(320);
 });

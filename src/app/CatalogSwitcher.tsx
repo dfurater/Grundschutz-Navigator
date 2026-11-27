@@ -92,7 +92,8 @@ function CatalogChoice({ item, id, current, pending, disabled, onSelect }: Reado
       type="button"
       aria-current="true"
       {...accessible}
-      className={`${rowClass} bg-primary-light`}
+      aria-disabled={disabled || undefined}
+      className={`${rowClass} bg-primary-light ${disabled ? 'cursor-not-allowed opacity-50' : ''}`}
       onClick={(event) => onSelect(event, item)}
     >
       {content}
@@ -162,6 +163,10 @@ export function CatalogSwitcher({
 
   const startLoad = (item: CatalogSwitcherItem) => {
     const { catalogKey } = item;
+    // Die Zeile hält den Fokus, damit Escape den Wechsel abbricht: WebKit fokussiert Links beim Klick nicht,
+    // und der Knopf „Erneut versuchen“ verschwindet mit der Meldung.
+    const titleId = CSS.escape(`${panelId}-${catalogKey}-title`);
+    rootRef.current?.querySelector<HTMLElement>(`[aria-labelledby="${titleId}"]`)?.focus();
     setFailedKey(null);
     setPendingKey(catalogKey);
     setAnnouncement(`${shortTitleOf(item, catalogKey)} wird geladen. Escape bricht ab.`);
@@ -171,20 +176,14 @@ export function CatalogSwitcher({
 
   const select = (event: MouseEvent, item: CatalogSwitcherItem) => {
     const { catalogKey } = item;
-    if (catalogKey === activeKey) return toggle();
+    // Während eines Wechsels ist auch die Zeile des geöffneten Katalogs gesperrt.
+    if (catalogKey === activeKey) return pendingKey === null ? toggle() : undefined;
     // Ein Klick mit Modifikator öffnet den Link wie gewohnt, etwa in einem neuen Tab, auch während eines Wechsels.
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     if (pendingKey !== null) return event.preventDefault();
     // Ohne Ladeschnittstelle oder bei geladenem Katalog navigiert der Link direkt.
     if (!loadStates || !requestCatalog || loadStates.get(catalogKey)?.catalog) return;
     event.preventDefault();
-    startLoad(item);
-  };
-
-  const retry = (item: CatalogSwitcherItem) => {
-    // Der Knopf verschwindet mit der Meldung; der Fokus bleibt an der Katalogzeile.
-    const titleId = CSS.escape(`${panelId}-${item.catalogKey}-title`);
-    rootRef.current?.querySelector<HTMLElement>(`[aria-labelledby="${titleId}"]`)?.focus();
     startLoad(item);
   };
 
@@ -273,7 +272,7 @@ export function CatalogSwitcher({
                         <p className="mt-0.5">{activeShortTitle} bleibt geöffnet.</p>
                         <button
                           type="button"
-                          onClick={() => retry(item)}
+                          onClick={() => startLoad(item)}
                           className={`mt-2 min-h-8 rounded-md border border-[var(--color-border-strong)] bg-[var(--color-surface-base)] px-2.5 text-xs font-medium text-[var(--color-text-secondary)] shadow-sm hover:bg-[var(--color-surface-subtle)] hover:text-[var(--color-text-primary)] ${focusRing}`}
                         >
                           Erneut versuchen
