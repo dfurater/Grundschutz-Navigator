@@ -122,6 +122,8 @@ export function CatalogSwitcher({
   const panelId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const headRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLElement>(null);
   const navigate = useNavigate();
   const [pendingKey, setPendingKey] = useState<CatalogKey | null>(null);
   const [failedKey, setFailedKey] = useState<CatalogKey | null>(null);
@@ -213,11 +215,14 @@ export function CatalogSwitcher({
   // Während eines Wechsels behält die ladende Zeile den Fokus: WebKit fokussiert beim Zeigerklick weder Links
   // noch Schaltflächen und schöbe ihn sonst von Zeilen, Listenkopf oder Rändern auf `body`, wo Escape den
   // Schnellwechsel verfehlt.
-  const holdFocus = pendingKey === null ? undefined : (event: MouseEvent) => event.preventDefault();
+  useGlobalEventListener('document', 'mousedown', (event) => {
+    if (!(event.target instanceof Node)) return;
+    if (headRef.current?.contains(event.target) || listRef.current?.contains(event.target)) event.preventDefault();
+  }, pendingKey !== null);
 
   return (
     <div ref={rootRef} data-catalog-switcher="" className="flex min-h-0 flex-1 flex-col">
-      <div onMouseDown={holdFocus} className="flex h-panel-head shrink-0 items-center gap-0.5 border-b border-[var(--color-border-default)] pl-1.5 pr-1">
+      <div ref={headRef} className="flex h-panel-head shrink-0 items-center gap-0.5 border-b border-[var(--color-border-default)] pl-1.5 pr-1">
         {active && (
           <button
             ref={triggerRef}
@@ -253,8 +258,8 @@ export function CatalogSwitcher({
         <nav
           id={panelId}
           aria-label="Verfügbare Kataloge"
+          ref={listRef}
           hidden={!open}
-          onMouseDown={holdFocus}
           className="border-b border-[var(--color-border-default)] px-1.5 pb-1.5"
         >
           {open && (
