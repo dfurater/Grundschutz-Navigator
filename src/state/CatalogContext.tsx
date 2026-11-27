@@ -15,6 +15,7 @@ import {
   createContext,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useReducer,
   useRef,
@@ -41,6 +42,7 @@ import {
   createProvenanceRequests,
   loadCatalogArtifacts,
   loadCatalogDirectory,
+  optionalCatalogFacts,
   toCatalogErrorMessage,
   type SupportedCatalogDescriptor,
 } from '@/state/catalogArtifacts';
@@ -123,12 +125,11 @@ export function CatalogProvider({
     createInitialState,
   );
 
-  // Verhindert doppelte Nachlade-Requests bei StrictMode-Effektläufen und Re-Renders.
-  const requestedKeysRef = useRef<Set<CatalogKey>>(new Set());
-  const loadingKeysRef = useRef<Set<CatalogKey>>(new Set());
-  useEffect(() => {
-    requestedKeysRef.current = new Set();
-  }, [descriptorByKey]);
+  const entryRetryRequestedRef = useRef(false);
+  const catalogRequestsRef = useRef(new Map<CatalogKey, {
+    readonly descriptor: SupportedCatalogDescriptor;
+    loading: boolean;
+  }>());
 
   // Verzeichnis und Integritätsprüfung teilen je Metadaten-URL eine Anfrage: Die
   // Prüfung startet ihre eigene, das Verzeichnis schließt sich an (GSPP-483).
@@ -179,7 +180,7 @@ export function CatalogProvider({
         if (cancelled) return;
 
         if (!catalogFetch.ok) {
-          requestedKeysRef.current.delete(entryCatalogKey);
+          entryRetryRequestedRef.current = false;
           dispatch({
             type: 'CATALOG_LOAD_ERROR',
             catalogKey: entryCatalogKey,
@@ -236,7 +237,7 @@ export function CatalogProvider({
         });
       } catch (err) {
         if (!cancelled) {
-          requestedKeysRef.current.delete(entryCatalogKey);
+          entryRetryRequestedRef.current = false;
           dispatch({
             type: 'CATALOG_LOAD_ERROR',
             catalogKey: entryCatalogKey,
@@ -257,6 +258,7 @@ export function CatalogProvider({
   ]);
 
   useEffect(() => {
+    entryRetryRequestedRef.current = false;
     startEntryLoad();
     return () => cancelEntryLoadRef.current?.();
   }, [startEntryLoad]);
@@ -285,27 +287,24 @@ export function CatalogProvider({
     };
   }, [descriptors, joinProvenanceRequest]);
 
-  // Bedarfsgerechtes Nachladen: der per Route ausgewählte Katalog und jeder
-  // ausdrücklich angeforderte, je Katalog höchstens einmal.
-  const startCatalogLoad = useCallback((descriptor: SupportedCatalogDescriptor) => {
+  // Eine neue Quelle ersetzt den laufenden Request für denselben Katalogschlüssel.
+  const startCatalogLoad = useCallback((descriptor: SupportedCatalogDescriptor, retry = false) => {
     const { catalogKey } = descriptor;
-    if (loadingKeysRef.current.has(catalogKey)) return;
-    loadingKeysRef.current.add(catalogKey);
+    const requests = catalogRequestsRef.current;
+    const previous = requests.get(catalogKey);
+    if (previous?.descriptor === descriptor && (previous.loading || !retry)) return;
 
+    const request = { descriptor, loading: true };
+    requests.set(catalogKey, request);
+    const isCancelled = () => requests.get(catalogKey) !== request;
     dispatch({ type: 'CATALOG_LOAD_START', catalogKey });
-
-    loadCatalogArtifacts(descriptor, () => false, startProvenanceRequest)
+    loadCatalogArtifacts(descriptor, isCancelled, startProvenanceRequest)
       .then((result) => {
-        if (!result) return;
-        dispatch({
-          type: 'CATALOG_LOAD_SUCCESS',
-          catalogKey,
-          ...result,
-        });
+        if (!result || isCancelled()) return;
+        dispatch({ type: 'CATALOG_LOAD_SUCCESS', catalogKey, ...result });
       })
       .catch((error: unknown) => {
-        // Fail-closed je Katalog: der beschädigte Katalog trägt den Fehler,
-        // die übrigen bleiben unberührt nutzbar.
+        if (isCancelled()) return;
         dispatch({
           type: 'CATALOG_LOAD_ERROR',
           catalogKey,
@@ -313,19 +312,24 @@ export function CatalogProvider({
         });
       })
       .finally(() => {
-        loadingKeysRef.current.delete(catalogKey);
+        request.loading = false;
       });
   }, [startProvenanceRequest]);
 
-  const loadCatalog = useCallback((catalogKey: CatalogKey) => {
-    if (catalogKey === entryCatalogKey) return;
+  // Entwertet alte Antworten vor dem nächsten Paint, auch bei einem Vorabruf.
+  useLayoutEffect(() => {
+    const requests = catalogRequestsRef.current;
+    for (const [catalogKey, { descriptor: previous }] of requests) {
+      const descriptor = descriptorByKey.get(catalogKey);
+      if (!descriptor || descriptor.isEntryCatalog) requests.delete(catalogKey);
+      else if (descriptor !== previous) startCatalogLoad(descriptor);
+    }
+  }, [descriptorByKey, startCatalogLoad]);
 
+  const loadCatalog = useCallback((catalogKey: CatalogKey) => {
     const descriptor = descriptorByKey.get(catalogKey);
-    if (!descriptor) return;
-    if (requestedKeysRef.current.has(catalogKey)) return;
-    requestedKeysRef.current.add(catalogKey);
-    startCatalogLoad(descriptor);
-  }, [entryCatalogKey, descriptorByKey, startCatalogLoad]);
+    if (descriptor && !descriptor.isEntryCatalog) startCatalogLoad(descriptor);
+  }, [descriptorByKey, startCatalogLoad]);
 
   const activeCatalogKey = state.activeCatalogKey;
   useEffect(() => {
@@ -347,14 +351,14 @@ export function CatalogProvider({
       if (!state.catalogs.get(catalogKey)?.error) return;
 
       if (catalogKey === entryCatalogKey) {
-        if (requestedKeysRef.current.has(catalogKey)) return;
-        requestedKeysRef.current.add(catalogKey);
+        if (entryRetryRequestedRef.current) return;
+        entryRetryRequestedRef.current = true;
         startEntryLoad();
         return;
       }
 
       const descriptor = descriptorByKey.get(catalogKey);
-      if (descriptor) startCatalogLoad(descriptor);
+      if (descriptor) startCatalogLoad(descriptor, true);
     },
     [descriptorByKey, entryCatalogKey, startCatalogLoad, startEntryLoad, state.catalogs],
   );
@@ -370,12 +374,13 @@ export function CatalogProvider({
       requestCatalog: loadCatalog,
       retryCatalog,
       catalogDirectory: entries.map((entry) => {
-        const loaded = state.catalogs.get(entry.catalogKey)?.catalog;
-        if (!loaded) return entry;
+        const loaded = state.catalogs.get(entry.catalogKey);
+        if (!loaded?.catalog) return entry;
         return {
           ...entry,
-          title: entry.catalogKey === state.activeCatalogKey ? loaded.metadata.title : entry.title,
-          controlCount: loaded.totalControls,
+          ...optionalCatalogFacts(loaded.provenance),
+          title: entry.catalogKey === state.activeCatalogKey ? loaded.catalog.metadata.title : entry.title,
+          controlCount: loaded.catalog.totalControls,
         };
       }),
     };

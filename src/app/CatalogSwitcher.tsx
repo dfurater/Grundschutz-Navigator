@@ -299,7 +299,7 @@ export function CatalogSwitcher({
                         <button
                           type="button"
                           onClick={() => startLoad(item)}
-                          className={`mt-2 min-h-8 rounded-md border border-[var(--color-border-strong)] bg-[var(--color-surface-base)] px-2.5 text-xs font-medium text-[var(--color-text-secondary)] shadow-sm hover:bg-[var(--color-surface-subtle)] hover:text-[var(--color-text-primary)] ${focusRing}`}
+                          className={`mt-2 min-h-11 rounded-md border border-[var(--color-border-strong)] bg-[var(--color-surface-base)] px-2.5 text-xs font-medium text-[var(--color-text-secondary)] shadow-sm hover:bg-[var(--color-surface-subtle)] hover:text-[var(--color-text-primary)] ${focusRing}`}
                         >
                           Erneut versuchen
                         </button>
