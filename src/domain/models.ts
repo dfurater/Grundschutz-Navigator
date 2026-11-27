@@ -659,6 +659,12 @@ export interface VocabularyProvenance {
 export interface CatalogProvenance {
   /** Unveränderter Upstream-Titel; optional für ältere Metadatenartefakte. */
   title?: string;
+  /** Anzahl der Kontrollen im ausgelieferten Katalog. */
+  controlCount?: number;
+  /** Unveränderter Wert von `metadata.props[scope_target_audience]`. */
+  targetAudience?: string;
+  /** Unveränderter Wert von `metadata.props[scope_implements_norm]`. */
+  implementsNorm?: string;
   /** Source-registry artifact key; written by the multi-artifact fetch (GSPP-249) */
   artifactKey?: string;
   source: {
@@ -721,6 +727,9 @@ export interface LoadedCatalogState {
 export interface CatalogDirectoryEntry {
   readonly catalogKey: CatalogKey;
   readonly title: string;
+  readonly controlCount?: number;
+  readonly targetAudience?: string;
+  readonly implementsNorm?: string;
 }
 
 export interface CatalogState {
@@ -742,6 +751,19 @@ export interface CatalogState {
    * fail-closed beim zuletzt gültigen Katalog.
    */
   selectCatalog: (catalogKey: CatalogKey) => void;
+  /**
+   * Lädt einen ausgelieferten Katalog, ohne die Auswahl zu ändern. Ein nicht
+   * ausgelieferter `catalogKey` wird ignoriert; ein bereits angeforderter
+   * Katalog wird nicht erneut geladen. Fehlt in Testzuständen ohne Provider.
+   */
+  requestCatalog?: (catalogKey: CatalogKey) => void;
+  /**
+   * Wiederholt den Ladepfad eines Katalogs nach einem Fehler: setzt dessen
+   * Fehlerzustand zurück und startet genau einen neuen Request. Ohne Fehler
+   * oder während eines laufenden Requests bleibt der Aufruf wirkungslos. Fehlt
+   * in Testzuständen ohne Provider.
+   */
+  retryCatalog?: (catalogKey: CatalogKey) => void;
 
   /* Projektionen des aktiven Katalogs — unveränderte Zugriffsform. */
   catalogDocument: CatalogDocument | null;

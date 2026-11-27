@@ -1,4 +1,4 @@
-import { useContext } from 'react';
+import { useContext, useId } from 'react';
 import type { Control } from '@/domain/models';
 import { MobileNavigationContext } from '@/state/MobileNavigationContext';
 import type { FilterPanelProps } from './FilterPanel';
@@ -10,6 +10,8 @@ import { CatalogMobileFilterSheet } from './CatalogMobileFilterSheet';
 
 interface CatalogToolbarProps {
   readonly title: string;
+  /** Kurztitel des geöffneten Katalogs vor dem Bereich, z. B. „DIVA / Alle Kontrollen“. */
+  readonly catalogLabel?: string;
   readonly filteredCount: number;
   readonly totalCount: number;
   readonly hasActiveFilters: boolean;
@@ -34,6 +36,7 @@ interface CatalogToolbarProps {
 
 export function CatalogToolbar({
   title,
+  catalogLabel,
   filteredCount,
   totalCount,
   hasActiveFilters,
@@ -54,15 +57,23 @@ export function CatalogToolbar({
   const activeCount = [...Object.values(flatFilters), ...Object.values(securityTargets)]
     .reduce((count, values) => count + values.length, 0);
   const mobileNavigationOpen = useContext(MobileNavigationContext);
+  const catalogLabelId = useId();
   const showMobileSheets = !isDesktop && !mobileSheetsSuspended && !mobileNavigationOpen;
   return (
     <div className="px-3 pt-2 pb-0 sm:py-1.5 md:py-0 md:h-panel-head md:flex md:items-center border-b border-[var(--color-border-default)] bg-[var(--color-surface-base)] sticky top-14 z-10 md:static md:z-auto">
       {/* Unter sm zwei Zeilen: die Überschrift über die volle Breite, darunter
           Anzahl und Aktionen. Ab sm eine Zeile wie bisher (GSPP-471). */}
       <div className="w-full flex flex-col sm:flex-row sm:items-center sm:justify-between sm:gap-2 min-w-0">
-        <div className="sm:flex sm:items-center sm:gap-2 min-w-0">
+        <div className="flex flex-wrap items-baseline gap-x-2 min-w-0 sm:flex-nowrap sm:items-center">
           {/* Rückkehrziel nach dem Schließen der mobilen Detailseite (`useDocumentDetailPage`). */}
-          <h1 data-catalog-scope-heading tabIndex={-1} className="text-lg/title text-balance hyphens-auto line-clamp-2 sm:line-clamp-none sm:truncate sm:text-base font-bold text-[var(--color-text-primary)] focus:outline-none">
+          {/* Der Katalog beschreibt die Überschrift; nach einem Katalogwechsel liegt der Fokus dort (GSPP-728). */}
+          {catalogLabel && (
+            <span id={catalogLabelId} className="max-w-full sm:whitespace-nowrap text-base font-medium text-[var(--color-text-secondary)]">
+              {catalogLabel}
+              <span aria-hidden="true" className="font-normal text-[var(--color-text-muted)]"> /</span>
+            </span>
+          )}
+          <h1 data-catalog-scope-heading tabIndex={-1} aria-describedby={catalogLabel ? catalogLabelId : undefined} className="min-w-0 text-lg/title text-balance hyphens-auto line-clamp-2 sm:line-clamp-none sm:truncate sm:text-base font-bold text-[var(--color-text-primary)] focus:outline-none">
             {title}
           </h1>
           <span

@@ -22,6 +22,7 @@ import { CatalogTargetNotFound } from './CatalogTargetNotFound';
 import { CatalogDetailPage, CatalogDetailPanel } from './CatalogDetailPanel';
 import { CatalogMobileList } from './CatalogMobileList';
 import { CatalogToolbar } from './CatalogToolbar';
+import { catalogLabelOf } from './catalogShortTitle';
 import { ControlTable } from './ControlTable';
 import type { FilterPanelProps } from './FilterPanel';
 
@@ -249,6 +250,7 @@ export function CatalogBrowser() {
         <div hidden={showDetailAsPage} className="flex-1 min-w-0 flex flex-col md:overflow-hidden">
           <CatalogToolbar
             title={scopeTitle.heading}
+            catalogLabel={catalogLabelOf(catalog)}
             filteredCount={filtered.length}
             totalCount={totalCount}
             hasActiveFilters={hasActiveFilters}
