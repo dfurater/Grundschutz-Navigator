@@ -60,43 +60,42 @@ export function HomePage() {
             Werkzeug zum Durchsuchen, Filtern und Exportieren des offiziellen
             Grundschutz++-Anwenderkatalogs des BSI. Kein Angebot des BSI.
           </p>
-          {catalogStats && (
-            <p className="type-meta mt-3 text-[var(--color-text-secondary)] tabular-nums">
-              {catalogStats.practices} Praktiken &middot;{' '}
-              {catalogStats.topics} Themen &middot; {catalogStats.controls}{' '}
-              Kontrollen
-            </p>
-          )}
         </div>
       </header>
 
-      {catalog && (
-        <section
-          aria-labelledby="grundschutz-summary-heading"
-          className="border-t border-[var(--color-border-subtle)] pt-6"
+      <section
+        aria-labelledby="grundschutz-summary-heading"
+        className="border-t border-[var(--color-border-subtle)] pt-6"
+      >
+        <h2
+          id="grundschutz-summary-heading"
+          className="type-meta text-[var(--color-text-secondary)]"
         >
-          <h2
-            id="grundschutz-summary-heading"
-            className="type-meta text-[var(--color-text-secondary)]"
-          >
-            Was ist Grundschutz++?
-          </h2>
-          <p className="catalog-prose-text mt-3 text-sm leading-relaxed text-[var(--color-text-primary)]">
-            Grundschutz++ ist ein fortentwickelter Anwenderkatalog des BSI im
-            Kontext des IT-Grundschutzes. Er liegt maschinenlesbar im
-            OSCAL-Format vor und verbindet methodische mit konkreten
-            technisch-organisatorischen Anforderungen. Mehr dazu unter{' '}
-            <Link to="/about" className="catalog-prose-link">
-              Über das Projekt
-            </Link>
-            .
-          </p>
-        </section>
+          Was ist Grundschutz++?
+        </h2>
+        <p className="catalog-prose-text mt-3 text-sm leading-relaxed text-[var(--color-text-primary)]">
+          Grundschutz++ ist ein fortentwickelter Anwenderkatalog des BSI im
+          Kontext des IT-Grundschutzes. Er liegt maschinenlesbar im
+          OSCAL-Format vor und verbindet methodische mit konkreten
+          technisch-organisatorischen Anforderungen. Mehr dazu unter{' '}
+          <Link to="/about" className="catalog-prose-link">
+            Über das Projekt
+          </Link>
+          .
+        </p>
+      </section>
+
+      {catalogStats && (
+        <p className="type-meta mt-4 text-[var(--color-text-secondary)] tabular-nums">
+          {catalogStats.practices} Praktiken &middot;{' '}
+          {catalogStats.topics} Themen &middot; {catalogStats.controls}{' '}
+          Kontrollen
+        </p>
       )}
 
       {/* Practice register */}
       {loading && (
-        <div className="py-8 text-center">
+        <div className="min-h-dvh py-8 text-center md:min-h-0">
           {/* S6819: <output> trägt die implizite Rolle "status" — das div
               mit role="status" ist dadurch ersetzt. */}
           <output
