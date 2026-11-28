@@ -24,7 +24,7 @@ import {
   fetchProvenance,
   verifyArtifactIntegrity,
 } from '@/domain/integrity';
-import { parseCatalogInWorker } from '@/state/catalogParseWorker';
+import { parseCatalogInWorker, prepareCatalogParseWorker } from '@/state/catalogParseWorker';
 
 /**
  * Ein ausgelieferter Katalog mit seinen beiden Artefakt-URLs. Die Dateinamen
@@ -175,12 +175,16 @@ export async function loadCatalogArtifacts(
   const provenanceController = new AbortController();
   const provenanceRequest = requestProvenance(descriptor.metadataUrl, provenanceController.signal);
   provenanceRequest.catch(ignoreRejection);
+  // Der Worker lädt sein Skript, während die Katalogbytes unterwegs sind.
+  const parseWorker = prepareCatalogParseWorker();
   const buffer = await bufferRequest.catch((error: unknown) => {
     provenanceController.abort(error);
+    parseWorker?.terminate();
     throw error;
   });
   if (isCancelled()) {
     provenanceController.abort();
+    parseWorker?.terminate();
     return null;
   }
 
@@ -200,7 +204,10 @@ export async function loadCatalogArtifacts(
     );
   }
 
-  if (isCancelled()) return null;
+  if (isCancelled()) {
+    parseWorker?.terminate();
+    return null;
+  }
 
   const { catalogDocument } = await parseCatalogInWorker(buffer, {
     catalogKey: descriptor.catalogKey,
@@ -208,7 +215,7 @@ export async function loadCatalogArtifacts(
       verification?.valid === true
         ? 'class-1-verified-public'
         : 'class-1-unverified-public',
-  });
+  }, parseWorker);
 
   return { catalogDocument, provenance, verification };
 }

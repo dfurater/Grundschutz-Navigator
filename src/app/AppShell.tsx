@@ -125,7 +125,12 @@ function AppShellLayout() {
   useRoutePrefetch();
   useInputModality();
   const prefersReducedMotion = useMediaQuery(REDUCED_MOTION_QUERY);
-  const treeScrollRef = useOverlayScrollbars<HTMLDivElement>();
+  // Die Baumleisten entstehen, sobald der Baum zum ersten Mal sichtbar ist, und
+  // bleiben danach bestehen. Mobil liegt er beim Start in der geschlossenen
+  // Schublade; eine Instanz erzwänge dort vor dem ersten Paint ein Layout.
+  const [treeShown, setTreeShown] = useState(false);
+  if (!treeShown && (isPersistentNav || sideNavOpen)) setTreeShown(true);
+  const treeScrollRef = useOverlayScrollbars<HTMLDivElement>(treeShown);
   const {
     catalog,
     catalogDirectory,

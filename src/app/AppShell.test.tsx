@@ -224,6 +224,17 @@ describe('AppShell', () => {
     expect(focus).toHaveBeenCalledWith({ preventScroll: true });
   });
 
+  it('erzeugt die Baumleisten mobil erst beim ersten Öffnen der Schublade und behält sie danach', () => {
+    const { container } = renderAppShell();
+    const treeViewport = () => container.querySelector('aside [data-overlayscrollbars-viewport]');
+    expect(treeViewport()).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
+    expect(treeViewport()).not.toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Menü schließen' }));
+    expect(treeViewport()).not.toBeNull();
+  });
+
   it('makes the main content inert only while mobile navigation is open', () => {
     let persistent = false;
     mockedUseMediaQuery.mockImplementation((query) => query === DESKTOP_QUERY && persistent);
