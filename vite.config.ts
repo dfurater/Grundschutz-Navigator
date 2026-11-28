@@ -13,6 +13,7 @@ import { LAZY_ROUTE_MODULES } from './src/app/lazyRouteModules.mjs';
 import { catalogFreshnessPlugin } from './scripts/check-catalog-freshness.mjs';
 import { checkBuiltSeoTitles } from './scripts/check-seo-titles.mjs';
 import { writeChecksumsManifestFile } from './scripts/deployChecksums.mjs';
+import { renderStartPageMarkup, writeStartPageMarkup } from './scripts/startPagePrerender.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -121,6 +122,11 @@ export function pruneUndeliveredCatalogFiles(
  * Jeder statische Einstieg einer Lazy-Route erhält ein `modulepreload` auf den
  * Chunk seiner Seite (GSPP-506), sodass ein Direktaufruf ihn parallel zum
  * Hauptchunk lädt. Pfade tragen die aufgelöste Deployment-Basis.
+ *
+ * `dist/index.html` erhält zuletzt im leeren `#root` das serverseitig
+ * gerenderte Markup der Startseite. Routen-Einstiege und `404.html` entstehen
+ * vorher aus derselben Vorlage und bleiben ohne dieses Markup, damit kein
+ * anderer Pfad kurz die Startseite zeigt.
  */
 export function spaFallbackPlugin(
   options: {
@@ -128,12 +134,15 @@ export function spaFallbackPlugin(
     catalogs?: readonly Catalog[];
     /** Route → Seitenchunk (`assets/<Name>.js`); ohne Angabe liest das Plugin sie aus dem Bundle. */
     modulePreloads?: ReadonlyMap<string, string>;
+    /** Vorgerendertes Markup der Startseite; ohne Angabe rendert `writeBundle` es aus dem Quellcode. */
+    startPageMarkup?: string;
   } = {},
 ) {
   const outDir = options.outDir ?? DIST_DIR;
   // Einmal je Plugin-Instanz, damit ein wiederholtes closeBundle byte-gleich schreibt.
   const buildTime = new Date();
   const foundPreloads = new Map<string, string>();
+  let renderedStartPage: string | undefined;
   return {
     name: 'github-pages-spa-fallback',
     apply: 'build' as const,
@@ -157,6 +166,12 @@ export function spaFallbackPlugin(
         }
       }
     },
+    // `closeBundle` bleibt synchron; das asynchrone Serverrendern läuft davor.
+    async writeBundle() {
+      if (options.startPageMarkup === undefined) {
+        renderedStartPage = await renderStartPageMarkup(__dirname, resolveDeploymentBase());
+      }
+    },
     closeBundle() {
       const modulePreloads = options.modulePreloads ?? foundPreloads;
       // Fail-closed: Eine zugeordnete Lazy-Route ohne gefundenen Chunk bricht den
@@ -169,6 +184,9 @@ export function spaFallbackPlugin(
       pruneUndeliveredCatalogFiles(outDir);
       writeStaticRouteEntries(outDir, options.catalogs, modulePreloads);
       writeSpaFallbackFile(outDir);
+      // Erst nach Routen-Einstiegen und Fallback: Nur `/` trägt das Markup der Startseite.
+      const markup = options.startPageMarkup ?? renderedStartPage;
+      if (markup !== undefined) writeStartPageMarkup(outDir, markup);
       writeSitemapFile(outDir);
       writeFileSync(resolve(outDir, 'robots.txt'), [
         'User-agent: *',
