@@ -60,20 +60,6 @@ export function HomePage() {
             Werkzeug zum Durchsuchen, Filtern und Exportieren des offiziellen
             Grundschutz++-Anwenderkatalogs des BSI. Kein Angebot des BSI.
           </p>
-          {(catalogStats || loading) && (
-            <p
-              aria-hidden={!catalogStats}
-              className="type-meta mt-3 text-[var(--color-text-secondary)] tabular-nums"
-            >
-              {catalogStats ? (
-                <>
-                  {catalogStats.practices} Praktiken &middot;{' '}
-                  {catalogStats.topics} Themen &middot; {catalogStats.controls}{' '}
-                  Kontrollen
-                </>
-              ) : '\u00a0'}
-            </p>
-          )}
         </div>
       </header>
 
@@ -98,6 +84,14 @@ export function HomePage() {
           .
         </p>
       </section>
+
+      {catalogStats && (
+        <p className="type-meta mt-4 text-[var(--color-text-secondary)] tabular-nums">
+          {catalogStats.practices} Praktiken &middot;{' '}
+          {catalogStats.topics} Themen &middot; {catalogStats.controls}{' '}
+          Kontrollen
+        </p>
+      )}
 
       {/* Practice register */}
       {loading && (

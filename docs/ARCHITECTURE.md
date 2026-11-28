@@ -831,6 +831,8 @@ Das Build-Plugin schreibt vor dem Prüfsummen-Manifest eine UTF-8-kodierte `dist
 
 Im selben Schritt schreibt das Build-Plugin `dist/.well-known/security.txt` nach [RFC 9116](https://www.rfc-editor.org/rfc/rfc9116) (`buildSecurityTxt()` in `vite.config.ts`, UTF-8, LF): `Contact` mit der privaten Schwachstellenmeldung des Repositorys (`/security/advisories/new`), `Expires` 364 Tage nach dem Build-Zeitpunkt in UTC (`YYYY-MM-DDThh:mm:ssZ`), `Preferred-Languages: de, en`, `Canonical` aus Production-Origin und normalisierter Deployment-Basis (beim Default `https://gspp-navigator.furater.com/.well-known/security.txt`) und `Policy` mit `SECURITY.md` auf `main`. Die Datei ist nicht signiert und durch `SHA256SUMS` gebunden. `Expires` erneuert sich mit jedem Deploy. Bei einer Veröffentlichung unter einem Unterpfad liegt die Datei unter diesem Pfad und nicht am Host-Root `/.well-known/`, den RFC 9116 §3 vorgibt.
 
+Die Quellvorlage `index.html` deklariert vier Inter-Latin-Preloads. `writeSeoRouteEntries` deaktiviert die Preloads für 500, 600 und 700 im gebauten Startseiten-HTML mit `media="not all"`. Die übrigen statischen Einstiege laden alle vier Schnitte vor. `HomePage` zeigt Einführung und Projektlink beim ersten Render. Katalogkennzahlen und Praktikenregister folgen unterhalb der Einführung, sobald die Katalogdaten bereitstehen.
+
 | Route | Komponente | Beschreibung |
 |-------|------------|--------------|
 | `/` | HomePage | Startseite |
