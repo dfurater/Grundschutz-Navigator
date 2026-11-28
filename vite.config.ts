@@ -184,10 +184,10 @@ export function spaFallbackPlugin(
       }
       const markup = options.startPageMarkup ?? renderedStartPage;
       const indexHtmlPath = resolve(outDir, 'index.html');
-      if (markup !== undefined && existsSync(indexHtmlPath)) {
+      if (markup !== undefined) {
         // Jeder Aufruf schreibt Einstiege und Fallback aus der Vorlage ohne Startseiten-Markup.
-        startPageTemplate ??= readFileSync(indexHtmlPath, 'utf8');
-        writeFileSync(indexHtmlPath, startPageTemplate, 'utf8');
+        if (startPageTemplate === undefined) startPageTemplate = readFileSync(indexHtmlPath, 'utf8');
+        else writeFileSync(indexHtmlPath, startPageTemplate, 'utf8');
       }
       pruneUndeliveredCatalogFiles(outDir);
       writeStaticRouteEntries(outDir, options.catalogs, modulePreloads);
