@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve, sep } from 'node:path';
-import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import type { Catalog } from './src/domain/models.ts';
 import {
   STATIC_CONTENT_TITLES, listSeoRouteMetadata, loadPublicSeoCatalogs, writeSeoRouteEntries,
@@ -143,6 +143,7 @@ export function spaFallbackPlugin(
   const buildTime = new Date();
   const foundPreloads = new Map<string, string>();
   let renderedStartPage: string | undefined;
+  let startPageTemplate: string | undefined;
   return {
     name: 'github-pages-spa-fallback',
     apply: 'build' as const,
@@ -181,11 +182,17 @@ export function spaFallbackPlugin(
       if (missing.length > 0) {
         throw new Error(`Kein Seitenchunk im Bundle für die Lazy-Routen: ${missing.join(', ')}`);
       }
+      const markup = options.startPageMarkup ?? renderedStartPage;
+      const indexHtmlPath = resolve(outDir, 'index.html');
+      if (markup !== undefined && existsSync(indexHtmlPath)) {
+        // Jeder Aufruf schreibt Einstiege und Fallback aus der Vorlage ohne Startseiten-Markup.
+        startPageTemplate ??= readFileSync(indexHtmlPath, 'utf8');
+        writeFileSync(indexHtmlPath, startPageTemplate, 'utf8');
+      }
       pruneUndeliveredCatalogFiles(outDir);
       writeStaticRouteEntries(outDir, options.catalogs, modulePreloads);
       writeSpaFallbackFile(outDir);
       // Erst nach Routen-Einstiegen und Fallback: Nur `/` trägt das Markup der Startseite.
-      const markup = options.startPageMarkup ?? renderedStartPage;
       if (markup !== undefined) writeStartPageMarkup(outDir, markup);
       writeSitemapFile(outDir);
       writeFileSync(resolve(outDir, 'robots.txt'), [

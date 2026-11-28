@@ -1,7 +1,44 @@
-import { describe, expect, it } from 'vitest';
-import { injectStartPageMarkup } from './startPagePrerender.ts';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { createServer } from 'vite';
+import { injectStartPageMarkup, renderStartPageMarkup } from './startPagePrerender.ts';
+
+vi.mock('vite', () => ({ createServer: vi.fn() }));
 
 const TEMPLATE = '<body><div id="root"></div></body>';
+
+afterEach(() => {
+  vi.mocked(createServer).mockReset();
+});
+
+function mockServer(ssrLoadModule: () => Promise<unknown>) {
+  const server = { ssrLoadModule: vi.fn(ssrLoadModule), close: vi.fn(async () => {}) };
+  vi.mocked(createServer).mockResolvedValue(server as unknown as Awaited<ReturnType<typeof createServer>>);
+  return server;
+}
+
+describe('renderStartPageMarkup', () => {
+  it.each([
+    ['/', '/'],
+    ['/preview/', '/preview'],
+  ])('rendert mit der Router-Basis wie src/main.tsx bei Deployment-Basis %s', async (base, basename) => {
+    const renderStartPage = vi.fn(async () => '<main>Start</main>');
+    const server = mockServer(async () => ({ renderStartPage }));
+
+    await expect(renderStartPageMarkup('/projekt', base)).resolves.toBe('<main>Start</main>');
+
+    expect(renderStartPage).toHaveBeenCalledWith(basename);
+    expect(server.close).toHaveBeenCalledOnce();
+  });
+
+  it('gibt einen Ladefehler weiter und schließt den Server trotzdem', async () => {
+    const failure = new Error('SSR-Modul fehlt');
+    const server = mockServer(async () => { throw failure; });
+
+    await expect(renderStartPageMarkup('/projekt', '/')).rejects.toBe(failure);
+
+    expect(server.close).toHaveBeenCalledOnce();
+  });
+});
 
 describe('injectStartPageMarkup', () => {
   it('setzt das Markup in den leeren App-Root ein', () => {
