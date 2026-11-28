@@ -161,6 +161,17 @@ describe('HomePage', () => {
       .not.toBeInTheDocument();
   });
 
+  it('renders the explanation and its project link while the catalog is loading', () => {
+    mockedUseCatalog.mockReturnValue(catalogState({ catalog: null, loading: true }));
+
+    renderHome();
+
+    expect(screen.getByRole('heading', { name: 'Was ist Grundschutz++?' }))
+      .toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Über das Projekt' }))
+      .toHaveAttribute('href', '/about');
+  });
+
   it('does not render verification metadata in the hero when catalog verification fails', () => {
     mockedUseCatalog.mockReturnValue(catalogState({
       verification: {

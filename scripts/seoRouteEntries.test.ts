@@ -308,6 +308,34 @@ describe('writeSeoRouteEntries', () => {
   });
 });
 
+it('lädt auf der Startseite nur Inter 400 vor und behält auf Katalogeinstiegen alle Schnitte', () => {
+  const directory = tempDir(readFileSync(new URL('../index.html', import.meta.url), 'utf8'));
+  const entries = listSeoRouteMetadata([catalog()]);
+
+  writeSeoRouteEntries(directory, entries, BASE_URL);
+  const indexFile = join(directory, 'index.html');
+  const catalogFile = join(directory, 'katalog/gspp/index.html');
+  const firstIndex = readFileSync(indexFile, 'utf8');
+  const firstCatalog = readFileSync(catalogFile, 'utf8');
+
+  writeSeoRouteEntries(directory, entries, BASE_URL);
+  expect(readFileSync(indexFile, 'utf8')).toBe(firstIndex);
+  expect(readFileSync(catalogFile, 'utf8')).toBe(firstCatalog);
+
+  const activeFontWeights = (html: string) => {
+    const { window } = new JSDOM(html);
+    try {
+      return [...window.document.querySelectorAll<HTMLLinkElement>('link[as="font"]:not([media="not all"])')]
+        .map(link => /inter-latin-(\d+)\.woff2$/.exec(link.getAttribute('href') ?? '')?.[1]);
+    } finally {
+      window.close();
+    }
+  };
+
+  expect(activeFontWeights(firstIndex)).toEqual(['400']);
+  expect(activeFontWeights(firstCatalog)).toEqual(['400', '500', '600', '700']);
+});
+
 describe('writeSeoRouteEntries: modulePreload', () => {
   const entry = { path: '/suche', title: 'Suche', modulePreload: 'assets/SearchPage-abc_1.js' };
 

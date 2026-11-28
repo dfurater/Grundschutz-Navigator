@@ -190,7 +190,11 @@ function renderRouteEntry(template: string, entry: SeoRouteMetadata, base: URL):
   if (!entry.title.trim()) throw new Error('SEO title must not be empty');
   const url = new URL(entry.path === '/' ? '' : entry.path.slice(1) + '/', base).href;
   const image = new URL(OG_IMAGE_FILE, base).href;
-  let html = replaceOgTag(replaceOgTag(template, 'og:title', entry.title), 'og:url', url);
+  const routeTemplate = template.replaceAll(
+    / data-subpage-font-preload(?: media="not all")?/g,
+    entry.path === '/' ? ' data-subpage-font-preload media="not all"' : ' data-subpage-font-preload',
+  );
+  let html = replaceOgTag(replaceOgTag(routeTemplate, 'og:title', entry.title), 'og:url', url);
   html = replaceOgTag(replaceOgTag(html, 'og:image', image), 'twitter:image', image);
   if (entry.modulePreload === undefined) return html;
   if (!MODULE_PRELOAD_PATH.test(entry.modulePreload)) throw new Error('Unsafe module preload path');
