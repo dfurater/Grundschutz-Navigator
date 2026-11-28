@@ -495,6 +495,25 @@ describe('spaFallbackPlugin closeBundle', () => {
     expect(hashed.filter((path) => path.startsWith('data/catalog-wlan'))).toEqual([]);
   });
 
+  it('setzt das Startseiten-Markup nur in index.html, nicht in Routen-Einstiege und 404.html', () => {
+    const distDir = createTempDistDir();
+    writeFileSync(join(distDir, 'index.html'), INDEX_HTML.replace('<body>', '<body><div id="root"></div>'));
+
+    const plugin = spaFallbackPlugin({
+      outDir: distDir, catalogs: [], modulePreloads: MODULE_PRELOADS, startPageMarkup: '<main>Start</main>',
+    });
+    plugin.closeBundle();
+    const first = readFileSync(join(distDir, 'SHA256SUMS'));
+    // Ein wiederholter Aufruf schreibt byte-gleich, auch mit Startseiten-Markup.
+    plugin.closeBundle();
+
+    expect(readFileSync(join(distDir, 'SHA256SUMS'))).toEqual(first);
+    expect(readFileSync(join(distDir, 'index.html'), 'utf8')).toContain('<div id="root"><main>Start</main></div>');
+    for (const path of ['404.html', 'suche/index.html']) {
+      expect(readFileSync(join(distDir, path), 'utf8')).toContain('<div id="root"></div>');
+    }
+  });
+
   it('runs only in the build, not when a dev or Vitest server closes', () => {
     expect(spaFallbackPlugin().apply).toBe('build');
   });
