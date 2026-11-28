@@ -107,6 +107,15 @@ test.each([744, 1024, 1440])(
 
 test.each([390, 743])('behält unter md bei %i px die mobile Mindesthöhe der Katalog-Ladefläche', async (width) => {
   const area = await renderLoadingCatalog(width, 300);
-  expect(area.getBoundingClientRect().height).toBeGreaterThanOrEqual(innerHeight / 2 - 0.5);
-  expect(getComputedStyle(area).minHeight).toBe(`${innerHeight / 2}px`);
+  const headerHeight = host!.querySelector('header')!.getBoundingClientRect().height;
+  expect(area.getBoundingClientRect().height).toBeGreaterThanOrEqual(innerHeight - headerHeight - 0.5);
+  expect(host!.querySelector('footer')!.getBoundingClientRect().top).toBeGreaterThanOrEqual(innerHeight - 0.5);
+});
+
+test('hält den Footer auf der mobilen Startseite während des Katalog-Ladens unterhalb des Viewports', async () => {
+  await page.viewport(393, 851);
+  renderShell('/', true);
+  await expect.element(page.getByRole('status', { name: 'Katalog wird geladen' })).toBeVisible();
+  await document.fonts.ready;
+  expect(host!.querySelector('footer')!.getBoundingClientRect().top).toBeGreaterThanOrEqual(innerHeight - 0.5);
 });

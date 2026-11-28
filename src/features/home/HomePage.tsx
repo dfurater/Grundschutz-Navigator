@@ -95,7 +95,7 @@ export function HomePage() {
 
       {/* Practice register */}
       {loading && (
-        <div className="py-8 text-center">
+        <div className="min-h-dvh py-8 text-center md:min-h-0">
           {/* S6819: <output> trägt die implizite Rolle "status" — das div
               mit role="status" ist dadurch ersetzt. */}
           <output
