@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FakeWorker, installWorker } from '@/test/fakeWorker';
-import { parseCatalogInWorker } from './catalogParseWorker';
+import { parseCatalogInWorker, prepareCatalogParseWorker } from './catalogParseWorker';
 import { parseCatalogBuffer, type CatalogParseResult } from './catalogParsing';
 import type { CatalogKey } from '@/domain/sourceRegistry';
 import { createStartupCatalogSource } from '@/test/fixtures/startupCatalog';
@@ -73,6 +73,38 @@ describe('parseCatalogInWorker', () => {
       }),
       [buffer],
     );
+    expect(worker.terminate).toHaveBeenCalledOnce();
+  });
+
+  it('übernimmt den vorbereiteten Worker und beendet ihn nach der Antwort', async () => {
+    const expected = createWorkerResult('gspp', 'catalog-worker-prepared');
+    const worker = respondWith(expected);
+    installWorker(worker);
+    const prepared = prepareCatalogParseWorker();
+    vi.stubGlobal('Worker', vi.fn(() => { throw new Error('kein zweiter Worker'); }));
+
+    const result = await parseCatalogInWorker(new TextEncoder().encode('{"catalog":{}}').buffer, {
+      catalogKey: 'gspp',
+      trustClass: 'class-1-verified-public',
+    }, prepared);
+
+    expect(result).toBe(expected);
+    expect(worker.terminate).toHaveBeenCalledOnce();
+  });
+
+  it('meldet einen vorbereiteten Worker, der vor dem Auftrag fehlschlug, sofort als Ladefehler', async () => {
+    const worker = new FakeWorker();
+    installWorker(worker);
+    const prepared = prepareCatalogParseWorker();
+    worker.emitEvent('error');
+
+    await expect(
+      parseCatalogInWorker(new TextEncoder().encode('{"catalog":{}}').buffer, {
+        catalogKey: 'gspp',
+        trustClass: 'class-1-verified-public',
+      }, prepared),
+    ).rejects.toThrow('Katalog konnte nicht im Hintergrund verarbeitet werden.');
+    expect(worker.postMessage).not.toHaveBeenCalled();
     expect(worker.terminate).toHaveBeenCalledOnce();
   });
 

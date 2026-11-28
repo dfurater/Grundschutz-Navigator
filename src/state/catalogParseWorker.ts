@@ -3,7 +3,7 @@
 // =============================================================================
 
 import type { CatalogDocumentContext } from '@/domain/models';
-import { parseCatalogBuffer, type CatalogParseResult } from '@/state/catalogParsing';
+import type { CatalogParseResult } from '@/state/catalogParsing';
 
 export interface CatalogParseWorkerRequest {
   readonly type: 'parse-catalog';
@@ -67,18 +67,46 @@ function matchesRequestedCatalog(
   );
 }
 
+function createWorker(): Worker {
+  return new Worker(new URL('../workers/catalogParser.worker.ts', import.meta.url), {
+    type: 'module',
+  });
+}
+
+// Vorbereitete Worker, die vor ihrem Auftrag einen Fehler gemeldet haben.
+const failedPreparedWorkers = new WeakSet<Worker>();
+
+/**
+ * Startet den Parser-Worker vor dem Eintreffen der Katalogbytes, damit sein
+ * Skript parallel zum Katalog lädt. `null` heißt: kein vorbereiteter Worker,
+ * `parseCatalogInWorker` versucht es dann selbst.
+ */
+export function prepareCatalogParseWorker(): Worker | null {
+  if (typeof Worker === 'undefined') return null;
+  try {
+    const worker = createWorker();
+    worker.addEventListener('error', () => failedPreparedWorkers.add(worker), { once: true });
+    return worker;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Übergibt den nach der Integritätsprüfung nicht mehr benötigten Buffer ohne
- * Kopie an einen Kurzzeit-Worker. Der Fallback hält Tests und nicht unterstützte
- * Browser funktionsfähig; moderne Produktionsbrowser bleiben vollständig
- * außerhalb des Main Threads.
+ * Kopie an einen Kurzzeit-Worker. Ein vorbereiteter Worker geht in den Besitz
+ * dieses Aufrufs über und wird wie ein eigener beendet. Der Fallback hält Tests
+ * und nicht unterstützte Browser funktionsfähig; moderne Produktionsbrowser
+ * bleiben vollständig außerhalb des Main Threads.
  */
 export function parseCatalogInWorker(
   buffer: ArrayBuffer,
   context: CatalogDocumentContext,
+  prepared: Worker | null = null,
 ): Promise<CatalogParseResult> {
   if (typeof Worker === 'undefined') {
-    return Promise.resolve().then(() =>
+    // Der Parser des Main Threads ist ein eigener Chunk: Der Startpfad lädt ihn nicht.
+    return import('@/state/catalogParsing').then(({ parseCatalogBuffer }) =>
       parseCatalogBuffer(buffer, context, { execution: 'main-thread' }),
     );
   }
@@ -86,9 +114,7 @@ export function parseCatalogInWorker(
   return new Promise((resolve, reject) => {
     let worker: Worker;
     try {
-      worker = new Worker(new URL('../workers/catalogParser.worker.ts', import.meta.url), {
-        type: 'module',
-      });
+      worker = prepared ?? createWorker();
     } catch {
       reject(workerFailure());
       return;
@@ -139,6 +165,10 @@ export function parseCatalogInWorker(
       worker.addEventListener('message', onMessage);
       worker.addEventListener('error', onWorkerFailure);
       worker.addEventListener('messageerror', onWorkerFailure);
+      if (prepared !== null && failedPreparedWorkers.has(prepared)) {
+        onWorkerFailure();
+        return;
+      }
       timeout = setTimeout(onWorkerFailure, CATALOG_PARSE_WORKER_TIMEOUT_MS);
       worker.postMessage({ type: 'parse-catalog', requestId, buffer, context }, [buffer]);
     } catch {

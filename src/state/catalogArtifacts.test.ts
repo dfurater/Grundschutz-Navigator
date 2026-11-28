@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
 import { SUPPORTED_CATALOGS } from '@/domain/sourceRegistry';
+import { FakeWorker, installWorker } from '@/test/fakeWorker';
 import {
   buildSupportedCatalogDescriptors,
   createProvenanceRequests,
@@ -11,6 +12,7 @@ const descriptors = buildSupportedCatalogDescriptors('/fixture/');
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   vi.useRealTimers();
 });
 
@@ -31,8 +33,12 @@ describe('loadCatalogArtifacts abort', () => {
         metadataSignal?.addEventListener('abort', () => reject(metadataSignal?.reason), { once: true });
       });
     });
+    const worker = new FakeWorker();
+    installWorker(worker);
     const requests = createProvenanceRequests();
     const pending = loadCatalogArtifacts(descriptors[0], () => failure === 'cancelled', requests.start);
+    // Der Parser-Worker startet mit den Anfragen, nicht erst nach den Bytes.
+    expect(globalThis.Worker).toHaveBeenCalledOnce();
     const onEntryLoaded = vi.fn();
     const directory = loadCatalogDirectory(descriptors.slice(0, 1), onEntryLoaded, requests.join);
     expect(vi.mocked(globalThis.fetch)).toHaveBeenCalledTimes(2);
@@ -41,6 +47,8 @@ describe('loadCatalogArtifacts abort', () => {
     else await expect(pending).rejects.toBe(original);
 
     expect(metadataSignal?.aborted).toBe(true);
+    expect(worker.terminate).toHaveBeenCalledOnce();
+    expect(worker.postMessage).not.toHaveBeenCalled();
     await Promise.resolve();
     expect(vi.getTimerCount()).toBe(0);
     const fallback = { catalogKey: descriptors[0].catalogKey, title: descriptors[0].catalogKey };

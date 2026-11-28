@@ -167,6 +167,12 @@ export function CatalogProvider({
         (result) => ({ ok: true as const, result }),
         (error: unknown) => ({ ok: false as const, error }),
       );
+      // Die Provenienz der Vokabulare startet mit ihren Bytes; ausgewertet wird
+      // sie erst nach dem Katalog.
+      const vocabularyProvenancePromise = fetchVocabularyProvenance(upstreamSourcesMetadataUrl);
+      vocabularyProvenancePromise.catch(() => {
+        // Die Ablehnung wertet der Vokabularpfad unten aus.
+      });
 
       // Auffangnetz um den gesamten eager Ladepfad: jeder Wurf zwischen hier und
       // dem abschließenden Dispatch muss als sichtbarer Ladefehler enden statt
@@ -209,7 +215,7 @@ export function CatalogProvider({
           // Wie beim Katalog sperrt eine fehlende oder abweichende Prüfung die
           // Registry nicht; das Ergebnis erscheint auf /about (docs/INTEGRITY.md).
           try {
-            vocabularyProvenance = await fetchVocabularyProvenance(upstreamSourcesMetadataUrl);
+            vocabularyProvenance = await vocabularyProvenancePromise;
             if (!cancelled) {
               vocabularyVerification = await verifyArtifactIntegrity(
                 vocabularyBuffer,
